@@ -13,12 +13,11 @@
         //admin, security, user
         public string Role { get; set; } = string.Empty;
 
-        //pending, approved, rejected, suspended
+        //incomplete, pending, approved, rejected, suspended
         public string Status { get; set; } = string.Empty;
 
         //nullable - only filled when Status = "Rejected"
-        public string? RejectionReason { get; set; } = string.Empty;
-
+        public string? RejectionReason { get; set; }
         public bool IsFirstLogin { get; set; } = true;
 
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;

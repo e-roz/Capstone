@@ -1,6 +1,7 @@
 ﻿using AimPark.API.Data;
 using AimPark.API.DTOs;
 using AimPark.API.Entities;
+using AimPark.API.Services;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
@@ -14,9 +15,11 @@ namespace AimPark.API.Controllers
     {
 
         private readonly AppDbContext _db;
-        public AuthController(AppDbContext db)
+        private readonly TokenService _tokenService;
+        public AuthController(AppDbContext db, TokenService token)
         {
             _db = db;
+            _tokenService = token;
         }
         [HttpPost("register")]
         public async Task<IActionResult> Register([FromBody] RegisterDto dto)
@@ -45,7 +48,7 @@ namespace AimPark.API.Controllers
                 Email = dto.Email,
                 PasswordHash = BCrypt.Net.BCrypt.HashPassword(dto.Password),
                 Role = "User",
-                Status = "Pending",
+                Status = "Incomplete",
                 IsFirstLogin = true,
                 CreatedAt = DateTime.UtcNow,
                 UpdatedAt = DateTime.UtcNow
@@ -54,7 +57,15 @@ namespace AimPark.API.Controllers
             _db.Users.Add(user);
             await _db.SaveChangesAsync();
 
-            return Ok("Registration successful. Your account is pending approval.");
+
+            //generate token after registration
+            var token = _tokenService.GenerateToken(user);
+
+            return Ok(new
+            {
+                message = "Step 1 complete. Please complete our registration",
+                token = token
+            });
         }
     }
 }
