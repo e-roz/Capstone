@@ -11,6 +11,8 @@ namespace AimPark.API.Data
         //Each DbSet = one table in my database
         public DbSet<User> Users { get; set; }
 
+        public DbSet<Vehicle> vehicles { get; set; }
+
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -39,6 +41,25 @@ namespace AimPark.API.Data
 
                 entity.Property(u => u.UpdatedAt)
                       .HasDefaultValueSql("NOW()");
+            });
+
+            modelBuilder.Entity<Vehicle>(entity =>
+            {
+                // Primary Key
+                entity.HasKey(v => v.Id);
+
+                entity.HasIndex(v => v.PlateNumber)
+                      .IsUnique();
+
+                //foreign key relationship with User
+                entity.HasOne(v => v.User)
+                      .WithOne()
+                      .HasForeignKey<Vehicle>(v => v.UserId)
+                      .OnDelete(DeleteBehavior.Cascade);
+
+
+                entity.Property(v => v.Id)
+                      .HasDefaultValueSql("gen_random_uuid()");
             });
         }
 

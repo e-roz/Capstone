@@ -2,12 +2,12 @@
 using AimPark.API.DTOs;
 using AimPark.API.Entities;
 using AimPark.API.Services;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
 namespace AimPark.API.Controllers
 {
-
 
     [ApiController]
     [Route("api/auth")]
@@ -25,7 +25,7 @@ namespace AimPark.API.Controllers
         public async Task<IActionResult> Register([FromBody] RegisterDto dto)
         {
             //Scenario 1 & 2 - Check missing/empty fields
-            if(string.IsNullOrEmpty(dto.FullName) ||
+            if (string.IsNullOrEmpty(dto.FullName) ||
                string.IsNullOrEmpty(dto.Email) ||
                string.IsNullOrEmpty(dto.Password))
             {
@@ -66,6 +66,69 @@ namespace AimPark.API.Controllers
                 message = "Step 1 complete. Please complete our registration",
                 token = token
             });
+        }
+
+        [HttpPost("register/vehicle")]
+        [Authorize]
+        public async Task<IActionResult> RegisterVehicle([FromBody] VehicleDTO dto)
+        {
+            //Get userId from JWT Token
+
+            var userId = Guid.Parse(
+                User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)!.Value
+                );
+
+            //check if user exists and is Incomplete
+            var user = await _db.Users.FindAsync(userId);
+            if(user is null)
+                return NotFound("User not found.");
+
+            if(user.Status != "Incomplete")
+                return BadRequest("Vehicle already submitted or registration complete");
+
+
+            //Check if vehicle already exist for this user
+            var vehicleExists = await _db.vehicles
+                .AnyAsync(v => v.UserId == userId);
+
+            if(vehicleExists)
+                return BadRequest("Vehicle already registered for this user.");
+
+            //check if plate number already exists
+            var plateExists = await _db.vehicles
+                .AnyAsync(v => v.PlateNumber == dto.PlateNumber);
+
+            if(plateExists)
+                return BadRequest("Plate number already registered.");
+
+            //Validate fields
+            if (new[]
+                {
+                    dto.PlateNumber,
+                    dto.VehicleType,
+                    dto.Brand,
+                    dto.Model,
+                    dto.Color
+                }.Any(string.IsNullOrWhiteSpace))
+            {
+                return BadRequest("All vehicle fields are required.");
+            }
+
+            //save vehicle 
+            var vehicle = new Vehicle
+            {
+                PlateNumber = dto.PlateNumber,
+                VehicleType = dto.VehicleType,
+                Brand = dto.Brand,
+                Model = dto.Model,
+                Color = dto.Color,
+                UserId = userId,
+            };
+
+            _db.vehicles.Add(vehicle);
+            await _db.SaveChangesAsync();
+
+            return Ok("Step 2 complete. Please upload your documents");
         }
     }
 }
