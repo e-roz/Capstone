@@ -13,6 +13,8 @@ namespace AimPark.API.Data
 
         public DbSet<Vehicle> vehicles { get; set; }
 
+        public DbSet<Document> Documents { get; set; }
+
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -27,13 +29,11 @@ namespace AimPark.API.Data
                 entity.HasIndex(u => u.Email)
                       .IsUnique();
 
-                entity.HasIndex(u => u.Status);
-                entity.HasIndex(u => u.Role);
+                entity.Property(u => u.Status)
+                      .HasConversion<string>();
 
-                //Auto-generate GUID on insert
-                entity.Property(u => u.Id)
-                      .HasDefaultValueSql("gen_random_uuid()");
-
+                entity.Property(u => u.Role)
+                      .HasConversion<string>();
 
                 entity.Property(u => u.CreatedAt)
                       .HasDefaultValueSql("NOW()");
@@ -57,9 +57,19 @@ namespace AimPark.API.Data
                       .HasForeignKey<Vehicle>(v => v.UserId)
                       .OnDelete(DeleteBehavior.Cascade);
 
+            });
 
-                entity.Property(v => v.Id)
-                      .HasDefaultValueSql("gen_random_uuid()");
+            modelBuilder.Entity<Document>(entity =>
+            {
+                // Primary Key
+                entity.HasKey(d => d.Id);
+                //foreign key relationship with User
+                entity.HasIndex(d => d.UserId);
+                
+                entity.HasOne(d => d.User)
+                      .WithMany()
+                      .HasForeignKey(d => d.UserId)
+                      .OnDelete(DeleteBehavior.Cascade);
             });
         }
 

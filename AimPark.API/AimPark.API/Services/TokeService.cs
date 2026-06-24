@@ -22,8 +22,8 @@ public class TokenService
         {
             new Claim(ClaimTypes.NameIdentifier, user.Id.ToString()),
             new Claim(ClaimTypes.Email, user.Email),
-            new Claim(ClaimTypes.Role, user.Role),
-            new Claim("status", user.Status)
+            new Claim(ClaimTypes.Role, user.Role.ToString()),
+            new Claim("status", user.Status.ToString())
         };
 
         // Secret key

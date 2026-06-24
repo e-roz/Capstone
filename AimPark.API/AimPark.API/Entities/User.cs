@@ -1,8 +1,9 @@
-﻿namespace AimPark.API.Entities
+﻿using AimPark.API.Enums;
+namespace AimPark.API.Entities
 {
     public class User
     {
-        public Guid Id { get; set; }
+        public Guid Id { get; set; } = Guid.NewGuid();
 
         public string FullName { get; set; } = string.Empty;
 
@@ -10,11 +11,9 @@
 
         public string PasswordHash { get; set; } = string.Empty;
 
-        //admin, security, user
-        public string Role { get; set; } = string.Empty;
+        public UserRole Role { get; set; }
 
-        //incomplete, pending, approved, rejected, suspended
-        public string Status { get; set; } = string.Empty;
+        public UserStatus Status { get; set; }
 
         //nullable - only filled when Status = "Rejected"
         public string? RejectionReason { get; set; }
