@@ -17,14 +17,6 @@ namespace AimPark.API.Controllers
             _registrationService = registrationService;
         }
 
-        [HttpPost("initiate-phone")]
-        public Task<ActionResult<SessionResponse>> InitiatePhone([FromBody] InitiatePhoneDto dto, CancellationToken ct)
-            => _registrationService.InitiatePhoneAsync(dto, ct);
-
-        [HttpPost("verify-phone")]
-        public Task<ActionResult<SessionResponse>> VerifyPhone([FromBody] VerifyOtpDto dto, CancellationToken ct)
-            => _registrationService.VerifyPhoneAsync(dto, GetSessionToken(), ct);
-
         [HttpPost("initiate-email")]
         public Task<ActionResult<SessionResponse>> InitiateEmail([FromBody] InitiateEmailDto dto, CancellationToken ct)
             => _registrationService.InitiateEmailAsync(dto, GetSessionToken(), ct);

@@ -6,8 +6,6 @@ namespace AimPark.API.Interfaces
 {
     public interface IRegistrationService
     {
-        Task<ActionResult<SessionResponse>> InitiatePhoneAsync(InitiatePhoneDto dto, CancellationToken ct);
-        Task<ActionResult<SessionResponse>> VerifyPhoneAsync(VerifyOtpDto dto, string? sessionToken, CancellationToken ct);
         Task<ActionResult<SessionResponse>> InitiateEmailAsync(InitiateEmailDto dto, string? sessionToken, CancellationToken ct);
         Task<ActionResult<SessionResponse>> VerifyEmailAsync(VerifyOtpDto dto, string? sessionToken, CancellationToken ct);
         Task<ActionResult<SessionResponse>> ResendOtpAsync(ResendOtpDto dto, string? sessionToken, CancellationToken ct);

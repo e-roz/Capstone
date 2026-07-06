@@ -1,4 +1,4 @@
-﻿using AimPark.API.DTOs;
+using AimPark.API.DTOs;
 using AimPark.API.Entities;
 using AimPark.API.Enums;
 using AimPark.API.Helpers;
@@ -43,6 +43,14 @@ namespace AimPark.API.Controllers
                 !BCrypt.Net.BCrypt.Verify(dto.Password, user.PasswordHash))
             {
                 return Unauthorized(new LoginResponse { Message = "Invalid credentials." });
+            }
+
+            if (user.IsDeleted)
+            {
+                return StatusCode(StatusCodes.Status403Forbidden, new LoginResponse
+                {
+                    Message = "This account has been deleted. Please contact admin."
+                });
             }
 
             if (user.RegistrationStep != RegistrationStep.Completed)

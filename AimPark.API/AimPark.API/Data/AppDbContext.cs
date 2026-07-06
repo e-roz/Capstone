@@ -1,4 +1,4 @@
-﻿using AimPark.API.Entities;
+using AimPark.API.Entities;
 using Microsoft.EntityFrameworkCore;
 
 namespace AimPark.API.Data
@@ -54,7 +54,6 @@ namespace AimPark.API.Data
                 entity.HasKey(s => s.Id);
 
                 entity.HasIndex(s => s.Email);
-                entity.HasIndex(s => s.PhoneNumber);
                 entity.HasIndex(s => s.ExpiresAt);
 
                 entity.Property(s => s.LastOtpChannel)

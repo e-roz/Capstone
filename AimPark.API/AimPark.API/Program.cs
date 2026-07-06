@@ -1,4 +1,4 @@
-﻿using AimPark.API.Data;
+using AimPark.API.Data;
 using AimPark.API.Interfaces;
 using AimPark.API.Services;
 using Microsoft.AspNetCore.Authentication.Cookies;
@@ -17,6 +17,17 @@ builder.Services.AddDbContext<AppDbContext>(options =>
     ));
 
 var jwtKey = builder.Configuration["Jwt:Key"]!;
+
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy("AllowAdminWeb", policy =>
+    {
+        policy.WithOrigins("http://localhost:5000")
+              .AllowAnyMethod()
+              .AllowAnyHeader()
+              .AllowCredentials();
+    });
+});
 
 builder.Services.AddAuthentication(options =>
     {
@@ -60,6 +71,7 @@ builder.Services.AddScoped<IEmailService, EmailService>();
 builder.Services.AddScoped<IFileStorageService, FileStorageService>();
 builder.Services.AddScoped<IRegistrationService, RegistrationService>();
 builder.Services.AddScoped<IAdminRegistrationService, AdminRegistrationService>();
+builder.Services.AddScoped<IAdminUserService, AdminUserService>();
 builder.Services.AddScoped(typeof(IRepository<>), typeof(Repository<>));
 
 builder.Services.AddControllers();
@@ -111,6 +123,8 @@ if (app.Environment.IsDevelopment())
     app.UseSwagger();
     app.UseSwaggerUI();
 }
+
+app.UseCors("AllowAdminWeb");
 
 app.UseAuthentication();
 app.UseAuthorization();

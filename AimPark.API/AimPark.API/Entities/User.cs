@@ -1,4 +1,4 @@
-﻿using AimPark.API.Enums;
+using AimPark.API.Enums;
 
 namespace AimPark.API.Entities
 {
@@ -32,5 +32,9 @@ namespace AimPark.API.Entities
         public bool IsFirstLogin { get; set; } = true;
         public DateTime CreatedAt { get; set; }
         public DateTime UpdatedAt { get; set; }
+
+        // Soft-delete fields
+        public bool IsDeleted { get; set; } = false;
+        public DateTime? DeletedAt { get; set; }
     }
 }

@@ -5,8 +5,6 @@ namespace AimPark.API.Entities
     public class RegistrationSession
     {
         public Guid Id { get; set; }
-        public string? PhoneNumber { get; set; }
-        public bool IsPhoneVerified { get; set; }
         public string? Email { get; set; }
         public bool IsEmailVerified { get; set; }
         public string? OtpHash { get; set; }

@@ -41,58 +41,7 @@ namespace AimPark.API.Services
             _tokenService = tokenService;
         }
 
-        public async Task<ActionResult<SessionResponse>> InitiatePhoneAsync(InitiatePhoneDto dto, CancellationToken ct)
-        {
-            var phone = IdentifierNormalizer.NormalizePhone(dto.PhoneNumber);
 
-            if (phone is not null && await _users.ExistsAsync(u => u.PhoneNumber == phone, ct))
-            {
-                var existing = await _users.FindAsync(u => u.PhoneNumber == phone, ct);
-                if (existing?.AccountStatus == AccountStatus.Rejected)
-                    return RejectedAccountResult<SessionResponse>(existing);
-                return new BadRequestObjectResult(new { message = "Phone number already registered." });
-            }
-
-            var now = DateTime.UtcNow;
-            var session = new RegistrationSession
-            {
-                Id = Guid.NewGuid(),
-                PhoneNumber = phone,
-                IsPhoneVerified = true,
-                CreatedAt = now,
-                ExpiresAt = now.AddHours(SessionTtlHours)
-            };
-
-            await _sessions.AddAsync(session, ct);
-            await _sessions.SaveAsync(ct);
-
-            return new OkObjectResult(new SessionResponse
-            {
-                Message = "Session started. Proceed to email verification.",
-                SessionToken = _tokenService.GenerateSessionToken(session.Id)
-            });
-        }
-
-        public async Task<ActionResult<SessionResponse>> VerifyPhoneAsync(VerifyOtpDto dto, string? sessionToken, CancellationToken ct)
-        {
-            var sessionResult = await GetValidSessionAsync(sessionToken, ct);
-            if (sessionResult.Result is not null)
-                return sessionResult.Result;
-
-            var session = sessionResult.Session!;
-
-            if (!session.IsPhoneVerified)
-                session.IsPhoneVerified = true;
-
-            _sessions.Update(session);
-            await _sessions.SaveAsync(ct);
-
-            return new OkObjectResult(new SessionResponse
-            {
-                Message = "Phone step complete. Proceed to email verification.",
-                SessionToken = _tokenService.GenerateSessionToken(session.Id)
-            });
-        }
 
         public async Task<ActionResult<SessionResponse>> InitiateEmailAsync(InitiateEmailDto dto, string? sessionToken, CancellationToken ct)
         {
@@ -192,29 +141,24 @@ namespace AimPark.API.Services
             if (session.IsLocked)
                 return new BadRequestObjectResult(new { message = "Session locked due to too many failed OTP attempts. Please restart registration." });
 
-            if (dto.Channel == OtpChannel.Email)
+            if (string.IsNullOrEmpty(session.Email))
+                return new BadRequestObjectResult(new { message = "Email not set. Initiate email verification first." });
+
+            var otp = _otpService.GenerateOtp();
+            session.OtpHash = _otpService.HashOtp(otp);
+            session.LastOtpChannel = OtpChannel.Email;
+            session.OtpExpiresAt = DateTime.UtcNow.Add(_otpService.OtpExpiry);
+            session.OtpAttempts = 0;
+
+            _sessions.Update(session);
+            await _sessions.SaveAsync(ct);
+            await _emailService.SendOtpEmailAsync(session.Email, otp, ct);
+
+            return new OkObjectResult(new SessionResponse
             {
-                if (string.IsNullOrEmpty(session.Email))
-                    return new BadRequestObjectResult(new { message = "Email not set. Initiate email verification first." });
-
-                var otp = _otpService.GenerateOtp();
-                session.OtpHash = _otpService.HashOtp(otp);
-                session.LastOtpChannel = OtpChannel.Email;
-                session.OtpExpiresAt = DateTime.UtcNow.Add(_otpService.OtpExpiry);
-                session.OtpAttempts = 0;
-
-                _sessions.Update(session);
-                await _sessions.SaveAsync(ct);
-                await _emailService.SendOtpEmailAsync(session.Email, otp, ct);
-
-                return new OkObjectResult(new SessionResponse
-                {
-                    Message = "Email OTP resent.",
-                    SessionToken = _tokenService.GenerateSessionToken(session.Id)
-                });
-            }
-
-            return new BadRequestObjectResult(new { message = "SMS OTP is not supported. Use email OTP." });
+                Message = "Email OTP resent.",
+                SessionToken = _tokenService.GenerateSessionToken(session.Id)
+            });
         }
 
         public async Task<ActionResult<CompleteProfileResponse>> CompleteProfileAsync(CompleteProfileDto dto, string? sessionToken, CancellationToken ct)
@@ -244,7 +188,7 @@ namespace AimPark.API.Services
                     return new BadRequestObjectResult(new { message = "Password must be between 8 and 128 characters." });
             }
 
-            var phone = IdentifierNormalizer.NormalizePhone(dto.PhoneNumber ?? session.PhoneNumber);
+            var phone = IdentifierNormalizer.NormalizePhone(dto.PhoneNumber);
             if (phone is not null && await _users.ExistsAsync(u => u.PhoneNumber == phone, ct))
                 return new BadRequestObjectResult(new { message = "Phone number already registered." });
 
@@ -256,7 +200,7 @@ namespace AimPark.API.Services
                 Email = session.Email,
                 IsEmailVerified = true,
                 PhoneNumber = phone,
-                IsPhoneVerified = session.IsPhoneVerified && phone is not null,
+                IsPhoneVerified = false,
                 PasswordHash = isOAuth || string.IsNullOrWhiteSpace(dto.Password)
                     ? null
                     : BCrypt.Net.BCrypt.HashPassword(dto.Password, workFactor: 12),
@@ -466,7 +410,6 @@ namespace AimPark.API.Services
                 Id = Guid.NewGuid(),
                 Email = normalizedEmail,
                 IsEmailVerified = true,
-                IsPhoneVerified = true,
                 PendingAuthProvider = provider,
                 PendingExternalProviderId = externalId,
                 CreatedAt = now,
@@ -530,7 +473,6 @@ namespace AimPark.API.Services
             var session = new RegistrationSession
             {
                 Id = Guid.NewGuid(),
-                IsPhoneVerified = true,
                 CreatedAt = now,
                 ExpiresAt = now.AddHours(SessionTtlHours)
             };
