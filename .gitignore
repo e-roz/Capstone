@@ -427,3 +427,9 @@ FodyWeavers.xsd
 *.msix
 *.msm
 *.msp
+
+# Claude local config (contains API keys)
+.claude/
+
+# ASP.NET Core local dev settings (may contain real secrets)
+**/appsettings.Development.json

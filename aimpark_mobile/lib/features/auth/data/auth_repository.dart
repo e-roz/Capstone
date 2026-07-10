@@ -62,4 +62,8 @@ class AuthRepository {
   Future<Response<dynamic>> uploadDocuments(FormData formData) {
     return _dio.post(ApiEndpoints.uploadDocuments, data: formData);
   }
+
+  Future<Response<dynamic>> googleSignIn(String idToken) {
+    return _dio.post(ApiEndpoints.googleSignIn, data: {'idToken': idToken});
+  }
 }

@@ -226,6 +226,37 @@ namespace AimPark.API.Services
             });
         }
 
+        public async Task<ActionResult<CompleteProfileResponse>> CompleteProfileForAuthenticatedUserAsync(CompleteProfileDto dto, Guid userId, CancellationToken ct)
+        {
+            if (ValidationHelper.HasEmptyFields(dto.FullName))
+                return new BadRequestObjectResult(new { message = "Full name is required." });
+
+            var user = await _users.FindAsync(u => u.Id == userId, ct);
+            if (user is null)
+                return new NotFoundObjectResult(new { message = "User not found." });
+
+            if (user.RegistrationStep != RegistrationStep.ProfileSetup)
+                return new BadRequestObjectResult(new { message = "Profile setup is not available at the current step." });
+
+            var phone = IdentifierNormalizer.NormalizePhone(dto.PhoneNumber);
+            if (phone is not null && await _users.ExistsAsync(u => u.PhoneNumber == phone && u.Id != userId, ct))
+                return new BadRequestObjectResult(new { message = "Phone number already registered." });
+
+            user.FullName = dto.FullName.Trim();
+            user.PhoneNumber = phone;
+            user.RegistrationStep = RegistrationStep.VehicleInfo;
+            user.UpdatedAt = DateTime.UtcNow;
+
+            _users.Update(user);
+            await _users.SaveAsync(ct);
+
+            return new OkObjectResult(new CompleteProfileResponse
+            {
+                Message = "Profile complete. Proceed to vehicle registration.",
+                Token = _tokenService.GenerateToken(user, registrationOnly: true)
+            });
+        }
+
         public async Task<ActionResult<object>> RegisterVehicleAsync(VehicleDTO dto, Guid userId, CancellationToken ct)
         {
             var user = await _users.FindAsync(u => u.Id == userId, ct);
@@ -380,12 +411,49 @@ namespace AimPark.API.Services
             var existing = await _users.FindAsync(u => u.Email == normalizedEmail, ct);
             if (existing is not null)
             {
+                if (existing.IsDeleted)
+                {
+                    return new ObjectResult(new { message = "This account has been deleted. Please contact admin." }) { StatusCode = 403 };
+                }
+
                 if (existing.AuthProvider == AuthProvider.Local && existing.PasswordHash is not null)
                 {
-                    return new BadRequestObjectResult(new
+                    return new ConflictObjectResult(new
                     {
                         message = "An account with this email already exists. Please login with your password."
                     });
+                }
+
+                switch (existing.AccountStatus)
+                {
+                    case AccountStatus.PendingReview:
+                        if (existing.RegistrationStep == RegistrationStep.Completed)
+                        {
+                            return new ObjectResult(new
+                            {
+                                message = "Your account is waiting for admin approval.",
+                                registrationStatus = MapStatus(existing)
+                            }) { StatusCode = 403 };
+                        }
+                        break;
+
+                    case AccountStatus.Rejected:
+                        return new ObjectResult(new
+                        {
+                            message = existing.CanReapplyAt is not null && DateTime.UtcNow < existing.CanReapplyAt
+                                ? $"Your registration was rejected. You may re-apply after {existing.CanReapplyAt:O}."
+                                : "Your registration was rejected.",
+                            rejectionReason = existing.RejectionReason,
+                            canReapplyAt = existing.CanReapplyAt,
+                            registrationStatus = MapStatus(existing)
+                        }) { StatusCode = 403 };
+
+                    case AccountStatus.Suspended:
+                        return new ObjectResult(new
+                        {
+                            message = "Your account has been suspended. Please contact admin.",
+                            registrationStatus = MapStatus(existing)
+                        }) { StatusCode = 403 };
                 }
 
                 if (existing.RegistrationStep == RegistrationStep.Completed && existing.AccountStatus == AccountStatus.Active)

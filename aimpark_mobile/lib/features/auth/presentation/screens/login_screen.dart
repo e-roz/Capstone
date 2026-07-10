@@ -1,11 +1,19 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:google_sign_in/google_sign_in.dart';
 
 import '../../../../core/utils/api_error_message.dart';
 import '../../../../core/utils/app_flushbar.dart';
 import '../../../../core/utils/jwt_utils.dart';
 import '../providers/auth_provider.dart';
+import '../providers/registration_provider.dart';
+
+final _googleSignIn = GoogleSignIn(
+  serverClientId:
+      '396722417831-3ldllppvag9pccpk9vupf20829f6be4h.apps.googleusercontent.com',
+  scopes: ['email', 'profile'],
+);
 
 class LoginScreen extends ConsumerStatefulWidget {
   const LoginScreen({super.key});
@@ -19,6 +27,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   final _passwordController = TextEditingController();
   bool _obscurePassword = true;
   bool _isLoading = false;
+  bool _isGoogleLoading = false;
 
   @override
   void dispose() {
@@ -52,17 +61,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
         throw Exception(data['message']?.toString() ?? 'Login failed.');
       }
 
-      final role = JwtUtils.getRole(token);
-      final route = JwtUtils.homeRouteForRole(role);
-
-      if (route == null) {
-        throw Exception('Unable to determine user role.');
-      }
-
       await repo.saveToken(token);
 
       if (mounted) {
-        context.go(route);
+        context.go(JwtUtils.routeAfterLogin(token));
       }
     } catch (e) {
       if (mounted) {
@@ -75,10 +77,93 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     }
   }
 
+  Future<void> _googleLogin() async {
+    setState(() => _isGoogleLoading = true);
+
+    try {
+      // Trigger the native Google sign-in dialog
+      final googleUser = await _googleSignIn.signIn();
+      if (googleUser == null) {
+        // User cancelled the sign-in sheet
+        return;
+      }
+
+      final googleAuth = await googleUser.authentication;
+      final idToken = googleAuth.idToken;
+
+      if (idToken == null) {
+        if (mounted) {
+          showAppMessage(context, 'Could not obtain Google token. Please try again.',
+              isError: true);
+        }
+        return;
+      }
+
+      final repo = ref.read(authRepositoryProvider);
+      final response = await repo.googleSignIn(idToken);
+      final data = response.data as Map<String, dynamic>;
+      final token = data['token'] as String?;
+
+      if (token == null || token.isEmpty) {
+        throw Exception(data['message']?.toString() ?? 'Google sign-in failed.');
+      }
+
+      await repo.saveToken(token);
+
+      // If the backend issued a registration-only token for a brand-new Google
+      // user entering at ProfileSetup, set the OAuth flow flag so
+      // RegisterProfileScreen hides the password fields and pre-fills the name.
+      if (JwtUtils.isRegistrationOnly(token) &&
+          JwtUtils.getRegistrationStep(token) == 'ProfileSetup') {
+        final fullName = data['fullName'] as String? ?? googleUser.displayName ?? '';
+        ref
+            .read(registrationNotifierProvider.notifier)
+            .setOAuthFlow(displayName: fullName);
+      }
+
+      if (mounted) {
+        context.go(JwtUtils.routeAfterLogin(token));
+      }
+    } on Exception catch (e) {
+      final msg = apiErrorMessage(e);
+      // HTTP 409 Conflict = email is already a local account
+      if (msg.contains('already registered') || msg.contains('password instead')) {
+        if (mounted) {
+          await showDialog<void>(
+            context: context,
+            builder: (ctx) => AlertDialog(
+              title: const Text('Account exists'),
+              content: const Text(
+                'This email is already registered with a password account. '
+                'Please log in with your email and password instead.',
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(ctx).pop(),
+                  child: const Text('OK'),
+                ),
+              ],
+            ),
+          );
+        }
+      } else {
+        if (mounted) {
+          showAppMessage(context, msg, isError: true);
+        }
+      }
+    } finally {
+      // Always sign out of the Google SDK so the picker shows next time
+      await _googleSignIn.signOut();
+      if (mounted) {
+        setState(() => _isGoogleLoading = false);
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final disabledStyle = theme.colorScheme.onSurface.withValues(alpha: 0.38);
+    final isAnyLoading = _isLoading || _isGoogleLoading;
 
     return Scaffold(
       body: SafeArea(
@@ -131,11 +216,11 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                         },
                       ),
                     ),
-                    onSubmitted: (_) => _isLoading ? null : _login(),
+                    onSubmitted: (_) => isAnyLoading ? null : _login(),
                   ),
                   const SizedBox(height: 24),
                   FilledButton(
-                    onPressed: _isLoading ? null : _login,
+                    onPressed: isAnyLoading ? null : _login,
                     child: _isLoading
                         ? const SizedBox(
                             height: 20,
@@ -162,33 +247,19 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                   ),
                   const SizedBox(height: 24),
                   OutlinedButton.icon(
-                    onPressed: null,
-                    icon: Icon(Icons.g_mobiledata, color: disabledStyle),
-                    label: Text(
-                      'Continue with Google',
-                      style: TextStyle(color: disabledStyle),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  OutlinedButton.icon(
-                    onPressed: null,
-                    icon: Icon(Icons.window, color: disabledStyle),
-                    label: Text(
-                      'Continue with Microsoft',
-                      style: TextStyle(color: disabledStyle),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  Text(
-                    'OAuth coming soon',
-                    textAlign: TextAlign.center,
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: theme.colorScheme.onSurfaceVariant,
-                    ),
+                    onPressed: isAnyLoading ? null : _googleLogin,
+                    icon: _isGoogleLoading
+                        ? const SizedBox(
+                            height: 18,
+                            width: 18,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Icon(Icons.g_mobiledata),
+                    label: const Text('Continue with Google'),
                   ),
                   const SizedBox(height: 24),
                   TextButton(
-                    onPressed: _isLoading
+                    onPressed: isAnyLoading
                         ? null
                         : () => context.go('/register/email'),
                     child: const Text("Don't have an account? Register"),

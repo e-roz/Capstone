@@ -10,6 +10,7 @@ namespace AimPark.API.Interfaces
         Task<ActionResult<SessionResponse>> VerifyEmailAsync(VerifyOtpDto dto, string? sessionToken, CancellationToken ct);
         Task<ActionResult<SessionResponse>> ResendOtpAsync(ResendOtpDto dto, string? sessionToken, CancellationToken ct);
         Task<ActionResult<CompleteProfileResponse>> CompleteProfileAsync(CompleteProfileDto dto, string? sessionToken, CancellationToken ct);
+        Task<ActionResult<CompleteProfileResponse>> CompleteProfileForAuthenticatedUserAsync(CompleteProfileDto dto, Guid userId, CancellationToken ct);
         Task<ActionResult<object>> RegisterVehicleAsync(VehicleDTO dto, Guid userId, CancellationToken ct);
         Task<ActionResult<object>> RegisterDocumentsAsync(DocumentUploadDTO dto, Guid userId, CancellationToken ct);
         Task<ActionResult<ReapplyResponse>> ReapplyAsync(Guid userId, CancellationToken ct);

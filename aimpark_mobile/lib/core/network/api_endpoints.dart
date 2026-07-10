@@ -9,4 +9,5 @@ class ApiEndpoints {
   static const uploadDocuments = '/api/auth/register/documents';
   static const login = '/api/auth/login';
   static const logout = '/api/auth/logout';
+  static const googleSignIn = '/api/auth/google/signin';
 }

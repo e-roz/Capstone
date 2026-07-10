@@ -24,6 +24,7 @@ class _RegisterProfileScreenState extends ConsumerState<RegisterProfileScreen> {
   final _confirmPasswordController = TextEditingController();
   bool _isLoading = false;
   bool _obscurePassword = true;
+  bool _initialized = false;
 
   @override
   void dispose() {
@@ -35,40 +36,45 @@ class _RegisterProfileScreenState extends ConsumerState<RegisterProfileScreen> {
     super.dispose();
   }
 
-  String? _validate() {
+  /// Pre-fill name fields from Google display name on first render.
+  void _maybeInitFromOAuth(RegistrationState regState) {
+    if (_initialized) return;
+    _initialized = true;
+    if (regState.isOAuthFlow && regState.googleDisplayName != null) {
+      final parts = regState.googleDisplayName!.trim().split(' ');
+      _firstNameController.text = parts.first;
+      if (parts.length > 1) {
+        _lastNameController.text = parts.sublist(1).join(' ');
+      }
+    }
+  }
+
+  String? _validate(bool isOAuth) {
     final firstName = _firstNameController.text.trim();
     final lastName = _lastNameController.text.trim();
-    final password = _passwordController.text;
-    final confirmPassword = _confirmPasswordController.text;
 
     if (firstName.isEmpty || lastName.isEmpty) {
       return 'First name and last name are required.';
     }
-    if (password.length < 8) {
-      return 'Password must be at least 8 characters.';
+
+    if (!isOAuth) {
+      final password = _passwordController.text;
+      final confirmPassword = _confirmPasswordController.text;
+      if (password.length < 8) {
+        return 'Password must be at least 8 characters.';
+      }
+      if (password != confirmPassword) {
+        return 'Passwords do not match.';
+      }
     }
-    if (password != confirmPassword) {
-      return 'Passwords do not match.';
-    }
+
     return null;
   }
 
-  Future<void> _submit() async {
-    final error = _validate();
+  Future<void> _submit(bool isOAuth) async {
+    final error = _validate(isOAuth);
     if (error != null) {
       showAppMessage(context, error, isError: true);
-      return;
-    }
-
-    final sessionId =
-        ref.read(registrationNotifierProvider).registrationSessionId;
-    if (sessionId == null || sessionId.isEmpty) {
-      showAppMessage(
-        context,
-        'Registration session expired. Please start again.',
-        isError: true,
-      );
-      context.go('/register/email');
       return;
     }
 
@@ -78,12 +84,13 @@ class _RegisterProfileScreenState extends ConsumerState<RegisterProfileScreen> {
       final firstName = _firstNameController.text.trim();
       final lastName = _lastNameController.text.trim();
       final phone = _phoneController.text.trim();
-      final password = _passwordController.text;
 
       final body = <String, dynamic>{
         'fullName': '$firstName $lastName',
-        'password': password,
       };
+      if (!isOAuth) {
+        body['password'] = _passwordController.text;
+      }
       if (phone.isNotEmpty) {
         body['phoneNumber'] = phone;
       }
@@ -117,6 +124,12 @@ class _RegisterProfileScreenState extends ConsumerState<RegisterProfileScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final regState = ref.watch(registrationNotifierProvider);
+    final isOAuth = regState.isOAuthFlow;
+
+    // Pre-fill on first build when coming from Google sign-in
+    _maybeInitFromOAuth(regState);
+
     return RegistrationStepScaffold(
       step: 3,
       title: 'Your Profile',
@@ -151,49 +164,53 @@ class _RegisterProfileScreenState extends ConsumerState<RegisterProfileScreen> {
           TextField(
             controller: _phoneController,
             keyboardType: TextInputType.phone,
-            textInputAction: TextInputAction.next,
+            textInputAction: isOAuth ? TextInputAction.done : TextInputAction.next,
             autofillHints: const [AutofillHints.telephoneNumber],
             decoration: const InputDecoration(
               labelText: 'Phone Number (optional)',
               border: OutlineInputBorder(),
               prefixIcon: Icon(Icons.phone_outlined),
             ),
+            onSubmitted: isOAuth ? (_) => _isLoading ? null : _submit(true) : null,
           ),
-          const SizedBox(height: 16),
-          TextField(
-            controller: _passwordController,
-            obscureText: _obscurePassword,
-            textInputAction: TextInputAction.next,
-            autofillHints: const [AutofillHints.newPassword],
-            decoration: InputDecoration(
-              labelText: 'Password',
-              border: const OutlineInputBorder(),
-              suffixIcon: IconButton(
-                icon: Icon(
-                  _obscurePassword
-                      ? Icons.visibility_outlined
-                      : Icons.visibility_off_outlined,
+          // Password fields: only shown for local (non-OAuth) registration
+          if (!isOAuth) ...[
+            const SizedBox(height: 16),
+            TextField(
+              controller: _passwordController,
+              obscureText: _obscurePassword,
+              textInputAction: TextInputAction.next,
+              autofillHints: const [AutofillHints.newPassword],
+              decoration: InputDecoration(
+                labelText: 'Password',
+                border: const OutlineInputBorder(),
+                suffixIcon: IconButton(
+                  icon: Icon(
+                    _obscurePassword
+                        ? Icons.visibility_outlined
+                        : Icons.visibility_off_outlined,
+                  ),
+                  onPressed: () =>
+                      setState(() => _obscurePassword = !_obscurePassword),
                 ),
-                onPressed: () =>
-                    setState(() => _obscurePassword = !_obscurePassword),
               ),
             ),
-          ),
-          const SizedBox(height: 16),
-          TextField(
-            controller: _confirmPasswordController,
-            obscureText: _obscurePassword,
-            textInputAction: TextInputAction.done,
-            autofillHints: const [AutofillHints.newPassword],
-            decoration: const InputDecoration(
-              labelText: 'Confirm Password',
-              border: OutlineInputBorder(),
+            const SizedBox(height: 16),
+            TextField(
+              controller: _confirmPasswordController,
+              obscureText: _obscurePassword,
+              textInputAction: TextInputAction.done,
+              autofillHints: const [AutofillHints.newPassword],
+              decoration: const InputDecoration(
+                labelText: 'Confirm Password',
+                border: OutlineInputBorder(),
+              ),
+              onSubmitted: (_) => _isLoading ? null : _submit(false),
             ),
-            onSubmitted: (_) => _isLoading ? null : _submit(),
-          ),
+          ],
           const SizedBox(height: 24),
           FilledButton(
-            onPressed: _isLoading ? null : _submit,
+            onPressed: _isLoading ? null : () => _submit(isOAuth),
             child: _isLoading
                 ? const SizedBox(
                     height: 20,

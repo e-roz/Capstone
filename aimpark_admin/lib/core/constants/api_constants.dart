@@ -1,5 +1,5 @@
 class ApiConstants {
   ApiConstants._();
 
-  static const baseUrl = 'http://localhost:5041';
+  static String get baseUrl => 'http://localhost:5041';
 }

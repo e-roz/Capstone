@@ -30,8 +30,14 @@ namespace AimPark.API.Controllers
             => _registrationService.ResendOtpAsync(dto, GetSessionToken(), ct);
 
         [HttpPost("complete-profile")]
-        public Task<ActionResult<CompleteProfileResponse>> CompleteProfile([FromBody] CompleteProfileDto dto, CancellationToken ct)
-            => _registrationService.CompleteProfileAsync(dto, GetSessionToken(), ct);
+        public async Task<ActionResult<CompleteProfileResponse>> CompleteProfile([FromBody] CompleteProfileDto dto, CancellationToken ct)
+        {
+            if (User.Identity?.IsAuthenticated == true && User.HasClaim(c => c.Type == System.Security.Claims.ClaimTypes.NameIdentifier))
+            {
+                return await _registrationService.CompleteProfileForAuthenticatedUserAsync(dto, GetUserId(), ct);
+            }
+            return await _registrationService.CompleteProfileAsync(dto, GetSessionToken(), ct);
+        }
 
         [Authorize]
         [HttpPost("vehicle")]

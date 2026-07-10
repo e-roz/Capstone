@@ -4,6 +4,10 @@ using AimPark.API.Enums;
 using AimPark.API.Interfaces;
 using Microsoft.AspNetCore.Mvc;
 
+
+// CancellationToken is passed to all async methods to tell 
+// them to stop processing if the request is cancelled. This is important for long-running operations,
+// as it allows the server to free up resources if the client disconnects or cancels the request.
 namespace AimPark.API.Services
 {
     public class AdminRegistrationService : IAdminRegistrationService
@@ -29,6 +33,7 @@ namespace AimPark.API.Services
 
         public async Task<ActionResult<List<PendingRegistrationResponse>>> GetPendingAsync(CancellationToken ct)
         {
+            // Fetch users who have completed registration but are pending review. 
             var users = await _users.GetAllAsync(
                 u => u.RegistrationStep == RegistrationStep.Completed &&
                      u.AccountStatus == AccountStatus.PendingReview,

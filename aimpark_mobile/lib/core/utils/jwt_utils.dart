@@ -70,4 +70,40 @@ class JwtUtils {
         return null;
     }
   }
+
+  /// Returns true when the token was issued with `registration_only: "true"`,
+  /// meaning the user has not finished the registration flow yet.
+  static bool isRegistrationOnly(String token) {
+    final payload = decodePayload(token);
+    return payload?['registration_only']?.toString() == 'true';
+  }
+
+  /// Reads the `registrationStep` claim from a registration-only JWT.
+  static String? getRegistrationStep(String token) {
+    final payload = decodePayload(token);
+    return payload?['registrationStep']?.toString();
+  }
+
+  /// Returns the correct named-route for the user after any successful sign-in
+  /// (local OR OAuth). If registration is incomplete it returns the next step's
+  /// route; if registration is complete it returns the role home route.
+  static String routeAfterLogin(String token) {
+    if (!isRegistrationOnly(token)) {
+      final role = getRole(token);
+      return homeRouteForRole(role) ?? '/login';
+    }
+
+    final step = getRegistrationStep(token);
+    switch (step) {
+      case 'ProfileSetup':
+        return '/register/profile';
+      case 'VehicleInfo':
+        return '/register/vehicle';
+      case 'DocumentUpload':
+        return '/register/documents';
+      default:
+        // EmailVerification, Submitted, or unknown — send to email step
+        return '/register/email';
+    }
+  }
 }
