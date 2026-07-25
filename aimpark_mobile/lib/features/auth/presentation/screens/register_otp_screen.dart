@@ -5,8 +5,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:pin_code_fields/pin_code_fields.dart';
 
+import '../../../../core/theme/app_colors.dart';
+import '../../../../core/theme/app_spacing.dart';
+import '../../../../core/theme/app_text_styles.dart';
 import '../../../../core/utils/api_error_message.dart';
 import '../../../../core/utils/app_flushbar.dart';
+import '../../../../core/widgets/app_button.dart';
 import '../providers/auth_provider.dart';
 import '../providers/registration_provider.dart';
 import '../widgets/registration_step_scaffold.dart';
@@ -145,19 +149,14 @@ class _RegisterOtpScreenState extends ConsumerState<RegisterOtpScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text(
-            'Enter OTP',
-            style: Theme.of(context).textTheme.headlineSmall,
-          ),
-          const SizedBox(height: 8),
+          Text('Enter OTP', style: AppTextStyles.h2),
+          const SizedBox(height: AppSpacing.xs),
           if (email.isNotEmpty)
             Text(
               'OTP sent to $email',
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    color: Theme.of(context).colorScheme.onSurfaceVariant,
-                  ),
+              style: AppTextStyles.bodyMedium.copyWith(color: AppColors.textSecondary),
             ),
-          const SizedBox(height: 24),
+          const SizedBox(height: AppSpacing.lg),
           PinCodeTextField(
             appContext: context,
             length: 6,
@@ -166,46 +165,48 @@ class _RegisterOtpScreenState extends ConsumerState<RegisterOtpScreen> {
             animationType: AnimationType.fade,
             pinTheme: PinTheme(
               shape: PinCodeFieldShape.box,
-              borderRadius: BorderRadius.circular(8),
+              borderRadius: BorderRadius.circular(AppRadius.md),
               fieldHeight: 48,
               fieldWidth: 44,
-              activeFillColor: Theme.of(context).colorScheme.surface,
-              selectedFillColor: Theme.of(context).colorScheme.surface,
-              inactiveFillColor: Theme.of(context).colorScheme.surface,
-              activeColor: Theme.of(context).colorScheme.primary,
-              selectedColor: Theme.of(context).colorScheme.primary,
-              inactiveColor: Theme.of(context).colorScheme.outline,
+              activeFillColor: AppColors.bgSurface,
+              selectedFillColor: AppColors.bgSurface,
+              inactiveFillColor: AppColors.bgSurface,
+              activeColor: AppColors.brandDefault,
+              selectedColor: AppColors.brandDefault,
+              inactiveColor: AppColors.borderDefault,
+              borderWidth: 1.5,
             ),
             enableActiveFill: true,
             onChanged: (_) {},
           ),
-          const SizedBox(height: 24),
-          FilledButton(
+          const SizedBox(height: AppSpacing.lg),
+          AppButton(
+            label: 'Verify',
+            isLoading: _isVerifying,
             onPressed: _isVerifying ? null : _verify,
-            child: _isVerifying
-                ? const SizedBox(
-                    height: 20,
-                    width: 20,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : const Text('Verify'),
           ),
-          const SizedBox(height: 16),
-          TextButton(
-            onPressed: (_resendCooldown > 0 || _isResending || _isVerifying)
-                ? null
-                : _resendOtp,
-            child: _isResending
-                ? const SizedBox(
-                    height: 20,
-                    width: 20,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : Text(
-                    _resendCooldown > 0
-                        ? 'Resend OTP (${_resendCooldown}s)'
-                        : 'Resend OTP',
-                  ),
+          const SizedBox(height: AppSpacing.sm),
+          Center(
+            child: TextButton(
+              onPressed: (_resendCooldown > 0 || _isResending || _isVerifying)
+                  ? null
+                  : _resendOtp,
+              child: _isResending
+                  ? const SizedBox(
+                      height: 20,
+                      width: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : Text(
+                      _resendCooldown > 0
+                          ? 'Resend OTP (${_resendCooldown}s)'
+                          : 'Resend OTP',
+                      style: AppTextStyles.labelBold.copyWith(
+                        fontSize: 14,
+                        color: AppColors.brandPressed,
+                      ),
+                    ),
+            ),
           ),
         ],
       ),

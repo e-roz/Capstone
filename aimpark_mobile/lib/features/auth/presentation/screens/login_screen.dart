@@ -3,9 +3,14 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 
+import '../../../../core/theme/app_colors.dart';
+import '../../../../core/theme/app_spacing.dart';
+import '../../../../core/theme/app_text_styles.dart';
 import '../../../../core/utils/api_error_message.dart';
 import '../../../../core/utils/app_flushbar.dart';
 import '../../../../core/utils/jwt_utils.dart';
+import '../../../../core/widgets/app_button.dart';
+import '../../../../core/widgets/app_text_field.dart';
 import '../providers/auth_provider.dart';
 import '../providers/registration_provider.dart';
 
@@ -162,107 +167,106 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
     final isAnyLoading = _isLoading || _isGoogleLoading;
 
     return Scaffold(
+      backgroundColor: AppColors.bgPage,
       body: SafeArea(
         child: Center(
           child: SingleChildScrollView(
-            padding: const EdgeInsets.symmetric(horizontal: 24),
+            padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
             child: ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 400),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
+                  Center(
+                    child: Image.asset(
+                      'assets/images/owl_mascot.png',
+                      width: 110,
+                    ),
+                  ),
+                  const SizedBox(height: AppSpacing.md),
                   Text(
                     'AimPark',
                     textAlign: TextAlign.center,
-                    style: theme.textTheme.headlineLarge?.copyWith(
-                      fontWeight: FontWeight.bold,
-                      letterSpacing: 1.2,
-                    ),
+                    style: AppTextStyles.displayHero,
                   ),
-                  const SizedBox(height: 48),
-                  TextField(
+                  const SizedBox(height: 8),
+                  Text(
+                    'Log in to continue',
+                    textAlign: TextAlign.center,
+                    style: AppTextStyles.bodyMedium,
+                  ),
+                  const SizedBox(height: AppSpacing.xl),
+                  AppTextField(
+                    label: 'Email',
                     controller: _emailController,
                     keyboardType: TextInputType.emailAddress,
                     textInputAction: TextInputAction.next,
                     autofillHints: const [AutofillHints.email],
-                    decoration: const InputDecoration(
-                      labelText: 'Email',
-                      border: OutlineInputBorder(),
-                      prefixIcon: Icon(Icons.email_outlined),
-                    ),
+                    prefixIcon: Icons.email_outlined,
                   ),
-                  const SizedBox(height: 16),
-                  TextField(
+                  const SizedBox(height: AppSpacing.md),
+                  AppTextField(
+                    label: 'Password',
                     controller: _passwordController,
                     obscureText: _obscurePassword,
                     textInputAction: TextInputAction.done,
                     autofillHints: const [AutofillHints.password],
-                    decoration: InputDecoration(
-                      labelText: 'Password',
-                      border: const OutlineInputBorder(),
-                      prefixIcon: const Icon(Icons.lock_outlined),
-                      suffixIcon: IconButton(
-                        icon: Icon(
-                          _obscurePassword
-                              ? Icons.visibility_outlined
-                              : Icons.visibility_off_outlined,
-                        ),
-                        onPressed: () {
-                          setState(() => _obscurePassword = !_obscurePassword);
-                        },
+                    prefixIcon: Icons.lock_outlined,
+                    suffixIcon: IconButton(
+                      icon: Icon(
+                        _obscurePassword
+                            ? Icons.visibility_outlined
+                            : Icons.visibility_off_outlined,
+                        color: AppColors.textSecondary,
                       ),
+                      onPressed: () {
+                        setState(() => _obscurePassword = !_obscurePassword);
+                      },
                     ),
                     onSubmitted: (_) => isAnyLoading ? null : _login(),
                   ),
-                  const SizedBox(height: 24),
-                  FilledButton(
+                  const SizedBox(height: AppSpacing.lg),
+                  AppButton(
+                    label: 'Login',
+                    isLoading: _isLoading,
                     onPressed: isAnyLoading ? null : _login,
-                    child: _isLoading
-                        ? const SizedBox(
-                            height: 20,
-                            width: 20,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : const Text('Login'),
                   ),
-                  const SizedBox(height: 32),
+                  const SizedBox(height: AppSpacing.xl),
                   Row(
                     children: [
-                      const Expanded(child: Divider()),
+                      const Expanded(child: Divider(color: AppColors.borderDefault)),
                       Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 16),
-                        child: Text(
-                          'or',
-                          style: theme.textTheme.bodySmall?.copyWith(
-                            color: theme.colorScheme.onSurfaceVariant,
-                          ),
-                        ),
+                        padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md),
+                        child: Text('or', style: AppTextStyles.labelSmall),
                       ),
-                      const Expanded(child: Divider()),
+                      const Expanded(child: Divider(color: AppColors.borderDefault)),
                     ],
                   ),
-                  const SizedBox(height: 24),
-                  OutlinedButton.icon(
+                  const SizedBox(height: AppSpacing.lg),
+                  AppButton(
+                    label: 'Continue with Google',
+                    style: AppButtonStyle.ghost,
+                    isLoading: _isGoogleLoading,
+                    icon: const Icon(Icons.g_mobiledata_rounded),
                     onPressed: isAnyLoading ? null : _googleLogin,
-                    icon: _isGoogleLoading
-                        ? const SizedBox(
-                            height: 18,
-                            width: 18,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : const Icon(Icons.g_mobiledata),
-                    label: const Text('Continue with Google'),
                   ),
-                  const SizedBox(height: 24),
-                  TextButton(
-                    onPressed: isAnyLoading
-                        ? null
-                        : () => context.go('/register/email'),
-                    child: const Text("Don't have an account? Register"),
+                  const SizedBox(height: AppSpacing.lg),
+                  Center(
+                    child: TextButton(
+                      onPressed: isAnyLoading
+                          ? null
+                          : () => context.go('/register/email'),
+                      child: Text(
+                        "Don't have an account? Register",
+                        style: AppTextStyles.labelBold.copyWith(
+                          fontSize: 14,
+                          color: AppColors.brandPressed,
+                        ),
+                      ),
+                    ),
                   ),
                 ],
               ),

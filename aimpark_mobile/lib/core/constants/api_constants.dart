@@ -1,5 +1,5 @@
 
 class ApiConstants {
   ApiConstants._();
-  static String get baseUrl => 'http://localhost:5041';
+  static String get baseUrl => 'http://192.168.100.95:5041';
 }

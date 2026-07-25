@@ -2,8 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../../core/theme/app_spacing.dart';
+import '../../../../core/theme/app_text_styles.dart';
 import '../../../../core/utils/api_error_message.dart';
 import '../../../../core/utils/app_flushbar.dart';
+import '../../../../core/widgets/app_button.dart';
+import '../../../../core/widgets/app_text_field.dart';
 import '../providers/auth_provider.dart';
 import '../providers/registration_provider.dart';
 import '../widgets/registration_step_scaffold.dart';
@@ -136,88 +140,65 @@ class _RegisterProfileScreenState extends ConsumerState<RegisterProfileScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text(
-            'Complete your profile',
-            style: Theme.of(context).textTheme.headlineSmall,
-          ),
-          const SizedBox(height: 24),
-          TextField(
+          Text('Complete your profile', style: AppTextStyles.h2),
+          const SizedBox(height: AppSpacing.lg),
+          AppTextField(
+            label: 'First Name',
             controller: _firstNameController,
             textInputAction: TextInputAction.next,
             autofillHints: const [AutofillHints.givenName],
-            decoration: const InputDecoration(
-              labelText: 'First Name',
-              border: OutlineInputBorder(),
-            ),
           ),
-          const SizedBox(height: 16),
-          TextField(
+          const SizedBox(height: AppSpacing.md),
+          AppTextField(
+            label: 'Last Name',
             controller: _lastNameController,
             textInputAction: TextInputAction.next,
             autofillHints: const [AutofillHints.familyName],
-            decoration: const InputDecoration(
-              labelText: 'Last Name',
-              border: OutlineInputBorder(),
-            ),
           ),
-          const SizedBox(height: 16),
-          TextField(
+          const SizedBox(height: AppSpacing.md),
+          AppTextField(
+            label: 'Phone Number (optional)',
             controller: _phoneController,
             keyboardType: TextInputType.phone,
             textInputAction: isOAuth ? TextInputAction.done : TextInputAction.next,
             autofillHints: const [AutofillHints.telephoneNumber],
-            decoration: const InputDecoration(
-              labelText: 'Phone Number (optional)',
-              border: OutlineInputBorder(),
-              prefixIcon: Icon(Icons.phone_outlined),
-            ),
+            prefixIcon: Icons.phone_outlined,
             onSubmitted: isOAuth ? (_) => _isLoading ? null : _submit(true) : null,
           ),
           // Password fields: only shown for local (non-OAuth) registration
           if (!isOAuth) ...[
-            const SizedBox(height: 16),
-            TextField(
+            const SizedBox(height: AppSpacing.md),
+            AppTextField(
+              label: 'Password',
               controller: _passwordController,
               obscureText: _obscurePassword,
               textInputAction: TextInputAction.next,
               autofillHints: const [AutofillHints.newPassword],
-              decoration: InputDecoration(
-                labelText: 'Password',
-                border: const OutlineInputBorder(),
-                suffixIcon: IconButton(
-                  icon: Icon(
-                    _obscurePassword
-                        ? Icons.visibility_outlined
-                        : Icons.visibility_off_outlined,
-                  ),
-                  onPressed: () =>
-                      setState(() => _obscurePassword = !_obscurePassword),
+              suffixIcon: IconButton(
+                icon: Icon(
+                  _obscurePassword
+                      ? Icons.visibility_outlined
+                      : Icons.visibility_off_outlined,
                 ),
+                onPressed: () =>
+                    setState(() => _obscurePassword = !_obscurePassword),
               ),
             ),
-            const SizedBox(height: 16),
-            TextField(
+            const SizedBox(height: AppSpacing.md),
+            AppTextField(
+              label: 'Confirm Password',
               controller: _confirmPasswordController,
               obscureText: _obscurePassword,
               textInputAction: TextInputAction.done,
               autofillHints: const [AutofillHints.newPassword],
-              decoration: const InputDecoration(
-                labelText: 'Confirm Password',
-                border: OutlineInputBorder(),
-              ),
               onSubmitted: (_) => _isLoading ? null : _submit(false),
             ),
           ],
-          const SizedBox(height: 24),
-          FilledButton(
+          const SizedBox(height: AppSpacing.lg),
+          AppButton(
+            label: 'Continue',
+            isLoading: _isLoading,
             onPressed: _isLoading ? null : () => _submit(isOAuth),
-            child: _isLoading
-                ? const SizedBox(
-                    height: 20,
-                    width: 20,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : const Text('Continue'),
           ),
         ],
       ),

@@ -2,8 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../../core/theme/app_colors.dart';
+import '../../../../core/theme/app_spacing.dart';
+import '../../../../core/theme/app_text_styles.dart';
 import '../../../../core/utils/api_error_message.dart';
 import '../../../../core/utils/app_flushbar.dart';
+import '../../../../core/widgets/app_button.dart';
+import '../../../../core/widgets/app_text_field.dart';
 import '../providers/auth_provider.dart';
 import '../providers/registration_provider.dart';
 import '../widgets/registration_step_scaffold.dart';
@@ -74,45 +79,40 @@ class _RegisterEmailScreenState extends ConsumerState<RegisterEmailScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text(
-            'Enter your email',
-            style: Theme.of(context).textTheme.headlineSmall,
-          ),
-          const SizedBox(height: 8),
+          Text('Enter your email', style: AppTextStyles.h2),
+          const SizedBox(height: AppSpacing.xs),
           Text(
             'We will send a one-time password to verify your email address.',
-            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  color: Theme.of(context).colorScheme.onSurfaceVariant,
-                ),
+            style: AppTextStyles.bodyMedium.copyWith(color: AppColors.textSecondary),
           ),
-          const SizedBox(height: 24),
-          TextField(
+          const SizedBox(height: AppSpacing.lg),
+          AppTextField(
+            label: 'Email',
             controller: _emailController,
             keyboardType: TextInputType.emailAddress,
             textInputAction: TextInputAction.done,
             autofillHints: const [AutofillHints.email],
-            decoration: const InputDecoration(
-              labelText: 'Email',
-              border: OutlineInputBorder(),
-              prefixIcon: Icon(Icons.email_outlined),
-            ),
+            prefixIcon: Icons.email_outlined,
             onSubmitted: (_) => _isLoading ? null : _sendOtp(),
           ),
-          const SizedBox(height: 24),
-          FilledButton(
+          const SizedBox(height: AppSpacing.lg),
+          AppButton(
+            label: 'Send OTP',
+            isLoading: _isLoading,
             onPressed: _isLoading ? null : _sendOtp,
-            child: _isLoading
-                ? const SizedBox(
-                    height: 20,
-                    width: 20,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : const Text('Send OTP'),
           ),
-          const SizedBox(height: 16),
-          TextButton(
-            onPressed: _isLoading ? null : () => context.go('/login'),
-            child: const Text('Already have an account? Log in'),
+          const SizedBox(height: AppSpacing.sm),
+          Center(
+            child: TextButton(
+              onPressed: _isLoading ? null : () => context.go('/login'),
+              child: Text(
+                'Already have an account? Log in',
+                style: AppTextStyles.labelBold.copyWith(
+                  fontSize: 14,
+                  color: AppColors.brandPressed,
+                ),
+              ),
+            ),
           ),
         ],
       ),

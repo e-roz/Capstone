@@ -3,8 +3,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../../core/theme/app_colors.dart';
+import '../../../../core/theme/app_spacing.dart';
+import '../../../../core/theme/app_text_styles.dart';
 import '../../../../core/utils/api_error_message.dart';
 import '../../../../core/utils/app_flushbar.dart';
+import '../../../../core/widgets/app_button.dart';
+import '../../../../core/widgets/celebration_dialog.dart';
 import '../providers/auth_provider.dart';
 import '../widgets/image_picker_box.dart';
 import '../widgets/registration_step_scaffold.dart';
@@ -62,11 +67,12 @@ class _RegisterDocumentsScreenState
       await repo.uploadDocuments(formData);
 
       if (mounted) {
-        showAppMessage(
+        await CelebrationDialog.show(
           context,
-          'Registration submitted! Your account is pending review.',
+          title: "You're all set!",
+          message: 'Registration submitted — your account is pending review.',
         );
-        context.go('/login');
+        if (mounted) context.go('/login');
       }
     } catch (e) {
       if (mounted) {
@@ -87,18 +93,13 @@ class _RegisterDocumentsScreenState
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text(
-            'Upload documents',
-            style: Theme.of(context).textTheme.headlineSmall,
-          ),
-          const SizedBox(height: 8),
+          Text('Upload documents', style: AppTextStyles.h2),
+          const SizedBox(height: AppSpacing.xs),
           Text(
             'Please provide clear photos of your identification and vehicle documents.',
-            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  color: Theme.of(context).colorScheme.onSurfaceVariant,
-                ),
+            style: AppTextStyles.bodyMedium.copyWith(color: AppColors.textSecondary),
           ),
-          const SizedBox(height: 24),
+          const SizedBox(height: AppSpacing.lg),
           ImagePickerBox(
             label: 'Government ID (front)',
             imagePath: _govIdFrontPath,
@@ -122,16 +123,11 @@ class _RegisterDocumentsScreenState
             imagePath: _orCrPath,
             onImageSelected: (path) => setState(() => _orCrPath = path),
           ),
-          const SizedBox(height: 24),
-          FilledButton(
+          const SizedBox(height: AppSpacing.lg),
+          AppButton(
+            label: 'Submit Registration',
+            isLoading: _isLoading,
             onPressed: _isLoading ? null : _submit,
-            child: _isLoading
-                ? const SizedBox(
-                    height: 20,
-                    width: 20,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : const Text('Submit Registration'),
           ),
         ],
       ),

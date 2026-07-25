@@ -12,8 +12,19 @@ import '../features/auth/presentation/screens/register_email_screen.dart';
 import '../features/auth/presentation/screens/register_otp_screen.dart';
 import '../features/auth/presentation/screens/register_profile_screen.dart';
 import '../features/auth/presentation/screens/register_vehicle_screen.dart';
+import '../features/account/presentation/screens/change_password_screen.dart';
+import '../features/account/presentation/screens/edit_profile_screen.dart';
 import '../features/auth/presentation/screens/security_placeholder_screen.dart';
-import '../features/auth/presentation/screens/user_placeholder_screen.dart';
+import '../features/splash/presentation/screens/splash_screen.dart';
+import '../features/dashboard/presentation/widgets/user_shell.dart';
+import '../features/incidents/presentation/screens/incident_detail_screen.dart';
+import '../features/incidents/presentation/screens/incidents_list_screen.dart';
+import '../features/incidents/presentation/screens/report_incident_screen.dart';
+import '../features/parking/presentation/screens/parking_slots_screen.dart';
+import '../features/payments/presentation/screens/payment_detail_screen.dart';
+import '../features/payments/presentation/screens/payments_list_screen.dart';
+import '../features/violations/presentation/screens/violation_detail_screen.dart';
+import '../features/violations/presentation/screens/violations_list_screen.dart';
 
 part 'app_router.g.dart';
 
@@ -26,10 +37,15 @@ bool _isProtectedRoute(String location) {
 @Riverpod(keepAlive: true)
 GoRouter appRouter(Ref ref) {
   return GoRouter(
-    initialLocation: '/login',
+    initialLocation: '/splash',
     redirect: (context, state) async {
-      final token = await _storage.read(key: authTokenKey);
       final location = state.matchedLocation;
+
+      if (location == '/splash') {
+        return null;
+      }
+
+      final token = await _storage.read(key: authTokenKey);
       final hasValidToken = token != null && JwtUtils.isValid(token);
 
       if (hasValidToken) {
@@ -39,7 +55,10 @@ GoRouter appRouter(Ref ref) {
           return homeRoute ?? '/login';
         }
 
-        if (_isProtectedRoute(location) && homeRoute != location) {
+        final withinOwnHomeArea = homeRoute != null &&
+            (location == homeRoute || location.startsWith('$homeRoute/'));
+
+        if (_isProtectedRoute(location) && !withinOwnHomeArea) {
           return homeRoute ?? '/login';
         }
 
@@ -53,6 +72,10 @@ GoRouter appRouter(Ref ref) {
       return null;
     },
     routes: [
+      GoRoute(
+        path: '/splash',
+        builder: (context, state) => const SplashScreen(),
+      ),
       GoRoute(
         path: '/login',
         builder: (context, state) => const LoginScreen(),
@@ -90,7 +113,50 @@ GoRouter appRouter(Ref ref) {
       ),
       GoRoute(
         path: '/home/user',
-        builder: (context, state) => const UserPlaceholderScreen(),
+        builder: (context, state) => const UserShell(),
+      ),
+      GoRoute(
+        path: '/home/user/profile/edit',
+        builder: (context, state) => const EditProfileScreen(),
+      ),
+      GoRoute(
+        path: '/home/user/profile/change-password',
+        builder: (context, state) => const ChangePasswordScreen(),
+      ),
+      GoRoute(
+        path: '/home/user/violations',
+        builder: (context, state) => const ViolationsListScreen(),
+      ),
+      GoRoute(
+        path: '/home/user/violations/:violationId',
+        builder: (context, state) =>
+            ViolationDetailScreen(violationId: state.pathParameters['violationId']!),
+      ),
+      GoRoute(
+        path: '/home/user/payments',
+        builder: (context, state) => const PaymentsListScreen(),
+      ),
+      GoRoute(
+        path: '/home/user/payments/:paymentId',
+        builder: (context, state) =>
+            PaymentDetailScreen(paymentId: state.pathParameters['paymentId']!),
+      ),
+      GoRoute(
+        path: '/home/user/parking-slots',
+        builder: (context, state) => const ParkingSlotsScreen(),
+      ),
+      GoRoute(
+        path: '/home/user/incidents',
+        builder: (context, state) => const IncidentsListScreen(),
+      ),
+      GoRoute(
+        path: '/home/user/incidents/new',
+        builder: (context, state) => const ReportIncidentScreen(),
+      ),
+      GoRoute(
+        path: '/home/user/incidents/:incidentId',
+        builder: (context, state) =>
+            IncidentDetailScreen(incidentId: state.pathParameters['incidentId']!),
       ),
     ],
   );

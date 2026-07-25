@@ -2,8 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../../core/theme/app_spacing.dart';
+import '../../../../core/theme/app_text_styles.dart';
 import '../../../../core/utils/api_error_message.dart';
 import '../../../../core/utils/app_flushbar.dart';
+import '../../../../core/widgets/app_button.dart';
+import '../../../../core/widgets/app_text_field.dart';
+import '../../../../core/widgets/selectable_chip.dart';
 import '../providers/auth_provider.dart';
 import '../widgets/registration_step_scaffold.dart';
 
@@ -23,7 +28,12 @@ class _RegisterVehicleScreenState extends ConsumerState<RegisterVehicleScreen> {
   String _vehicleType = 'Car';
   bool _isLoading = false;
 
-  static const _vehicleTypes = ['Car', 'Motorcycle', 'Van', 'Truck'];
+  static const _vehicleTypes = <String, IconData>{
+    'Car': Icons.directions_car_rounded,
+    'Motorcycle': Icons.two_wheeler_rounded,
+    'Van': Icons.airport_shuttle_rounded,
+    'Truck': Icons.local_shipping_rounded,
+  };
 
   @override
   void dispose() {
@@ -85,76 +95,53 @@ class _RegisterVehicleScreenState extends ConsumerState<RegisterVehicleScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text(
-            'Register your vehicle',
-            style: Theme.of(context).textTheme.headlineSmall,
-          ),
-          const SizedBox(height: 24),
-          TextField(
+          Text('Register your vehicle', style: AppTextStyles.h2),
+          const SizedBox(height: AppSpacing.lg),
+          AppTextField(
+            label: 'Plate Number',
             controller: _plateController,
             textInputAction: TextInputAction.next,
-            decoration: const InputDecoration(
-              labelText: 'Plate Number',
-              border: OutlineInputBorder(),
-            ),
           ),
-          const SizedBox(height: 16),
-          TextField(
+          const SizedBox(height: AppSpacing.md),
+          AppTextField(
+            label: 'Vehicle Make',
             controller: _makeController,
             textInputAction: TextInputAction.next,
-            decoration: const InputDecoration(
-              labelText: 'Vehicle Make',
-              border: OutlineInputBorder(),
-            ),
           ),
-          const SizedBox(height: 16),
-          TextField(
+          const SizedBox(height: AppSpacing.md),
+          AppTextField(
+            label: 'Vehicle Model',
             controller: _modelController,
             textInputAction: TextInputAction.next,
-            decoration: const InputDecoration(
-              labelText: 'Vehicle Model',
-              border: OutlineInputBorder(),
-            ),
           ),
-          const SizedBox(height: 16),
-          TextField(
+          const SizedBox(height: AppSpacing.md),
+          AppTextField(
+            label: 'Vehicle Color',
             controller: _colorController,
             textInputAction: TextInputAction.next,
-            decoration: const InputDecoration(
-              labelText: 'Vehicle Color',
-              border: OutlineInputBorder(),
-            ),
           ),
-          const SizedBox(height: 16),
-          DropdownButtonFormField<String>(
-            initialValue: _vehicleType,
-            decoration: const InputDecoration(
-              labelText: 'Vehicle Type',
-              border: OutlineInputBorder(),
-            ),
-            items: _vehicleTypes
-                .map(
-                  (type) => DropdownMenuItem(value: type, child: Text(type)),
-                )
-                .toList(),
-            onChanged: _isLoading
-                ? null
-                : (value) {
-                    if (value != null) {
-                      setState(() => _vehicleType = value);
-                    }
-                  },
+          const SizedBox(height: AppSpacing.md),
+          Text('Vehicle Type', style: AppTextStyles.labelSmall),
+          const SizedBox(height: 6),
+          Wrap(
+            spacing: AppSpacing.sm,
+            runSpacing: AppSpacing.sm,
+            children: _vehicleTypes.entries.map((entry) {
+              return SelectableChip(
+                label: entry.key,
+                icon: entry.value,
+                selected: _vehicleType == entry.key,
+                onTap: _isLoading
+                    ? () {}
+                    : () => setState(() => _vehicleType = entry.key),
+              );
+            }).toList(),
           ),
-          const SizedBox(height: 24),
-          FilledButton(
+          const SizedBox(height: AppSpacing.lg),
+          AppButton(
+            label: 'Continue',
+            isLoading: _isLoading,
             onPressed: _isLoading ? null : _submit,
-            child: _isLoading
-                ? const SizedBox(
-                    height: 20,
-                    width: 20,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : const Text('Continue'),
           ),
         ],
       ),

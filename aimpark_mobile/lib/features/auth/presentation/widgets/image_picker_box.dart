@@ -3,6 +3,10 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 
+import '../../../../core/theme/app_colors.dart';
+import '../../../../core/theme/app_spacing.dart';
+import '../../../../core/theme/app_text_styles.dart';
+
 class ImagePickerBox extends StatelessWidget {
   const ImagePickerBox({
     super.key,
@@ -57,27 +61,27 @@ class ImagePickerBox extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final hasImage = imagePath != null;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          label,
-          style: Theme.of(context).textTheme.titleSmall,
-        ),
-        const SizedBox(height: 8),
+        Text(label, style: AppTextStyles.labelSmall),
+        const SizedBox(height: 6),
         InkWell(
           onTap: () => _showSourcePicker(context),
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(AppRadius.md),
           child: Container(
             height: 140,
             decoration: BoxDecoration(
+              color: AppColors.bgSurface,
               border: Border.all(
-                color: Theme.of(context).colorScheme.outline,
+                color: hasImage ? AppColors.successDefault : AppColors.borderDefault,
+                width: hasImage ? 2 : 1.5,
               ),
-              borderRadius: BorderRadius.circular(12),
+              borderRadius: BorderRadius.circular(AppRadius.md),
             ),
             clipBehavior: Clip.antiAlias,
-            child: imagePath != null
+            child: hasImage
                 ? Stack(
                     fit: StackFit.expand,
                     children: [
@@ -88,15 +92,35 @@ class ImagePickerBox extends StatelessWidget {
                       Positioned(
                         top: 8,
                         right: 8,
-                        child: CircleAvatar(
-                          radius: 16,
-                          backgroundColor: Colors.black54,
-                          child: IconButton(
-                            padding: EdgeInsets.zero,
-                            iconSize: 18,
-                            color: Colors.white,
-                            icon: const Icon(Icons.edit),
-                            onPressed: () => _showSourcePicker(context),
+                        child: Container(
+                          decoration: const BoxDecoration(
+                            color: AppColors.successDefault,
+                            shape: BoxShape.circle,
+                          ),
+                          padding: const EdgeInsets.all(4),
+                          child: const Icon(
+                            Icons.check_rounded,
+                            size: 16,
+                            color: AppColors.textOnBrand,
+                          ),
+                        ),
+                      ),
+                      Positioned(
+                        bottom: 0,
+                        left: 0,
+                        right: 0,
+                        child: GestureDetector(
+                          onTap: () => _showSourcePicker(context),
+                          child: Container(
+                            color: Colors.black.withValues(alpha: 0.55),
+                            padding: const EdgeInsets.symmetric(vertical: 6),
+                            alignment: Alignment.center,
+                            child: Text(
+                              'Retake',
+                              style: AppTextStyles.labelSmall.copyWith(
+                                color: AppColors.textOnBrand,
+                              ),
+                            ),
                           ),
                         ),
                       ),
@@ -105,16 +129,13 @@ class ImagePickerBox extends StatelessWidget {
                 : Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Icon(
+                      const Icon(
                         Icons.add_photo_alternate_outlined,
-                        size: 40,
-                        color: Theme.of(context).colorScheme.primary,
+                        size: 36,
+                        color: AppColors.brandDefault,
                       ),
-                      const SizedBox(height: 8),
-                      Text(
-                        'Tap to add photo',
-                        style: Theme.of(context).textTheme.bodySmall,
-                      ),
+                      const SizedBox(height: AppSpacing.xs),
+                      Text('Tap to add photo', style: AppTextStyles.bodySmall),
                     ],
                   ),
           ),
