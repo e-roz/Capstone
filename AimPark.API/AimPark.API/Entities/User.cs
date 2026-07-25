@@ -36,5 +36,18 @@ namespace AimPark.API.Entities
         // Soft-delete fields
         public bool IsDeleted { get; set; } = false;
         public DateTime? DeletedAt { get; set; }
+
+        // Forgot-password OTP fields
+        public string? PasswordResetOtpHash { get; set; }
+        public DateTime? PasswordResetOtpExpiresAt { get; set; }
+        public int PasswordResetOtpAttempts { get; set; } = 0;
+
+        // RFID access fields
+        public string? RfidTagId { get; set; }
+        public RfidStatus RfidStatus { get; set; } = RfidStatus.Unassigned;
+
+        // Meaningful only when RfidStatus == Suspended: null = permanent/indefinite,
+        // a date = temporary suspension, lazily checked/cleared on read.
+        public DateTime? RfidSuspendedUntil { get; set; }
     }
 }

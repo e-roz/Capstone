@@ -21,17 +21,23 @@ namespace AimPark.API.Controllers
         private readonly IRepository<User> _users;
         private readonly IRegistrationService _registrationService;
         private readonly IConfiguration _config;
+        private readonly IOtpService _otpService;
+        private readonly IEmailService _emailService;
 
         public AuthController(
             IRepository<User> users,
             ITokenService tokenService,
             IRegistrationService registrationService,
-            IConfiguration config)
+            IConfiguration config,
+            IOtpService otpService,
+            IEmailService emailService)
         {
             _tokenService = tokenService;
             _users = users;
             _registrationService = registrationService;
             _config = config;
+            _otpService = otpService;
+            _emailService = emailService;
         }
 
         [HttpPost("login")]
@@ -126,8 +132,9 @@ namespace AimPark.API.Controllers
                 };
                 payload = await GoogleJsonWebSignature.ValidateAsync(dto.IdToken, settings);
             }
-            catch (InvalidJwtException)
+            catch (Exception ex)
             {
+                Console.WriteLine($"[GoogleSignIn] Token validation failed: {ex.GetType().Name}: {ex.Message}");
                 return Unauthorized(new LoginResponse { Message = "Invalid or expired Google token. Please sign in again." });
             }
 
@@ -239,6 +246,69 @@ namespace AimPark.API.Controllers
                 FullName = newUser.FullName,
                 RegistrationStatus = MapStatus(newUser)
             });
+        }
+
+        [HttpPost("forgot-password")]
+        public async Task<ActionResult<object>> ForgotPassword([FromBody] ForgotPasswordDto dto, CancellationToken ct)
+        {
+            var email = IdentifierNormalizer.NormalizeEmail(dto.Email);
+            var user = await _users.FindAsync(u => u.Email == email, ct);
+
+            // Only Local-auth accounts have a password to reset. The response message is the
+            // same either way, so it never reveals whether an email is registered.
+            if (user is not null && !user.IsDeleted && user.AuthProvider == AuthProvider.Local)
+            {
+                var otp = _otpService.GenerateOtp();
+                user.PasswordResetOtpHash = _otpService.HashOtp(otp);
+                user.PasswordResetOtpExpiresAt = DateTime.UtcNow.Add(_otpService.OtpExpiry);
+                user.PasswordResetOtpAttempts = 0;
+                user.UpdatedAt = DateTime.UtcNow;
+
+                _users.Update(user);
+                await _users.SaveAsync(ct);
+
+                await _emailService.SendPasswordResetOtpEmailAsync(user.Email, otp, ct);
+            }
+
+            return Ok(new { message = "If an account with that email exists, a password reset code has been sent." });
+        }
+
+        [HttpPost("reset-password")]
+        public async Task<ActionResult<object>> ResetPassword([FromBody] ResetPasswordDto dto, CancellationToken ct)
+        {
+            if (ValidationHelper.HasEmptyFields(dto.Email, dto.Otp, dto.NewPassword))
+                return BadRequest(new { message = "All fields are required." });
+
+            var email = IdentifierNormalizer.NormalizeEmail(dto.Email);
+            var user = await _users.FindAsync(u => u.Email == email, ct);
+
+            if (user is null || user.PasswordResetOtpHash is null || user.PasswordResetOtpExpiresAt is null)
+                return BadRequest(new { message = "Invalid or expired reset code." });
+
+            if (DateTime.UtcNow > user.PasswordResetOtpExpiresAt)
+                return BadRequest(new { message = "Reset code has expired. Please request a new one." });
+
+            if (user.PasswordResetOtpAttempts >= _otpService.MaxAttempts)
+                return BadRequest(new { message = "Too many attempts. Please request a new reset code." });
+
+            if (!_otpService.VerifyOtp(dto.Otp, user.PasswordResetOtpHash))
+            {
+                user.PasswordResetOtpAttempts++;
+                _users.Update(user);
+                await _users.SaveAsync(ct);
+                return BadRequest(new { message = "Incorrect code." });
+            }
+
+            user.PasswordHash = BCrypt.Net.BCrypt.HashPassword(dto.NewPassword, workFactor: 12);
+            user.PasswordResetOtpHash = null;
+            user.PasswordResetOtpExpiresAt = null;
+            user.PasswordResetOtpAttempts = 0;
+            user.UpdatedAt = DateTime.UtcNow;
+
+            _users.Update(user);
+            await _users.SaveAsync(ct);
+
+            return Ok(new { message = "Password reset successful. You can now log in with your new password." });
         }
 
         [HttpGet("external/google")]
