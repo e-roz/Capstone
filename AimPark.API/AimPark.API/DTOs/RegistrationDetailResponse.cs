@@ -13,6 +13,8 @@ namespace AimPark.API.DTOs
         public DateTime? RejectedAt { get; set; }
         public int RejectionCount { get; set; }
         public DateTime? CanReapplyAt { get; set; }
+        public bool IsDeleted { get; set; }
+        public DateTime CreatedAt { get; set; }
         public VehicleDTO? Vehicle { get; set; }
         public List<DocumentDetailResponse> Documents { get; set; } = [];
     }

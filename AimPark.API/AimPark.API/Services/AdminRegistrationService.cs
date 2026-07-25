@@ -18,17 +18,23 @@ namespace AimPark.API.Services
         private readonly IRepository<Vehicle> _vehicles;
         private readonly IRepository<Document> _documents;
         private readonly IRepository<AdminAuditLog> _auditLogs;
+        private readonly IFileStorageService _fileStorage;
+        private readonly IEmailService _emailService;
 
         public AdminRegistrationService(
             IRepository<User> users,
             IRepository<Vehicle> vehicles,
             IRepository<Document> documents,
-            IRepository<AdminAuditLog> auditLogs)
+            IRepository<AdminAuditLog> auditLogs,
+            IFileStorageService fileStorage,
+            IEmailService emailService)
         {
             _users = users;
             _vehicles = vehicles;
             _documents = documents;
             _auditLogs = auditLogs;
+            _fileStorage = fileStorage;
+            _emailService = emailService;
         }
 
         public async Task<ActionResult<List<PendingRegistrationResponse>>> GetPendingAsync(CancellationToken ct)
@@ -63,6 +69,19 @@ namespace AimPark.API.Services
             var vehicle = await _vehicles.FindAsync(v => v.UserId == userId, ct);
             var documents = await _documents.GetAllAsync(d => d.UserId == userId, ct);
 
+            var documentResponses = new List<DocumentDetailResponse>();
+            foreach (var d in documents)
+            {
+                documentResponses.Add(new DocumentDetailResponse
+                {
+                    Id = d.Id,
+                    Type = d.Type,
+                    FileName = d.FileName,
+                    FilePath = await _fileStorage.GetFileUrlAsync(d.FilePath, ct),
+                    UploadedAt = d.UploadedAt
+                });
+            }
+
             return new OkObjectResult(new RegistrationDetailResponse
             {
                 UserId = user.Id,
@@ -76,6 +95,8 @@ namespace AimPark.API.Services
                 RejectedAt = user.RejectedAt,
                 RejectionCount = user.RejectionCount,
                 CanReapplyAt = user.CanReapplyAt,
+                IsDeleted = user.IsDeleted,
+                CreatedAt = user.CreatedAt,
                 Vehicle = vehicle is null ? null : new VehicleDTO
                 {
                     PlateNumber = vehicle.PlateNumber,
@@ -84,14 +105,7 @@ namespace AimPark.API.Services
                     Model = vehicle.Model,
                     Color = vehicle.Color
                 },
-                Documents = documents.Select(d => new DocumentDetailResponse
-                {
-                    Id = d.Id,
-                    Type = d.Type,
-                    FileName = d.FileName,
-                    FilePath = d.FilePath,
-                    UploadedAt = d.UploadedAt
-                }).ToList()
+                Documents = documentResponses
             });
         }
 
@@ -113,6 +127,8 @@ namespace AimPark.API.Services
 
             _users.Update(user);
             await _users.SaveAsync(ct);
+
+            await _emailService.SendRegistrationApprovedEmailAsync(user.Email, user.FullName, ct);
 
             return new OkObjectResult(new { message = "User approved." });
         }
@@ -141,6 +157,8 @@ namespace AimPark.API.Services
 
             _users.Update(user);
             await _users.SaveAsync(ct);
+
+            await _emailService.SendRegistrationRejectedEmailAsync(user.Email, user.FullName, user.RejectionReason!, ct);
 
             return new OkObjectResult(new
             {
