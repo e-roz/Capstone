@@ -1,0 +1,107 @@
+AimPark — How to Run Everything
+================================
+
+You need up to 3 things running at once, in separate terminals.
+
+
+1. BACKEND API
+---------------
+Folder: AimPark.API/AimPark.API
+
+    dotnet run
+
+Listens on:
+  http://localhost:5041   (used by the admin web app)
+  https://localhost:7124
+
+Keep this running before starting the admin app or mobile app —
+both depend on it.
+
+
+2. ADMIN WEB APP (aimpark_admin)
+----------------------------------
+Folder: aimpark_admin
+
+    flutter run -d web-server --web-port 5000
+
+Must be port 5000 specifically — the backend's CORS policy only
+allows requests from http://localhost:5000. It'll print a URL,
+open it in whatever browser you like.
+
+
+3. MOBILE APP (aimpark_mobile)
+---------------------------------
+Folder: aimpark_mobile
+
+Step A — start an emulator (only if one isn't already running):
+
+    flutter emulators --launch Pixel_6
+
+  (or Pixel_8 — check "flutter emulators" for the current list)
+
+Step B — run the app on it:
+
+    flutter run
+
+Step C — before running, if you're on a NEW WiFi network, check that
+the API base URL still matches your machine's current LAN IP:
+
+  File: aimpark_mobile/lib/core/constants/api_constants.dart
+  Currently hardcoded to: http://192.168.100.95:5041
+
+  To find your current IP (Windows):  ipconfig
+  Look for "IPv4 Address" under your active Wi-Fi/Ethernet adapter.
+  If it changed, update that file and re-run.
+
+  Why a LAN IP and not localhost: a phone/emulator can't reach your
+  PC's "localhost" — it needs your PC's actual network address.
+
+
+3B. MOBILE APP ON A REAL PHONE, WIRELESSLY (no USB cable)
+------------------------------------------------------------
+Requirement: phone and PC must be on the SAME Wi-Fi network.
+This is a one-time pairing; after that, just "connect" each session.
+
+One-time setup (Android 11+):
+  1. On phone: Settings > Developer options > Wireless debugging > ON
+     (If "Developer options" isn't visible: Settings > About phone >
+     tap "Build number" 7 times.)
+  2. Tap "Pair device with pairing code" on the phone. It shows an
+     IP:PORT and a 6-digit code.
+  3. On PC:
+         adb pair <ip>:<port>
+     Enter the 6-digit code when prompted.
+
+Every time you want to connect (after the one-time pairing above):
+  1. On phone: open Wireless debugging — note the IP:PORT shown on
+     the main screen (this is a DIFFERENT port than the pairing one).
+  2. On PC:
+         adb connect <ip>:<port>
+  3. Confirm it's seen:
+         flutter devices
+     Your phone should now appear in the list.
+  4. From the aimpark_mobile folder:
+         flutter run
+     Pick your phone if prompted.
+
+If your phone is on Android 10 or older (no Wireless debugging menu):
+  1. Connect phone via USB once, with USB debugging enabled.
+  2. adb tcpip 5555
+  3. Find the phone's IP (Settings > About phone > Status > IP address).
+  4. adb connect <phone-ip>:5555
+  5. Unplug the USB cable — it stays connected over Wi-Fi.
+
+Don't forget: the app still needs your PC's LAN IP set correctly in
+api_constants.dart (see Step C above) — wireless ADB (for deploying
+the app) and the app's API connection (for talking to the backend)
+are two separate network paths. If the app installs fine but can't
+reach the backend, also check Windows Firewall isn't blocking inbound
+connections to port 5041.
+
+
+Quick order to start everything from scratch:
+  1. dotnet run                                  (API folder)
+  2. flutter run -d web-server --web-port 5000    (admin folder)
+  3. flutter emulators --launch Pixel_6           (any folder)
+     -- or -- adb connect <ip>:<port>             (for a real device)
+  4. flutter run                                  (mobile folder)
