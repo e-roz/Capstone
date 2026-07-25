@@ -21,15 +21,18 @@ namespace AimPark.API.Controllers
 
         /// <summary>
         /// Returns a paginated list of all users (including soft-deleted ones).
-        /// Query params: page (default 1), pageSize (default 20), status (optional AccountStatus filter).
+        /// Query params: page (default 1), pageSize (default 20),
+        /// status (optional — either an AccountStatus value, or "Archived" to filter to archived accounts),
+        /// search (optional, matches full name, email, or plate number).
         /// </summary>
         [HttpGet]
         public Task<ActionResult<UserListResponse>> List(
             [FromQuery] int page = 1,
             [FromQuery] int pageSize = 20,
-            [FromQuery] AccountStatus? status = null,
+            [FromQuery] string? status = null,
+            [FromQuery] string? search = null,
             CancellationToken ct = default)
-            => _adminUserService.ListAsync(page, pageSize, status, ct);
+            => _adminUserService.ListAsync(page, pageSize, status, search, ct);
 
         /// <summary>
         /// Suspends an active user account.
@@ -50,12 +53,13 @@ namespace AimPark.API.Controllers
             => _adminUserService.UnsuspendAsync(userId, GetAdminUserId(), ct);
 
         /// <summary>
-        /// Soft-deletes a user account. Sets IsDeleted=true and DeletedAt=now.
-        /// The user's data is retained for audit purposes; they cannot log in.
+        /// Archives a user account (soft delete). Sets IsDeleted=true and DeletedAt=now.
+        /// The user's data is retained and can be restored later; they cannot log in while archived.
+        /// Requires the acting admin's password to confirm, since this is a destructive action.
         /// </summary>
         [HttpDelete("{userId:guid}")]
-        public Task<ActionResult<object>> Delete(Guid userId, CancellationToken ct)
-            => _adminUserService.DeleteAsync(userId, GetAdminUserId(), ct);
+        public Task<ActionResult<object>> Archive(Guid userId, [FromBody] ArchiveUserDto dto, CancellationToken ct)
+            => _adminUserService.ArchiveAsync(userId, GetAdminUserId(), dto, ct);
 
         /// <summary>
         /// Restores a soft-deleted user account, clearing IsDeleted and DeletedAt.
@@ -63,6 +67,21 @@ namespace AimPark.API.Controllers
         [HttpPost("{userId:guid}/restore")]
         public Task<ActionResult<object>> Restore(Guid userId, CancellationToken ct)
             => _adminUserService.RestoreAsync(userId, GetAdminUserId(), ct);
+
+        /// <summary>
+        /// Assigns an RFID tag to a user and sets their RfidStatus to Active.
+        /// Stands in for physical tag provisioning until hardware is integrated.
+        /// </summary>
+        [HttpPost("{userId:guid}/assign-rfid")]
+        public Task<ActionResult<object>> AssignRfid(Guid userId, [FromBody] AssignRfidDto dto, CancellationToken ct)
+            => _adminUserService.AssignRfidAsync(userId, GetAdminUserId(), dto, ct);
+
+        /// <summary>
+        /// Revokes a user's RFID tag, clearing it and setting RfidStatus back to Unassigned.
+        /// </summary>
+        [HttpPost("{userId:guid}/revoke-rfid")]
+        public Task<ActionResult<object>> RevokeRfid(Guid userId, CancellationToken ct)
+            => _adminUserService.RevokeRfidAsync(userId, GetAdminUserId(), ct);
 
         private Guid GetAdminUserId()
             => Guid.Parse(User.FindFirst(ClaimTypes.NameIdentifier)!.Value);

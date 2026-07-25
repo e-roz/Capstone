@@ -21,8 +21,8 @@ namespace AimPark.API.Services
             _db = db;
         }
 
-        // GET /api/admin/users?page=1&pageSize=20&status=Suspended
-        public async Task<ActionResult<UserListResponse>> ListAsync(int page, int pageSize, AccountStatus? status, CancellationToken ct)
+        // GET /api/admin/users?page=1&pageSize=20&status=Suspended&search=cruz (includes archived users)
+        public async Task<ActionResult<UserListResponse>> ListAsync(int page, int pageSize, string? status, string? search, CancellationToken ct)
         {
             // Clamp to sane defaults
             page = Math.Max(1, page);
@@ -30,8 +30,25 @@ namespace AimPark.API.Services
 
             var query = _db.Set<User>().AsNoTracking();
 
-            if (status.HasValue)
-                query = query.Where(u => u.AccountStatus == status.Value);
+            // "Archived" isn't a real AccountStatus — it's the separate IsDeleted flag —
+            // so it's handled as a virtual filter value here rather than a real enum member.
+            if (string.Equals(status, "Archived", StringComparison.OrdinalIgnoreCase))
+            {
+                query = query.Where(u => u.IsDeleted);
+            }
+            else if (!string.IsNullOrWhiteSpace(status) && Enum.TryParse<AccountStatus>(status, true, out var parsedStatus))
+            {
+                query = query.Where(u => u.AccountStatus == parsedStatus);
+            }
+
+            if (!string.IsNullOrWhiteSpace(search))
+            {
+                var term = search.Trim().ToLower();
+                query = query.Where(u =>
+                    u.FullName.ToLower().Contains(term) ||
+                    u.Email.ToLower().Contains(term) ||
+                    _db.Set<Vehicle>().Any(v => v.UserId == u.Id && v.PlateNumber.ToLower().Contains(term)));
+            }
 
             var totalCount = await query.CountAsync(ct);
 
@@ -62,12 +79,15 @@ namespace AimPark.API.Services
         // POST /api/admin/users/{userId}/suspend
         public async Task<ActionResult<object>> SuspendAsync(Guid userId, Guid adminUserId, SuspendUserDto dto, CancellationToken ct)
         {
+            if (userId == adminUserId)
+                return new BadRequestObjectResult(new { message = "You cannot suspend your own account." });
+
             var user = await _users.FindAsync(u => u.Id == userId, ct);
             if (user is null)
                 return new NotFoundObjectResult(new { message = "User not found." });
 
             if (user.IsDeleted)
-                return new BadRequestObjectResult(new { message = "Cannot suspend a deleted user." });
+                return new BadRequestObjectResult(new { message = "Cannot suspend an archived user." });
 
             if (user.AccountStatus == AccountStatus.Suspended)
                 return new BadRequestObjectResult(new { message = "User is already suspended." });
@@ -92,7 +112,7 @@ namespace AimPark.API.Services
                 return new NotFoundObjectResult(new { message = "User not found." });
 
             if (user.IsDeleted)
-                return new BadRequestObjectResult(new { message = "Cannot unsuspend a deleted user." });
+                return new BadRequestObjectResult(new { message = "Cannot unsuspend an archived user." });
 
             if (user.AccountStatus != AccountStatus.Suspended)
                 return new BadRequestObjectResult(new { message = "User is not currently suspended." });
@@ -111,27 +131,37 @@ namespace AimPark.API.Services
             return new OkObjectResult(new { message = "User unsuspended. Account restored to Active." });
         }
 
-        // DELETE /api/admin/users/{userId}
-        public async Task<ActionResult<object>> DeleteAsync(Guid userId, Guid adminUserId, CancellationToken ct)
+        // DELETE /api/admin/users/{userId} (archive — soft delete)
+        public async Task<ActionResult<object>> ArchiveAsync(Guid userId, Guid adminUserId, ArchiveUserDto dto, CancellationToken ct)
         {
+            if (userId == adminUserId)
+                return new BadRequestObjectResult(new { message = "You cannot archive your own account." });
+
+            var admin = await _users.FindAsync(u => u.Id == adminUserId, ct);
+            if (admin?.PasswordHash is null)
+                return new BadRequestObjectResult(new { message = "Password confirmation is unavailable for this admin account." });
+
+            if (string.IsNullOrEmpty(dto.Password) || !BCrypt.Net.BCrypt.Verify(dto.Password, admin.PasswordHash))
+                return new UnauthorizedObjectResult(new { message = "Incorrect password." });
+
             var user = await _users.FindAsync(u => u.Id == userId, ct);
             if (user is null)
                 return new NotFoundObjectResult(new { message = "User not found." });
 
             if (user.IsDeleted)
-                return new BadRequestObjectResult(new { message = "User is already deleted." });
+                return new BadRequestObjectResult(new { message = "User is already archived." });
 
             var oldValue = $"IsDeleted=false";
             user.IsDeleted = true;
             user.DeletedAt = DateTime.UtcNow;
             user.UpdatedAt = DateTime.UtcNow;
 
-            await LogActionAsync(adminUserId, userId, "Delete", oldValue, "IsDeleted=true", null, ct);
+            await LogActionAsync(adminUserId, userId, "Archive", oldValue, "IsDeleted=true", null, ct);
 
             _users.Update(user);
             await _users.SaveAsync(ct);
 
-            return new OkObjectResult(new { message = "User soft-deleted. Data is retained for audit purposes." });
+            return new OkObjectResult(new { message = "User archived. Data is retained and can be restored later." });
         }
 
         // POST /api/admin/users/{userId}/restore
@@ -142,19 +172,84 @@ namespace AimPark.API.Services
                 return new NotFoundObjectResult(new { message = "User not found." });
 
             if (!user.IsDeleted)
-                return new BadRequestObjectResult(new { message = "User is not deleted." });
+                return new BadRequestObjectResult(new { message = "User is not archived." });
 
-            var oldValue = $"IsDeleted=true, DeletedAt={user.DeletedAt:O}";
+            var wasSuspended = user.AccountStatus == AccountStatus.Suspended;
+            var oldValue = $"IsDeleted=true, DeletedAt={user.DeletedAt:O}, AccountStatus={user.AccountStatus}";
             user.IsDeleted = false;
             user.DeletedAt = null;
+
+            // Restore is meant to fully undo whatever locked the account out, so a suspension
+            // picked up before/along with the deletion is lifted too — otherwise the account
+            // comes back "restored" but still unable to log in, which reads as a bug to admins.
+            // Registration-review statuses (Rejected/PendingReview) are left untouched since
+            // restore isn't an approval action.
+            if (wasSuspended)
+                user.AccountStatus = AccountStatus.Active;
+
             user.UpdatedAt = DateTime.UtcNow;
 
-            await LogActionAsync(adminUserId, userId, "Restore", oldValue, "IsDeleted=false", null, ct);
+            var newValue = $"IsDeleted=false, AccountStatus={user.AccountStatus}";
+            await LogActionAsync(adminUserId, userId, "Restore", oldValue, newValue, null, ct);
 
             _users.Update(user);
             await _users.SaveAsync(ct);
 
-            return new OkObjectResult(new { message = "User restored successfully." });
+            var message = wasSuspended
+                ? "User restored successfully. Suspension was also lifted."
+                : "User restored successfully.";
+            return new OkObjectResult(new { message });
+        }
+
+        // POST /api/admin/users/{userId}/assign-rfid
+        public async Task<ActionResult<object>> AssignRfidAsync(Guid userId, Guid adminUserId, AssignRfidDto dto, CancellationToken ct)
+        {
+            if (string.IsNullOrWhiteSpace(dto.RfidTagId))
+                return new BadRequestObjectResult(new { message = "RFID tag ID is required." });
+
+            var user = await _users.FindAsync(u => u.Id == userId, ct);
+            if (user is null)
+                return new NotFoundObjectResult(new { message = "User not found." });
+
+            var tagId = dto.RfidTagId.Trim();
+            var tagInUse = await _users.ExistsAsync(u => u.Id != userId && u.RfidTagId == tagId, ct);
+            if (tagInUse)
+                return new BadRequestObjectResult(new { message = "This RFID tag is already assigned to another user." });
+
+            var oldValue = $"RfidTagId={user.RfidTagId}, RfidStatus={user.RfidStatus}";
+            user.RfidTagId = tagId;
+            user.RfidStatus = RfidStatus.Active;
+            user.UpdatedAt = DateTime.UtcNow;
+
+            await LogActionAsync(adminUserId, userId, "AssignRfid", oldValue, $"RfidTagId={user.RfidTagId}, RfidStatus={user.RfidStatus}", null, ct);
+
+            _users.Update(user);
+            await _users.SaveAsync(ct);
+
+            return new OkObjectResult(new { message = "RFID tag assigned." });
+        }
+
+        // POST /api/admin/users/{userId}/revoke-rfid
+        public async Task<ActionResult<object>> RevokeRfidAsync(Guid userId, Guid adminUserId, CancellationToken ct)
+        {
+            var user = await _users.FindAsync(u => u.Id == userId, ct);
+            if (user is null)
+                return new NotFoundObjectResult(new { message = "User not found." });
+
+            if (user.RfidStatus == RfidStatus.Unassigned)
+                return new BadRequestObjectResult(new { message = "User has no RFID tag assigned." });
+
+            var oldValue = $"RfidTagId={user.RfidTagId}, RfidStatus={user.RfidStatus}";
+            user.RfidTagId = null;
+            user.RfidStatus = RfidStatus.Unassigned;
+            user.UpdatedAt = DateTime.UtcNow;
+
+            await LogActionAsync(adminUserId, userId, "RevokeRfid", oldValue, $"RfidTagId={user.RfidTagId}, RfidStatus={user.RfidStatus}", null, ct);
+
+            _users.Update(user);
+            await _users.SaveAsync(ct);
+
+            return new OkObjectResult(new { message = "RFID tag revoked." });
         }
 
         private async Task LogActionAsync(
