@@ -5,9 +5,11 @@ import 'package:go_router/go_router.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 
 import '../core/utils/jwt_utils.dart';
+import '../screens/audit_log_screen.dart';
 import '../screens/login_screen.dart';
 import '../screens/pending_registrations_screen.dart';
 import '../screens/registration_detail_screen.dart';
+import '../screens/user_detail_screen.dart';
 import '../screens/user_management_screen.dart';
 import '../widgets/admin_shell.dart';
 
@@ -58,6 +60,16 @@ GoRouter appRouter(Ref ref) {
           GoRoute(
             path: '/users',
             builder: (context, state) => const UserManagementScreen(),
+          ),
+          GoRoute(
+            path: '/users/:userId',
+            builder: (context, state) => UserDetailScreen(
+              userId: state.pathParameters['userId']!,
+            ),
+          ),
+          GoRoute(
+            path: '/audit-logs',
+            builder: (context, state) => const AuditLogScreen(),
           ),
         ],
       ),

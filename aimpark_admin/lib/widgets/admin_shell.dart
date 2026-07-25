@@ -68,6 +68,9 @@ class AdminShell extends ConsumerWidget {
                 case 1:
                   context.go('/users');
                   break;
+                case 2:
+                  context.go('/audit-logs');
+                  break;
               }
             },
             destinations: const [
@@ -81,6 +84,11 @@ class AdminShell extends ConsumerWidget {
                 selectedIcon: Icon(Icons.people),
                 label: Text('User Management'),
               ),
+              NavigationRailDestination(
+                icon: Icon(Icons.history_outlined),
+                selectedIcon: Icon(Icons.history),
+                label: Text('Audit Log'),
+              ),
             ],
           ),
           const VerticalDivider(width: 1, thickness: 1),
@@ -93,6 +101,7 @@ class AdminShell extends ConsumerWidget {
 
   int _selectedIndex(String location) {
     if (location.startsWith('/users')) return 1;
+    if (location.startsWith('/audit-logs')) return 2;
     return 0; // default to pending
   }
 }

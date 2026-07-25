@@ -1,5 +1,8 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
 import '../models/admin_user.dart';
@@ -29,6 +32,11 @@ class UserManagementScreen extends ConsumerWidget {
                       fontSize: 22, fontWeight: FontWeight.bold),
                 ),
                 const Spacer(),
+                const SizedBox(
+                  width: 260,
+                  child: _SearchField(),
+                ),
+                const SizedBox(width: 12),
                 // Status filter
                 DropdownButton<String?>(
                   value: query.status,
@@ -43,6 +51,8 @@ class UserManagementScreen extends ConsumerWidget {
                         value: 'PendingReview', child: Text('PendingReview')),
                     DropdownMenuItem(
                         value: 'Rejected', child: Text('Rejected')),
+                    DropdownMenuItem(
+                        value: 'Archived', child: Text('Archived')),
                   ],
                   onChanged: (v) => ref
                       .read(usersQueryNotifierProvider.notifier)
@@ -94,6 +104,46 @@ class UserManagementScreen extends ConsumerWidget {
   }
 }
 
+// ── Search field ─────────────────────────────────────────────────────────────
+
+class _SearchField extends ConsumerStatefulWidget {
+  const _SearchField();
+
+  @override
+  ConsumerState<_SearchField> createState() => _SearchFieldState();
+}
+
+class _SearchFieldState extends ConsumerState<_SearchField> {
+  final _controller = TextEditingController();
+  Timer? _debounce;
+
+  @override
+  void dispose() {
+    _debounce?.cancel();
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return TextField(
+      controller: _controller,
+      decoration: const InputDecoration(
+        hintText: 'Search name, email, or plate',
+        prefixIcon: Icon(Icons.search, size: 20),
+        isDense: true,
+        border: OutlineInputBorder(),
+      ),
+      onChanged: (value) {
+        _debounce?.cancel();
+        _debounce = Timer(const Duration(milliseconds: 400), () {
+          ref.read(usersQueryNotifierProvider.notifier).setSearch(value.trim());
+        });
+      },
+    );
+  }
+}
+
 // ── User table ───────────────────────────────────────────────────────────────
 
 class _UserTable extends ConsumerWidget {
@@ -115,13 +165,14 @@ class _UserTable extends ConsumerWidget {
       clipBehavior: Clip.hardEdge,
       child: SingleChildScrollView(
         child: DataTable(
+          showCheckboxColumn: false,
           headingRowColor:
               WidgetStateProperty.all(Colors.grey.shade100),
           columns: const [
             DataColumn(label: Text('Full Name')),
             DataColumn(label: Text('Email')),
             DataColumn(label: Text('Status')),
-            DataColumn(label: Text('Deleted')),
+            DataColumn(label: Text('Archived')),
             DataColumn(label: Text('Joined')),
             DataColumn(label: Text('Actions')),
           ],
@@ -136,6 +187,7 @@ class _UserTable extends ConsumerWidget {
   DataRow _userRow(
       BuildContext context, WidgetRef ref, AdminUser user) {
     return DataRow(
+      onSelectChanged: (_) => context.go('/users/${user.userId}'),
       cells: [
         DataCell(Text(user.fullName,
             style: user.isDeleted
@@ -146,7 +198,7 @@ class _UserTable extends ConsumerWidget {
         DataCell(Text(user.email)),
         DataCell(_StatusChip(status: user.accountStatus)),
         DataCell(user.isDeleted
-            ? const Icon(Icons.delete_outline, color: Colors.red, size: 18)
+            ? const Icon(Icons.archive_outlined, color: Colors.red, size: 18)
             : const SizedBox.shrink()),
         DataCell(Text(DateFormat('MMM d, yyyy')
             .format(user.createdAt.toLocal()))),
@@ -204,7 +256,7 @@ class _ActionButtons extends ConsumerWidget {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        // Restore (deleted only)
+        // Restore (archived only)
         if (isDeleted)
           _SmallButton(
             icon: Icons.restore,
@@ -212,7 +264,7 @@ class _ActionButtons extends ConsumerWidget {
             color: Colors.blue,
             onPressed: () => _restore(context, ref),
           ),
-        // Suspend (active, non-deleted)
+        // Suspend (active, non-archived)
         if (!isDeleted && status == 'Active')
           _SmallButton(
             icon: Icons.pause_circle_outline,
@@ -220,7 +272,7 @@ class _ActionButtons extends ConsumerWidget {
             color: Colors.orange,
             onPressed: () => _suspend(context, ref),
           ),
-        // Unsuspend (suspended, non-deleted)
+        // Unsuspend (suspended, non-archived)
         if (!isDeleted && status == 'Suspended')
           _SmallButton(
             icon: Icons.play_circle_outline,
@@ -228,13 +280,13 @@ class _ActionButtons extends ConsumerWidget {
             color: Colors.green,
             onPressed: () => _unsuspend(context, ref),
           ),
-        // Delete (non-deleted)
+        // Archive (non-archived)
         if (!isDeleted)
           _SmallButton(
-            icon: Icons.delete_outline,
-            label: 'Delete',
+            icon: Icons.archive_outlined,
+            label: 'Archive',
             color: Colors.red,
-            onPressed: () => _delete(context, ref),
+            onPressed: () => _archive(context, ref),
           ),
       ],
     );
@@ -294,30 +346,55 @@ class _ActionButtons extends ConsumerWidget {
     ref.invalidate(userListProvider);
   }
 
-  Future<void> _delete(BuildContext context, WidgetRef ref) async {
-    final confirm = await showDialog<bool>(
+  Future<void> _archive(BuildContext context, WidgetRef ref) async {
+    final passwordCtrl = TextEditingController();
+    final formKey = GlobalKey<FormState>();
+
+    final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Soft-Delete User'),
-        content: Text(
-            'Delete ${user.fullName}? The account data will be retained for audit purposes. The user will not be able to log in.'),
+        title: const Text('Archive User'),
+        content: Form(
+          key: formKey,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                  'Archive ${user.fullName}? The account data will be retained and can be restored later. The user will not be able to log in.'),
+              const SizedBox(height: 16),
+              TextFormField(
+                controller: passwordCtrl,
+                obscureText: true,
+                decoration: const InputDecoration(
+                  labelText: 'Confirm your admin password',
+                  border: OutlineInputBorder(),
+                ),
+                validator: (v) =>
+                    (v == null || v.isEmpty) ? 'Password is required' : null,
+              ),
+            ],
+          ),
+        ),
         actions: [
           TextButton(
               onPressed: () => Navigator.pop(ctx, false),
               child: const Text('Cancel')),
           FilledButton(
             style: FilledButton.styleFrom(backgroundColor: Colors.red),
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Delete'),
+            onPressed: () {
+              if (formKey.currentState!.validate()) Navigator.pop(ctx, true);
+            },
+            child: const Text('Archive'),
           ),
         ],
       ),
     );
-    if (confirm != true || !context.mounted) return;
-    final msg =
-        await ref.read(userActionsProvider.notifier).delete(user.userId);
+    if (confirmed != true || !context.mounted) return;
+    final msg = await ref
+        .read(userActionsProvider.notifier)
+        .archive(user.userId, passwordCtrl.text);
     if (!context.mounted) return;
-    _showSnack(context, msg ?? 'User deleted.', Colors.red);
+    _showSnack(context, msg ?? 'User archived.', Colors.red);
     ref.invalidate(userListProvider);
   }
 

@@ -10,6 +10,8 @@ class RegistrationDetail {
   final DateTime? rejectedAt;
   final int rejectionCount;
   final DateTime? canReapplyAt;
+  final bool isDeleted;
+  final DateTime createdAt;
   final VehicleInfo? vehicle;
   final List<DocumentInfo> documents;
 
@@ -25,6 +27,8 @@ class RegistrationDetail {
     this.rejectedAt,
     required this.rejectionCount,
     this.canReapplyAt,
+    required this.isDeleted,
+    required this.createdAt,
     this.vehicle,
     required this.documents,
   });
@@ -46,6 +50,8 @@ class RegistrationDetail {
         canReapplyAt: json['canReapplyAt'] != null
             ? DateTime.tryParse(json['canReapplyAt'].toString())
             : null,
+        isDeleted: (json['isDeleted'] as bool?) ?? false,
+        createdAt: DateTime.parse(json['createdAt'].toString()),
         vehicle: json['vehicle'] != null
             ? VehicleInfo.fromJson(json['vehicle'] as Map<String, dynamic>)
             : null,
@@ -56,24 +62,24 @@ class RegistrationDetail {
 }
 
 class VehicleInfo {
-  final String? make;
+  final String? brand;
   final String? model;
-  final String? year;
+  final String? vehicleType;
   final String? plateNumber;
   final String? color;
 
   const VehicleInfo({
-    this.make,
+    this.brand,
     this.model,
-    this.year,
+    this.vehicleType,
     this.plateNumber,
     this.color,
   });
 
   factory VehicleInfo.fromJson(Map<String, dynamic> json) => VehicleInfo(
-        make: json['make']?.toString(),
+        brand: json['brand']?.toString(),
         model: json['model']?.toString(),
-        year: json['year']?.toString(),
+        vehicleType: json['vehicleType']?.toString(),
         plateNumber: json['plateNumber']?.toString(),
         color: json['color']?.toString(),
       );

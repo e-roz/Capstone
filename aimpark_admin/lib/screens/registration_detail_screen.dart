@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 
 import '../models/registration_detail.dart';
 import '../providers/registrations_provider.dart';
+import '../widgets/document_viewer.dart';
 
 class RegistrationDetailScreen extends ConsumerWidget {
   const RegistrationDetailScreen({super.key, required this.userId});
@@ -66,25 +67,58 @@ class RegistrationDetailScreen extends ConsumerWidget {
     ref.invalidate(pendingRegistrationsProvider);
   }
 
+  static const _rejectPresets = <String, String>{
+    'Blurred document':
+        'One or more of your uploaded documents is too blurry to verify. Please retake the photo in good lighting and re-apply.',
+    'Mismatched information':
+        'The information you provided does not match your uploaded documents. Please review and re-apply with matching details.',
+    'Expired ID':
+        'Your uploaded ID/license has expired. Please upload a valid, unexpired document and re-apply.',
+    'Suspicious/altered document':
+        'One or more of your uploaded documents appears to be altered or invalid. Please contact the administration office for assistance.',
+  };
+
   Future<void> _showRejectDialog(
       BuildContext context, WidgetRef ref, RegistrationDetail detail) async {
     final reasonCtrl = TextEditingController();
     final hoursCtrl = TextEditingController(text: '24');
     final formKey = GlobalKey<FormState>();
+    String? selectedPreset;
 
     final result = await showDialog<({String reason, int hours})>(
       context: context,
-      builder: (ctx) => AlertDialog(
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setState) => AlertDialog(
         title: const Text('Reject Registration'),
         content: Form(
           key: formKey,
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
+              DropdownButtonFormField<String>(
+                initialValue: selectedPreset,
+                decoration: const InputDecoration(
+                  labelText: 'Reason preset (optional)',
+                  border: OutlineInputBorder(),
+                ),
+                items: [
+                  ..._rejectPresets.keys.map(
+                      (label) => DropdownMenuItem(value: label, child: Text(label))),
+                  const DropdownMenuItem(value: 'Other', child: Text('Other')),
+                ],
+                onChanged: (label) {
+                  setState(() => selectedPreset = label);
+                  if (label != null && label != 'Other') {
+                    reasonCtrl.text = _rejectPresets[label]!;
+                  }
+                },
+              ),
+              const SizedBox(height: 12),
               TextFormField(
                 controller: reasonCtrl,
                 decoration: const InputDecoration(
                   labelText: 'Rejection Reason',
+                  helperText: 'Sent to the applicant by email — edit as needed.',
                   border: OutlineInputBorder(),
                 ),
                 maxLines: 3,
@@ -125,6 +159,7 @@ class RegistrationDetailScreen extends ConsumerWidget {
             child: const Text('Reject'),
           ),
         ],
+        ),
       ),
     );
 
@@ -192,9 +227,9 @@ class _DetailView extends StatelessWidget {
             _SectionCard(
               title: 'Vehicle Information',
               children: [
-                _Field('Make', detail.vehicle!.make ?? '—'),
+                _Field('Brand', detail.vehicle!.brand ?? '—'),
                 _Field('Model', detail.vehicle!.model ?? '—'),
-                _Field('Year', detail.vehicle!.year ?? '—'),
+                _Field('Vehicle Type', detail.vehicle!.vehicleType ?? '—'),
                 _Field('Plate Number', detail.vehicle!.plateNumber ?? '—'),
                 _Field('Color', detail.vehicle!.color ?? '—'),
               ],
@@ -312,23 +347,12 @@ class _DocumentTile extends StatelessWidget {
       title: Text(doc.type),
       subtitle: Text(doc.fileName),
       trailing: TextButton(
-        onPressed: () {
-          // Open the file path URL in the browser
-          final url = 'http://localhost:5041${doc.filePath}';
-          // Use url_launcher if needed; for now show the URL
-          showDialog(
-            context: context,
-            builder: (ctx) => AlertDialog(
-              title: Text(doc.type),
-              content: SelectableText(url),
-              actions: [
-                TextButton(
-                    onPressed: () => Navigator.pop(ctx),
-                    child: const Text('Close'))
-              ],
-            ),
-          );
-        },
+        onPressed: () => viewDocument(
+          context,
+          title: doc.type,
+          fileName: doc.fileName,
+          url: doc.filePath,
+        ),
         child: const Text('View'),
       ),
     );

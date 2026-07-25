@@ -70,6 +70,129 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     }
   }
 
+  Future<void> _showForgotPasswordDialog(BuildContext context) async {
+    final emailCtrl = TextEditingController(text: _emailCtrl.text.trim());
+    final otpCtrl = TextEditingController();
+    final newPassCtrl = TextEditingController();
+    final formKey = GlobalKey<FormState>();
+    var otpSent = false;
+    var loading = false;
+    String? error;
+    String? info;
+
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setState) => AlertDialog(
+          title: const Text('Reset Password'),
+          content: Form(
+            key: formKey,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (error != null) ...[
+                  Text(error!, style: TextStyle(color: Colors.red.shade700)),
+                  const SizedBox(height: 12),
+                ],
+                if (info != null) ...[
+                  Text(info!, style: TextStyle(color: Colors.green.shade700)),
+                  const SizedBox(height: 12),
+                ],
+                TextFormField(
+                  controller: emailCtrl,
+                  enabled: !otpSent,
+                  decoration: const InputDecoration(
+                    labelText: 'Email',
+                    border: OutlineInputBorder(),
+                  ),
+                  keyboardType: TextInputType.emailAddress,
+                  validator: (v) =>
+                      (v == null || v.isEmpty) ? 'Email is required' : null,
+                ),
+                if (otpSent) ...[
+                  const SizedBox(height: 12),
+                  TextFormField(
+                    controller: otpCtrl,
+                    decoration: const InputDecoration(
+                      labelText: 'Reset code (check your email)',
+                      border: OutlineInputBorder(),
+                    ),
+                    validator: (v) =>
+                        (v == null || v.isEmpty) ? 'Code is required' : null,
+                  ),
+                  const SizedBox(height: 12),
+                  TextFormField(
+                    controller: newPassCtrl,
+                    obscureText: true,
+                    decoration: const InputDecoration(
+                      labelText: 'New password',
+                      border: OutlineInputBorder(),
+                    ),
+                    validator: (v) => (v == null || v.length < 6)
+                        ? 'At least 6 characters'
+                        : null,
+                  ),
+                ],
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Close'),
+            ),
+            FilledButton(
+              onPressed: loading
+                  ? null
+                  : () async {
+                      if (!formKey.currentState!.validate()) return;
+                      setState(() {
+                        loading = true;
+                        error = null;
+                      });
+                      try {
+                        final dio = ref.read(dioProvider);
+                        if (!otpSent) {
+                          final res = await dio.post(ApiEndpoints.forgotPassword,
+                              data: {'email': emailCtrl.text.trim()});
+                          setState(() {
+                            otpSent = true;
+                            info = (res.data as Map<String, dynamic>)['message']
+                                ?.toString();
+                          });
+                        } else {
+                          final res = await dio.post(ApiEndpoints.resetPassword, data: {
+                            'email': emailCtrl.text.trim(),
+                            'otp': otpCtrl.text.trim(),
+                            'newPassword': newPassCtrl.text,
+                          });
+                          if (!ctx.mounted) return;
+                          Navigator.pop(ctx);
+                          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                            content: Text((res.data as Map<String, dynamic>)['message']
+                                    ?.toString() ??
+                                'Password reset successful.'),
+                            backgroundColor: Colors.green,
+                          ));
+                        }
+                      } on DioException catch (e) {
+                        final data = e.response?.data;
+                        setState(() => error = (data is Map
+                                ? data['message']?.toString()
+                                : null) ??
+                            'Something went wrong.');
+                      } finally {
+                        setState(() => loading = false);
+                      }
+                    },
+              child: Text(otpSent ? 'Reset Password' : 'Send Code'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -160,6 +283,11 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                             child: CircularProgressIndicator(
                                 strokeWidth: 2, color: Colors.white))
                         : const Text('Sign In'),
+                  ),
+                  const SizedBox(height: 12),
+                  TextButton(
+                    onPressed: () => _showForgotPasswordDialog(context),
+                    child: const Text('Forgot password?'),
                   ),
                 ],
               ),

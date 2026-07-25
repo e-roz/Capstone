@@ -14,18 +14,27 @@ class UsersQuery {
   final int page;
   final int pageSize;
   final String? status; // null = all
+  final String? search; // null/empty = no search filter
 
   const UsersQuery({
     this.page = 1,
     this.pageSize = 20,
     this.status,
+    this.search,
   });
 
-  UsersQuery copyWith({int? page, int? pageSize, String? status, bool clearStatus = false}) =>
+  UsersQuery copyWith(
+          {int? page,
+          int? pageSize,
+          String? status,
+          bool clearStatus = false,
+          String? search,
+          bool clearSearch = false}) =>
       UsersQuery(
         page: page ?? this.page,
         pageSize: pageSize ?? this.pageSize,
         status: clearStatus ? null : (status ?? this.status),
+        search: clearSearch ? null : (search ?? this.search),
       );
 }
 
@@ -37,6 +46,10 @@ class UsersQueryNotifier extends _$UsersQueryNotifier {
   void setPage(int page) => state = state.copyWith(page: page);
   void setStatus(String? status) =>
       state = state.copyWith(status: status, clearStatus: status == null, page: 1);
+  void setSearch(String? search) => state = state.copyWith(
+      search: search,
+      clearSearch: search == null || search.isEmpty,
+      page: 1);
 }
 
 // ── Users list ───────────────────────────────────────────────────────────────
@@ -50,6 +63,7 @@ Future<UserListPage> userList(Ref ref) async {
     'page': query.page,
     'pageSize': query.pageSize,
     if (query.status != null) 'status': query.status,
+    if (query.search != null && query.search!.isNotEmpty) 'search': query.search,
   };
 
   final response = await dio.get(ApiEndpoints.users, queryParameters: params);
@@ -80,10 +94,11 @@ class UserActions extends _$UserActions {
     });
   }
 
-  Future<String?> delete(String userId) async {
+  Future<String?> archive(String userId, String adminPassword) async {
     return _run(() async {
       final dio = ref.read(dioProvider);
-      final res = await dio.delete(ApiEndpoints.deleteUser(userId));
+      final res = await dio.delete(ApiEndpoints.archiveUser(userId),
+          data: {'password': adminPassword});
       return (res.data as Map<String, dynamic>)['message']?.toString();
     });
   }

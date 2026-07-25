@@ -3,6 +3,8 @@ class ApiEndpoints {
 
   // Auth
   static const login = '/api/auth/login';
+  static const forgotPassword = '/api/auth/forgot-password';
+  static const resetPassword = '/api/auth/reset-password';
 
   // Admin – Registrations
   static const pendingRegistrations = '/api/admin/registrations/pending';
@@ -19,7 +21,10 @@ class ApiEndpoints {
       '/api/admin/users/$userId/suspend';
   static String unsuspendUser(String userId) =>
       '/api/admin/users/$userId/unsuspend';
-  static String deleteUser(String userId) => '/api/admin/users/$userId';
+  static String archiveUser(String userId) => '/api/admin/users/$userId';
   static String restoreUser(String userId) =>
       '/api/admin/users/$userId/restore';
+
+  // Admin – Audit Logs
+  static const auditLogs = '/api/admin/audit-logs';
 }
