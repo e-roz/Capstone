@@ -21,8 +21,8 @@ namespace AimPark.API.Services
             _db = db;
         }
 
-        // GET /api/admin/users?page=1&pageSize=20&status=Suspended&search=cruz (includes archived users)
-        public async Task<ActionResult<UserListResponse>> ListAsync(int page, int pageSize, string? status, string? search, CancellationToken ct)
+        // GET /api/admin/users?page=1&pageSize=20&status=Suspended&search=cruz&role=User (includes archived users)
+        public async Task<ActionResult<UserListResponse>> ListAsync(int page, int pageSize, string? status, string? search, string? role, CancellationToken ct)
         {
             // Clamp to sane defaults
             page = Math.Max(1, page);
@@ -39,6 +39,11 @@ namespace AimPark.API.Services
             else if (!string.IsNullOrWhiteSpace(status) && Enum.TryParse<AccountStatus>(status, true, out var parsedStatus))
             {
                 query = query.Where(u => u.AccountStatus == parsedStatus);
+            }
+
+            if (!string.IsNullOrWhiteSpace(role) && Enum.TryParse<UserRole>(role, true, out var parsedRole))
+            {
+                query = query.Where(u => u.Role == parsedRole);
             }
 
             if (!string.IsNullOrWhiteSpace(search))
@@ -61,6 +66,7 @@ namespace AimPark.API.Services
                     UserId       = u.Id,
                     FullName     = u.FullName,
                     Email        = u.Email,
+                    Role         = u.Role.ToString(),
                     AccountStatus = u.AccountStatus.ToString(),
                     IsDeleted    = u.IsDeleted,
                     CreatedAt    = u.CreatedAt

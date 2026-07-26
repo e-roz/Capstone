@@ -2,6 +2,7 @@ class AdminUser {
   final String userId;
   final String fullName;
   final String email;
+  final String role;
   final String accountStatus;
   final bool isDeleted;
   final DateTime createdAt;
@@ -10,6 +11,7 @@ class AdminUser {
     required this.userId,
     required this.fullName,
     required this.email,
+    required this.role,
     required this.accountStatus,
     required this.isDeleted,
     required this.createdAt,
@@ -19,6 +21,7 @@ class AdminUser {
         userId: json['userId']?.toString() ?? '',
         fullName: json['fullName']?.toString() ?? '',
         email: json['email']?.toString() ?? '',
+        role: json['role']?.toString() ?? '',
         accountStatus: json['accountStatus']?.toString() ?? '',
         isDeleted: (json['isDeleted'] as bool?) ?? false,
         createdAt: DateTime.parse(json['createdAt'].toString()),

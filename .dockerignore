@@ -1,0 +1,22 @@
+# Keep the build context small and avoid copying host build artifacts into the image.
+**/bin/
+**/obj/
+**/.vs/
+**/.vscode/
+**/.idea/
+
+# Flutter apps aren't part of the API image.
+aimpark_admin/
+aimpark_mobile/
+
+# Never ship credentials or local-only config into an image.
+**/appsettings.Development.json
+**/*service-account*.json
+**/google-services.json
+.env
+
+.git/
+.gitignore
+.github/
+**/*.md
+MD files/

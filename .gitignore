@@ -433,3 +433,7 @@ FodyWeavers.xsd
 
 # ASP.NET Core local dev settings (may contain real secrets)
 **/appsettings.Development.json
+
+# Firebase service account keys (full-admin credentials — never commit)
+*service-account*.json
+firebase-adminsdk*.json

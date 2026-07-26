@@ -97,6 +97,9 @@ namespace AimPark.API.Services
                 CanReapplyAt = user.CanReapplyAt,
                 IsDeleted = user.IsDeleted,
                 CreatedAt = user.CreatedAt,
+                RfidTagId = user.RfidTagId,
+                RfidStatus = user.RfidStatus.ToString(),
+                RfidSuspendedUntil = user.RfidSuspendedUntil,
                 Vehicle = vehicle is null ? null : new VehicleDTO
                 {
                     PlateNumber = vehicle.PlateNumber,

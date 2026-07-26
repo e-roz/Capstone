@@ -9,6 +9,7 @@ import '../../../../core/widgets/app_avatar.dart';
 import '../../../../core/widgets/app_badge.dart';
 import '../../../../core/widgets/app_card.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
+import '../../../notifications/presentation/providers/push_registration_provider.dart';
 import '../../data/models/my_profile.dart';
 import '../providers/account_provider.dart';
 
@@ -17,6 +18,11 @@ class AccountScreen extends ConsumerWidget {
 
   Future<void> _logout(WidgetRef ref, BuildContext context) async {
     final repo = ref.read(authRepositoryProvider);
+
+    // Drop this device's push registration first — the endpoint is authenticated,
+    // so it has to happen while the token is still valid.
+    await ref.read(pushRegistrationProvider.notifier).unregisterOnLogout();
+
     try {
       await repo.logout();
     } catch (_) {

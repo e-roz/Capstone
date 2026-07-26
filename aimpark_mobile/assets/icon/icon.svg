@@ -1,0 +1,40 @@
+<svg viewBox="0 0 400 400" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <clipPath id="squircle">
+      <rect x="0" y="0" width="400" height="400" rx="80" ry="80"/>
+    </clipPath>
+  </defs>
+
+  <g clip-path="url(#squircle)">
+    <rect x="0" y="0" width="400" height="400" fill="#1C7A99"/>
+
+    <!-- body -->
+    <ellipse cx="200" cy="330" rx="150" ry="130" fill="#E8823A"/>
+    <ellipse cx="200" cy="320" rx="105" ry="90" fill="#F0A05E"/>
+
+    <!-- ears -->
+    <path d="M105 145 Q135 55 195 130 Z" fill="#E8823A"/>
+    <path d="M295 145 Q265 55 205 130 Z" fill="#E8823A"/>
+
+    <!-- face -->
+    <circle cx="200" cy="185" r="115" fill="#E8823A"/>
+
+    <!-- eyes -->
+    <circle cx="160" cy="185" r="48" fill="#FFFFFF"/>
+    <circle cx="240" cy="185" r="48" fill="#FFFFFF"/>
+    <circle cx="160" cy="185" r="24" fill="#1F5C7A"/>
+    <circle cx="240" cy="185" r="24" fill="#1F5C7A"/>
+    <circle cx="150" cy="175" r="7" fill="#FFFFFF"/>
+    <circle cx="230" cy="175" r="7" fill="#FFFFFF"/>
+
+    <!-- beak -->
+    <path d="M182 220 L200 255 L218 220 Z" fill="#D99A1F"/>
+    <path d="M182 220 L200 255 L200 220 Z" fill="#E8B23A"/>
+
+    <!-- gloss highlight -->
+    <ellipse cx="150" cy="130" rx="42" ry="20" fill="#FFFFFF" fill-opacity="0.25"/>
+
+    <!-- sparkle -->
+    <path d="M320 300 l8 20 20 8 -20 8 -8 20 -8 -20 -20 -8 20 -8 z" fill="#FFFFFF" fill-opacity="0.85"/>
+  </g>
+</svg>

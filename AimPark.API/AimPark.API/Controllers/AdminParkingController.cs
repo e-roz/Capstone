@@ -34,6 +34,15 @@ namespace AimPark.API.Controllers
         public Task<ActionResult<object>> UpdateSlotStatus(Guid slotId, [FromBody] UpdateSlotStatusDto dto, CancellationToken ct)
             => _parkingSlotService.UpdateStatusAsync(slotId, dto, ct);
 
+        /// <summary>
+        /// Vehicles currently inside (entry logged, no exit yet). Backs the "Log Exit"
+        /// picker so an operator never has to look up a raw log ID.
+        /// </summary>
+        [Authorize(Roles = "Admin,Security")]
+        [HttpGet("active-sessions")]
+        public Task<ActionResult<List<ActiveParkingSessionResponse>>> ListActiveSessions(CancellationToken ct)
+            => _parkingHistoryService.ListActiveSessionsAsync(ct);
+
         // Manual stand-in for the RFID gate hardware — Admin or Security can log a vehicle entry/exit.
         [Authorize(Roles = "Admin,Security")]
         [HttpPost("log-entry")]

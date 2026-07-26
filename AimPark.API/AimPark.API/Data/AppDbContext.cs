@@ -24,6 +24,7 @@ namespace AimPark.API.Data
         public DbSet<PolicyRule> PolicyRules { get; set; }
         public DbSet<Violation> Violations { get; set; }
         public DbSet<ViolationAppeal> ViolationAppeals { get; set; }
+        public DbSet<DeviceToken> DeviceTokens { get; set; }
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -350,6 +351,29 @@ namespace AimPark.API.Data
                       .WithMany()
                       .HasForeignKey(v => v.ParkingLogId)
                       .OnDelete(DeleteBehavior.SetNull);
+            });
+
+            modelBuilder.Entity<DeviceToken>(entity =>
+            {
+                entity.HasKey(t => t.Id);
+
+                // The FCM token is the natural identity — the same device re-registering
+                // must update the existing row rather than create a duplicate.
+                entity.HasIndex(t => t.Token)
+                      .IsUnique();
+
+                entity.HasIndex(t => t.UserId);
+
+                entity.Property(t => t.CreatedAt)
+                      .HasDefaultValueSql("NOW()");
+
+                entity.Property(t => t.LastSeenAt)
+                      .HasDefaultValueSql("NOW()");
+
+                entity.HasOne(t => t.User)
+                      .WithMany()
+                      .HasForeignKey(t => t.UserId)
+                      .OnDelete(DeleteBehavior.Cascade);
             });
 
             modelBuilder.Entity<ViolationAppeal>(entity =>

@@ -31,8 +31,9 @@ namespace AimPark.API.Controllers
             [FromQuery] int pageSize = 20,
             [FromQuery] string? status = null,
             [FromQuery] string? search = null,
+            [FromQuery] string? role = null,
             CancellationToken ct = default)
-            => _adminUserService.ListAsync(page, pageSize, status, search, ct);
+            => _adminUserService.ListAsync(page, pageSize, status, search, role, ct);
 
         /// <summary>
         /// Suspends an active user account.

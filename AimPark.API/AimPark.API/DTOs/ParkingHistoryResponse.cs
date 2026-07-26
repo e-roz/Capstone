@@ -15,4 +15,19 @@ namespace AimPark.API.DTOs
         public DateTime EntryTime { get; set; }
         public DateTime? ExitTime { get; set; }
     }
+
+    /// <summary>
+    /// A parking session that has an entry but no exit yet — i.e. a vehicle
+    /// currently inside. Powers the admin "Log Exit" picker so an operator
+    /// never has to know a raw log ID.
+    /// </summary>
+    public class ActiveParkingSessionResponse
+    {
+        public Guid LogId { get; set; }
+        public Guid UserId { get; set; }
+        public string UserName { get; set; } = string.Empty;
+        public string? PlateNumber { get; set; }
+        public string? SlotCode { get; set; }
+        public DateTime EntryTime { get; set; }
+    }
 }

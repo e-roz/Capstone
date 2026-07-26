@@ -69,6 +69,27 @@ class AdminShell extends ConsumerWidget {
                   context.go('/users');
                   break;
                 case 2:
+                  context.go('/parking');
+                  break;
+                case 3:
+                  context.go('/payments');
+                  break;
+                case 4:
+                  context.go('/violations');
+                  break;
+                case 5:
+                  context.go('/policy-rules');
+                  break;
+                case 6:
+                  context.go('/incidents');
+                  break;
+                case 7:
+                  context.go('/notifications');
+                  break;
+                case 8:
+                  context.go('/reports');
+                  break;
+                case 9:
                   context.go('/audit-logs');
                   break;
               }
@@ -83,6 +104,41 @@ class AdminShell extends ConsumerWidget {
                 icon: Icon(Icons.people_outline),
                 selectedIcon: Icon(Icons.people),
                 label: Text('User Management'),
+              ),
+              NavigationRailDestination(
+                icon: Icon(Icons.local_parking_outlined),
+                selectedIcon: Icon(Icons.local_parking),
+                label: Text('Parking'),
+              ),
+              NavigationRailDestination(
+                icon: Icon(Icons.payments_outlined),
+                selectedIcon: Icon(Icons.payments),
+                label: Text('Payments'),
+              ),
+              NavigationRailDestination(
+                icon: Icon(Icons.gavel_outlined),
+                selectedIcon: Icon(Icons.gavel),
+                label: Text('Violations'),
+              ),
+              NavigationRailDestination(
+                icon: Icon(Icons.rule_outlined),
+                selectedIcon: Icon(Icons.rule),
+                label: Text('Policy Rules'),
+              ),
+              NavigationRailDestination(
+                icon: Icon(Icons.report_outlined),
+                selectedIcon: Icon(Icons.report),
+                label: Text('Incidents'),
+              ),
+              NavigationRailDestination(
+                icon: Icon(Icons.notifications_outlined),
+                selectedIcon: Icon(Icons.notifications),
+                label: Text('Notifications'),
+              ),
+              NavigationRailDestination(
+                icon: Icon(Icons.bar_chart_outlined),
+                selectedIcon: Icon(Icons.bar_chart),
+                label: Text('Reports'),
               ),
               NavigationRailDestination(
                 icon: Icon(Icons.history_outlined),
@@ -101,7 +157,14 @@ class AdminShell extends ConsumerWidget {
 
   int _selectedIndex(String location) {
     if (location.startsWith('/users')) return 1;
-    if (location.startsWith('/audit-logs')) return 2;
+    if (location.startsWith('/parking')) return 2;
+    if (location.startsWith('/payments')) return 3;
+    if (location.startsWith('/violations')) return 4;
+    if (location.startsWith('/policy-rules')) return 5;
+    if (location.startsWith('/incidents')) return 6;
+    if (location.startsWith('/notifications')) return 7;
+    if (location.startsWith('/reports')) return 8;
+    if (location.startsWith('/audit-logs')) return 9;
     return 0; // default to pending
   }
 }

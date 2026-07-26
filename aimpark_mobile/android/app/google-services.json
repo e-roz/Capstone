@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "1083185026916",
+    "project_id": "aim-park",
+    "storage_bucket": "aim-park.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1083185026916:android:66e73846dce23fafc54c71",
+        "android_client_info": {
+          "package_name": "com.aimpark.aimpark_mobile"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAE1PlfIFDxRQZPE3NdGCnnVC58T0ZEiGc"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

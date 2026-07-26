@@ -72,6 +72,31 @@ class _UserDetailView extends ConsumerWidget {
                     DateFormat('MMM d, yyyy HH:mm').format(detail.canReapplyAt!.toLocal())),
             ],
           ),
+          const SizedBox(height: 16),
+          _SectionCard(
+            title: 'RFID Access',
+            children: [
+              _Field('Tag ID', detail.rfidTagId ?? 'Not assigned'),
+              Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: Row(
+                  children: [
+                    const SizedBox(
+                      width: 180,
+                      child: Text('Status',
+                          style: TextStyle(fontWeight: FontWeight.w600, color: Colors.black54)),
+                    ),
+                    _RfidStatusChip(status: detail.rfidStatus),
+                  ],
+                ),
+              ),
+              if (detail.rfidStatus == 'Suspended' && detail.rfidSuspendedUntil != null)
+                _Field('Suspended Until',
+                    DateFormat('MMM d, yyyy HH:mm').format(detail.rfidSuspendedUntil!.toLocal()))
+              else if (detail.rfidStatus == 'Suspended')
+                _Field('Suspended Until', 'Indefinite'),
+            ],
+          ),
           if (detail.vehicle != null) ...[
             const SizedBox(height: 16),
             _SectionCard(
@@ -158,8 +183,84 @@ class _ActionRow extends ConsumerWidget {
             style: FilledButton.styleFrom(backgroundColor: Colors.red),
             onPressed: () => _archive(context, ref),
           ),
+        if (!isDeleted)
+          OutlinedButton.icon(
+            icon: const Icon(Icons.nfc),
+            label: Text(detail.rfidTagId == null ? 'Assign RFID' : 'Reassign RFID'),
+            onPressed: () => _assignRfid(context, ref),
+          ),
+        if (!isDeleted && detail.rfidTagId != null)
+          OutlinedButton.icon(
+            style: OutlinedButton.styleFrom(foregroundColor: Colors.red),
+            icon: const Icon(Icons.nfc_outlined),
+            label: const Text('Revoke RFID'),
+            onPressed: () => _revokeRfid(context, ref),
+          ),
       ],
     );
+  }
+
+  Future<void> _assignRfid(BuildContext context, WidgetRef ref) async {
+    final tagCtrl = TextEditingController(text: detail.rfidTagId ?? '');
+    final formKey = GlobalKey<FormState>();
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('Assign RFID to ${detail.fullName}'),
+        content: Form(
+          key: formKey,
+          child: TextFormField(
+            controller: tagCtrl,
+            decoration: const InputDecoration(
+              labelText: 'RFID Tag ID',
+              border: OutlineInputBorder(),
+            ),
+            validator: (v) => (v == null || v.trim().isEmpty) ? 'Tag ID is required' : null,
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          FilledButton(
+            onPressed: () {
+              if (formKey.currentState!.validate()) Navigator.pop(ctx, true);
+            },
+            child: const Text('Assign'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !context.mounted) return;
+
+    final msg = await ref
+        .read(userActionsProvider.notifier)
+        .assignRfid(userId, tagCtrl.text.trim());
+    if (!context.mounted) return;
+    _refreshAndSnack(context, ref, msg ?? 'RFID tag assigned.', Colors.blue);
+  }
+
+  Future<void> _revokeRfid(BuildContext context, WidgetRef ref) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Revoke RFID Tag'),
+        content: Text(
+            'Revoke the RFID tag from ${detail.fullName}? They will no longer be able to use RFID entry/exit until a new tag is assigned.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: Colors.red),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Revoke'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !context.mounted) return;
+
+    final msg = await ref.read(userActionsProvider.notifier).revokeRfid(userId);
+    if (!context.mounted) return;
+    _refreshAndSnack(context, ref, msg ?? 'RFID tag revoked.', Colors.red);
   }
 
   Future<void> _suspend(BuildContext context, WidgetRef ref) async {
@@ -282,6 +383,33 @@ class _StatusChip extends StatelessWidget {
         break;
       case 'Rejected':
         color = Colors.red;
+        break;
+      default:
+        color = Colors.blueGrey;
+    }
+    return Chip(
+      label: Text(status, style: const TextStyle(fontSize: 12, color: Colors.white)),
+      backgroundColor: color,
+      padding: EdgeInsets.zero,
+      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+    );
+  }
+}
+
+class _RfidStatusChip extends StatelessWidget {
+  const _RfidStatusChip({required this.status});
+
+  final String status;
+
+  @override
+  Widget build(BuildContext context) {
+    Color color;
+    switch (status) {
+      case 'Active':
+        color = Colors.green;
+        break;
+      case 'Suspended':
+        color = Colors.orange;
         break;
       default:
         color = Colors.blueGrey;

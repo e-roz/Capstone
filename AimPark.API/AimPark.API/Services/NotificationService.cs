@@ -12,12 +12,18 @@ namespace AimPark.API.Services
     {
         private readonly IRepository<Notification> _notifications;
         private readonly IRepository<NotificationRead> _reads;
+        private readonly IPushSender _pushSender;
         private readonly AppDbContext _db;
 
-        public NotificationService(IRepository<Notification> notifications, IRepository<NotificationRead> reads, AppDbContext db)
+        public NotificationService(
+            IRepository<Notification> notifications,
+            IRepository<NotificationRead> reads,
+            IPushSender pushSender,
+            AppDbContext db)
         {
             _notifications = notifications;
             _reads = reads;
+            _pushSender = pushSender;
             _db = db;
         }
 
@@ -51,6 +57,19 @@ namespace AimPark.API.Services
 
             await _notifications.AddAsync(notification, ct);
             await _notifications.SaveAsync(ct);
+
+            // Best-effort push — the in-app notification is already persisted above,
+            // so a push failure never costs the user the notification itself.
+            await _pushSender.SendToRoleAsync(
+                targetRole,
+                notification.Title,
+                notification.Message,
+                new Dictionary<string, string>
+                {
+                    ["type"] = "notification",
+                    ["notificationId"] = notification.Id.ToString(),
+                },
+                ct);
 
             return new OkObjectResult(new { message = "Notification broadcast." });
         }

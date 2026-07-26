@@ -6,11 +6,18 @@ import 'package:riverpod_annotation/riverpod_annotation.dart';
 
 import '../core/utils/jwt_utils.dart';
 import '../screens/audit_log_screen.dart';
+import '../screens/incidents_screen.dart';
 import '../screens/login_screen.dart';
+import '../screens/notifications_screen.dart';
+import '../screens/parking_screen.dart';
+import '../screens/payments_screen.dart';
 import '../screens/pending_registrations_screen.dart';
+import '../screens/policy_rules_screen.dart';
 import '../screens/registration_detail_screen.dart';
+import '../screens/reports_screen.dart';
 import '../screens/user_detail_screen.dart';
 import '../screens/user_management_screen.dart';
+import '../screens/violations_screen.dart';
 import '../widgets/admin_shell.dart';
 
 part 'app_router.g.dart';
@@ -70,6 +77,34 @@ GoRouter appRouter(Ref ref) {
           GoRoute(
             path: '/audit-logs',
             builder: (context, state) => const AuditLogScreen(),
+          ),
+          GoRoute(
+            path: '/parking',
+            builder: (context, state) => const ParkingScreen(),
+          ),
+          GoRoute(
+            path: '/payments',
+            builder: (context, state) => const PaymentsScreen(),
+          ),
+          GoRoute(
+            path: '/violations',
+            builder: (context, state) => const ViolationsScreen(),
+          ),
+          GoRoute(
+            path: '/policy-rules',
+            builder: (context, state) => const PolicyRulesScreen(),
+          ),
+          GoRoute(
+            path: '/incidents',
+            builder: (context, state) => const IncidentsScreen(),
+          ),
+          GoRoute(
+            path: '/notifications',
+            builder: (context, state) => const NotificationsScreen(),
+          ),
+          GoRoute(
+            path: '/reports',
+            builder: (context, state) => const ReportsScreen(),
           ),
         ],
       ),

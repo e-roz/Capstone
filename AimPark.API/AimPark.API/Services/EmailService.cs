@@ -1,4 +1,3 @@
-using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using AimPark.API.Interfaces;
 
@@ -49,27 +48,49 @@ namespace AimPark.API.Services
             await SendEmailAsync(email, "Your AimPark registration was not approved", html, ct);
         }
 
+        // Sent via Brevo's transactional API. Unlike a shared testing domain, a verified
+        // Brevo sender can deliver to any recipient, which is what lets people other than
+        // the account owner actually register.
+        //
         // Approval/rejection emails are best-effort notifications: the underlying account-status
         // change has already been saved by the time this runs, so a delivery failure is logged
         // and swallowed rather than thrown, to avoid making the admin action look like it failed.
         private async Task<bool> SendEmailAsync(string to, string subject, string html, CancellationToken ct)
         {
-            var apiKey = _configuration["Resend:ApiKey"];
-            var fromAddress = _configuration["Resend:FromAddress"] ?? "AimPark <onboarding@resend.dev>";
+            var apiKey = _configuration["Brevo:ApiKey"];
+            var senderEmail = _configuration["Brevo:SenderEmail"];
+            var senderName = _configuration["Brevo:SenderName"] ?? "AimPark";
 
-            var request = new HttpRequestMessage(HttpMethod.Post, "https://api.resend.com/emails")
+            if (string.IsNullOrWhiteSpace(apiKey) || string.IsNullOrWhiteSpace(senderEmail))
+            {
+                _logger.LogError(
+                    "Email not sent to {Email}: Brevo:ApiKey and Brevo:SenderEmail must be configured.", to);
+                return false;
+            }
+
+            var request = new HttpRequestMessage(HttpMethod.Post, "https://api.brevo.com/v3/smtp/email")
             {
                 Content = JsonContent.Create(new
                 {
-                    from = fromAddress,
-                    to = new[] { to },
+                    sender = new { name = senderName, email = senderEmail },
+                    to = new[] { new { email = to } },
                     subject,
-                    html
+                    htmlContent = html
                 })
             };
-            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", apiKey);
+            // Brevo authenticates with its own header, not a bearer token.
+            request.Headers.Add("api-key", apiKey);
 
-            var response = await _httpClient.SendAsync(request, ct);
+            HttpResponseMessage response;
+            try
+            {
+                response = await _httpClient.SendAsync(request, ct);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to reach the email provider while sending to {Email}.", to);
+                return false;
+            }
 
             if (!response.IsSuccessStatusCode)
             {

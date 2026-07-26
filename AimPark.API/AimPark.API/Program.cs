@@ -16,13 +16,58 @@ builder.Services.AddDbContext<AppDbContext>(options =>
         builder.Configuration.GetConnectionString("DefaultConnection")
     ));
 
+// Hosts like Render assign a port at runtime via $PORT rather than letting the app
+// pick one. Locally there's no PORT set, so launchSettings/appsettings still apply.
+var port = Environment.GetEnvironmentVariable("PORT");
+if (!string.IsNullOrWhiteSpace(port))
+{
+    builder.WebHost.UseUrls($"http://0.0.0.0:{port}");
+}
+
+// Firebase (push notifications). Optional — if no credentials are configured the app
+// still starts and FcmPushSender simply no-ops, so local dev doesn't require Firebase.
+//
+// Two ways to supply credentials, because a deployed container has no local key file:
+//   Firebase:CredentialsJson — the whole service-account JSON (used in hosting env vars)
+//   Firebase:CredentialsPath — a path to the JSON file (convenient locally)
+var firebaseCredentialsJson = builder.Configuration["Firebase:CredentialsJson"];
+var firebaseCredentialsPath = builder.Configuration["Firebase:CredentialsPath"];
+
+if (!string.IsNullOrWhiteSpace(firebaseCredentialsJson))
+{
+    FirebaseAdmin.FirebaseApp.Create(new FirebaseAdmin.AppOptions
+    {
+        Credential = Google.Apis.Auth.OAuth2.GoogleCredential.FromJson(firebaseCredentialsJson)
+    });
+}
+else if (!string.IsNullOrWhiteSpace(firebaseCredentialsPath) && File.Exists(firebaseCredentialsPath))
+{
+    using var firebaseCredentialsStream = File.OpenRead(firebaseCredentialsPath);
+    FirebaseAdmin.FirebaseApp.Create(new FirebaseAdmin.AppOptions
+    {
+        Credential = Google.Apis.Auth.OAuth2.GoogleCredential.FromStream(firebaseCredentialsStream)
+    });
+}
+
 var jwtKey = builder.Configuration["Jwt:Key"]!;
+
+// Origins allowed to call the API from a browser. The deployed admin app's URL is
+// added via configuration (Cors__AllowedOrigins__0, ...) so a new deployment doesn't
+// need a code change. Localhost stays allowed so local dev keeps working.
+var allowedOrigins = builder.Configuration
+    .GetSection("Cors:AllowedOrigins")
+    .Get<string[]>() ?? [];
+
+allowedOrigins = allowedOrigins
+    .Concat(["http://localhost:5000", "http://127.0.0.1:5000"])
+    .Distinct()
+    .ToArray();
 
 builder.Services.AddCors(options =>
 {
     options.AddPolicy("AllowAdminWeb", policy =>
     {
-        policy.WithOrigins("http://localhost:5000")
+        policy.WithOrigins(allowedOrigins)
               .AllowAnyMethod()
               .AllowAnyHeader()
               .AllowCredentials();
@@ -80,6 +125,9 @@ builder.Services.AddScoped<INotificationService, NotificationService>();
 builder.Services.AddScoped<IIncidentService, IncidentService>();
 builder.Services.AddScoped<IPaymentService, PaymentService>();
 builder.Services.AddScoped<IViolationService, ViolationService>();
+builder.Services.AddScoped<IReportService, ReportService>();
+builder.Services.AddScoped<IDeviceTokenService, DeviceTokenService>();
+builder.Services.AddScoped<IPushSender, FcmPushSender>();
 builder.Services.AddScoped(typeof(IRepository<>), typeof(Repository<>));
 
 builder.Services.AddControllers();

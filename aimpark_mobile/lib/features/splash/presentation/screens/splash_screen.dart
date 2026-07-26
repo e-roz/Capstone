@@ -1,19 +1,23 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../../core/network/dio_client.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/utils/jwt_utils.dart';
+import '../../../notifications/presentation/providers/push_registration_provider.dart';
 
-class SplashScreen extends StatefulWidget {
+class SplashScreen extends ConsumerStatefulWidget {
   const SplashScreen({super.key});
 
   @override
-  State<SplashScreen> createState() => _SplashScreenState();
+  ConsumerState<SplashScreen> createState() => _SplashScreenState();
 }
 
-class _SplashScreenState extends State<SplashScreen>
+class _SplashScreenState extends ConsumerState<SplashScreen>
     with SingleTickerProviderStateMixin {
   static const _storage = FlutterSecureStorage();
   static const _minDisplayDuration = Duration(milliseconds: 1700);
@@ -76,6 +80,16 @@ class _SplashScreenState extends State<SplashScreen>
 
     if (mounted) {
       context.go(destination);
+    }
+
+    // A returning user with a stored session never passes through the login
+    // screen, so this is the only place their device gets (re)registered for
+    // push. Registering is idempotent, and running it every launch also picks
+    // up rotated tokens and permission granted after a previous refusal.
+    // Fired after navigation so the OS permission prompt lands on the home
+    // screen rather than over the splash animation.
+    if (hasValidToken && !JwtUtils.isRegistrationOnly(token)) {
+      unawaited(ref.read(pushRegistrationProvider.notifier).registerAfterLogin());
     }
   }
 

@@ -15,6 +15,9 @@ namespace AimPark.API.DTOs
         public DateTime? CanReapplyAt { get; set; }
         public bool IsDeleted { get; set; }
         public DateTime CreatedAt { get; set; }
+        public string? RfidTagId { get; set; }
+        public string RfidStatus { get; set; } = string.Empty;
+        public DateTime? RfidSuspendedUntil { get; set; }
         public VehicleDTO? Vehicle { get; set; }
         public List<DocumentDetailResponse> Documents { get; set; } = [];
     }

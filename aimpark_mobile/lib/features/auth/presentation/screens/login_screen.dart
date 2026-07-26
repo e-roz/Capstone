@@ -11,6 +11,7 @@ import '../../../../core/utils/app_flushbar.dart';
 import '../../../../core/utils/jwt_utils.dart';
 import '../../../../core/widgets/app_button.dart';
 import '../../../../core/widgets/app_text_field.dart';
+import '../../../notifications/presentation/providers/push_registration_provider.dart';
 import '../providers/auth_provider.dart';
 import '../providers/registration_provider.dart';
 
@@ -68,6 +69,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
       await repo.saveToken(token);
 
+      // Registers this device for push. Must run after the auth token is stored,
+      // since the register call is authenticated.
+      await ref.read(pushRegistrationProvider.notifier).registerAfterLogin();
+
       if (mounted) {
         context.go(JwtUtils.routeAfterLogin(token));
       }
@@ -124,6 +129,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
         ref
             .read(registrationNotifierProvider.notifier)
             .setOAuthFlow(displayName: fullName);
+      } else {
+        // Only a full auth token can call the authenticated register endpoint —
+        // users still mid-registration get registered once they finish and log in.
+        await ref.read(pushRegistrationProvider.notifier).registerAfterLogin();
       }
 
       if (mounted) {

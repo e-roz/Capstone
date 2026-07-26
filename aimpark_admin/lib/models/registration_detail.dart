@@ -12,6 +12,9 @@ class RegistrationDetail {
   final DateTime? canReapplyAt;
   final bool isDeleted;
   final DateTime createdAt;
+  final String? rfidTagId;
+  final String rfidStatus;
+  final DateTime? rfidSuspendedUntil;
   final VehicleInfo? vehicle;
   final List<DocumentInfo> documents;
 
@@ -29,6 +32,9 @@ class RegistrationDetail {
     this.canReapplyAt,
     required this.isDeleted,
     required this.createdAt,
+    this.rfidTagId,
+    required this.rfidStatus,
+    this.rfidSuspendedUntil,
     this.vehicle,
     required this.documents,
   });
@@ -52,6 +58,11 @@ class RegistrationDetail {
             : null,
         isDeleted: (json['isDeleted'] as bool?) ?? false,
         createdAt: DateTime.parse(json['createdAt'].toString()),
+        rfidTagId: json['rfidTagId']?.toString(),
+        rfidStatus: json['rfidStatus']?.toString() ?? 'Unassigned',
+        rfidSuspendedUntil: json['rfidSuspendedUntil'] != null
+            ? DateTime.tryParse(json['rfidSuspendedUntil'].toString())
+            : null,
         vehicle: json['vehicle'] != null
             ? VehicleInfo.fromJson(json['vehicle'] as Map<String, dynamic>)
             : null,

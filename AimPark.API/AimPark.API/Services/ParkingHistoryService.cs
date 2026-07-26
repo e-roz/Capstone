@@ -55,6 +55,29 @@ namespace AimPark.API.Services
             });
         }
 
+        // GET /api/admin/parking/active-sessions — vehicles currently inside
+        public async Task<ActionResult<List<ActiveParkingSessionResponse>>> ListActiveSessionsAsync(CancellationToken ct)
+        {
+            var sessions = await _db.Set<ParkingLog>().AsNoTracking()
+                .Where(l => l.ExitTime == null)
+                .OrderByDescending(l => l.EntryTime)
+                .Select(l => new ActiveParkingSessionResponse
+                {
+                    LogId = l.Id,
+                    UserId = l.UserId,
+                    UserName = l.User.FullName,
+                    PlateNumber = _db.Set<Vehicle>()
+                        .Where(v => v.UserId == l.UserId)
+                        .Select(v => v.PlateNumber)
+                        .FirstOrDefault(),
+                    SlotCode = l.Slot != null ? l.Slot.SlotCode : null,
+                    EntryTime = l.EntryTime
+                })
+                .ToListAsync(ct);
+
+            return new OkObjectResult(sessions);
+        }
+
         // POST /api/admin/parking/log-entry — manual stand-in for the RFID gate hardware
         public async Task<ActionResult<object>> LogEntryAsync(LogParkingEntryDto dto, Guid loggedByUserId, CancellationToken ct)
         {

@@ -19,4 +19,15 @@ class NotificationsRepository {
   Future<void> markRead(String notificationId) {
     return _dio.post(ApiEndpoints.notificationRead(notificationId));
   }
+
+  Future<void> registerDeviceToken(String token, String platform) {
+    return _dio.post(
+      ApiEndpoints.deviceToken,
+      data: {'token': token, 'platform': platform},
+    );
+  }
+
+  Future<void> unregisterDeviceToken(String token) {
+    return _dio.delete(ApiEndpoints.deviceToken, data: {'token': token});
+  }
 }

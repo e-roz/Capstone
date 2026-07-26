@@ -111,6 +111,23 @@ class UserActions extends _$UserActions {
     });
   }
 
+  Future<String?> assignRfid(String userId, String rfidTagId) async {
+    return _run(() async {
+      final dio = ref.read(dioProvider);
+      final res = await dio.post(ApiEndpoints.assignRfid(userId),
+          data: {'rfidTagId': rfidTagId});
+      return (res.data as Map<String, dynamic>)['message']?.toString();
+    });
+  }
+
+  Future<String?> revokeRfid(String userId) async {
+    return _run(() async {
+      final dio = ref.read(dioProvider);
+      final res = await dio.post(ApiEndpoints.revokeRfid(userId));
+      return (res.data as Map<String, dynamic>)['message']?.toString();
+    });
+  }
+
   Future<String?> _run(Future<String?> Function() fn) async {
     state = const AsyncLoading();
     try {
