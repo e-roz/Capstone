@@ -3,6 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../models/violation.dart';
 import '../providers/violations_provider.dart';
+import '../core/utils/responsive.dart';
+import '../widgets/page_header.dart';
 
 class PolicyRulesScreen extends ConsumerWidget {
   const PolicyRulesScreen({super.key});
@@ -18,17 +20,14 @@ class PolicyRulesScreen extends ConsumerWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Row(
-              children: [
-                const Text('Policy & Rule Management',
-                    style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
-                const Spacer(),
+            PageHeader(
+              title: 'Policy & Rule Management',
+              actions: [
                 FilledButton.icon(
                   icon: const Icon(Icons.add, size: 16),
                   label: const Text('Add Rule'),
                   onPressed: () => _showRuleDialog(context, ref, null),
                 ),
-                const SizedBox(width: 8),
                 IconButton(
                   icon: const Icon(Icons.refresh),
                   tooltip: 'Refresh',
@@ -74,7 +73,7 @@ class PolicyRulesScreen extends ConsumerWidget {
         builder: (ctx, setState) => AlertDialog(
           title: Text(existing == null ? 'Add Policy Rule' : 'Edit Policy Rule'),
           content: SizedBox(
-            width: 420,
+            width: context.dialogWidth(420),
             child: Form(
               key: formKey,
               child: SingleChildScrollView(

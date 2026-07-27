@@ -4,6 +4,8 @@ import 'package:intl/intl.dart';
 
 import '../models/notification.dart';
 import '../providers/notifications_provider.dart';
+import '../core/utils/responsive.dart';
+import '../widgets/page_header.dart';
 
 const _types = ['Announcement', 'PolicyUpdate', 'ParkingAvailability', 'System'];
 const _roles = ['Admin', 'Security', 'User'];
@@ -22,17 +24,14 @@ class NotificationsScreen extends ConsumerWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Row(
-              children: [
-                const Text('Notifications',
-                    style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
-                const Spacer(),
+            PageHeader(
+              title: 'Notifications',
+              actions: [
                 FilledButton.icon(
                   icon: const Icon(Icons.campaign, size: 16),
                   label: const Text('Broadcast'),
                   onPressed: () => _showBroadcast(context, ref),
                 ),
-                const SizedBox(width: 8),
                 IconButton(
                   icon: const Icon(Icons.refresh),
                   tooltip: 'Refresh',
@@ -73,7 +72,7 @@ class NotificationsScreen extends ConsumerWidget {
         builder: (ctx, setState) => AlertDialog(
           title: const Text('Broadcast Notification'),
           content: SizedBox(
-            width: 400,
+            width: context.dialogWidth(400),
             child: Form(
               key: formKey,
               child: Column(

@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 
 import '../models/audit_log_entry.dart';
 import '../providers/audit_logs_provider.dart';
+import '../widgets/page_header.dart';
 
 const _actions = [
   'Suspend',
@@ -31,13 +32,9 @@ class AuditLogScreen extends ConsumerWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Row(
-              children: [
-                const Text(
-                  'Audit Log',
-                  style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
-                ),
-                const Spacer(),
+            PageHeader(
+              title: 'Audit Log',
+              actions: [
                 DropdownButton<String?>(
                   value: query.action,
                   hint: const Text('All Actions'),
@@ -50,7 +47,6 @@ class AuditLogScreen extends ConsumerWidget {
                       .read(auditLogsQueryNotifierProvider.notifier)
                       .setAction(v),
                 ),
-                const SizedBox(width: 12),
                 IconButton(
                   icon: const Icon(Icons.refresh),
                   tooltip: 'Refresh',

@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
 import '../providers/registrations_provider.dart';
+import '../widgets/page_header.dart';
 
 class PendingRegistrationsScreen extends ConsumerWidget {
   const PendingRegistrationsScreen({super.key});
@@ -19,14 +20,9 @@ class PendingRegistrationsScreen extends ConsumerWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Row(
-              children: [
-                const Text(
-                  'Pending Registrations',
-                  style: TextStyle(
-                      fontSize: 22, fontWeight: FontWeight.bold),
-                ),
-                const Spacer(),
+            PageHeader(
+              title: 'Pending Registrations',
+              actions: [
                 IconButton(
                   icon: const Icon(Icons.refresh),
                   tooltip: 'Refresh',
@@ -79,7 +75,9 @@ class PendingRegistrationsScreen extends ConsumerWidget {
                         borderRadius: BorderRadius.circular(12)),
                     clipBehavior: Clip.hardEdge,
                     child: SingleChildScrollView(
-                      child: DataTable(
+                      child: SingleChildScrollView(
+                        scrollDirection: Axis.horizontal,
+                        child: DataTable(
                         headingRowColor: WidgetStateProperty.all(
                             Colors.grey.shade100),
                         columns: const [
@@ -100,6 +98,7 @@ class PendingRegistrationsScreen extends ConsumerWidget {
                                 context.go('/pending/${reg.userId}'),
                           );
                         }).toList(),
+                        ),
                       ),
                     ),
                   );

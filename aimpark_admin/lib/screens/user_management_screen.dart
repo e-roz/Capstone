@@ -7,6 +7,8 @@ import 'package:intl/intl.dart';
 
 import '../models/admin_user.dart';
 import '../providers/users_provider.dart';
+import '../widgets/page_header.dart';
+import '../core/utils/responsive.dart';
 
 class UserManagementScreen extends ConsumerWidget {
   const UserManagementScreen({super.key});
@@ -24,19 +26,13 @@ class UserManagementScreen extends ConsumerWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             // Header row
-            Row(
-              children: [
-                const Text(
-                  'User Management',
-                  style: TextStyle(
-                      fontSize: 22, fontWeight: FontWeight.bold),
+            PageHeader(
+              title: 'User Management',
+              actions: [
+                SizedBox(
+                  width: context.dialogWidth(260),
+                  child: const _SearchField(),
                 ),
-                const Spacer(),
-                const SizedBox(
-                  width: 260,
-                  child: _SearchField(),
-                ),
-                const SizedBox(width: 12),
                 // Status filter
                 DropdownButton<String?>(
                   value: query.status,
@@ -58,7 +54,6 @@ class UserManagementScreen extends ConsumerWidget {
                       .read(usersQueryNotifierProvider.notifier)
                       .setStatus(v),
                 ),
-                const SizedBox(width: 12),
                 IconButton(
                   icon: const Icon(Icons.refresh),
                   tooltip: 'Refresh',
@@ -164,7 +159,9 @@ class _UserTable extends ConsumerWidget {
           RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       clipBehavior: Clip.hardEdge,
       child: SingleChildScrollView(
-        child: DataTable(
+        child: SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: DataTable(
           showCheckboxColumn: false,
           headingRowColor:
               WidgetStateProperty.all(Colors.grey.shade100),
@@ -179,6 +176,7 @@ class _UserTable extends ConsumerWidget {
           rows: page.users
               .map((u) => _userRow(context, ref, u))
               .toList(),
+          ),
         ),
       ),
     );

@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 
 import '../models/report.dart';
 import '../providers/reports_provider.dart';
+import '../widgets/page_header.dart';
 
 class ReportsScreen extends ConsumerWidget {
   const ReportsScreen({super.key});
@@ -23,11 +24,9 @@ class ReportsScreen extends ConsumerWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Row(
-              children: [
-                const Text('Reports & Analytics',
-                    style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
-                const Spacer(),
+            PageHeader(
+              title: 'Reports & Analytics',
+              actions: [
                 IconButton(
                   icon: const Icon(Icons.refresh),
                   tooltip: 'Refresh',

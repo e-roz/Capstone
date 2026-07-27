@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 import '../models/violation.dart';
 import '../providers/violations_provider.dart';
 import '../widgets/user_picker.dart';
+import '../core/utils/responsive.dart';
 
 const _violationStatuses = ['Issued', 'Appealed', 'Upheld', 'Overturned', 'Dismissed'];
 const _appealStatuses = ['Pending', 'Approved', 'Denied'];
@@ -134,7 +135,7 @@ class _ViolationsTab extends ConsumerWidget {
         builder: (ctx, setState) => AlertDialog(
           title: const Text('Issue Violation'),
           content: SizedBox(
-            width: 400,
+            width: context.dialogWidth(400),
             child: Form(
               key: formKey,
               child: Column(
@@ -222,7 +223,9 @@ class _ViolationTable extends ConsumerWidget {
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       clipBehavior: Clip.hardEdge,
       child: SingleChildScrollView(
-        child: DataTable(
+        child: SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: DataTable(
           headingRowColor: WidgetStateProperty.all(Colors.grey.shade100),
           columns: const [
             DataColumn(label: Text('Rule')),
@@ -233,6 +236,7 @@ class _ViolationTable extends ConsumerWidget {
             DataColumn(label: Text('Actions')),
           ],
           rows: page.violations.map((v) => _row(context, ref, v)).toList(),
+          ),
         ),
       ),
     );

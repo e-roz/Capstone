@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../core/constants/api_endpoints.dart';
 import '../core/network/dio_client.dart';
 import '../models/admin_user.dart';
+import '../core/utils/responsive.dart';
 
 /// The result of picking a user — the id the API needs, plus the name to show
 /// back to the operator so they can confirm they picked the right person.
@@ -101,8 +102,8 @@ class _UserPickerDialogState extends ConsumerState<_UserPickerDialog> {
     return AlertDialog(
       title: const Text('Select User'),
       content: SizedBox(
-        width: 420,
-        height: 420,
+        width: context.dialogWidth(420),
+        height: context.dialogHeight(420),
         child: Column(
           children: [
             TextField(

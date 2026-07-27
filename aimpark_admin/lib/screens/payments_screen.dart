@@ -4,6 +4,8 @@ import 'package:intl/intl.dart';
 
 import '../models/payment.dart';
 import '../providers/payments_provider.dart';
+import '../core/utils/responsive.dart';
+import '../widgets/page_header.dart';
 
 const _statuses = ['Pending', 'Paid', 'Waived'];
 
@@ -23,11 +25,9 @@ class PaymentsScreen extends ConsumerWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Row(
-              children: [
-                const Text('Payments',
-                    style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
-                const Spacer(),
+            PageHeader(
+              title: 'Payments',
+              actions: [
                 DropdownButton<String?>(
                   value: query.status,
                   hint: const Text('All Status'),
@@ -39,13 +39,11 @@ class PaymentsScreen extends ConsumerWidget {
                   onChanged: (v) =>
                       ref.read(paymentsQueryNotifierProvider.notifier).setStatus(v),
                 ),
-                const SizedBox(width: 12),
                 OutlinedButton.icon(
                   icon: const Icon(Icons.tune, size: 16),
                   label: const Text('Manage Rates'),
                   onPressed: () => _showRates(context, ref, ratesAsync.valueOrNull ?? []),
                 ),
-                const SizedBox(width: 8),
                 IconButton(
                   icon: const Icon(Icons.refresh),
                   tooltip: 'Refresh',
@@ -83,7 +81,7 @@ class PaymentsScreen extends ConsumerWidget {
       builder: (ctx) => AlertDialog(
         title: const Text('Parking Rates'),
         content: SizedBox(
-          width: 420,
+          width: context.dialogWidth(420),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [

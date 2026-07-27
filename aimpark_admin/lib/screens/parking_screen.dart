@@ -5,6 +5,8 @@ import 'package:intl/intl.dart';
 import '../models/parking_slot.dart';
 import '../providers/parking_provider.dart';
 import '../widgets/user_picker.dart';
+import '../core/utils/responsive.dart';
+import '../widgets/page_header.dart';
 
 class ParkingScreen extends ConsumerWidget {
   const ParkingScreen({super.key});
@@ -20,29 +22,24 @@ class ParkingScreen extends ConsumerWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Row(
-              children: [
-                const Text('Parking',
-                    style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
-                const Spacer(),
+            PageHeader(
+              title: 'Parking',
+              actions: [
                 OutlinedButton.icon(
                   icon: const Icon(Icons.login, size: 16),
                   label: const Text('Log Entry'),
                   onPressed: () => _showLogEntry(context, ref),
                 ),
-                const SizedBox(width: 8),
                 OutlinedButton.icon(
                   icon: const Icon(Icons.logout, size: 16),
                   label: const Text('Log Exit'),
                   onPressed: () => _showLogExit(context, ref),
                 ),
-                const SizedBox(width: 8),
                 FilledButton.icon(
                   icon: const Icon(Icons.add, size: 16),
                   label: const Text('Add Slot'),
                   onPressed: () => _showAddSlot(context, ref),
                 ),
-                const SizedBox(width: 8),
                 IconButton(
                   icon: const Icon(Icons.refresh),
                   tooltip: 'Refresh',
@@ -149,7 +146,7 @@ class ParkingScreen extends ConsumerWidget {
         builder: (ctx, setState) => AlertDialog(
           title: const Text('Log Parking Entry'),
           content: SizedBox(
-            width: 380,
+            width: context.dialogWidth(380),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
@@ -234,8 +231,8 @@ class ParkingScreen extends ConsumerWidget {
       builder: (ctx) => AlertDialog(
         title: const Text('Log Parking Exit'),
         content: SizedBox(
-          width: 420,
-          height: 360,
+          width: context.dialogWidth(420),
+          height: context.dialogHeight(360),
           child: Column(
             children: [
               const Align(
@@ -308,7 +305,9 @@ class _SlotTable extends ConsumerWidget {
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       clipBehavior: Clip.hardEdge,
       child: SingleChildScrollView(
-        child: DataTable(
+        child: SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: DataTable(
           headingRowColor: WidgetStateProperty.all(Colors.grey.shade100),
           columns: const [
             DataColumn(label: Text('Slot Code')),
@@ -317,6 +316,7 @@ class _SlotTable extends ConsumerWidget {
             DataColumn(label: Text('Actions')),
           ],
           rows: slots.map((s) => _slotRow(context, ref, s)).toList(),
+          ),
         ),
       ),
     );

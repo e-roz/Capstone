@@ -5,6 +5,8 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../models/incident.dart';
 import '../providers/incidents_provider.dart';
+import '../core/utils/responsive.dart';
+import '../widgets/page_header.dart';
 
 const _incidentStatuses = ['Submitted', 'UnderReview', 'Resolved', 'Dismissed'];
 
@@ -23,11 +25,9 @@ class IncidentsScreen extends ConsumerWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Row(
-              children: [
-                const Text('Incidents & Appeals',
-                    style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
-                const Spacer(),
+            PageHeader(
+              title: 'Incidents & Appeals',
+              actions: [
                 DropdownButton<String?>(
                   value: query.status,
                   hint: const Text('All Status'),
@@ -39,7 +39,6 @@ class IncidentsScreen extends ConsumerWidget {
                   onChanged: (v) =>
                       ref.read(incidentsQueryNotifierProvider.notifier).setStatus(v),
                 ),
-                const SizedBox(width: 12),
                 IconButton(
                   icon: const Icon(Icons.refresh),
                   tooltip: 'Refresh',
@@ -84,7 +83,9 @@ class _IncidentTable extends ConsumerWidget {
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       clipBehavior: Clip.hardEdge,
       child: SingleChildScrollView(
-        child: DataTable(
+        child: SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: DataTable(
           showCheckboxColumn: false,
           headingRowColor: WidgetStateProperty.all(Colors.grey.shade100),
           columns: const [
@@ -103,6 +104,7 @@ class _IncidentTable extends ConsumerWidget {
                     ],
                   ))
               .toList(),
+          ),
         ),
       ),
     );
@@ -121,7 +123,7 @@ class _IncidentTable extends ConsumerWidget {
         builder: (ctx, setState) => AlertDialog(
           title: Text('Incident — ${detail.category}'),
           content: SizedBox(
-            width: 420,
+            width: context.dialogWidth(420),
             child: SingleChildScrollView(
               child: Column(
                 mainAxisSize: MainAxisSize.min,
