@@ -10,6 +10,7 @@ import '../../../../core/widgets/app_badge.dart';
 import '../../../../core/widgets/app_button.dart';
 import '../../../../core/widgets/app_card.dart';
 import '../../../../core/widgets/celebration_dialog.dart';
+import '../../../auth/presentation/widgets/image_picker_box.dart';
 import '../providers/violations_provider.dart';
 
 class ViolationDetailScreen extends ConsumerWidget {
@@ -19,6 +20,8 @@ class ViolationDetailScreen extends ConsumerWidget {
   Future<void> _openAppealSheet(BuildContext context, WidgetRef ref) async {
     final reasonController = TextEditingController();
     var isSubmitting = false;
+    String? photo1;
+    String? photo2;
 
     await showModalBottomSheet<void>(
       context: context,
@@ -56,6 +59,35 @@ class ViolationDetailScreen extends ConsumerWidget {
                       border: OutlineInputBorder(),
                     ),
                   ),
+                  const SizedBox(height: AppSpacing.md),
+                  Text('Evidence (optional)', style: AppTextStyles.labelSmall),
+                  const SizedBox(height: AppSpacing.xs),
+                  Text(
+                    'A photo of where you were parked, a permit, or a receipt '
+                    'makes an appeal far easier to decide.',
+                    style: AppTextStyles.bodySmall
+                        .copyWith(color: AppColors.textSecondary),
+                  ),
+                  const SizedBox(height: AppSpacing.sm),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: ImagePickerBox(
+                          label: 'Photo 1',
+                          imagePath: photo1,
+                          onImageSelected: (p) => setSheetState(() => photo1 = p),
+                        ),
+                      ),
+                      const SizedBox(width: AppSpacing.sm),
+                      Expanded(
+                        child: ImagePickerBox(
+                          label: 'Photo 2',
+                          imagePath: photo2,
+                          onImageSelected: (p) => setSheetState(() => photo2 = p),
+                        ),
+                      ),
+                    ],
+                  ),
                   const SizedBox(height: AppSpacing.lg),
                   AppButton(
                     label: 'Submit Appeal',
@@ -72,7 +104,11 @@ class ViolationDetailScreen extends ConsumerWidget {
                             try {
                               await ref
                                   .read(violationsRepositoryProvider)
-                                  .submitAppeal(violationId, reason);
+                                  .submitAppeal(
+                                    violationId,
+                                    reason,
+                                    evidencePaths: [?photo1, ?photo2],
+                                  );
                               ref.invalidate(violationDetailProvider(violationId));
                               if (sheetContext.mounted) Navigator.of(sheetContext).pop();
                               if (context.mounted) {
@@ -166,6 +202,38 @@ class ViolationDetailScreen extends ConsumerWidget {
                         const SizedBox(height: AppSpacing.sm),
                         if (violation.appealReasonText != null)
                           Text(violation.appealReasonText!, style: AppTextStyles.bodyMedium),
+                        if (violation.appealEvidenceUrls.isNotEmpty) ...[
+                          const SizedBox(height: AppSpacing.sm),
+                          Text('Evidence you submitted',
+                              style: AppTextStyles.labelSmall),
+                          const SizedBox(height: AppSpacing.xs),
+                          SizedBox(
+                            height: 90,
+                            child: ListView.separated(
+                              scrollDirection: Axis.horizontal,
+                              itemCount: violation.appealEvidenceUrls.length,
+                              separatorBuilder: (_, _) =>
+                                  const SizedBox(width: AppSpacing.sm),
+                              itemBuilder: (context, index) => ClipRRect(
+                                borderRadius:
+                                    BorderRadius.circular(AppRadius.sm),
+                                child: Image.network(
+                                  violation.appealEvidenceUrls[index],
+                                  width: 90,
+                                  height: 90,
+                                  fit: BoxFit.cover,
+                                  errorBuilder: (_, _, _) => Container(
+                                    width: 90,
+                                    height: 90,
+                                    color: AppColors.bgSurfaceAlt,
+                                    child: const Icon(Icons.broken_image_rounded,
+                                        color: AppColors.textSecondary),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
                         if (violation.appealAdminNotes != null) ...[
                           const SizedBox(height: AppSpacing.sm),
                           Text('Admin notes', style: AppTextStyles.labelSmall),

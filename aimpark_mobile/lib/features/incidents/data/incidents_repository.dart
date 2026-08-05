@@ -37,4 +37,23 @@ class IncidentsRepository {
     }
     await _dio.post(ApiEndpoints.incidents, data: formData);
   }
+
+  /// Corrects a report. Attachments are append-only and not touched here.
+  Future<void> update({
+    required String incidentId,
+    required String category,
+    required String description,
+    String? location,
+  }) async {
+    await _dio.put(ApiEndpoints.incidentDetail(incidentId), data: {
+      'category': category,
+      'description': description,
+      if (location != null && location.isNotEmpty) 'location': location,
+    });
+  }
+
+  /// Retracts a report. The row survives as Withdrawn rather than being deleted.
+  Future<void> withdraw(String incidentId) async {
+    await _dio.post(ApiEndpoints.incidentWithdraw(incidentId));
+  }
 }

@@ -113,9 +113,12 @@ class _ViolationsTab extends ConsumerWidget {
 
   Future<void> _showIssueViolation(BuildContext context, WidgetRef ref) async {
     final descriptionCtrl = TextEditingController();
+    final penaltyCtrl = TextEditingController();
+    final daysCtrl = TextEditingController();
     PickedUser? picked;
     String? userError;
     String? ruleId;
+    String? suspensionOverride;
     final formKey = GlobalKey<FormState>();
     final rules = await ref.read(policyRulesProvider.future);
     final activeRules = rules.where((r) => r.isActive).toList();
@@ -170,6 +173,57 @@ class _ViolationsTab extends ConsumerWidget {
                     validator: (v) =>
                         (v == null || v.isEmpty) ? 'Description is required' : null,
                   ),
+                  const SizedBox(height: 16),
+                  // The API has always accepted these; leaving them out of the
+                  // dialog meant every violation silently took the rule default.
+                  const Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                        'Leave blank to use the policy rule defaults.',
+                        style: TextStyle(fontSize: 12, color: Colors.black54)),
+                  ),
+                  const SizedBox(height: 8),
+                  TextFormField(
+                    controller: penaltyCtrl,
+                    keyboardType: TextInputType.number,
+                    decoration: const InputDecoration(
+                        labelText: 'Penalty amount (override)',
+                        prefixText: '₱',
+                        border: OutlineInputBorder()),
+                    validator: (v) => (v == null || v.isEmpty)
+                        ? null
+                        : (double.tryParse(v) == null ? 'Enter a valid amount' : null),
+                  ),
+                  const SizedBox(height: 12),
+                  DropdownButtonFormField<String?>(
+                    initialValue: suspensionOverride,
+                    decoration: const InputDecoration(
+                        labelText: 'Suspension (override)',
+                        border: OutlineInputBorder()),
+                    items: const [
+                      DropdownMenuItem(value: null, child: Text('Use rule default')),
+                      DropdownMenuItem(value: 'None', child: Text('None')),
+                      DropdownMenuItem(value: 'Temporary', child: Text('Temporary')),
+                      DropdownMenuItem(value: 'Permanent', child: Text('Permanent')),
+                    ],
+                    onChanged: (v) => setState(() => suspensionOverride = v),
+                  ),
+                  if (suspensionOverride == 'Temporary') ...[
+                    const SizedBox(height: 12),
+                    TextFormField(
+                      controller: daysCtrl,
+                      keyboardType: TextInputType.number,
+                      decoration: const InputDecoration(
+                          labelText: 'Suspension days',
+                          border: OutlineInputBorder()),
+                      validator: (v) {
+                        final n = int.tryParse(v ?? '');
+                        return (n == null || n <= 0)
+                            ? 'Enter a positive number of days'
+                            : null;
+                      },
+                    ),
+                  ],
                 ],
               ),
             ),
@@ -199,6 +253,11 @@ class _ViolationsTab extends ConsumerWidget {
           userId: picked!.userId,
           policyRuleId: ruleId!,
           description: descriptionCtrl.text.trim(),
+          penaltyAmountOverride: double.tryParse(penaltyCtrl.text.trim()),
+          suspensionTypeOverride: suspensionOverride,
+          suspensionDaysOverride: suspensionOverride == 'Temporary'
+              ? int.tryParse(daysCtrl.text.trim())
+              : null,
         );
     if (!context.mounted) return;
     ScaffoldMessenger.of(context)
@@ -251,28 +310,170 @@ class _ViolationTable extends ConsumerWidget {
           DataCell(Text(DateFormat('MMM d, yyyy').format(v.createdAt.toLocal()))),
           DataCell(
             (v.status == 'Issued' || v.status == 'Appealed')
-                ? OutlinedButton(
-                    style: OutlinedButton.styleFrom(
-                        padding:
-                            const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                        minimumSize: Size.zero,
-                        tapTargetSize: MaterialTapTargetSize.shrinkWrap),
-                    onPressed: () async {
-                      final msg = await ref
-                          .read(violationActionsProvider.notifier)
-                          .dismiss(v.violationId);
-                      if (!context.mounted) return;
-                      ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(content: Text(msg ?? 'Violation dismissed.')));
-                      ref.invalidate(violationListProvider);
-                    },
-                    child: const Text('Dismiss', style: TextStyle(fontSize: 12)),
+                ? Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      // Editable only while Issued — once appealed, this record
+                      // is what both sides are arguing about.
+                      if (v.status == 'Issued') ...[
+                        OutlinedButton(
+                          style: _compactButton,
+                          onPressed: () => _showEdit(context, ref, v),
+                          child: const Text('Edit',
+                              style: TextStyle(fontSize: 12)),
+                        ),
+                        const SizedBox(width: 6),
+                      ],
+                      OutlinedButton(
+                        style: _compactButton,
+                        onPressed: () async {
+                          final msg = await ref
+                              .read(violationActionsProvider.notifier)
+                              .dismiss(v.violationId);
+                          if (!context.mounted) return;
+                          ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(content: Text(msg ?? 'Violation dismissed.')));
+                          ref.invalidate(violationListProvider);
+                        },
+                        child: const Text('Dismiss',
+                            style: TextStyle(fontSize: 12)),
+                      ),
+                    ],
                   )
                 : const SizedBox.shrink(),
           ),
         ],
       );
+
+  static final _compactButton = OutlinedButton.styleFrom(
+    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+    minimumSize: Size.zero,
+    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+  );
+
+  Future<void> _showEdit(
+      BuildContext context, WidgetRef ref, ViolationSummary v) async {
+    final descriptionCtrl = TextEditingController();
+    final penaltyCtrl =
+        TextEditingController(text: v.penaltyAmount.toStringAsFixed(2));
+    final daysCtrl = TextEditingController();
+    var suspensionType = v.suspensionType;
+    final formKey = GlobalKey<FormState>();
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setState) => AlertDialog(
+          title: const Text('Edit Violation'),
+          content: SizedBox(
+            width: context.dialogWidth(400),
+            child: Form(
+              key: formKey,
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text(v.policyRuleTitle,
+                          style: const TextStyle(fontWeight: FontWeight.w600)),
+                    ),
+                    const SizedBox(height: 12),
+                    TextFormField(
+                      controller: descriptionCtrl,
+                      maxLines: 3,
+                      decoration: const InputDecoration(
+                          labelText: 'Description',
+                          border: OutlineInputBorder()),
+                      validator: (v) => (v == null || v.trim().isEmpty)
+                          ? 'Description is required'
+                          : null,
+                    ),
+                    const SizedBox(height: 12),
+                    TextFormField(
+                      controller: penaltyCtrl,
+                      keyboardType: TextInputType.number,
+                      decoration: const InputDecoration(
+                          labelText: 'Penalty amount',
+                          prefixText: '₱',
+                          border: OutlineInputBorder()),
+                      validator: (v) {
+                        final n = double.tryParse(v ?? '');
+                        return (n == null || n < 0)
+                            ? 'Enter a valid amount'
+                            : null;
+                      },
+                    ),
+                    const SizedBox(height: 12),
+                    DropdownButtonFormField<String>(
+                      initialValue: _violationSuspensions.contains(suspensionType)
+                          ? suspensionType
+                          : 'None',
+                      decoration: const InputDecoration(
+                          labelText: 'Suspension', border: OutlineInputBorder()),
+                      items: _violationSuspensions
+                          .map((s) =>
+                              DropdownMenuItem(value: s, child: Text(s)))
+                          .toList(),
+                      onChanged: (val) =>
+                          setState(() => suspensionType = val ?? 'None'),
+                    ),
+                    if (suspensionType == 'Temporary') ...[
+                      const SizedBox(height: 12),
+                      TextFormField(
+                        controller: daysCtrl,
+                        keyboardType: TextInputType.number,
+                        decoration: const InputDecoration(
+                            labelText: 'Suspension days',
+                            border: OutlineInputBorder()),
+                        validator: (v) {
+                          final n = int.tryParse(v ?? '');
+                          return (n == null || n <= 0)
+                              ? 'Enter a positive number of days'
+                              : null;
+                        },
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ),
+          ),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: const Text('Cancel')),
+            FilledButton(
+              onPressed: () {
+                if (formKey.currentState!.validate()) Navigator.pop(ctx, true);
+              },
+              child: const Text('Save'),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    if (confirmed != true || !context.mounted) return;
+
+    final msg = await ref.read(violationActionsProvider.notifier).update(
+          violationId: v.violationId,
+          description: descriptionCtrl.text.trim(),
+          penaltyAmount: double.parse(penaltyCtrl.text.trim()),
+          suspensionType: suspensionType,
+          suspensionDays: suspensionType == 'Temporary'
+              ? int.tryParse(daysCtrl.text.trim())
+              : null,
+        );
+
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context)
+        .showSnackBar(SnackBar(content: Text(msg ?? 'Violation updated.')));
+    ref.invalidate(violationListProvider);
+  }
 }
+
+const _violationSuspensions = ['None', 'Temporary', 'Permanent'];
 
 // ── Appeals tab ──────────────────────────────────────────────────────────────
 

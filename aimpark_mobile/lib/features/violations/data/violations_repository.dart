@@ -21,10 +21,18 @@ class ViolationsRepository {
     return ViolationDetail.fromJson(response.data as Map<String, dynamic>);
   }
 
-  Future<void> submitAppeal(String violationId, String reasonText) {
-    return _dio.post(
-      ApiEndpoints.violationAppeal(violationId),
-      data: {'reasonText': reasonText},
-    );
+  /// Multipart rather than JSON, so supporting photos ride along with the
+  /// reason — reason text alone often cannot settle a dispute. The endpoint
+  /// takes [FromForm], so a JSON body would not bind.
+  Future<void> submitAppeal(
+    String violationId,
+    String reasonText, {
+    List<String> evidencePaths = const [],
+  }) async {
+    final formData = FormData.fromMap({'ReasonText': reasonText});
+    for (final path in evidencePaths) {
+      formData.files.add(MapEntry('Evidence', await MultipartFile.fromFile(path)));
+    }
+    await _dio.post(ApiEndpoints.violationAppeal(violationId), data: formData);
   }
 }

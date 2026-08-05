@@ -63,6 +63,33 @@ namespace AimPark.API.Migrations
                     b.ToTable("AdminAuditLogs");
                 });
 
+            modelBuilder.Entity("AimPark.API.Entities.AppealEvidence", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("AppealId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("FileName")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("StoragePath")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<DateTime>("UploadedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AppealId");
+
+                    b.ToTable("AppealEvidence");
+                });
+
             modelBuilder.Entity("AimPark.API.Entities.DeviceToken", b =>
                 {
                     b.Property<Guid>("Id")
@@ -128,6 +155,46 @@ namespace AimPark.API.Migrations
                     b.HasIndex("UserId");
 
                     b.ToTable("Documents");
+                });
+
+            modelBuilder.Entity("AimPark.API.Entities.GateDevice", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("ApiKeyHash")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("ApiKeyPrefix")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("timestamp with time zone")
+                        .HasDefaultValueSql("NOW()");
+
+                    b.Property<int>("Gate")
+                        .HasColumnType("integer");
+
+                    b.Property<bool>("IsRevoked")
+                        .HasColumnType("boolean");
+
+                    b.Property<DateTime?>("LastSeenAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ApiKeyHash")
+                        .IsUnique();
+
+                    b.ToTable("GateDevices");
                 });
 
             modelBuilder.Entity("AimPark.API.Entities.Incident", b =>
@@ -229,6 +296,9 @@ namespace AimPark.API.Migrations
                     b.Property<string>("TargetRole")
                         .HasColumnType("text");
 
+                    b.Property<Guid?>("TargetUserId")
+                        .HasColumnType("uuid");
+
                     b.Property<string>("Title")
                         .IsRequired()
                         .HasColumnType("text");
@@ -240,6 +310,8 @@ namespace AimPark.API.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("CreatedAt");
+
+                    b.HasIndex("TargetUserId");
 
                     b.ToTable("Notifications");
                 });
@@ -288,7 +360,10 @@ namespace AimPark.API.Migrations
                     b.Property<DateTime?>("ExitTime")
                         .HasColumnType("timestamp with time zone");
 
-                    b.Property<Guid>("LoggedByUserId")
+                    b.Property<Guid?>("LoggedByDeviceId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("LoggedByUserId")
                         .HasColumnType("uuid");
 
                     b.Property<Guid?>("SlotId")
@@ -351,6 +426,9 @@ namespace AimPark.API.Migrations
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<int>("Gate")
+                        .HasColumnType("integer");
+
                     b.Property<string>("SlotCode")
                         .IsRequired()
                         .HasColumnType("text");
@@ -372,6 +450,8 @@ namespace AimPark.API.Migrations
                     b.HasIndex("SlotCode")
                         .IsUnique();
 
+                    b.HasIndex("Gate", "VehicleType", "Status");
+
                     b.ToTable("ParkingSlots");
 
                     b.HasData(
@@ -379,161 +459,201 @@ namespace AimPark.API.Migrations
                         {
                             Id = new Guid("00000000-0000-0000-0000-000000000001"),
                             CreatedAt = new DateTime(2026, 7, 23, 0, 0, 0, 0, DateTimeKind.Utc),
-                            SlotCode = "A1",
+                            Gate = 1,
+                            SlotCode = "G1-C1",
                             Status = "Available",
-                            UpdatedAt = new DateTime(2026, 7, 23, 0, 0, 0, 0, DateTimeKind.Utc)
+                            UpdatedAt = new DateTime(2026, 7, 23, 0, 0, 0, 0, DateTimeKind.Utc),
+                            VehicleType = "Car"
                         },
                         new
                         {
                             Id = new Guid("00000000-0000-0000-0000-000000000002"),
                             CreatedAt = new DateTime(2026, 7, 23, 0, 0, 0, 0, DateTimeKind.Utc),
-                            SlotCode = "A2",
+                            Gate = 1,
+                            SlotCode = "G1-C2",
                             Status = "Available",
-                            UpdatedAt = new DateTime(2026, 7, 23, 0, 0, 0, 0, DateTimeKind.Utc)
+                            UpdatedAt = new DateTime(2026, 7, 23, 0, 0, 0, 0, DateTimeKind.Utc),
+                            VehicleType = "Car"
                         },
                         new
                         {
                             Id = new Guid("00000000-0000-0000-0000-000000000003"),
                             CreatedAt = new DateTime(2026, 7, 23, 0, 0, 0, 0, DateTimeKind.Utc),
-                            SlotCode = "A3",
+                            Gate = 1,
+                            SlotCode = "G1-M1",
                             Status = "Available",
-                            UpdatedAt = new DateTime(2026, 7, 23, 0, 0, 0, 0, DateTimeKind.Utc)
+                            UpdatedAt = new DateTime(2026, 7, 23, 0, 0, 0, 0, DateTimeKind.Utc),
+                            VehicleType = "Motorcycle"
                         },
                         new
                         {
                             Id = new Guid("00000000-0000-0000-0000-000000000004"),
                             CreatedAt = new DateTime(2026, 7, 23, 0, 0, 0, 0, DateTimeKind.Utc),
-                            SlotCode = "A4",
+                            Gate = 1,
+                            SlotCode = "G1-M2",
                             Status = "Available",
-                            UpdatedAt = new DateTime(2026, 7, 23, 0, 0, 0, 0, DateTimeKind.Utc)
+                            UpdatedAt = new DateTime(2026, 7, 23, 0, 0, 0, 0, DateTimeKind.Utc),
+                            VehicleType = "Motorcycle"
                         },
                         new
                         {
                             Id = new Guid("00000000-0000-0000-0000-000000000005"),
                             CreatedAt = new DateTime(2026, 7, 23, 0, 0, 0, 0, DateTimeKind.Utc),
-                            SlotCode = "A5",
+                            Gate = 1,
+                            SlotCode = "G1-M3",
                             Status = "Available",
-                            UpdatedAt = new DateTime(2026, 7, 23, 0, 0, 0, 0, DateTimeKind.Utc)
+                            UpdatedAt = new DateTime(2026, 7, 23, 0, 0, 0, 0, DateTimeKind.Utc),
+                            VehicleType = "Motorcycle"
                         },
                         new
                         {
                             Id = new Guid("00000000-0000-0000-0000-000000000006"),
                             CreatedAt = new DateTime(2026, 7, 23, 0, 0, 0, 0, DateTimeKind.Utc),
-                            SlotCode = "A6",
+                            Gate = 1,
+                            SlotCode = "G1-M4",
                             Status = "Available",
-                            UpdatedAt = new DateTime(2026, 7, 23, 0, 0, 0, 0, DateTimeKind.Utc)
+                            UpdatedAt = new DateTime(2026, 7, 23, 0, 0, 0, 0, DateTimeKind.Utc),
+                            VehicleType = "Motorcycle"
                         },
                         new
                         {
                             Id = new Guid("00000000-0000-0000-0000-000000000007"),
                             CreatedAt = new DateTime(2026, 7, 23, 0, 0, 0, 0, DateTimeKind.Utc),
-                            SlotCode = "A7",
+                            Gate = 1,
+                            SlotCode = "G1-M5",
                             Status = "Available",
-                            UpdatedAt = new DateTime(2026, 7, 23, 0, 0, 0, 0, DateTimeKind.Utc)
+                            UpdatedAt = new DateTime(2026, 7, 23, 0, 0, 0, 0, DateTimeKind.Utc),
+                            VehicleType = "Motorcycle"
                         },
                         new
                         {
                             Id = new Guid("00000000-0000-0000-0000-000000000008"),
                             CreatedAt = new DateTime(2026, 7, 23, 0, 0, 0, 0, DateTimeKind.Utc),
-                            SlotCode = "A8",
+                            Gate = 1,
+                            SlotCode = "G1-M6",
                             Status = "Available",
-                            UpdatedAt = new DateTime(2026, 7, 23, 0, 0, 0, 0, DateTimeKind.Utc)
+                            UpdatedAt = new DateTime(2026, 7, 23, 0, 0, 0, 0, DateTimeKind.Utc),
+                            VehicleType = "Motorcycle"
                         },
                         new
                         {
                             Id = new Guid("00000000-0000-0000-0000-000000000009"),
                             CreatedAt = new DateTime(2026, 7, 23, 0, 0, 0, 0, DateTimeKind.Utc),
-                            SlotCode = "A9",
+                            Gate = 1,
+                            SlotCode = "G1-M7",
                             Status = "Available",
-                            UpdatedAt = new DateTime(2026, 7, 23, 0, 0, 0, 0, DateTimeKind.Utc)
+                            UpdatedAt = new DateTime(2026, 7, 23, 0, 0, 0, 0, DateTimeKind.Utc),
+                            VehicleType = "Motorcycle"
                         },
                         new
                         {
                             Id = new Guid("00000000-0000-0000-0000-000000000010"),
                             CreatedAt = new DateTime(2026, 7, 23, 0, 0, 0, 0, DateTimeKind.Utc),
-                            SlotCode = "A10",
+                            Gate = 1,
+                            SlotCode = "G1-M8",
                             Status = "Available",
-                            UpdatedAt = new DateTime(2026, 7, 23, 0, 0, 0, 0, DateTimeKind.Utc)
+                            UpdatedAt = new DateTime(2026, 7, 23, 0, 0, 0, 0, DateTimeKind.Utc),
+                            VehicleType = "Motorcycle"
                         },
                         new
                         {
                             Id = new Guid("00000000-0000-0000-0000-000000000011"),
                             CreatedAt = new DateTime(2026, 7, 23, 0, 0, 0, 0, DateTimeKind.Utc),
-                            SlotCode = "A11",
+                            Gate = 2,
+                            SlotCode = "G2-C1",
                             Status = "Available",
-                            UpdatedAt = new DateTime(2026, 7, 23, 0, 0, 0, 0, DateTimeKind.Utc)
+                            UpdatedAt = new DateTime(2026, 7, 23, 0, 0, 0, 0, DateTimeKind.Utc),
+                            VehicleType = "Car"
                         },
                         new
                         {
                             Id = new Guid("00000000-0000-0000-0000-000000000012"),
                             CreatedAt = new DateTime(2026, 7, 23, 0, 0, 0, 0, DateTimeKind.Utc),
-                            SlotCode = "A12",
+                            Gate = 2,
+                            SlotCode = "G2-C2",
                             Status = "Available",
-                            UpdatedAt = new DateTime(2026, 7, 23, 0, 0, 0, 0, DateTimeKind.Utc)
+                            UpdatedAt = new DateTime(2026, 7, 23, 0, 0, 0, 0, DateTimeKind.Utc),
+                            VehicleType = "Car"
                         },
                         new
                         {
                             Id = new Guid("00000000-0000-0000-0000-000000000013"),
                             CreatedAt = new DateTime(2026, 7, 23, 0, 0, 0, 0, DateTimeKind.Utc),
-                            SlotCode = "A13",
+                            Gate = 2,
+                            SlotCode = "G2-M1",
                             Status = "Available",
-                            UpdatedAt = new DateTime(2026, 7, 23, 0, 0, 0, 0, DateTimeKind.Utc)
+                            UpdatedAt = new DateTime(2026, 7, 23, 0, 0, 0, 0, DateTimeKind.Utc),
+                            VehicleType = "Motorcycle"
                         },
                         new
                         {
                             Id = new Guid("00000000-0000-0000-0000-000000000014"),
                             CreatedAt = new DateTime(2026, 7, 23, 0, 0, 0, 0, DateTimeKind.Utc),
-                            SlotCode = "A14",
+                            Gate = 2,
+                            SlotCode = "G2-M2",
                             Status = "Available",
-                            UpdatedAt = new DateTime(2026, 7, 23, 0, 0, 0, 0, DateTimeKind.Utc)
+                            UpdatedAt = new DateTime(2026, 7, 23, 0, 0, 0, 0, DateTimeKind.Utc),
+                            VehicleType = "Motorcycle"
                         },
                         new
                         {
                             Id = new Guid("00000000-0000-0000-0000-000000000015"),
                             CreatedAt = new DateTime(2026, 7, 23, 0, 0, 0, 0, DateTimeKind.Utc),
-                            SlotCode = "A15",
+                            Gate = 2,
+                            SlotCode = "G2-M3",
                             Status = "Available",
-                            UpdatedAt = new DateTime(2026, 7, 23, 0, 0, 0, 0, DateTimeKind.Utc)
+                            UpdatedAt = new DateTime(2026, 7, 23, 0, 0, 0, 0, DateTimeKind.Utc),
+                            VehicleType = "Motorcycle"
                         },
                         new
                         {
                             Id = new Guid("00000000-0000-0000-0000-000000000016"),
                             CreatedAt = new DateTime(2026, 7, 23, 0, 0, 0, 0, DateTimeKind.Utc),
-                            SlotCode = "A16",
+                            Gate = 2,
+                            SlotCode = "G2-M4",
                             Status = "Available",
-                            UpdatedAt = new DateTime(2026, 7, 23, 0, 0, 0, 0, DateTimeKind.Utc)
+                            UpdatedAt = new DateTime(2026, 7, 23, 0, 0, 0, 0, DateTimeKind.Utc),
+                            VehicleType = "Motorcycle"
                         },
                         new
                         {
                             Id = new Guid("00000000-0000-0000-0000-000000000017"),
                             CreatedAt = new DateTime(2026, 7, 23, 0, 0, 0, 0, DateTimeKind.Utc),
-                            SlotCode = "A17",
+                            Gate = 2,
+                            SlotCode = "G2-M5",
                             Status = "Available",
-                            UpdatedAt = new DateTime(2026, 7, 23, 0, 0, 0, 0, DateTimeKind.Utc)
+                            UpdatedAt = new DateTime(2026, 7, 23, 0, 0, 0, 0, DateTimeKind.Utc),
+                            VehicleType = "Motorcycle"
                         },
                         new
                         {
                             Id = new Guid("00000000-0000-0000-0000-000000000018"),
                             CreatedAt = new DateTime(2026, 7, 23, 0, 0, 0, 0, DateTimeKind.Utc),
-                            SlotCode = "A18",
+                            Gate = 2,
+                            SlotCode = "G2-M6",
                             Status = "Available",
-                            UpdatedAt = new DateTime(2026, 7, 23, 0, 0, 0, 0, DateTimeKind.Utc)
+                            UpdatedAt = new DateTime(2026, 7, 23, 0, 0, 0, 0, DateTimeKind.Utc),
+                            VehicleType = "Motorcycle"
                         },
                         new
                         {
                             Id = new Guid("00000000-0000-0000-0000-000000000019"),
                             CreatedAt = new DateTime(2026, 7, 23, 0, 0, 0, 0, DateTimeKind.Utc),
-                            SlotCode = "A19",
+                            Gate = 2,
+                            SlotCode = "G2-M7",
                             Status = "Available",
-                            UpdatedAt = new DateTime(2026, 7, 23, 0, 0, 0, 0, DateTimeKind.Utc)
+                            UpdatedAt = new DateTime(2026, 7, 23, 0, 0, 0, 0, DateTimeKind.Utc),
+                            VehicleType = "Motorcycle"
                         },
                         new
                         {
                             Id = new Guid("00000000-0000-0000-0000-000000000020"),
                             CreatedAt = new DateTime(2026, 7, 23, 0, 0, 0, 0, DateTimeKind.Utc),
-                            SlotCode = "A20",
+                            Gate = 2,
+                            SlotCode = "G2-M8",
                             Status = "Available",
-                            UpdatedAt = new DateTime(2026, 7, 23, 0, 0, 0, 0, DateTimeKind.Utc)
+                            UpdatedAt = new DateTime(2026, 7, 23, 0, 0, 0, 0, DateTimeKind.Utc),
+                            VehicleType = "Motorcycle"
                         });
                 });
 
@@ -550,6 +670,9 @@ namespace AimPark.API.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("timestamp with time zone")
                         .HasDefaultValueSql("NOW()");
+
+                    b.Property<DateTime?>("DueAt")
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<int>("DurationMinutes")
                         .HasColumnType("integer");
@@ -777,6 +900,9 @@ namespace AimPark.API.Migrations
                         .IsRequired()
                         .HasColumnType("text");
 
+                    b.Property<DateTime?>("TermsAcceptedAt")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<DateTime>("UpdatedAt")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("timestamp with time zone")
@@ -941,6 +1067,17 @@ namespace AimPark.API.Migrations
                         .IsUnique();
 
                     b.ToTable("ViolationAppeals");
+                });
+
+            modelBuilder.Entity("AimPark.API.Entities.AppealEvidence", b =>
+                {
+                    b.HasOne("AimPark.API.Entities.ViolationAppeal", "Appeal")
+                        .WithMany()
+                        .HasForeignKey("AppealId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Appeal");
                 });
 
             modelBuilder.Entity("AimPark.API.Entities.DeviceToken", b =>

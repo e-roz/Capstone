@@ -13,7 +13,17 @@ import '../../../../core/widgets/selectable_chip.dart';
 import '../../../auth/presentation/widgets/image_picker_box.dart';
 import '../providers/incidents_provider.dart';
 
-const _kCategories = ['Vandalism', 'Theft', 'Accident', 'Blocked Slot', 'Other'];
+/// Maps the API's `IncidentCategory` names to the labels shown on the chips.
+/// The key is what gets sent — sending the label instead is what made every
+/// category except "Other" fail server-side validation.
+const _kCategories = <String, String>{
+  'Vandalism': 'Vandalism',
+  'Theft': 'Theft',
+  'Accident': 'Accident',
+  'BlockedSlot': 'Blocked Slot',
+  'SuspiciousActivity': 'Suspicious Activity',
+  'Other': 'Other',
+};
 
 class ReportIncidentScreen extends ConsumerStatefulWidget {
   const ReportIncidentScreen({super.key});
@@ -25,7 +35,7 @@ class ReportIncidentScreen extends ConsumerStatefulWidget {
 class _ReportIncidentScreenState extends ConsumerState<ReportIncidentScreen> {
   final _descriptionController = TextEditingController();
   final _locationController = TextEditingController();
-  String _category = _kCategories.first;
+  String _category = _kCategories.keys.first;
   String? _photo1;
   String? _photo2;
   String? _photo3;
@@ -88,11 +98,11 @@ class _ReportIncidentScreenState extends ConsumerState<ReportIncidentScreen> {
               spacing: AppSpacing.sm,
               runSpacing: AppSpacing.sm,
               children: [
-                for (final category in _kCategories)
+                for (final entry in _kCategories.entries)
                   SelectableChip(
-                    label: category,
-                    selected: _category == category,
-                    onTap: () => setState(() => _category = category),
+                    label: entry.value,
+                    selected: _category == entry.key,
+                    onTap: () => setState(() => _category = entry.key),
                   ),
               ],
             ),

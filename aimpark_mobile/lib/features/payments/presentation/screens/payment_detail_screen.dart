@@ -83,6 +83,32 @@ class _PaymentDetailScreenState extends ConsumerState<PaymentDetailScreen> {
                           fontSize: 32,
                         ),
                       ),
+                      if (payment.dueLabel != null) ...[
+                        const SizedBox(height: 6),
+                        Row(
+                          children: [
+                            Icon(
+                              payment.isOverdue
+                                  ? Icons.warning_amber_rounded
+                                  : Icons.schedule_rounded,
+                              size: 16,
+                              color: AppColors.textOnBrand,
+                            ),
+                            const SizedBox(width: 6),
+                            Text(
+                              payment.dueLabel!,
+                              style: AppTextStyles.labelBold.copyWith(
+                                color: AppColors.textOnBrand,
+                                // Overdue reads at full strength; a deadline
+                                // still ahead sits quieter than the amount.
+                                fontWeight: payment.isOverdue
+                                    ? FontWeight.w800
+                                    : FontWeight.w600,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
                     ],
                   ),
                 ),
@@ -114,6 +140,12 @@ class _PaymentDetailScreenState extends ConsumerState<PaymentDetailScreen> {
                         value:
                             '${payment.createdAt.month}/${payment.createdAt.day}/${payment.createdAt.year}',
                       ),
+                      if (payment.dueAt != null)
+                        _InfoRow(
+                          label: 'Due by',
+                          value:
+                              '${payment.dueAt!.month}/${payment.dueAt!.day}/${payment.dueAt!.year}',
+                        ),
                       if (payment.paidAt != null)
                         _InfoRow(
                           label: 'Paid',

@@ -87,8 +87,12 @@ namespace AimPark.API.Controllers
                 case AccountStatus.Rejected:
                     return StatusCode(StatusCodes.Status403Forbidden, new LoginResponse
                     {
+                        // No formatted date here — CanReapplyAt is returned as a
+                        // real timestamp below, so the client renders it in the
+                        // user's own locale and timezone. Interpolating it here
+                        // put a raw ISO-8601 string in front of the user.
                         Message = user.CanReapplyAt is not null && DateTime.UtcNow < user.CanReapplyAt
-                            ? $"Your registration was rejected. You may re-apply after {user.CanReapplyAt:O}."
+                            ? "Your registration was rejected. You may re-apply once the waiting period has passed."
                             : "Your registration was rejected.",
                         RejectionReason = user.RejectionReason,
                         CanReapplyAt = user.CanReapplyAt,

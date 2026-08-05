@@ -29,8 +29,14 @@ namespace AimPark.API.Controllers
         public Task<ActionResult<ViolationDetailResponse>> GetDetail(Guid violationId, CancellationToken ct)
             => _violationService.GetMyViolationDetailAsync(GetUserId(), violationId, ct);
 
+        /// <summary>
+        /// Submits an appeal, optionally with supporting photos. Multipart rather
+        /// than JSON so evidence can be attached in the same request.
+        /// </summary>
         [HttpPost("{violationId:guid}/appeal")]
-        public Task<ActionResult<object>> Appeal(Guid violationId, [FromBody] SubmitAppealDto dto, CancellationToken ct)
+        [RequestSizeLimit(10 * 1024 * 1024)]
+        [RequestFormLimits(MultipartBodyLengthLimit = 10 * 1024 * 1024)]
+        public Task<ActionResult<object>> Appeal(Guid violationId, [FromForm] SubmitAppealDto dto, CancellationToken ct)
             => _violationService.SubmitAppealAsync(GetUserId(), violationId, dto, ct);
 
         private Guid GetUserId()

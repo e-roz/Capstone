@@ -29,12 +29,13 @@ class ParkingActions extends _$ParkingActions {
   @override
   AsyncValue<void> build() => const AsyncData(null);
 
-  Future<String?> createSlot(String slotCode, String? vehicleType) async {
+  Future<String?> createSlot(String slotCode, String? vehicleType, int gate) async {
     return _run(() async {
       final dio = ref.read(dioProvider);
       final res = await dio.post(ApiEndpoints.parkingSlots, data: {
         'slotCode': slotCode,
         'vehicleType': vehicleType,
+        'gate': gate,
       });
       return (res.data as Map<String, dynamic>)['message']?.toString();
     });
@@ -53,6 +54,7 @@ class ParkingActions extends _$ParkingActions {
     String? userId,
     String? rfidTagId,
     String? slotId,
+    int? gate,
   }) async {
     return _run(() async {
       final dio = ref.read(dioProvider);
@@ -60,10 +62,18 @@ class ParkingActions extends _$ParkingActions {
         if (userId != null && userId.isNotEmpty) 'userId': userId,
         if (rfidTagId != null && rfidTagId.isNotEmpty) 'rfidTagId': rfidTagId,
         if (slotId != null && slotId.isNotEmpty) 'slotId': slotId,
+        'gate': ?gate,
       });
       final data = res.data as Map<String, dynamic>;
-      final logId = data['logId']?.toString();
       final msg = data['message']?.toString() ?? 'Entry logged.';
+      // Surface the assigned bay — on the automatic path this is the whole
+      // answer, and it is what the gate display will show in production.
+      final slotCode = data['slotCode']?.toString();
+      final assignedGate = data['gate']?.toString();
+      if (slotCode != null && assignedGate != null) {
+        return '$msg Assigned Gate $assignedGate · $slotCode';
+      }
+      final logId = data['logId']?.toString();
       return logId != null ? '$msg Log ID: $logId' : msg;
     });
   }

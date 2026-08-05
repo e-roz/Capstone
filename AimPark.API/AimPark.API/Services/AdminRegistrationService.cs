@@ -20,6 +20,7 @@ namespace AimPark.API.Services
         private readonly IRepository<AdminAuditLog> _auditLogs;
         private readonly IFileStorageService _fileStorage;
         private readonly IEmailService _emailService;
+        private readonly INotificationService _notificationService;
 
         public AdminRegistrationService(
             IRepository<User> users,
@@ -27,7 +28,8 @@ namespace AimPark.API.Services
             IRepository<Document> documents,
             IRepository<AdminAuditLog> auditLogs,
             IFileStorageService fileStorage,
-            IEmailService emailService)
+            IEmailService emailService,
+            INotificationService notificationService)
         {
             _users = users;
             _vehicles = vehicles;
@@ -35,6 +37,7 @@ namespace AimPark.API.Services
             _auditLogs = auditLogs;
             _fileStorage = fileStorage;
             _emailService = emailService;
+            _notificationService = notificationService;
         }
 
         public async Task<ActionResult<List<PendingRegistrationResponse>>> GetPendingAsync(CancellationToken ct)
@@ -103,7 +106,7 @@ namespace AimPark.API.Services
                 Vehicle = vehicle is null ? null : new VehicleDTO
                 {
                     PlateNumber = vehicle.PlateNumber,
-                    VehicleType = vehicle.VehicleType,
+                    VehicleType = vehicle.VehicleType.ToString(),
                     Brand = vehicle.Brand,
                     Model = vehicle.Model,
                     Color = vehicle.Color
@@ -132,6 +135,16 @@ namespace AimPark.API.Services
             await _users.SaveAsync(ct);
 
             await _emailService.SendRegistrationApprovedEmailAsync(user.Email, user.FullName, ct);
+
+            // The email may sit unread; someone waiting on approval is far more
+            // likely to be watching the app.
+            await _notificationService.NotifyUserAsync(
+                user.Id,
+                NotificationType.Account,
+                "Account approved",
+                "Your registration has been approved. You can now use your RFID to enter the parking area.",
+                null,
+                ct);
 
             return new OkObjectResult(new { message = "User approved." });
         }
@@ -162,6 +175,14 @@ namespace AimPark.API.Services
             await _users.SaveAsync(ct);
 
             await _emailService.SendRegistrationRejectedEmailAsync(user.Email, user.FullName, user.RejectionReason!, ct);
+
+            await _notificationService.NotifyUserAsync(
+                user.Id,
+                NotificationType.Account,
+                "Registration not approved",
+                $"Your registration was not approved. Reason: {user.RejectionReason}",
+                null,
+                ct);
 
             return new OkObjectResult(new
             {

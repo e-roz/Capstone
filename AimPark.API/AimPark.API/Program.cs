@@ -1,6 +1,8 @@
+using AimPark.API.Auth;
 using AimPark.API.Data;
 using AimPark.API.Interfaces;
 using AimPark.API.Services;
+using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authentication.Google;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
@@ -106,7 +108,12 @@ builder.Services.AddAuthentication(options =>
         options.ClientSecret = builder.Configuration["Authentication:Microsoft:ClientSecret"] ?? string.Empty;
         options.SignInScheme = CookieAuthenticationDefaults.AuthenticationScheme;
     })
-    .AddCookie(CookieAuthenticationDefaults.AuthenticationScheme);
+    .AddCookie(CookieAuthenticationDefaults.AuthenticationScheme)
+    // Gate hardware authenticates with a long-lived key instead of a JWT —
+    // there is no operator to sign a reader in, and a 60-minute token would
+    // strand the barrier mid-shift with no way to recover.
+    .AddScheme<AuthenticationSchemeOptions, ApiKeyAuthenticationHandler>(
+        ApiKeyDefaults.AuthenticationScheme, _ => { });
 
 builder.Services.AddAuthorization();
 
@@ -120,6 +127,8 @@ builder.Services.AddScoped<IAdminUserService, AdminUserService>();
 builder.Services.AddScoped<IAdminAuditLogService, AdminAuditLogService>();
 builder.Services.AddScoped<IParkingSlotService, ParkingSlotService>();
 builder.Services.AddScoped<IParkingHistoryService, ParkingHistoryService>();
+builder.Services.AddScoped<IParkingAllocationService, ParkingAllocationService>();
+builder.Services.AddScoped<IGateDeviceService, GateDeviceService>();
 builder.Services.AddScoped<IUserProfileService, UserProfileService>();
 builder.Services.AddScoped<INotificationService, NotificationService>();
 builder.Services.AddScoped<IIncidentService, IncidentService>();

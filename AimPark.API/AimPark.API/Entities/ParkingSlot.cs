@@ -8,8 +8,12 @@ namespace AimPark.API.Entities
 
         public string SlotCode { get; set; } = string.Empty;
 
-        // "Motor", "4 Wheels", null = any vehicle type
-        public string? VehicleType { get; set; }
+        // Which of the two entry gates this slot sits behind. Allocation steers
+        // drivers to the gate with the most free capacity for their vehicle.
+        public int Gate { get; set; } = 1;
+
+        // null = any vehicle type
+        public VehicleType? VehicleType { get; set; }
 
         public ParkingSlotStatus Status { get; set; } = ParkingSlotStatus.Available;
 

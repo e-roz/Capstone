@@ -35,6 +35,17 @@ namespace AimPark.API.Controllers
         public Task<ActionResult<IncidentDetailResponse>> GetDetail(Guid incidentId, CancellationToken ct)
             => _incidentService.GetMyIncidentDetailAsync(GetUserId(), incidentId, ct);
 
+        /// <summary>Corrects a report. Allowed only while still Submitted.</summary>
+        [HttpPut("{incidentId:guid}")]
+        public Task<ActionResult<object>> Update(
+            Guid incidentId, [FromBody] UpdateIncidentDto dto, CancellationToken ct)
+            => _incidentService.UpdateMyIncidentAsync(GetUserId(), incidentId, dto, ct);
+
+        /// <summary>Retracts a report. Allowed only while still Submitted.</summary>
+        [HttpPost("{incidentId:guid}/withdraw")]
+        public Task<ActionResult<object>> Withdraw(Guid incidentId, CancellationToken ct)
+            => _incidentService.WithdrawMyIncidentAsync(GetUserId(), incidentId, ct);
+
         private Guid GetUserId()
             => Guid.Parse(User.FindFirst(ClaimTypes.NameIdentifier)!.Value);
     }

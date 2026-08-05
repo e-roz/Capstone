@@ -16,6 +16,13 @@ namespace AimPark.API.Interfaces
         // associated payment is already Paid (out of scope: real-world refund handling).
         Task WaiveForViolationAsync(Guid violationId, CancellationToken ct);
 
+        /// <summary>
+        /// Re-prices the outstanding fee for a violation whose penalty was
+        /// corrected. Only touches a still-pending transaction — an already-paid
+        /// or waived one is settled and must not be rewritten.
+        /// </summary>
+        Task UpdateViolationAmountAsync(Guid violationId, decimal amountDue, CancellationToken ct);
+
         Task<ActionResult<PaymentListResponse>> GetMyPaymentsAsync(Guid userId, int page, int pageSize, CancellationToken ct);
         Task<ActionResult<PaymentResponse>> GetMyPaymentDetailAsync(Guid userId, Guid paymentId, CancellationToken ct);
         Task<ActionResult<object>> PayAsync(Guid userId, Guid paymentId, CancellationToken ct);

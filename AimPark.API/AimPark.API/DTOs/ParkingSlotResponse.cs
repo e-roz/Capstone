@@ -11,6 +11,7 @@ namespace AimPark.API.DTOs
     {
         public Guid SlotId { get; set; }
         public string SlotCode { get; set; } = string.Empty;
+        public int Gate { get; set; }
         public string? VehicleType { get; set; }
         public string Status { get; set; } = string.Empty;
     }

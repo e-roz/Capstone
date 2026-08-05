@@ -1,3 +1,4 @@
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -14,6 +15,7 @@ import '../../../../core/widgets/app_text_field.dart';
 import '../../../notifications/presentation/providers/push_registration_provider.dart';
 import '../providers/auth_provider.dart';
 import '../providers/registration_provider.dart';
+import 'account_status_screen.dart';
 
 final _googleSignIn = GoogleSignIn(
   serverClientId:
@@ -77,7 +79,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
         context.go(JwtUtils.routeAfterLogin(token));
       }
     } catch (e) {
-      if (mounted) {
+      if (mounted && !_showAccountStatusIfBlocked(e)) {
         showAppMessage(context, apiErrorMessage(e), isError: true);
       }
     } finally {
@@ -85,6 +87,38 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
         setState(() => _isLoading = false);
       }
     }
+  }
+
+  /// A 403 from login is not an error to flash and forget — it means the account
+  /// is pending, rejected or suspended, and the body carries the detail that
+  /// explains it. Returns true when the status screen was shown.
+  bool _showAccountStatusIfBlocked(Object error) {
+    if (error is! DioException || error.response?.statusCode != 403) return false;
+
+    final data = error.response?.data;
+    if (data is! Map) return false;
+
+    final status = data['registrationStatus'];
+    final accountStatus =
+        status is Map ? status['accountStatus']?.toString() : null;
+    if (accountStatus == null) return false;
+
+    final canReapplyRaw = status is Map ? status['canReapplyAt'] : null;
+
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => AccountStatusScreen(
+          accountStatus: accountStatus,
+          message: data['message']?.toString(),
+          rejectionReason: data['rejectionReason']?.toString() ??
+              (status is Map ? status['rejectionReason']?.toString() : null),
+          canReapplyAt:
+              canReapplyRaw == null ? null : DateTime.tryParse(canReapplyRaw.toString()),
+        ),
+      ),
+    );
+
+    return true;
   }
 
   Future<void> _googleLogin() async {
@@ -139,6 +173,12 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
         context.go(JwtUtils.routeAfterLogin(token));
       }
     } on Exception catch (e) {
+      // Same blocked-account handling as password login — a Google user whose
+      // account is pending deserves the explanation too.
+      if (mounted && _showAccountStatusIfBlocked(e)) {
+        return;
+      }
+
       final msg = apiErrorMessage(e);
       // HTTP 409 Conflict = email is already a local account
       if (msg.contains('already registered') || msg.contains('password instead')) {

@@ -85,6 +85,7 @@ class PendingRegistrationsScreen extends ConsumerWidget {
                           DataColumn(label: Text('Email')),
                           DataColumn(label: Text('Submitted')),
                           DataColumn(label: Text('Last Updated')),
+                          DataColumn(label: Text('')),
                         ],
                         rows: registrations.map((reg) {
                           return DataRow(
@@ -93,6 +94,23 @@ class PendingRegistrationsScreen extends ConsumerWidget {
                               DataCell(Text(reg.email)),
                               DataCell(Text(_fmt(reg.createdAt))),
                               DataCell(Text(_fmt(reg.updatedAt))),
+                              // Row click alone gave no hint the review screen
+                              // existed — same discoverability gap as Incidents.
+                              DataCell(OutlinedButton.icon(
+                                icon: const Icon(Icons.fact_check_outlined,
+                                    size: 14),
+                                label: const Text('Review',
+                                    style: TextStyle(fontSize: 12)),
+                                style: OutlinedButton.styleFrom(
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 10, vertical: 4),
+                                  minimumSize: Size.zero,
+                                  tapTargetSize:
+                                      MaterialTapTargetSize.shrinkWrap,
+                                ),
+                                onPressed: () =>
+                                    context.go('/pending/${reg.userId}'),
+                              )),
                             ],
                             onSelectChanged: (_) =>
                                 context.go('/pending/${reg.userId}'),

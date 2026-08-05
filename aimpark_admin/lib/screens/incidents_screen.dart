@@ -92,6 +92,7 @@ class _IncidentTable extends ConsumerWidget {
             DataColumn(label: Text('Category')),
             DataColumn(label: Text('Status')),
             DataColumn(label: Text('Reported')),
+            DataColumn(label: Text('')),
           ],
           rows: page.incidents
               .map((i) => DataRow(
@@ -101,6 +102,20 @@ class _IncidentTable extends ConsumerWidget {
                       DataCell(_StatusChip(status: i.status)),
                       DataCell(Text(
                           DateFormat('MMM d, yyyy HH:mm').format(i.createdAt.toLocal()))),
+                      // The whole row already opens the detail dialog, but with no
+                      // visual cue nobody discovered it — testers reported the
+                      // review screen as missing entirely.
+                      DataCell(OutlinedButton.icon(
+                        icon: const Icon(Icons.visibility_outlined, size: 14),
+                        label: const Text('View', style: TextStyle(fontSize: 12)),
+                        style: OutlinedButton.styleFrom(
+                          padding:
+                              const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                          minimumSize: Size.zero,
+                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        ),
+                        onPressed: () => _showDetail(context, ref, i.incidentId),
+                      )),
                     ],
                   ))
               .toList(),

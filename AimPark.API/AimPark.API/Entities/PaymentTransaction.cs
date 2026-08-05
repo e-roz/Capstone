@@ -30,6 +30,10 @@ namespace AimPark.API.Entities
 
         public PaymentStatus Status { get; set; } = PaymentStatus.Pending;
 
+        // When settlement is expected. Without a deadline a pending fee reads as
+        // optional, which is how violation penalties went unpaid indefinitely.
+        public DateTime? DueAt { get; set; }
+
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
         public DateTime? PaidAt { get; set; }
     }

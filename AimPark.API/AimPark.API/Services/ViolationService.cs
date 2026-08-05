@@ -10,11 +10,17 @@ namespace AimPark.API.Services
 {
     public class ViolationService : IViolationService
     {
+        private static readonly string[] AllowedEvidenceExtensions = [".jpg", ".jpeg", ".png", ".pdf"];
+        private const int MaxEvidenceFiles = 5;
+        private const long MaxEvidenceFileBytes = 5 * 1024 * 1024;
+
         private readonly IRepository<PolicyRule> _rules;
         private readonly IRepository<Violation> _violations;
         private readonly IRepository<ViolationAppeal> _appeals;
         private readonly IRepository<User> _users;
         private readonly IPaymentService _paymentService;
+        private readonly INotificationService _notificationService;
+        private readonly IFileStorageService _fileStorage;
         private readonly AppDbContext _db;
 
         public ViolationService(
@@ -23,13 +29,17 @@ namespace AimPark.API.Services
             IRepository<ViolationAppeal> appeals,
             IRepository<User> users,
             IPaymentService paymentService,
+            INotificationService notificationService,
+            IFileStorageService fileStorage,
             AppDbContext db)
         {
+            _fileStorage = fileStorage;
             _rules = rules;
             _violations = violations;
             _appeals = appeals;
             _users = users;
             _paymentService = paymentService;
+            _notificationService = notificationService;
             _db = db;
         }
 
@@ -163,6 +173,24 @@ namespace AimPark.API.Services
 
             await _paymentService.CreateForViolationAsync(violation, ct);
 
+            // Without this the user never learns they were penalised, which also
+            // makes the appeal window meaningless — they cannot contest something
+            // they have not been told about.
+            var suspensionNote = suspensionType switch
+            {
+                SuspensionType.Permanent => " Your RFID access has been suspended.",
+                SuspensionType.Temporary => $" Your RFID access is suspended for {suspensionDays} day(s).",
+                _ => string.Empty
+            };
+
+            await _notificationService.NotifyUserAsync(
+                user.Id,
+                NotificationType.Violation,
+                $"Violation: {rule.Title}",
+                $"A penalty of ₱{penaltyAmount:0.00} has been issued.{suspensionNote} Open the app to view details or appeal.",
+                new Dictionary<string, string> { ["violationId"] = violation.Id.ToString() },
+                ct);
+
             return new OkObjectResult(new { message = "Violation issued.", violationId = violation.Id });
         }
 
@@ -216,7 +244,85 @@ namespace AimPark.API.Services
 
             await _paymentService.WaiveForViolationAsync(violationId, ct);
 
+            await _notificationService.NotifyUserAsync(
+                violation.UserId,
+                NotificationType.Violation,
+                "Violation dismissed",
+                "A violation on your record has been dismissed and its penalty waived.",
+                new Dictionary<string, string> { ["violationId"] = violation.Id.ToString() },
+                ct);
+
             return new OkObjectResult(new { message = "Violation dismissed." });
+        }
+
+        // PUT /api/admin/violations/{id}
+        public async Task<ActionResult<object>> UpdateAsync(
+            Guid violationId, Guid adminUserId, UpdateViolationDto dto, CancellationToken ct)
+        {
+            if (string.IsNullOrWhiteSpace(dto.Description))
+                return new BadRequestObjectResult(new { message = "Description is required." });
+
+            if (dto.PenaltyAmount < 0)
+                return new BadRequestObjectResult(new { message = "Penalty amount must be zero or greater." });
+
+            if (!Enum.TryParse<SuspensionType>(dto.SuspensionType, true, out var suspensionType))
+                return new BadRequestObjectResult(new { message = "Invalid suspension type." });
+
+            if (suspensionType == SuspensionType.Temporary && (dto.SuspensionDays is null || dto.SuspensionDays <= 0))
+                return new BadRequestObjectResult(new { message = "Temporary suspension requires a positive number of days." });
+
+            var violation = await _violations.FindAsync(v => v.Id == violationId, ct);
+            if (violation is null)
+                return new NotFoundObjectResult(new { message = "Violation not found." });
+
+            // Editable only while untouched. Once it has been appealed or decided,
+            // this row is the thing both sides argued about.
+            if (violation.Status != ViolationStatus.Issued)
+                return new BadRequestObjectResult(new
+                {
+                    message = "Only a violation still in Issued status can be edited."
+                });
+
+            var previousSuspension = violation.SuspensionType;
+
+            violation.Description = dto.Description.Trim();
+            violation.PenaltyAmount = dto.PenaltyAmount;
+            violation.SuspensionType = suspensionType;
+            violation.SuspensionDays = suspensionType == SuspensionType.Temporary ? dto.SuspensionDays : null;
+            violation.UpdatedAt = DateTime.UtcNow;
+
+            _violations.Update(violation);
+            await _violations.SaveAsync(ct);
+
+            // Correcting the penalty has to correct the access consequence too,
+            // or a user stays locked out over a suspension that was withdrawn.
+            if (previousSuspension != suspensionType)
+            {
+                var user = await _users.FindAsync(u => u.Id == violation.UserId, ct);
+                if (user is not null)
+                {
+                    if (suspensionType == SuspensionType.None)
+                        ReverseSuspension(user);
+                    else
+                        ApplySuspension(user, suspensionType, violation.SuspensionDays);
+
+                    _users.Update(user);
+                    await _users.SaveAsync(ct);
+                }
+            }
+
+            // The penalty may have moved, so the outstanding fee has to follow.
+            await _paymentService.UpdateViolationAmountAsync(violation.Id, dto.PenaltyAmount, ct);
+
+            await _notificationService.NotifyUserAsync(
+                violation.UserId,
+                NotificationType.Violation,
+                "Violation updated",
+                $"A violation on your record was corrected. Penalty is now ₱{dto.PenaltyAmount:0.00}.",
+                new Dictionary<string, string> { ["violationId"] = violation.Id.ToString() },
+                ct);
+
+            return new OkObjectResult(new { message = "Violation updated." });
         }
 
         // ---------- Appeals ----------
@@ -238,6 +344,20 @@ namespace AimPark.API.Services
             if (alreadyAppealed)
                 return new BadRequestObjectResult(new { message = "An appeal has already been submitted for this violation." });
 
+            var files = dto.Evidence ?? [];
+            if (files.Count > MaxEvidenceFiles)
+                return new BadRequestObjectResult(new { message = $"A maximum of {MaxEvidenceFiles} evidence files is allowed." });
+
+            foreach (var file in files)
+            {
+                var ext = Path.GetExtension(file.FileName).ToLowerInvariant();
+                if (!AllowedEvidenceExtensions.Contains(ext))
+                    return new BadRequestObjectResult(new { message = $"Unsupported file type: {ext}" });
+
+                if (file.Length > MaxEvidenceFileBytes)
+                    return new BadRequestObjectResult(new { message = "Each evidence file must be 5MB or smaller." });
+            }
+
             var appeal = new ViolationAppeal
             {
                 Id = Guid.NewGuid(),
@@ -254,6 +374,27 @@ namespace AimPark.API.Services
             _violations.Update(violation);
 
             await _appeals.SaveAsync(ct);
+
+            // Uploaded after the appeal is persisted, so a storage outage costs
+            // the attachments rather than the appeal itself.
+            foreach (var file in files)
+            {
+                var ext = Path.GetExtension(file.FileName).ToLowerInvariant();
+                var objectPath = $"appeal-evidence/{appeal.Id}/{Guid.NewGuid()}{ext}";
+                await _fileStorage.SaveFileAsync(objectPath, file, ct);
+
+                _db.Set<AppealEvidence>().Add(new AppealEvidence
+                {
+                    Id = Guid.NewGuid(),
+                    AppealId = appeal.Id,
+                    StoragePath = objectPath,
+                    FileName = file.FileName,
+                    UploadedAt = DateTime.UtcNow
+                });
+            }
+
+            if (files.Count > 0)
+                await _db.SaveChangesAsync(ct);
 
             return new OkObjectResult(new { message = "Appeal submitted." });
         }
@@ -336,6 +477,19 @@ namespace AimPark.API.Services
 
                 await _paymentService.WaiveForViolationAsync(violation.Id, ct);
             }
+
+            // An appeal the user never hears back on is worse than no appeal.
+            var notes = string.IsNullOrWhiteSpace(dto.AdminNotes) ? "" : $" Note: {dto.AdminNotes}";
+
+            await _notificationService.NotifyUserAsync(
+                violation.UserId,
+                NotificationType.Violation,
+                dto.Approve ? "Appeal approved" : "Appeal denied",
+                dto.Approve
+                    ? $"Your appeal was approved. The violation has been overturned and the penalty waived.{notes}"
+                    : $"Your appeal was reviewed and the violation stands.{notes}",
+                new Dictionary<string, string> { ["violationId"] = violation.Id.ToString() },
+                ct);
 
             return new OkObjectResult(new { message = "Appeal decided." });
         }
@@ -441,6 +595,13 @@ namespace AimPark.API.Services
                 violation.AppealReasonText = appeal.ReasonText;
                 violation.AppealAdminNotes = appeal.AdminNotes;
                 violation.AppealDecidedAt = appeal.DecidedAt;
+
+                var evidence = await _db.Set<AppealEvidence>().AsNoTracking()
+                    .Where(e => e.AppealId == appeal.Id)
+                    .ToListAsync(ct);
+
+                foreach (var item in evidence)
+                    violation.AppealEvidenceUrls.Add(await _fileStorage.GetFileUrlAsync(item.StoragePath, ct));
             }
 
             return new OkObjectResult(violation);

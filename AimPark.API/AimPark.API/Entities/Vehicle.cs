@@ -1,4 +1,6 @@
-﻿namespace AimPark.API.Entities
+﻿using AimPark.API.Enums;
+
+namespace AimPark.API.Entities
 {
     public class Vehicle
     {
@@ -6,8 +8,7 @@
 
         public string PlateNumber { get; set; } = string.Empty;
 
-        //motor, 4 wheels
-        public string VehicleType { get; set; } = string.Empty;
+        public VehicleType VehicleType { get; set; }
 
         public string Brand { get; set; } = string.Empty;
 

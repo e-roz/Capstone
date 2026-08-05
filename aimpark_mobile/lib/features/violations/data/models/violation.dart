@@ -42,6 +42,7 @@ class ViolationDetail {
     this.appealReasonText,
     this.appealAdminNotes,
     this.appealDecidedAt,
+    this.appealEvidenceUrls = const [],
   });
 
   final String violationId;
@@ -57,6 +58,7 @@ class ViolationDetail {
   final String? appealReasonText;
   final String? appealAdminNotes;
   final DateTime? appealDecidedAt;
+  final List<String> appealEvidenceUrls;
 
   bool get canAppeal => appealStatus == null;
 
@@ -77,6 +79,9 @@ class ViolationDetail {
       appealDecidedAt: json['appealDecidedAt'] == null
           ? null
           : DateTime.parse(json['appealDecidedAt'] as String),
+      appealEvidenceUrls: (json['appealEvidenceUrls'] as List<dynamic>? ?? [])
+          .map((e) => e as String)
+          .toList(),
     );
   }
 }

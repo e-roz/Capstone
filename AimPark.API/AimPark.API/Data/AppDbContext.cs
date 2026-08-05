@@ -14,6 +14,8 @@ namespace AimPark.API.Data
         public DbSet<RegistrationSession> RegistrationSessions { get; set; }
         public DbSet<AdminAuditLog> AdminAuditLogs { get; set; }
         public DbSet<ParkingSlot> ParkingSlots { get; set; }
+        public DbSet<GateDevice> GateDevices { get; set; }
+        public DbSet<AppealEvidence> AppealEvidence { get; set; }
         public DbSet<ParkingLog> ParkingLogs { get; set; }
         public DbSet<Notification> Notifications { get; set; }
         public DbSet<NotificationRead> NotificationReads { get; set; }
@@ -104,6 +106,9 @@ namespace AimPark.API.Data
                 entity.HasIndex(v => v.PlateNumber)
                       .IsUnique();
 
+                entity.Property(v => v.VehicleType)
+                      .HasConversion<string>();
+
                 entity.HasOne(v => v.User)
                       .WithOne()
                       .HasForeignKey<Vehicle>(v => v.UserId)
@@ -131,10 +136,28 @@ namespace AimPark.API.Data
                 entity.Property(s => s.Status)
                       .HasConversion<string>();
 
+                entity.Property(s => s.VehicleType)
+                      .HasConversion<string>();
+
+                // Allocation scores free capacity per gate on every scan.
+                entity.HasIndex(s => new { s.Gate, s.VehicleType, s.Status });
+
                 entity.Property(s => s.UpdatedAt)
                       .HasDefaultValueSql("NOW()");
 
                 entity.HasData(ParkingSlotSeed.GetSeedSlots());
+            });
+
+            modelBuilder.Entity<GateDevice>(entity =>
+            {
+                entity.HasKey(d => d.Id);
+
+                // Authentication looks a device up by key hash on every scan.
+                entity.HasIndex(d => d.ApiKeyHash)
+                      .IsUnique();
+
+                entity.Property(d => d.CreatedAt)
+                      .HasDefaultValueSql("NOW()");
             });
 
             modelBuilder.Entity<ParkingLog>(entity =>
@@ -163,6 +186,9 @@ namespace AimPark.API.Data
                 entity.HasKey(n => n.Id);
 
                 entity.HasIndex(n => n.CreatedAt);
+
+                // Every user's list query filters on this first.
+                entity.HasIndex(n => n.TargetUserId);
 
                 entity.Property(n => n.Type)
                       .HasConversion<string>();
@@ -238,6 +264,9 @@ namespace AimPark.API.Data
             modelBuilder.Entity<ParkingRate>(entity =>
             {
                 entity.HasKey(r => r.Id);
+
+                entity.Property(r => r.VehicleType)
+                      .HasConversion<string>();
 
                 entity.HasIndex(r => r.VehicleType)
                       .IsUnique()
@@ -385,6 +414,11 @@ namespace AimPark.API.Data
 
                 entity.Property(a => a.Status)
                       .HasConversion<string>();
+
+                entity.HasMany<AppealEvidence>()
+                      .WithOne(e => e.Appeal)
+                      .HasForeignKey(e => e.AppealId)
+                      .OnDelete(DeleteBehavior.Cascade);
 
                 entity.Property(a => a.CreatedAt)
                       .HasDefaultValueSql("NOW()");

@@ -10,21 +10,39 @@ namespace AimPark.API.Services
 {
     public class PaymentService : IPaymentService
     {
+        /// <summary>
+        /// Grace period for a parking fee. Short — the driver has just left and
+        /// the amount is small.
+        /// </summary>
+        private static readonly TimeSpan ParkingFeeDueWindow = TimeSpan.FromDays(7);
+
+        /// <summary>
+        /// Grace period for a violation penalty. Longer, because it is larger and
+        /// because the appeal window has to fit inside it.
+        /// </summary>
+        private static readonly TimeSpan ViolationDueWindow = TimeSpan.FromDays(14);
+
         private readonly IRepository<PaymentTransaction> _payments;
         private readonly IRepository<ParkingRate> _rates;
+        private readonly INotificationService _notificationService;
         private readonly AppDbContext _db;
 
-        public PaymentService(IRepository<PaymentTransaction> payments, IRepository<ParkingRate> rates, AppDbContext db)
+        public PaymentService(
+            IRepository<PaymentTransaction> payments,
+            IRepository<ParkingRate> rates,
+            INotificationService notificationService,
+            AppDbContext db)
         {
             _payments = payments;
             _rates = rates;
+            _notificationService = notificationService;
             _db = db;
         }
 
         // Called by ParkingHistoryService.LogExitAsync right after ExitTime is recorded.
         public async Task<PaymentTransaction> CreateForCompletedLogAsync(ParkingLog log, CancellationToken ct)
         {
-            string? vehicleType = null;
+            VehicleType? vehicleType = null;
             if (log.SlotId is not null)
             {
                 vehicleType = await _db.Set<ParkingSlot>().AsNoTracking()
@@ -57,11 +75,26 @@ namespace AimPark.API.Services
                 RatePerHourApplied = ratePerHour,
                 AmountDue = amountDue,
                 Status = PaymentStatus.Pending,
+                DueAt = DateTime.UtcNow.Add(ParkingFeeDueWindow),
                 CreatedAt = DateTime.UtcNow
             };
 
             await _payments.AddAsync(transaction, ct);
             await _payments.SaveAsync(ct);
+
+            // The driver has just left; telling them what they owe now is the
+            // difference between a fee they act on and one they discover later.
+            var hours = durationMinutes / 60;
+            var minutes = durationMinutes % 60;
+            var duration = hours > 0 ? $"{hours}h {minutes}m" : $"{minutes}m";
+
+            await _notificationService.NotifyUserAsync(
+                log.UserId,
+                NotificationType.Payment,
+                "Parking fee",
+                $"You parked for {duration}. Amount due: ₱{amountDue:0.00}.",
+                new Dictionary<string, string> { ["paymentId"] = transaction.Id.ToString() },
+                ct);
 
             return transaction;
         }
@@ -79,6 +112,7 @@ namespace AimPark.API.Services
                 RatePerHourApplied = 0,
                 AmountDue = violation.PenaltyAmount,
                 Status = PaymentStatus.Pending,
+                DueAt = DateTime.UtcNow.Add(ViolationDueWindow),
                 CreatedAt = DateTime.UtcNow
             };
 
@@ -96,6 +130,18 @@ namespace AimPark.API.Services
                 return;
 
             payment.Status = PaymentStatus.Waived;
+            _payments.Update(payment);
+            await _payments.SaveAsync(ct);
+        }
+
+        // Called by ViolationService.UpdateAsync when a penalty is corrected.
+        public async Task UpdateViolationAmountAsync(Guid violationId, decimal amountDue, CancellationToken ct)
+        {
+            var payment = await _payments.FindAsync(p => p.ViolationId == violationId, ct);
+            if (payment is null || payment.Status != PaymentStatus.Pending)
+                return;
+
+            payment.AmountDue = amountDue;
             _payments.Update(payment);
             await _payments.SaveAsync(ct);
         }
@@ -155,7 +201,7 @@ namespace AimPark.API.Services
                 .Select(r => new ParkingRateResponse
                 {
                     RateId = r.Id,
-                    VehicleType = r.VehicleType,
+                    VehicleType = r.VehicleType == null ? null : r.VehicleType.ToString(),
                     RatePerHour = r.RatePerHour,
                     UpdatedAt = r.UpdatedAt
                 })
@@ -170,7 +216,16 @@ namespace AimPark.API.Services
             if (dto.RatePerHour < 0)
                 return new BadRequestObjectResult(new { message = "Rate must be zero or greater." });
 
-            var existing = await _rates.FindAsync(r => r.VehicleType == dto.VehicleType, ct);
+            // A blank vehicle type means the default/fallback rate, not an invalid one.
+            VehicleType? vehicleType = null;
+            if (!string.IsNullOrWhiteSpace(dto.VehicleType))
+            {
+                if (!Enum.TryParse<VehicleType>(dto.VehicleType, true, out var parsed))
+                    return new BadRequestObjectResult(new { message = "Invalid vehicle type." });
+                vehicleType = parsed;
+            }
+
+            var existing = await _rates.FindAsync(r => r.VehicleType == vehicleType, ct);
             if (existing is not null)
             {
                 existing.RatePerHour = dto.RatePerHour;
@@ -182,7 +237,7 @@ namespace AimPark.API.Services
                 await _rates.AddAsync(new ParkingRate
                 {
                     Id = Guid.NewGuid(),
-                    VehicleType = dto.VehicleType,
+                    VehicleType = vehicleType,
                     RatePerHour = dto.RatePerHour,
                     UpdatedAt = DateTime.UtcNow
                 }, ct);
@@ -230,6 +285,7 @@ namespace AimPark.API.Services
             RatePerHourApplied = p.RatePerHourApplied,
             AmountDue = p.AmountDue,
             Status = p.Status.ToString(),
+            DueAt = p.DueAt,
             CreatedAt = p.CreatedAt,
             PaidAt = p.PaidAt
         };

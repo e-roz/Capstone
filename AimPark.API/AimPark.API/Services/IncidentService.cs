@@ -99,6 +99,66 @@ namespace AimPark.API.Services
         public Task<ActionResult<IncidentDetailResponse>> GetMyIncidentDetailAsync(Guid userId, Guid incidentId, CancellationToken ct)
             => GetDetailAsync(i => i.Id == incidentId && i.ReportedByUserId == userId, ct);
 
+        // PUT /api/incidents/{id}
+        public async Task<ActionResult<object>> UpdateMyIncidentAsync(
+            Guid userId, Guid incidentId, UpdateIncidentDto dto, CancellationToken ct)
+        {
+            if (!Enum.TryParse<IncidentCategory>(dto.Category, true, out var category))
+                return new BadRequestObjectResult(new { message = "Invalid incident category." });
+
+            if (string.IsNullOrWhiteSpace(dto.Description))
+                return new BadRequestObjectResult(new { message = "Description is required." });
+
+            var incident = await _incidents.FindAsync(
+                i => i.Id == incidentId && i.ReportedByUserId == userId, ct);
+
+            if (incident is null)
+                return new NotFoundObjectResult(new { message = "Incident not found." });
+
+            // Editable only before anyone has looked at it, otherwise an admin's
+            // notes could end up attached to a report that has since changed.
+            if (incident.Status != IncidentStatus.Submitted)
+                return new BadRequestObjectResult(new
+                {
+                    message = "This report can no longer be edited because it is already being reviewed."
+                });
+
+            incident.Category = category;
+            incident.Description = dto.Description.Trim();
+            incident.Location = dto.Location;
+            incident.UpdatedAt = DateTime.UtcNow;
+
+            _incidents.Update(incident);
+            await _incidents.SaveAsync(ct);
+
+            return new OkObjectResult(new { message = "Report updated." });
+        }
+
+        // POST /api/incidents/{id}/withdraw
+        public async Task<ActionResult<object>> WithdrawMyIncidentAsync(
+            Guid userId, Guid incidentId, CancellationToken ct)
+        {
+            var incident = await _incidents.FindAsync(
+                i => i.Id == incidentId && i.ReportedByUserId == userId, ct);
+
+            if (incident is null)
+                return new NotFoundObjectResult(new { message = "Incident not found." });
+
+            if (incident.Status != IncidentStatus.Submitted)
+                return new BadRequestObjectResult(new
+                {
+                    message = "This report can no longer be withdrawn because it is already being reviewed."
+                });
+
+            incident.Status = IncidentStatus.Withdrawn;
+            incident.UpdatedAt = DateTime.UtcNow;
+
+            _incidents.Update(incident);
+            await _incidents.SaveAsync(ct);
+
+            return new OkObjectResult(new { message = "Report withdrawn." });
+        }
+
         // GET /api/admin/incidents
         public Task<ActionResult<IncidentListResponse>> ListAllAsync(string? status, int page, int pageSize, CancellationToken ct)
         {

@@ -35,5 +35,8 @@ namespace AimPark.API.DTOs
         public string? AppealReasonText { get; set; }
         public string? AppealAdminNotes { get; set; }
         public DateTime? AppealDecidedAt { get; set; }
+
+        /// <summary>Signed URLs for anything attached to the appeal.</summary>
+        public List<string> AppealEvidenceUrls { get; set; } = [];
     }
 }

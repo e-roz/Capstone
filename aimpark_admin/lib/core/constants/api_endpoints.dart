@@ -40,12 +40,19 @@ class ApiEndpoints {
   static const logParkingExit = '/api/admin/parking/log-exit';
   static const activeParkingSessions = '/api/admin/parking/active-sessions';
 
+  // Admin – Gate Devices (RFID reader hardware)
+  static const gateDevices = '/api/admin/gate-devices';
+  static String revokeGateDevice(String deviceId) =>
+      '/api/admin/gate-devices/$deviceId/revoke';
+
   // Admin – Payments
   static const payments = '/api/admin/payments';
   static const paymentRates = '/api/admin/payments/rates';
 
   // Admin – Violations
   static const violations = '/api/admin/violations';
+  static String violation(String violationId) =>
+      '/api/admin/violations/$violationId';
   static String dismissViolation(String violationId) =>
       '/api/admin/violations/$violationId/dismiss';
   static const violationAppeals = '/api/admin/violations/appeals';

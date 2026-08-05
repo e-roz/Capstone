@@ -1,5 +1,7 @@
+using AimPark.API.Auth;
 using AimPark.API.DTOs;
 using AimPark.API.Interfaces;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using System.Security.Claims;
@@ -43,18 +45,40 @@ namespace AimPark.API.Controllers
         public Task<ActionResult<List<ActiveParkingSessionResponse>>> ListActiveSessions(CancellationToken ct)
             => _parkingHistoryService.ListActiveSessionsAsync(ct);
 
-        // Manual stand-in for the RFID gate hardware — Admin or Security can log a vehicle entry/exit.
-        [Authorize(Roles = "Admin,Security")]
+        // The RFID gate posts here with a device key; Admin and Security can do
+        // the same by hand from the panel, which is how it is driven until the
+        // hardware exists.
+        [Authorize(
+            AuthenticationSchemes = $"{JwtBearerDefaults.AuthenticationScheme},{ApiKeyDefaults.AuthenticationScheme}",
+            Roles = "Admin,Security," + ApiKeyDefaults.DeviceRole)]
         [HttpPost("log-entry")]
         public Task<ActionResult<object>> LogEntry([FromBody] LogParkingEntryDto dto, CancellationToken ct)
-            => _parkingHistoryService.LogEntryAsync(dto, GetUserId(), ct);
+        {
+            // A reader is bolted to one barrier, so its own identity decides the
+            // gate. Anything the request body claims is ignored — otherwise a
+            // leaked key could log entries against the wrong gate.
+            if (GetDeviceGate() is int deviceGate)
+                dto.Gate = deviceGate;
 
-        [Authorize(Roles = "Admin,Security")]
+            return _parkingHistoryService.LogEntryAsync(dto, GetUserId(), GetDeviceId(), ct);
+        }
+
+        [Authorize(
+            AuthenticationSchemes = $"{JwtBearerDefaults.AuthenticationScheme},{ApiKeyDefaults.AuthenticationScheme}",
+            Roles = "Admin,Security," + ApiKeyDefaults.DeviceRole)]
         [HttpPost("log-exit")]
         public Task<ActionResult<object>> LogExit([FromBody] LogParkingExitDto dto, CancellationToken ct)
-            => _parkingHistoryService.LogExitAsync(dto, GetUserId(), ct);
+            => _parkingHistoryService.LogExitAsync(dto, GetUserId(), GetDeviceId(), ct);
 
-        private Guid GetUserId()
-            => Guid.Parse(User.FindFirst(ClaimTypes.NameIdentifier)!.Value);
+        private bool IsDevice => User.IsInRole(ApiKeyDefaults.DeviceRole);
+
+        private Guid? GetUserId()
+            => IsDevice ? null : Guid.Parse(User.FindFirst(ClaimTypes.NameIdentifier)!.Value);
+
+        private Guid? GetDeviceId()
+            => IsDevice ? Guid.Parse(User.FindFirst(ClaimTypes.NameIdentifier)!.Value) : null;
+
+        private int? GetDeviceGate()
+            => int.TryParse(User.FindFirst(ApiKeyDefaults.GateClaim)?.Value, out var gate) ? gate : null;
     }
 }

@@ -21,6 +21,7 @@ namespace AimPark.API.DTOs
         public decimal RatePerHourApplied { get; set; }
         public decimal AmountDue { get; set; }
         public string Status { get; set; } = string.Empty;
+        public DateTime? DueAt { get; set; }
         public DateTime CreatedAt { get; set; }
         public DateTime? PaidAt { get; set; }
     }

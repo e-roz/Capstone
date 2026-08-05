@@ -4,12 +4,17 @@ class ParkingHistoryEntry {
     required this.entryTime,
     this.slotCode,
     this.exitTime,
+    this.paymentId,
   });
 
   final String logId;
   final String? slotCode;
   final DateTime entryTime;
   final DateTime? exitTime;
+
+  /// The fee raised for this session. Null while the session is still open —
+  /// the transaction is only created on exit.
+  final String? paymentId;
 
   bool get isOpen => exitTime == null;
 
@@ -21,6 +26,7 @@ class ParkingHistoryEntry {
       slotCode: json['slotCode'] as String?,
       entryTime: DateTime.parse(json['entryTime'] as String),
       exitTime: json['exitTime'] == null ? null : DateTime.parse(json['exitTime'] as String),
+      paymentId: json['paymentId'] as String?,
     );
   }
 }

@@ -166,6 +166,12 @@ namespace AimPark.API.Services
             if (ValidationHelper.HasEmptyFields(dto.FullName))
                 return new BadRequestObjectResult(new { message = "Full name is required." });
 
+            if (!dto.AcceptedTerms)
+                return new BadRequestObjectResult(new
+                {
+                    message = "You must accept the terms and conditions to register."
+                });
+
             var sessionResult = await GetValidSessionAsync(sessionToken, ct);
             if (sessionResult.Result is not null)
                 return new UnauthorizedObjectResult(new { message = "Invalid or expired session." });
@@ -211,6 +217,7 @@ namespace AimPark.API.Services
                 AccountStatus = AccountStatus.PendingReview,
                 VerificationStatus = VerificationStatus.NotStarted,
                 IsFirstLogin = true,
+                TermsAcceptedAt = now,
                 CreatedAt = now,
                 UpdatedAt = now
             };
@@ -231,6 +238,12 @@ namespace AimPark.API.Services
             if (ValidationHelper.HasEmptyFields(dto.FullName))
                 return new BadRequestObjectResult(new { message = "Full name is required." });
 
+            if (!dto.AcceptedTerms)
+                return new BadRequestObjectResult(new
+                {
+                    message = "You must accept the terms and conditions to register."
+                });
+
             var user = await _users.FindAsync(u => u.Id == userId, ct);
             if (user is null)
                 return new NotFoundObjectResult(new { message = "User not found." });
@@ -245,6 +258,7 @@ namespace AimPark.API.Services
             user.FullName = dto.FullName.Trim();
             user.PhoneNumber = phone;
             user.RegistrationStep = RegistrationStep.VehicleInfo;
+            user.TermsAcceptedAt ??= DateTime.UtcNow;
             user.UpdatedAt = DateTime.UtcNow;
 
             _users.Update(user);
@@ -275,10 +289,13 @@ namespace AimPark.API.Services
             if (ValidationHelper.HasEmptyFields(dto.PlateNumber, dto.VehicleType, dto.Brand, dto.Model, dto.Color))
                 return new BadRequestObjectResult(new { message = "All vehicle fields are required." });
 
+            if (!Enum.TryParse<VehicleType>(dto.VehicleType, true, out var vehicleType))
+                return new BadRequestObjectResult(new { message = "Invalid vehicle type." });
+
             var vehicle = new Vehicle
             {
                 PlateNumber = dto.PlateNumber,
-                VehicleType = dto.VehicleType,
+                VehicleType = vehicleType,
                 Brand = dto.Brand,
                 Model = dto.Model,
                 Color = dto.Color,

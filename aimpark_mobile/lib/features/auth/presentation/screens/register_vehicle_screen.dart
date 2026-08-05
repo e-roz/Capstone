@@ -28,11 +28,13 @@ class _RegisterVehicleScreenState extends ConsumerState<RegisterVehicleScreen> {
   String _vehicleType = 'Car';
   bool _isLoading = false;
 
+  /// Keys must match the API's `VehicleType` enum names exactly — slot
+  /// allocation matches a user's vehicle against a slot's type. The facility
+  /// only has two-wheel and four-wheel bays, so Van and Truck were removed
+  /// rather than given a slot class they could never be allocated to.
   static const _vehicleTypes = <String, IconData>{
     'Car': Icons.directions_car_rounded,
     'Motorcycle': Icons.two_wheeler_rounded,
-    'Van': Icons.airport_shuttle_rounded,
-    'Truck': Icons.local_shipping_rounded,
   };
 
   @override

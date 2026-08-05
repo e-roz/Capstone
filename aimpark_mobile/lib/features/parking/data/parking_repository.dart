@@ -21,4 +21,12 @@ class ParkingRepository {
     final response = await _dio.get(ApiEndpoints.parkingSlots);
     return ParkingAvailability.fromJson(response.data as Map<String, dynamic>);
   }
+
+  /// Asks the server where to park. Advice only — nothing is held, so the slot
+  /// may be gone by the time the driver arrives. Always returns 200; "lot full"
+  /// is an outcome in the body, not an HTTP error.
+  Future<SlotRecommendation> recommend() async {
+    final response = await _dio.post(ApiEndpoints.parkingRecommend);
+    return SlotRecommendation.fromJson(response.data as Map<String, dynamic>);
+  }
 }

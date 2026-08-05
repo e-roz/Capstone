@@ -90,14 +90,23 @@ class _NotificationTile extends StatelessWidget {
   final NotificationItem notification;
   final VoidCallback? onTap;
 
+  /// Keys are the API's `NotificationType` names, lowercased. The previous
+  /// cases ('policy', 'availability', 'security') matched none of them, so
+  /// every notification fell through to the default icon.
   IconData get _icon {
     switch (notification.type.toLowerCase()) {
-      case 'policy':
-        return Icons.gavel_rounded;
-      case 'availability':
+      case 'policyupdate':
+        return Icons.rule_rounded;
+      case 'parkingavailability':
         return Icons.local_parking_rounded;
-      case 'security':
-        return Icons.shield_rounded;
+      case 'violation':
+        return Icons.gavel_rounded;
+      case 'payment':
+        return Icons.payments_rounded;
+      case 'account':
+        return Icons.verified_user_rounded;
+      case 'system':
+        return Icons.info_rounded;
       default:
         return Icons.campaign_rounded;
     }

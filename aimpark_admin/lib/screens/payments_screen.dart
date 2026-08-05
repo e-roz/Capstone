@@ -206,15 +206,16 @@ class _PaymentTable extends StatelessWidget {
               DataColumn(label: Text('Amount Due')),
               DataColumn(label: Text('Status')),
               DataColumn(label: Text('Created')),
+              DataColumn(label: Text('')),
             ],
-            rows: page.payments.map((p) => _row(p)).toList(),
+            rows: page.payments.map((p) => _row(context, p)).toList(),
           ),
         ),
       ),
     );
   }
 
-  DataRow _row(PaymentTransaction p) => DataRow(cells: [
+  DataRow _row(BuildContext context, PaymentTransaction p) => DataRow(cells: [
         DataCell(Text(p.source)),
         DataCell(Text(p.slotCode ?? '—')),
         DataCell(Text('${p.durationMinutes} min')),
@@ -222,7 +223,94 @@ class _PaymentTable extends StatelessWidget {
         DataCell(Text('₱${p.amountDue.toStringAsFixed(2)}')),
         DataCell(_StatusChip(status: p.status)),
         DataCell(Text(DateFormat('MMM d, yyyy HH:mm').format(p.createdAt.toLocal()))),
+        DataCell(OutlinedButton.icon(
+          icon: const Icon(Icons.receipt_long, size: 14),
+          label: const Text('Receipt', style: TextStyle(fontSize: 12)),
+          style: OutlinedButton.styleFrom(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+            minimumSize: Size.zero,
+            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+          ),
+          onPressed: () => _showReceipt(context, p),
+        )),
       ]);
+
+  /// Every field is already present in the list response, so the receipt needs
+  /// no extra fetch — it renders what is loaded.
+  Future<void> _showReceipt(BuildContext context, PaymentTransaction p) {
+    String time(DateTime? t) =>
+        t == null ? '—' : DateFormat('MMM d, yyyy HH:mm').format(t.toLocal());
+
+    return showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Payment Receipt'),
+        content: SizedBox(
+          width: context.dialogWidth(420),
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      '₱${p.amountDue.toStringAsFixed(2)}',
+                      style: const TextStyle(
+                          fontSize: 28, fontWeight: FontWeight.bold),
+                    ),
+                    _StatusChip(status: p.status),
+                  ],
+                ),
+                const Divider(height: 24),
+                _ReceiptRow(label: 'Source', value: p.source),
+                _ReceiptRow(label: 'Slot', value: p.slotCode ?? '—'),
+                _ReceiptRow(label: 'Entry', value: time(p.entryTime)),
+                _ReceiptRow(label: 'Exit', value: time(p.exitTime)),
+                _ReceiptRow(label: 'Duration', value: '${p.durationMinutes} min'),
+                _ReceiptRow(
+                    label: 'Rate applied',
+                    value: '₱${p.ratePerHourApplied.toStringAsFixed(2)}/hr'),
+                const Divider(height: 24),
+                _ReceiptRow(label: 'Created', value: time(p.createdAt)),
+                _ReceiptRow(label: 'Paid', value: time(p.paidAt)),
+                const SizedBox(height: 12),
+                SelectableText(
+                  'Ref ${p.paymentId}',
+                  style: const TextStyle(fontSize: 11, color: Colors.black45),
+                ),
+              ],
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Close')),
+        ],
+      ),
+    );
+  }
+}
+
+class _ReceiptRow extends StatelessWidget {
+  const _ReceiptRow({required this.label, required this.value});
+
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 3),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(label, style: const TextStyle(color: Colors.black54)),
+          Text(value, style: const TextStyle(fontWeight: FontWeight.w600)),
+        ],
+      ),
+    );
+  }
 }
 
 class _StatusChip extends StatelessWidget {

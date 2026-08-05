@@ -4,6 +4,9 @@ import 'package:flutter/foundation.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 
 import '../../../../core/services/push_service.dart';
+import '../../../parking/presentation/providers/parking_history_provider.dart';
+import '../../../payments/presentation/providers/payments_provider.dart';
+import '../../../violations/presentation/providers/violations_provider.dart';
 import 'notifications_provider.dart';
 
 part 'push_registration_provider.g.dart';
@@ -88,10 +91,25 @@ class PushRegistration extends _$PushRegistration {
 
   void _listenForIncomingPushes() {
     _messageSub?.cancel();
-    // A push arriving while the app is open should update the in-app list and
-    // unread badge immediately, without the user pulling to refresh.
-    _messageSub = PushService.instance.onMessage.listen((_) {
-      ref.read(notificationsNotifierProvider.notifier).refresh();
-    });
+    // A push means something changed server-side, and it is almost never only
+    // the notification list — a violation also changes the standing meter, a
+    // fee adds a payment, an entry changes history. Refreshing just the alerts
+    // tab was why a violation could arrive as a push and still leave the rest
+    // of the app showing stale data until it was restarted.
+    _messageSub = PushService.instance.onMessage.listen((_) => refreshAll());
+  }
+
+  /// Marks everything a server-side change could have touched as stale. Also
+  /// called on app resume, since a backgrounded isolate receives no pushes and
+  /// may have missed several.
+  ///
+  /// Invalidate rather than refresh: a provider being watched refetches
+  /// immediately, while one nobody is looking at is simply dropped and reloads
+  /// when it is next needed. Calling refresh() would fetch pages off-screen.
+  void refreshAll() {
+    ref.invalidate(notificationsNotifierProvider);
+    ref.invalidate(violationsNotifierProvider);
+    ref.invalidate(paymentsNotifierProvider);
+    ref.invalidate(parkingHistoryNotifierProvider);
   }
 }

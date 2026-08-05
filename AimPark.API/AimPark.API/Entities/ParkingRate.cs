@@ -1,3 +1,5 @@
+using AimPark.API.Enums;
+
 namespace AimPark.API.Entities
 {
     public class ParkingRate
@@ -5,7 +7,7 @@ namespace AimPark.API.Entities
         public Guid Id { get; set; } = Guid.NewGuid();
 
         // null = default/fallback rate, applied when no vehicle-type-specific rate matches
-        public string? VehicleType { get; set; }
+        public VehicleType? VehicleType { get; set; }
 
         public decimal RatePerHour { get; set; }
 

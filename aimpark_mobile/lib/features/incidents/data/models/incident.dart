@@ -44,6 +44,10 @@ class IncidentDetail {
   final DateTime updatedAt;
   final List<String> evidenceUrls;
 
+  /// Editable and withdrawable only before an admin starts reviewing —
+  /// mirrors the server rule, so the buttons never offer something that fails.
+  bool get canModify => status == 'Submitted';
+
   factory IncidentDetail.fromJson(Map<String, dynamic> json) {
     return IncidentDetail(
       incidentId: json['incidentId'] as String,

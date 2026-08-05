@@ -13,7 +13,6 @@ import '../../../../core/widgets/good_standing_meter.dart';
 import '../../../../core/widgets/points_counter.dart';
 import '../../../../core/widgets/streak_badge.dart';
 import '../../../account/presentation/providers/account_provider.dart';
-import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../../parking/data/models/parking_history_entry.dart';
 import '../../../parking/presentation/providers/parking_history_provider.dart';
 import '../../../violations/data/models/violation.dart';
@@ -28,18 +27,6 @@ class UserDashboardScreen extends ConsumerWidget {
 
   /// Switches the parent [UserShell] to the History tab.
   final VoidCallback onNavigateToHistory;
-
-  Future<void> _logout(WidgetRef ref, BuildContext context) async {
-    final repo = ref.read(authRepositoryProvider);
-    try {
-      await repo.logout();
-    } catch (_) {
-      // Clear local session even if the server call fails.
-    }
-    await repo.clearToken();
-    await repo.clearSessionToken();
-    if (context.mounted) context.go('/login');
-  }
 
   /// Consecutive-day streak, counting back from today, of days with a
   /// parking log and no violation issued that day.
@@ -94,13 +81,14 @@ class UserDashboardScreen extends ConsumerWidget {
     return Scaffold(
       backgroundColor: AppColors.bgPage,
       body: SafeArea(
-        child: ListView(
+        child: RefreshIndicator(
+          onRefresh: () => _refresh(ref),
+          child: ListView(
           padding: const EdgeInsets.fromLTRB(
             AppSpacing.md, AppSpacing.md, AppSpacing.md, AppSpacing.xl,
           ),
           children: [
             _Header(
-              onLogout: () => _logout(ref, context),
               name: profileAsync.valueOrNull?.fullName ?? 'there',
               streakDays: streakDays,
               points: points,
@@ -147,14 +135,28 @@ class UserDashboardScreen extends ConsumerWidget {
                       ? 'Entered ${log.slotCode ?? 'a slot'}'
                       : 'Exited ${log.slotCode ?? 'a slot'}',
                   subtitle: _relativeDay(log.entryTime),
-                  points: '+10',
+                  points: '+10 pts',
+                  onTap: log.paymentId == null
+                      ? null
+                      : () => context.push('/home/user/payments/${log.paymentId}'),
                 ),
                 const SizedBox(height: AppSpacing.sm),
               ],
           ],
+          ),
         ),
       ),
     );
+  }
+
+  /// Home reads three providers; a pull-to-refresh here should reload all of
+  /// them, not just one, or the card and the meter disagree with each other.
+  Future<void> _refresh(WidgetRef ref) async {
+    await Future.wait([
+      ref.read(profileNotifierProvider.notifier).refresh(),
+      ref.read(parkingHistoryNotifierProvider.notifier).refresh(),
+      ref.read(violationsNotifierProvider.notifier).refresh(),
+    ]);
   }
 
   static String _relativeDay(DateTime time) {
@@ -170,13 +172,11 @@ class UserDashboardScreen extends ConsumerWidget {
 
 class _Header extends StatelessWidget {
   const _Header({
-    required this.onLogout,
     required this.name,
     required this.streakDays,
     required this.points,
   });
 
-  final VoidCallback onLogout;
   final String name;
   final int streakDays;
   final int points;
@@ -199,10 +199,6 @@ class _Header extends StatelessWidget {
         StreakBadge(days: streakDays),
         const SizedBox(width: AppSpacing.sm),
         PointsCounter(points: points),
-        IconButton(
-          onPressed: onLogout,
-          icon: const Icon(Icons.logout_rounded, color: AppColors.textSecondary),
-        ),
       ],
     );
   }
@@ -274,6 +270,7 @@ class _ActivityTile extends StatelessWidget {
     required this.title,
     required this.subtitle,
     required this.points,
+    this.onTap,
   });
 
   final IconData icon;
@@ -281,9 +278,13 @@ class _ActivityTile extends StatelessWidget {
   final String subtitle;
   final String points;
 
+  /// Opens the fee for this session. Null while the session is still open,
+  /// since no payment exists until the vehicle exits.
+  final VoidCallback? onTap;
+
   @override
   Widget build(BuildContext context) {
-    return AppCard(
+    final card = AppCard(
       padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md, vertical: AppSpacing.sm),
       child: Row(
         children: [
@@ -310,8 +311,25 @@ class _ActivityTile extends StatelessWidget {
             points,
             style: AppTextStyles.labelBold.copyWith(color: AppColors.successPressed),
           ),
+          if (onTap != null)
+            const Padding(
+              padding: EdgeInsets.only(left: AppSpacing.xs),
+              child: Icon(
+                Icons.chevron_right_rounded,
+                color: AppColors.textSecondary,
+                size: 20,
+              ),
+            ),
         ],
       ),
+    );
+
+    if (onTap == null) return card;
+
+    return GestureDetector(
+      onTap: onTap,
+      behavior: HitTestBehavior.opaque,
+      child: card,
     );
   }
 }

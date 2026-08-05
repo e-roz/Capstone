@@ -5,9 +5,14 @@ import '../../../../core/constants/api_constants.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_spacing.dart';
 import '../../../../core/theme/app_text_styles.dart';
+import '../../../../core/utils/api_error_message.dart';
+import '../../../../core/utils/app_flushbar.dart';
 import '../../../../core/widgets/app_badge.dart';
+import '../../../../core/widgets/app_button.dart';
 import '../../../../core/widgets/app_card.dart';
+import '../../data/models/incident.dart';
 import '../providers/incidents_provider.dart';
+import 'edit_incident_screen.dart';
 
 class IncidentDetailScreen extends ConsumerWidget {
   const IncidentDetailScreen({super.key, required this.incidentId});
@@ -15,6 +20,56 @@ class IncidentDetailScreen extends ConsumerWidget {
 
   String _resolveUrl(String url) {
     return url.startsWith('http') ? url : '${ApiConstants.baseUrl}$url';
+  }
+
+  Future<void> _edit(
+      BuildContext context, WidgetRef ref, IncidentDetail incident) async {
+    final saved = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(builder: (_) => EditIncidentScreen(incident: incident)),
+    );
+
+    if (saved == true) {
+      ref.invalidate(incidentDetailProvider(incidentId));
+      ref.invalidate(incidentsNotifierProvider);
+    }
+  }
+
+  Future<void> _withdraw(BuildContext context, WidgetRef ref) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('Withdraw report?', style: AppTextStyles.h3),
+        content: Text(
+          'This report will be marked as withdrawn and will no longer be '
+          'reviewed. This cannot be undone.',
+          style: AppTextStyles.bodyMedium,
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Keep it'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            style: TextButton.styleFrom(foregroundColor: AppColors.errorDefault),
+            child: const Text('Withdraw'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true || !context.mounted) return;
+
+    try {
+      await ref.read(incidentsRepositoryProvider).withdraw(incidentId);
+      ref.invalidate(incidentDetailProvider(incidentId));
+      ref.invalidate(incidentsNotifierProvider);
+      if (context.mounted) showAppMessage(context, 'Report withdrawn.');
+    } catch (e) {
+      if (context.mounted) {
+        showAppMessage(context, apiErrorMessage(e), isError: true);
+      }
+    }
   }
 
   @override
@@ -102,6 +157,28 @@ class IncidentDetailScreen extends ConsumerWidget {
                   Text('Admin Notes', style: AppTextStyles.h3),
                   const SizedBox(height: AppSpacing.sm),
                   AppCard(child: Text(incident.adminNotes!, style: AppTextStyles.bodyMedium)),
+                ],
+                if (incident.canModify) ...[
+                  const SizedBox(height: AppSpacing.lg),
+                  AppButton(
+                    label: 'Edit Report',
+                    style: AppButtonStyle.secondary,
+                    onPressed: () => _edit(context, ref, incident),
+                  ),
+                  const SizedBox(height: AppSpacing.sm),
+                  AppButton(
+                    label: 'Withdraw Report',
+                    style: AppButtonStyle.ghost,
+                    onPressed: () => _withdraw(context, ref),
+                  ),
+                ] else ...[
+                  const SizedBox(height: AppSpacing.lg),
+                  Text(
+                    'This report is being reviewed and can no longer be changed.',
+                    textAlign: TextAlign.center,
+                    style: AppTextStyles.bodySmall
+                        .copyWith(color: AppColors.textSecondary),
+                  ),
                 ],
               ],
             );

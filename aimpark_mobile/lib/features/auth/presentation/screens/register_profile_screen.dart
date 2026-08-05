@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_spacing.dart';
 import '../../../../core/theme/app_text_styles.dart';
 import '../../../../core/utils/api_error_message.dart';
@@ -11,6 +12,7 @@ import '../../../../core/widgets/app_text_field.dart';
 import '../providers/auth_provider.dart';
 import '../providers/registration_provider.dart';
 import '../widgets/registration_step_scaffold.dart';
+import 'terms_screen.dart';
 
 class RegisterProfileScreen extends ConsumerStatefulWidget {
   const RegisterProfileScreen({super.key});
@@ -29,6 +31,7 @@ class _RegisterProfileScreenState extends ConsumerState<RegisterProfileScreen> {
   bool _isLoading = false;
   bool _obscurePassword = true;
   bool _initialized = false;
+  bool _acceptedTerms = false;
 
   @override
   void dispose() {
@@ -72,6 +75,12 @@ class _RegisterProfileScreenState extends ConsumerState<RegisterProfileScreen> {
       }
     }
 
+    // The server rejects this too — checked here so the user is told before
+    // filling in a form and losing it to a 400.
+    if (!_acceptedTerms) {
+      return 'Please accept the Terms & Conditions to continue.';
+    }
+
     return null;
   }
 
@@ -91,6 +100,7 @@ class _RegisterProfileScreenState extends ConsumerState<RegisterProfileScreen> {
 
       final body = <String, dynamic>{
         'fullName': '$firstName $lastName',
+        'acceptedTerms': _acceptedTerms,
       };
       if (!isOAuth) {
         body['password'] = _passwordController.text;
@@ -194,6 +204,14 @@ class _RegisterProfileScreenState extends ConsumerState<RegisterProfileScreen> {
               onSubmitted: (_) => _isLoading ? null : _submit(false),
             ),
           ],
+          const SizedBox(height: AppSpacing.md),
+          _TermsCheckbox(
+            value: _acceptedTerms,
+            onChanged: (v) => setState(() => _acceptedTerms = v),
+            onReadTerms: () => Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const TermsScreen()),
+            ),
+          ),
           const SizedBox(height: AppSpacing.lg),
           AppButton(
             label: 'Continue',
@@ -202,6 +220,63 @@ class _RegisterProfileScreenState extends ConsumerState<RegisterProfileScreen> {
           ),
         ],
       ),
+    );
+  }
+}
+
+class _TermsCheckbox extends StatelessWidget {
+  const _TermsCheckbox({
+    required this.value,
+    required this.onChanged,
+    required this.onReadTerms,
+  });
+
+  final bool value;
+  final ValueChanged<bool> onChanged;
+  final VoidCallback onReadTerms;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // Sized down and de-padded so the checkbox sits level with the first
+        // line of text rather than floating above it.
+        SizedBox(
+          width: 24,
+          height: 24,
+          child: Checkbox(
+            value: value,
+            visualDensity: VisualDensity.compact,
+            materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            onChanged: (v) => onChanged(v ?? false),
+          ),
+        ),
+        const SizedBox(width: AppSpacing.sm),
+        Expanded(
+          child: Padding(
+            padding: const EdgeInsets.only(top: 2),
+            child: Wrap(
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: [
+                Text('I agree to the ', style: AppTextStyles.bodySmall),
+                GestureDetector(
+                  onTap: onReadTerms,
+                  child: Text(
+                    'Terms & Conditions',
+                    style: AppTextStyles.bodySmall.copyWith(
+                      color: AppColors.brandPressed,
+                      fontWeight: FontWeight.w700,
+                      decoration: TextDecoration.underline,
+                      decorationColor: AppColors.brandPressed,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
     );
   }
 }

@@ -13,18 +13,64 @@ namespace AimPark.API.Services
         private readonly IRepository<Notification> _notifications;
         private readonly IRepository<NotificationRead> _reads;
         private readonly IPushSender _pushSender;
+        private readonly ILogger<NotificationService> _logger;
         private readonly AppDbContext _db;
 
         public NotificationService(
             IRepository<Notification> notifications,
             IRepository<NotificationRead> reads,
             IPushSender pushSender,
+            ILogger<NotificationService> logger,
             AppDbContext db)
         {
             _notifications = notifications;
             _reads = reads;
             _pushSender = pushSender;
+            _logger = logger;
             _db = db;
+        }
+
+        public async Task NotifyUserAsync(
+            Guid userId,
+            NotificationType type,
+            string title,
+            string message,
+            IDictionary<string, string>? data,
+            CancellationToken ct)
+        {
+            try
+            {
+                var notification = new Notification
+                {
+                    Id = Guid.NewGuid(),
+                    Title = title,
+                    Message = message,
+                    Type = type,
+                    TargetUserId = userId,
+                    TargetRole = null,
+                    CreatedByUserId = Guid.Empty, // raised by the system, not an admin
+                    CreatedAt = DateTime.UtcNow
+                };
+
+                await _notifications.AddAsync(notification, ct);
+                await _notifications.SaveAsync(ct);
+
+                var payload = new Dictionary<string, string>(data ?? new Dictionary<string, string>())
+                {
+                    ["type"] = "notification",
+                    ["notificationId"] = notification.Id.ToString(),
+                };
+
+                // Persisted above, so a push failure costs the heads-up but never
+                // the notification itself — the user still sees it in the app.
+                await _pushSender.SendToUserAsync(userId, title, message, payload, ct);
+            }
+            catch (Exception ex)
+            {
+                // Notifying is never the point of the operation that triggered it.
+                // Issuing a violation must not fail because messaging did.
+                _logger.LogError(ex, "Failed to notify user {UserId}.", userId);
+            }
         }
 
         // POST /api/admin/notifications
@@ -51,6 +97,7 @@ namespace AimPark.API.Services
                 Message = dto.Message.Trim(),
                 Type = type,
                 TargetRole = targetRole,
+                TargetUserId = null, // broadcast — see NotifyUserAsync for addressed ones
                 CreatedByUserId = adminUserId,
                 CreatedAt = DateTime.UtcNow
             };
@@ -115,8 +162,14 @@ namespace AimPark.API.Services
             page = Math.Max(1, page);
             pageSize = Math.Clamp(pageSize, 1, 100);
 
+            // Two kinds reach a user: notifications addressed to them personally,
+            // and broadcasts for their role. A personally-addressed row must never
+            // fall through into someone else's list, hence the TargetUserId null
+            // check on the broadcast side.
             var baseQuery = _db.Set<Notification>().AsNoTracking()
-                .Where(n => n.TargetRole == null || n.TargetRole == role);
+                .Where(n => n.TargetUserId == userId
+                         || (n.TargetUserId == null
+                             && (n.TargetRole == null || n.TargetRole == role)));
 
             var totalCount = await baseQuery.CountAsync(ct);
             var unreadCount = await baseQuery.CountAsync(

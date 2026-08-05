@@ -13,6 +13,7 @@ class Payment {
     this.entryTime,
     this.exitTime,
     this.paidAt,
+    this.dueAt,
   });
 
   final String paymentId;
@@ -29,7 +30,33 @@ class Payment {
   final DateTime createdAt;
   final DateTime? paidAt;
 
+  /// When settlement is expected. Null on older records created before due
+  /// dates existed, so every read has to tolerate its absence.
+  final DateTime? dueAt;
+
   bool get isPaid => paidAt != null;
+
+  bool get isOverdue =>
+      !isPaid && dueAt != null && DateTime.now().isAfter(dueAt!);
+
+  /// Whole days until the deadline. Negative once it has passed.
+  int? get daysUntilDue {
+    if (dueAt == null) return null;
+    final due = DateTime(dueAt!.year, dueAt!.month, dueAt!.day);
+    final now = DateTime.now();
+    return due.difference(DateTime(now.year, now.month, now.day)).inDays;
+  }
+
+  /// Short human phrasing for the deadline, or null when there is nothing to say.
+  String? get dueLabel {
+    if (isPaid || dueAt == null) return null;
+
+    final days = daysUntilDue!;
+    if (days < 0) return 'Overdue by ${-days} day(s)';
+    if (days == 0) return 'Due today';
+    if (days == 1) return 'Due tomorrow';
+    return 'Due in $days days';
+  }
 
   factory Payment.fromJson(Map<String, dynamic> json) {
     return Payment(
@@ -46,6 +73,7 @@ class Payment {
       status: json['status'] as String,
       createdAt: DateTime.parse(json['createdAt'] as String),
       paidAt: json['paidAt'] == null ? null : DateTime.parse(json['paidAt'] as String),
+      dueAt: json['dueAt'] == null ? null : DateTime.parse(json['dueAt'] as String),
     );
   }
 }

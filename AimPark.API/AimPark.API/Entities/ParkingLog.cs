@@ -15,8 +15,10 @@ namespace AimPark.API.Entities
         public DateTime EntryTime { get; set; }
         public DateTime? ExitTime { get; set; }
 
-        // Admin/Security account that recorded this entry — stands in for the RFID gate hardware for now
-        public Guid LoggedByUserId { get; set; }
+        // Exactly one of these identifies who recorded the entry: a staff
+        // account working the admin panel, or a gate device reporting a scan.
+        public Guid? LoggedByUserId { get; set; }
+        public Guid? LoggedByDeviceId { get; set; }
 
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     }

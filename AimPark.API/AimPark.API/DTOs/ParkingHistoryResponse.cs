@@ -14,6 +14,11 @@ namespace AimPark.API.DTOs
         public string? SlotCode { get; set; }
         public DateTime EntryTime { get; set; }
         public DateTime? ExitTime { get; set; }
+
+        // The fee raised for this session, so the app can link a history row
+        // straight to its payment. Null while the session is still open — the
+        // transaction is only created on exit.
+        public Guid? PaymentId { get; set; }
     }
 
     /// <summary>

@@ -34,6 +34,15 @@ namespace AimPark.API.Controllers
         public Task<ActionResult<ViolationDetailResponse>> GetDetail(Guid violationId, CancellationToken ct)
             => _violationService.GetDetailForAdminAsync(violationId, ct);
 
+        /// <summary>
+        /// Corrects an issued violation in place, rather than forcing a
+        /// dismiss-and-reissue that would leave a bogus record on the user.
+        /// </summary>
+        [HttpPut("{violationId:guid}")]
+        public Task<ActionResult<object>> Update(
+            Guid violationId, [FromBody] UpdateViolationDto dto, CancellationToken ct)
+            => _violationService.UpdateAsync(violationId, GetAdminUserId(), dto, ct);
+
         [HttpPut("{violationId:guid}/dismiss")]
         public Task<ActionResult<object>> Dismiss(Guid violationId, CancellationToken ct)
             => _violationService.DismissAsync(violationId, GetAdminUserId(), ct);

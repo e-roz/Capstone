@@ -1,19 +1,24 @@
 class ParkingSlot {
   final String slotId;
   final String slotCode;
+  final int gate;
   final String? vehicleType;
   final String status;
 
   const ParkingSlot({
     required this.slotId,
     required this.slotCode,
+    required this.gate,
     required this.vehicleType,
     required this.status,
   });
 
+  bool get isMotorcycle => vehicleType == 'Motorcycle';
+
   factory ParkingSlot.fromJson(Map<String, dynamic> json) => ParkingSlot(
         slotId: json['slotId']?.toString() ?? '',
         slotCode: json['slotCode']?.toString() ?? '',
+        gate: (json['gate'] as num?)?.toInt() ?? 1,
         vehicleType: json['vehicleType']?.toString(),
         status: json['status']?.toString() ?? '',
       );

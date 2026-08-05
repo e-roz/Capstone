@@ -13,13 +13,20 @@ namespace AimPark.API.Services
         private readonly IRepository<ParkingLog> _logs;
         private readonly IRepository<ParkingSlot> _slots;
         private readonly IPaymentService _paymentService;
+        private readonly IParkingAllocationService _allocationService;
         private readonly AppDbContext _db;
 
-        public ParkingHistoryService(IRepository<ParkingLog> logs, IRepository<ParkingSlot> slots, IPaymentService paymentService, AppDbContext db)
+        public ParkingHistoryService(
+            IRepository<ParkingLog> logs,
+            IRepository<ParkingSlot> slots,
+            IPaymentService paymentService,
+            IParkingAllocationService allocationService,
+            AppDbContext db)
         {
             _logs = logs;
             _slots = slots;
             _paymentService = paymentService;
+            _allocationService = allocationService;
             _db = db;
         }
 
@@ -42,7 +49,11 @@ namespace AimPark.API.Services
                     LogId = l.Id,
                     SlotCode = l.Slot != null ? l.Slot.SlotCode : null,
                     EntryTime = l.EntryTime,
-                    ExitTime = l.ExitTime
+                    ExitTime = l.ExitTime,
+                    PaymentId = _db.Set<PaymentTransaction>()
+                        .Where(p => p.ParkingLogId == l.Id)
+                        .Select(p => (Guid?)p.Id)
+                        .FirstOrDefault()
                 })
                 .ToListAsync(ct);
 
@@ -79,7 +90,8 @@ namespace AimPark.API.Services
         }
 
         // POST /api/admin/parking/log-entry — manual stand-in for the RFID gate hardware
-        public async Task<ActionResult<object>> LogEntryAsync(LogParkingEntryDto dto, Guid loggedByUserId, CancellationToken ct)
+        public async Task<ActionResult<object>> LogEntryAsync(
+            LogParkingEntryDto dto, Guid? loggedByUserId, Guid? loggedByDeviceId, CancellationToken ct)
         {
             User? user = null;
 
@@ -89,7 +101,11 @@ namespace AimPark.API.Services
                 user = await _db.Set<User>().FirstOrDefaultAsync(u => u.RfidTagId == dto.RfidTagId, ct);
 
             if (user is null)
-                return new NotFoundObjectResult(new { message = "User not found. Provide a valid userId or rfidTagId." });
+                return new NotFoundObjectResult(new
+                {
+                    result = AllocationResult.UnknownTag,
+                    message = "User not found. Provide a valid userId or rfidTagId."
+                });
 
             if (user.RfidStatus == RfidStatus.Suspended)
             {
@@ -102,19 +118,58 @@ namespace AimPark.API.Services
                 }
                 else
                 {
-                    return new BadRequestObjectResult(new { message = "RFID access is suspended." });
+                    return new BadRequestObjectResult(new
+                    {
+                        result = AllocationResult.RfidSuspended,
+                        message = "RFID access is suspended."
+                    });
                 }
             }
+
+            // A vehicle already inside must not open the barrier again — without
+            // this the same tag could log repeated entries and orphan the first.
+            var openSession = await _db.Set<ParkingLog>().AsNoTracking()
+                .AnyAsync(l => l.UserId == user.Id && l.ExitTime == null, ct);
+
+            if (openSession)
+                return new BadRequestObjectResult(new
+                {
+                    result = AllocationResult.AlreadyInside,
+                    message = "This vehicle is already inside the lot."
+                });
 
             ParkingSlot? slot = null;
             if (dto.SlotId is not null)
             {
                 slot = await _slots.FindAsync(s => s.Id == dto.SlotId, ct);
                 if (slot is null)
-                    return new NotFoundObjectResult(new { message = "Slot not found." });
+                    return new NotFoundObjectResult(new
+                    {
+                        result = AllocationResult.SlotUnavailable,
+                        message = "Slot not found."
+                    });
 
                 if (slot.Status != ParkingSlotStatus.Available)
-                    return new BadRequestObjectResult(new { message = "Slot is not available." });
+                    return new BadRequestObjectResult(new
+                    {
+                        result = AllocationResult.SlotUnavailable,
+                        message = "Slot is not available."
+                    });
+            }
+            else
+            {
+                // No slot named — this is the automatic path the gate uses.
+                // ClaimForEntryAsync takes the slot as it picks it, so two
+                // vehicles scanning at once cannot be sent to the same bay.
+                var assignment = await _allocationService.ClaimForEntryAsync(user.Id, dto.Gate, ct);
+                if (assignment.Result != AllocationResult.Assigned)
+                    return new BadRequestObjectResult(new
+                    {
+                        result = assignment.Result,
+                        message = assignment.Reason ?? "No slot could be assigned."
+                    });
+
+                slot = await _slots.FindAsync(s => s.Id == assignment.SlotId, ct);
             }
 
             var log = new ParkingLog
@@ -125,6 +180,7 @@ namespace AimPark.API.Services
                 EntryTime = DateTime.UtcNow,
                 ExitTime = null,
                 LoggedByUserId = loggedByUserId,
+                LoggedByDeviceId = loggedByDeviceId,
                 CreatedAt = DateTime.UtcNow
             };
 
@@ -132,6 +188,8 @@ namespace AimPark.API.Services
 
             if (slot is not null)
             {
+                // Idempotent for the automatic path, where the claim already
+                // took the slot; the manual path relies on it.
                 slot.Status = ParkingSlotStatus.Occupied;
                 slot.UpdatedAt = DateTime.UtcNow;
                 _slots.Update(slot);
@@ -139,18 +197,59 @@ namespace AimPark.API.Services
 
             await _logs.SaveAsync(ct);
 
-            return new OkObjectResult(new { message = "Entry logged.", logId = log.Id });
+            return new OkObjectResult(new
+            {
+                result = AllocationResult.Assigned,
+                message = "Entry logged.",
+                logId = log.Id,
+                slotId = slot?.Id,
+                slotCode = slot?.SlotCode,
+                gate = slot?.Gate
+            });
         }
 
         // POST /api/admin/parking/log-exit
-        public async Task<ActionResult<object>> LogExitAsync(LogParkingExitDto dto, Guid loggedByUserId, CancellationToken ct)
+        public async Task<ActionResult<object>> LogExitAsync(
+            LogParkingExitDto dto, Guid? loggedByUserId, Guid? loggedByDeviceId, CancellationToken ct)
         {
-            var log = await _logs.FindAsync(l => l.Id == dto.LogId, ct);
+            ParkingLog? log = null;
+
+            if (dto.LogId is not null)
+            {
+                log = await _logs.FindAsync(l => l.Id == dto.LogId, ct);
+            }
+            else if (!string.IsNullOrWhiteSpace(dto.RfidTagId))
+            {
+                // Gate path: resolve the card to its open session. Exiting is
+                // only ever meaningful for a vehicle currently inside.
+                var userId = await _db.Set<User>().AsNoTracking()
+                    .Where(u => u.RfidTagId == dto.RfidTagId)
+                    .Select(u => (Guid?)u.Id)
+                    .FirstOrDefaultAsync(ct);
+
+                if (userId is null)
+                    return new NotFoundObjectResult(new
+                    {
+                        result = AllocationResult.UnknownTag,
+                        message = "No account is registered to this tag."
+                    });
+
+                log = await _logs.FindAsync(l => l.UserId == userId && l.ExitTime == null, ct);
+            }
+
             if (log is null)
-                return new NotFoundObjectResult(new { message = "Log entry not found." });
+                return new NotFoundObjectResult(new
+                {
+                    result = AllocationResult.LogNotFound,
+                    message = "No open parking session found."
+                });
 
             if (log.ExitTime is not null)
-                return new BadRequestObjectResult(new { message = "This entry already has a recorded exit." });
+                return new BadRequestObjectResult(new
+                {
+                    result = AllocationResult.AlreadyExited,
+                    message = "This entry already has a recorded exit."
+                });
 
             log.ExitTime = DateTime.UtcNow;
             _logs.Update(log);
@@ -172,6 +271,7 @@ namespace AimPark.API.Services
 
             return new OkObjectResult(new
             {
+                result = AllocationResult.ExitLogged,
                 message = "Exit logged.",
                 paymentId = transaction.Id,
                 amountDue = transaction.AmountDue

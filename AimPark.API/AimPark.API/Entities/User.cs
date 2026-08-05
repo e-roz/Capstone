@@ -30,6 +30,11 @@ namespace AimPark.API.Entities
         public DateTime? CanReapplyAt { get; set; }
 
         public bool IsFirstLogin { get; set; } = true;
+
+        // When this user accepted the terms and conditions. Recorded rather than
+        // assumed, so there is an auditable answer to "did they agree, and when".
+        public DateTime? TermsAcceptedAt { get; set; }
+
         public DateTime CreatedAt { get; set; }
         public DateTime UpdatedAt { get; set; }
 

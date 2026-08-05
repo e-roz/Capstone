@@ -100,6 +100,22 @@ class _PaymentTile extends StatelessWidget {
                     '${payment.createdAt.month}/${payment.createdAt.day}/${payment.createdAt.year}',
                     style: AppTextStyles.bodySmall,
                   ),
+                  if (payment.dueLabel != null) ...[
+                    const SizedBox(height: 2),
+                    Text(
+                      payment.dueLabel!,
+                      // Overdue is the one thing in this row worth alarming
+                      // about; a future deadline stays informational.
+                      style: AppTextStyles.labelSmall.copyWith(
+                        color: payment.isOverdue
+                            ? AppColors.errorPressed
+                            : AppColors.textSecondary,
+                        fontWeight: payment.isOverdue
+                            ? FontWeight.w700
+                            : FontWeight.w500,
+                      ),
+                    ),
+                  ],
                 ],
               ),
             ),

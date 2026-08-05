@@ -177,10 +177,15 @@ class ViolationActions extends _$ViolationActions {
   @override
   AsyncValue<void> build() => const AsyncData(null);
 
+  /// Overrides are optional — omitting one falls back to the policy rule's
+  /// default. The API always supported them; the dialog just never sent them.
   Future<String?> issue({
     required String userId,
     required String policyRuleId,
     required String description,
+    double? penaltyAmountOverride,
+    String? suspensionTypeOverride,
+    int? suspensionDaysOverride,
   }) =>
       _run(() async {
         final dio = ref.read(dioProvider);
@@ -188,6 +193,29 @@ class ViolationActions extends _$ViolationActions {
           'userId': userId,
           'policyRuleId': policyRuleId,
           'description': description,
+          'penaltyAmountOverride': ?penaltyAmountOverride,
+          'suspensionTypeOverride': ?suspensionTypeOverride,
+          'suspensionDaysOverride': ?suspensionDaysOverride,
+        });
+        return (res.data as Map<String, dynamic>)['message']?.toString();
+      });
+
+  /// Corrects an issued violation in place, instead of dismissing and
+  /// re-issuing — which left a bogus dismissed row on the user's record.
+  Future<String?> update({
+    required String violationId,
+    required String description,
+    required double penaltyAmount,
+    required String suspensionType,
+    int? suspensionDays,
+  }) =>
+      _run(() async {
+        final dio = ref.read(dioProvider);
+        final res = await dio.put(ApiEndpoints.violation(violationId), data: {
+          'description': description,
+          'penaltyAmount': penaltyAmount,
+          'suspensionType': suspensionType,
+          'suspensionDays': suspensionDays,
         });
         return (res.data as Map<String, dynamic>)['message']?.toString();
       });

@@ -18,6 +18,7 @@ class ApiEndpoints {
 
   static const parkingHistory = '/api/parking/history';
   static const parkingSlots = '/api/parking/slots';
+  static const parkingRecommend = '/api/parking/recommend';
 
   static const accountProfile = '/api/account/profile';
   static const changePassword = '/api/account/change-password';
@@ -33,4 +34,6 @@ class ApiEndpoints {
 
   static const incidents = '/api/incidents';
   static String incidentDetail(String incidentId) => '/api/incidents/$incidentId';
+  static String incidentWithdraw(String incidentId) =>
+      '/api/incidents/$incidentId/withdraw';
 }
