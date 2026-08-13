@@ -48,8 +48,11 @@ namespace AimPark.API.Services
             if (user.AccountStatus != AccountStatus.Active)
                 return new BadRequestObjectResult(new { message = "Your account must be approved before adding a vehicle." });
 
-            if (ValidationHelper.HasEmptyFields(dto.PlateNumber, dto.VehicleType, dto.Brand, dto.Model, dto.Color))
-                return new BadRequestObjectResult(new { message = "All vehicle fields are required." });
+            // Brand and model are deliberately absent. Nothing reads them — the gate
+            // matches on the plate and allocation on the type — so requiring them
+            // only makes the form longer.
+            if (ValidationHelper.HasEmptyFields(dto.PlateNumber, dto.VehicleType, dto.Color))
+                return new BadRequestObjectResult(new { message = "Plate number, vehicle type and colour are required." });
 
             if (!Enum.TryParse<VehicleType>(dto.VehicleType, true, out var vehicleType))
                 return new BadRequestObjectResult(new { message = "Invalid vehicle type." });

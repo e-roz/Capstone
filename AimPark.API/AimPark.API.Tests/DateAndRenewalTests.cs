@@ -7,16 +7,46 @@ public class DateExtractionTests
     [Fact]
     public void TakesTheExpiryAndNotTheRenewalWindowBehindIt()
     {
-        // The receipt reads "valid until 01/2026 and due for renewal on
-        // 01/22/2026-01/31/2026". The dates after the expiry are the renewal window,
-        // and a rule that accepts MM/DD/YYYY captures one of those instead.
+        // The dates after the expiry are the renewal window, and a rule that simply
+        // takes a date captures one of those instead.
         var text = "This payment is valid until 01/2026 and due for renewal on 01/22/2026-01/31/2026.";
 
-        var expiry = DateExtraction.FindMonthYear(text);
+        var expiry = DateExtraction.FindExpiry(text);
 
-        Assert.NotNull(expiry);
-        Assert.Equal(2026, expiry!.Value.Year);
-        Assert.Equal(1, expiry.Value.Month);
+        Assert.Equal(new DateTime(2026, 1, 31, 0, 0, 0, DateTimeKind.Utc), expiry);
+    }
+
+    [Fact]
+    public void ReadsAnExpiryPrintedAsAFullDate()
+    {
+        // Verbatim from a real receipt, OCR damage included — "due or renewal" for
+        // "due for renewal". This wording prints the expiry as MM/DD/YYYY, and the
+        // earlier MM/YYYY-only rule read nothing at all from it: 31 and 22 are not
+        // months, so every candidate was rejected and the expiry fell through to
+        // being derived from the plate instead of read.
+        var text = "This payment is valid until 01/31/2026 and due or renewal on 01/22/2026 - 01/31/2026";
+
+        var expiry = DateExtraction.FindExpiry(text);
+
+        Assert.Equal(new DateTime(2026, 1, 31, 0, 0, 0, DateTimeKind.Utc), expiry);
+    }
+
+    [Fact]
+    public void PrefersTheExpiryEvenWhenTheWindowSurvivesTheCut()
+    {
+        // Belt and braces: if OCR mangles both "due" and "renewal" the text cannot be
+        // cut, so the earliest date has to win on its own.
+        var text = "valid until 01/2026 and dve for renewa1 on 01/22/2026-01/31/2026";
+
+        Assert.Equal(new DateTime(2026, 1, 31, 0, 0, 0, DateTimeKind.Utc), DateExtraction.FindExpiry(text));
+    }
+
+    [Fact]
+    public void ReportsNoExpiryWhenTheSentenceCarriesNoDate()
+    {
+        // A missing value has to stay missing so it reaches manual review, rather
+        // than being quietly filled from somewhere else on the receipt.
+        Assert.Null(DateExtraction.FindExpiry("This payment is valid until"));
     }
 
     [Fact]

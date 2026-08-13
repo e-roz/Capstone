@@ -15,14 +15,22 @@ class DocumentSpec {
   const DocumentSpec({
     required this.type,
     required this.label,
+    required this.purpose,
     required this.instruction,
     required this.aspectRatio,
   });
 
   final ScanDocumentType type;
 
-  /// Short name, used in the app bar and on the picker tile.
+  /// Short name, used in the app bar and as the heading of its own step.
   final String label;
+
+  /// What this document is for, in the applicant's terms.
+  ///
+  /// Each one answers exactly one question, and someone asked for four
+  /// photographs deserves to know which question each is answering — otherwise
+  /// the licence and the receipt look like the same demand for paperwork twice.
+  final String purpose;
 
   /// One line telling the user how to hold the document.
   final String instruction;
@@ -34,6 +42,7 @@ class DocumentSpec {
   static const raf = DocumentSpec(
     type: ScanDocumentType.raf,
     label: 'Registration form',
+    purpose: 'Shows that you are enrolled this term.',
     instruction: 'Lay it flat and fit the whole form inside the frame.',
     aspectRatio: 1 / 1.414,
   );
@@ -41,6 +50,7 @@ class DocumentSpec {
   static const schoolId = DocumentSpec(
     type: ScanDocumentType.schoolId,
     label: 'School ID',
+    purpose: 'Shows that you work at the school.',
     instruction: 'Front of your school ID, filling the frame.',
     aspectRatio: 1.586,
   );
@@ -48,6 +58,7 @@ class DocumentSpec {
   static const license = DocumentSpec(
     type: ScanDocumentType.license,
     label: "Driver's licence",
+    purpose: 'Shows that you may drive, and that you are the same person.',
     instruction: 'Front of your licence, with the expiry date visible.',
     aspectRatio: 1.586,
   );
@@ -55,6 +66,8 @@ class DocumentSpec {
   static const officialReceipt = DocumentSpec(
     type: ScanDocumentType.officialReceipt,
     label: 'Official receipt',
+    purpose:
+        'Your plate number is read from here — you will not have to type it.',
     instruction: 'The LTO receipt. Keep the plate number and date in frame.',
     aspectRatio: 1 / 1.414,
   );
@@ -62,6 +75,7 @@ class DocumentSpec {
   static const platePhoto = DocumentSpec(
     type: ScanDocumentType.platePhoto,
     label: 'Plate photo',
+    purpose: 'Checked against the receipt, so the right plate reaches the gate.',
     instruction: 'The plate on the vehicle itself, straight on and close up.',
     aspectRatio: 2.0,
   );

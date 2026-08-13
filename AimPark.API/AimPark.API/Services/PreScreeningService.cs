@@ -60,20 +60,27 @@ namespace AimPark.API.Services
         }
 
         /// <summary>
-        /// The receipt's plate against the plate the user registered.
+        /// Whether the plate now on the account is the one the receipt gave.
         /// </summary>
         /// <remarks>
+        /// This used to compare the receipt against a plate the applicant typed, and
+        /// that comparison no longer exists: the plate is read off the receipt and
+        /// shown read-only, then the vehicle record is created from it. Comparing it
+        /// back against itself would pass every time and tell a reviewer nothing.
+        ///
+        /// What is left is worth keeping. The app echoes the plate back when
+        /// confirming, so a value that differs from the stored reading did not come
+        /// from the screen the user saw, and the record should not quietly carry it.
+        /// Corroboration that the plate is genuinely this vehicle's comes from
+        /// <see cref="CheckPlatePhoto"/>, which reads the physical plate.
+        ///
         /// Never guessed at. A blank an admin fills in is recoverable; a confidently
         /// wrong plate sits in the database until someone is denied at the gate with
         /// a perfectly valid card and no way to understand why.
         /// </remarks>
         private static CheckResult CheckPlate(DocumentVerification v, Vehicle? vehicle, List<string> notes)
         {
-            if (vehicle is null)
-                return CheckResult.NotChecked;
-
-            var fromReceipt = IdentifierNormalizer.NormalizePlate(
-                v.ConfirmedPlateNumber ?? v.ExtractedPlateNumber);
+            var fromReceipt = IdentifierNormalizer.NormalizePlate(v.ExtractedPlateNumber);
 
             if (fromReceipt.Length == 0)
             {
@@ -81,11 +88,20 @@ namespace AimPark.API.Services
                 return CheckResult.NotChecked;
             }
 
-            if (fromReceipt == vehicle.PlateNumber)
-                return CheckResult.Passed;
+            var committed = IdentifierNormalizer.NormalizePlate(v.ConfirmedPlateNumber);
 
-            notes.Add($"Plate mismatch — receipt reads {fromReceipt}, the account is registered to {vehicle.PlateNumber}.");
-            return CheckResult.Failed;
+            if (committed.Length != 0 && committed != fromReceipt)
+            {
+                notes.Add(
+                    $"The plate submitted ({committed}) is not the plate read from the receipt ({fromReceipt}). " +
+                    "The app shows this value read-only, so it was not changed on the confirmation screen.");
+                return CheckResult.Failed;
+            }
+
+            if (vehicle is null)
+                return CheckResult.NotChecked;
+
+            return CheckResult.Passed;
         }
 
         private static CheckResult CheckPlatePhoto(DocumentVerification v, List<string> notes)
@@ -199,7 +215,8 @@ namespace AimPark.API.Services
             Compare(v.ExtractedStudentName, v.ConfirmedStudentName, "name", identity: true);
             Compare(v.ExtractedStudentNumber, v.ConfirmedStudentNumber, "student number", identity: true);
             Compare(v.ExtractedLicenseName, v.ConfirmedLicenseName, "licence name", identity: true);
-            Compare(v.ExtractedPlateNumber, v.ConfirmedPlateNumber, "plate number", identity: false);
+            // The plate is deliberately absent: it is read-only on screen, so a
+            // difference is not an edit, and CheckPlate already reports it.
             Compare(v.ExtractedSection, v.ConfirmedSection, "section", identity: false);
             Compare(v.ExtractedSemester, v.ConfirmedSemester, "semester", identity: false);
         }

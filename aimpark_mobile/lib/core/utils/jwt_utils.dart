@@ -97,10 +97,13 @@ class JwtUtils {
     switch (step) {
       case 'ProfileSetup':
         return '/register/profile';
+      // VehicleInfo is retired — vehicle details are collected at the end of the
+      // document flow now. Accounts created under the old order can still be
+      // holding a token that says this, and the server moves them on to
+      // DocumentUpload when they arrive, so send them where that lands.
       case 'VehicleInfo':
-        return '/register/vehicle';
       case 'DocumentUpload':
-        return '/register/documents';
+        return '/register/documents/0';
       default:
         // EmailVerification, Submitted, or unknown — send to email step
         return '/register/email';

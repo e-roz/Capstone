@@ -39,7 +39,9 @@ namespace AimPark.API.Services
             // needed once the receipt has told us what to look for. The question
             // stops being "what is the plate" and becomes "does this plate appear
             // here" — a far easier one.
-            result.PlatePhotoNumber = ConfirmPlateInPhoto(Prepare(platePhoto), plate);
+            var (seenOnPlate, agreement) = ConfirmPlateInPhoto(Prepare(platePhoto), plate);
+            result.PlatePhotoNumber = seenOnPlate;
+            result.PlateAgreement = agreement.ToString();
 
             FlagMissing(result);
             return result;
@@ -267,7 +269,7 @@ namespace AimPark.API.Services
             var after = FuzzyText.IndexAfterLabel(stream, DocumentLabels.Receipt.ValidUntil);
             if (after >= 0)
             {
-                var read = DateExtraction.FindMonthYear(stream[after..]);
+                var read = DateExtraction.FindExpiry(stream[after..]);
                 if (read is not null)
                     return read;
             }
@@ -296,11 +298,19 @@ namespace AimPark.API.Services
         /// One character of difference is allowed. These photos are taken outdoors,
         /// at an angle, in whatever light there is, and strict comparison fails on
         /// perfectly good-faith submissions.
+        ///
+        /// A plate that is readable but different is reported as such rather than as
+        /// nothing. The applicant types no plate anywhere, so this comparison is what
+        /// stands behind the value, and "we could not read your photo" and "your
+        /// photo shows another vehicle" call for opposite responses — one a retake,
+        /// the other a reviewer.
         /// </remarks>
-        private static string? ConfirmPlateInPhoto(List<OcrLineDto> lines, string? expected)
+        private static (string? Seen, PlateAgreement Agreement) ConfirmPlateInPhoto(
+            List<OcrLineDto> lines,
+            string? expected)
         {
             if (string.IsNullOrEmpty(expected) || lines.Count == 0)
-                return null;
+                return (null, PlateAgreement.NotChecked);
 
             var candidates = new List<string>();
 
@@ -318,18 +328,20 @@ namespace AimPark.API.Services
                 }
             }
 
-            // Prefer an exact hit; fall back to the closest near-miss.
-            var exact = candidates.FirstOrDefault(c => c == expected);
-            if (exact is not null)
-                return exact;
-
-            return candidates
+            var plausible = candidates
                 .Where(c => c.Length is >= MinPlateLength and <= MaxPlateLength)
                 .Select(c => (Value: c, Distance: FuzzyText.EditDistance(c, expected)))
-                .Where(c => c.Distance <= 1)
                 .OrderBy(c => c.Distance)
-                .Select(c => c.Value)
-                .FirstOrDefault();
+                .ToList();
+
+            if (plausible.Count == 0)
+                return (null, PlateAgreement.NotChecked);
+
+            var closest = plausible[0];
+
+            return closest.Distance <= 1
+                ? (closest.Value, PlateAgreement.Agreed)
+                : (closest.Value, PlateAgreement.Differs);
         }
 
         /// <summary>

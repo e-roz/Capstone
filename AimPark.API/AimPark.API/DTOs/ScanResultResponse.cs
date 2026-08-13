@@ -53,7 +53,19 @@ namespace AimPark.API.DTOs
         public string? PlateNumber { get; set; }
         public DateTime? RegistrationExpiry { get; set; }
 
+        /// <summary>What the photo of the physical plate read, if anything.</summary>
         public string? PlatePhotoNumber { get; set; }
+
+        /// <summary>
+        /// Whether that reading agrees with the receipt. See
+        /// <see cref="Enums.PlateAgreement"/>.
+        /// </summary>
+        /// <remarks>
+        /// The app shows this on the plate step and on the summary. With the plate
+        /// no longer typed, two readings agreeing is the whole of the evidence that
+        /// the right characters end up on the account.
+        /// </remarks>
+        public string PlateAgreement { get; set; } = Enums.PlateAgreement.NotChecked.ToString();
 
         /// <summary>
         /// Fields the confirmation screen should draw attention to, and why.

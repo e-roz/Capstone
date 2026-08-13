@@ -1,6 +1,22 @@
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 
+import '../../../../core/ocr/document_scanner.dart';
+import '../../../../core/ocr/ocr_payload.dart';
+
 part 'registration_provider.g.dart';
+
+/// One text recogniser for the whole registration flow.
+///
+/// The documents are now captured on four separate screens, so a recogniser
+/// owned by a screen would load the model four times over. Kept alive across
+/// them and closed when the flow's providers go.
+@Riverpod(keepAlive: true)
+DocumentScanner documentScanner(Ref ref) {
+  final scanner = DocumentScanner();
+  ref.onDispose(scanner.dispose);
+  return scanner;
+}
 
 /// How the applicant is attached to the school. Names match the C# `Affiliation`
 /// enum, which the server parses by name.
@@ -22,6 +38,7 @@ class RegistrationState {
     this.isOAuthFlow = false,
     this.googleDisplayName,
     this.affiliation = Affiliation.student,
+    this.captured = const {},
   });
 
   final String? registrationSessionId;
@@ -42,12 +59,21 @@ class RegistrationState {
   /// The display name returned by Google, used to pre-fill the profile form.
   final String? googleDisplayName;
 
+  /// Photos taken so far, with what was read from each.
+  ///
+  /// Held here because the four documents are captured on four screens but
+  /// uploaded in one call at the end. Keeping them on any single screen would
+  /// lose the earlier three the moment it was popped, and uploading each as it
+  /// is taken would mean four round trips before the user has finished.
+  final Map<ScanDocumentType, CapturedDocument> captured;
+
   RegistrationState copyWith({
     String? registrationSessionId,
     String? email,
     bool? isOAuthFlow,
     String? googleDisplayName,
     Affiliation? affiliation,
+    Map<ScanDocumentType, CapturedDocument>? captured,
     bool clearSession = false,
   }) {
     return RegistrationState(
@@ -58,6 +84,7 @@ class RegistrationState {
       googleDisplayName:
           clearSession ? null : googleDisplayName ?? this.googleDisplayName,
       affiliation: affiliation ?? this.affiliation,
+      captured: captured ?? this.captured,
     );
   }
 }
@@ -88,6 +115,19 @@ class RegistrationNotifier extends _$RegistrationNotifier {
   /// know which proof of affiliation to ask for.
   void setAffiliation(Affiliation affiliation) {
     state = state.copyWith(affiliation: affiliation);
+  }
+
+  void setCaptured(ScanDocumentType type, CapturedDocument document) {
+    state = state.copyWith(
+      captured: {...state.captured, type: document},
+    );
+  }
+
+  /// Forgets the photos once they have been submitted, so a second pass through
+  /// the flow — a re-application, or a back-out and restart — does not upload
+  /// last time's images.
+  void clearCaptured() {
+    state = state.copyWith(captured: const {});
   }
 
   void clearSession() {

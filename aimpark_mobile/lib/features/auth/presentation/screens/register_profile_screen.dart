@@ -121,7 +121,7 @@ class _RegisterProfileScreenState extends ConsumerState<RegisterProfileScreen> {
       ref.read(registrationNotifierProvider.notifier).clearSession();
 
       if (mounted) {
-        context.go('/register/vehicle');
+        context.go('/register/documents/0');
       }
     } catch (e) {
       if (mounted) {

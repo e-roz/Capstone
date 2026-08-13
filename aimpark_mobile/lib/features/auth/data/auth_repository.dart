@@ -55,10 +55,6 @@ class AuthRepository {
     return _dio.post(ApiEndpoints.completeProfile, data: body);
   }
 
-  Future<Response<dynamic>> registerVehicle(Map<String, dynamic> body) {
-    return _dio.post(ApiEndpoints.registerVehicle, data: body);
-  }
-
   /// Uploads the four photos with what the phone read from each, and gets back
   /// the values for the user to check.
   Future<Response<dynamic>> scanDocuments(FormData formData) {

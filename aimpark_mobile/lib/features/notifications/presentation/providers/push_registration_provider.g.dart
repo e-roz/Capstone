@@ -6,7 +6,7 @@ part of 'push_registration_provider.dart';
 // RiverpodGenerator
 // **************************************************************************
 
-String _$pushRegistrationHash() => r'63df1da01384c5c998997850c126045361b8308c';
+String _$pushRegistrationHash() => r'b524334ef39a8855b182dcc2bbe627f93e828a15';
 
 /// Owns the FCM token lifecycle: registers this device with the backend after
 /// login, keeps it current when FCM rotates the token, and tears it down on logout.

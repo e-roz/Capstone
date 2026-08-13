@@ -11,12 +11,21 @@ class RegistrationStepScaffold extends StatelessWidget {
     required this.step,
     required this.title,
     required this.child,
+    this.subStep,
     this.showBackButton = true,
   });
 
   final int step;
   final String title;
   final Widget child;
+
+  /// Position within a step that spans several screens, as "2 of 4".
+  ///
+  /// The document step is four screens long. Advancing the main bar four times
+  /// would overstate how much of registration is done; saying nothing would
+  /// leave someone on their third document with no idea how many are left.
+  final String? subStep;
+
   final bool showBackButton;
 
   @override
@@ -42,7 +51,7 @@ class RegistrationStepScaffold extends StatelessWidget {
               ),
               const SizedBox(height: AppSpacing.md),
               Text(
-                'Step $step of 5',
+                subStep == null ? 'Step $step of 5' : 'Step $step of 5 · $subStep',
                 style: AppTextStyles.labelSmall.copyWith(color: AppColors.brandPressed),
               ),
               const SizedBox(height: AppSpacing.sm),

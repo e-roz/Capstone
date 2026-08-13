@@ -5,9 +5,10 @@ class ApiEndpoints {
   static const verifyEmail = '/api/auth/register/verify-email';
   static const resendOtp = '/api/auth/register/resend-otp';
   static const completeProfile = '/api/auth/register/complete-profile';
-  static const registerVehicle = '/api/auth/register/vehicle';
   // Two calls, not one: the photos are read first and shown back to the user,
-  // and only the values they confirm are committed.
+  // and only the values they confirm are committed. The vehicle is created from
+  // what the second call confirms, so there is no separate vehicle endpoint in
+  // registration any more.
   static const scanDocuments = '/api/auth/register/documents/scan';
   static const confirmDocuments = '/api/auth/register/documents/confirm';
   static const login = '/api/auth/login';

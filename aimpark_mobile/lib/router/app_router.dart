@@ -8,11 +8,10 @@ import '../core/utils/jwt_utils.dart';
 import '../features/auth/presentation/screens/admin_placeholder_screen.dart';
 import '../features/auth/presentation/screens/login_screen.dart';
 import '../features/auth/presentation/screens/ocr_debug_screen.dart';
-import '../features/auth/presentation/screens/register_documents_screen.dart';
+import '../features/auth/presentation/screens/register_document_step_screen.dart';
 import '../features/auth/presentation/screens/register_email_screen.dart';
 import '../features/auth/presentation/screens/register_otp_screen.dart';
 import '../features/auth/presentation/screens/register_profile_screen.dart';
-import '../features/auth/presentation/screens/register_vehicle_screen.dart';
 import '../features/account/presentation/screens/change_password_screen.dart';
 import '../features/account/presentation/screens/edit_profile_screen.dart';
 import '../features/auth/presentation/screens/security_placeholder_screen.dart';
@@ -104,13 +103,24 @@ GoRouter appRouter(Ref ref) {
         path: '/register/profile',
         builder: (context, state) => const RegisterProfileScreen(),
       ),
+      // One document per screen. The index selects which, so the flow can send
+      // someone straight back to the single document that needs another
+      // photograph rather than to the start of the set.
       GoRoute(
-        path: '/register/vehicle',
-        builder: (context, state) => const RegisterVehicleScreen(),
+        path: '/register/documents/:index',
+        builder: (context, state) {
+          final index = int.tryParse(state.pathParameters['index'] ?? '') ?? 0;
+          return RegisterDocumentStepScreen(
+            index: index.clamp(0, 3),
+            retakeMessage: state.extra as String?,
+          );
+        },
       ),
+      // Kept so the old path, and anything still linking to it, lands on the
+      // first document instead of nothing at all.
       GoRoute(
         path: '/register/documents',
-        builder: (context, state) => const RegisterDocumentsScreen(),
+        redirect: (context, state) => '/register/documents/0',
       ),
       // Not linked from anywhere. Reached by typing the route, to photograph
       // documents and copy the recognition payload out for rule calibration.

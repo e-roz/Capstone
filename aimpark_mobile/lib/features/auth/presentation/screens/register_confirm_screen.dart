@@ -10,16 +10,24 @@ import '../../../../core/utils/app_flushbar.dart';
 import '../../../../core/widgets/app_button.dart';
 import '../../../../core/widgets/app_text_field.dart';
 import '../../../../core/widgets/celebration_dialog.dart';
+import '../../../../core/widgets/selectable_chip.dart';
 import '../../data/models/scan_result.dart';
 import '../providers/auth_provider.dart';
 import '../providers/registration_provider.dart';
+import 'register_document_step_screen.dart';
 
-/// Shows what was read and lets the user correct any of it before submitting.
+/// The last screen: what was read, plus the two things no document can say.
 ///
-/// This screen is why extraction accuracy is not load-bearing: a field the
-/// rules missed is typed once here rather than chased through retake after
-/// retake. Both readings are kept server-side, so a reviewer can always see
-/// where the person disagreed with the machine.
+/// Most of this is still editable, which is why extraction accuracy is not
+/// load-bearing — a field the rules missed is typed once here rather than
+/// chased through retake after retake, and both readings are kept so a reviewer
+/// can see where the person disagreed with the machine.
+///
+/// The plate is the exception. It is what the gate camera matches on, so it is
+/// shown read-only and comes from the receipt: a hand-typed plate proves
+/// nothing about the vehicle, while the receipt and the photograph of the metal
+/// agreeing does. Where they disagree the fix offered is another photograph,
+/// not a keyboard.
 class RegisterConfirmScreen extends ConsumerStatefulWidget {
   const RegisterConfirmScreen({super.key, required this.result});
 
@@ -36,10 +44,36 @@ class _RegisterConfirmScreenState extends ConsumerState<RegisterConfirmScreen> {
   late final TextEditingController _section;
   late final TextEditingController _semester;
   late final TextEditingController _licenseName;
-  late final TextEditingController _plateNumber;
 
   DateTime? _licenseExpiry;
   DateTime? _registrationExpiry;
+
+  /// Keys match the API's `VehicleType` enum names exactly — slot allocation
+  /// matches a user's vehicle against a slot's type. The facility only has
+  /// two-wheel and four-wheel bays, so Van and Truck were never offered.
+  static const _vehicleTypes = <String, IconData>{
+    'Car': Icons.directions_car_rounded,
+    'Motorcycle': Icons.two_wheeler_rounded,
+  };
+
+  /// Colours a guard could actually name at a gate. Free text would produce
+  /// "pearl white", "off-white" and "White" for one vehicle, none of which help
+  /// anybody pick it out of a car park.
+  static const _colors = <String, Color>{
+    'White': Color(0xFFFFFFFF),
+    'Silver': Color(0xFFC0C0C0),
+    'Grey': Color(0xFF808080),
+    'Black': Color(0xFF1A1A1A),
+    'Red': Color(0xFFDC2626),
+    'Blue': Color(0xFF2563EB),
+    'Green': Color(0xFF16A34A),
+    'Yellow': Color(0xFFEAB308),
+    'Orange': Color(0xFFEA580C),
+    'Brown': Color(0xFF78350F),
+  };
+
+  String _vehicleType = 'Car';
+  String? _color;
   bool _isSubmitting = false;
 
   ExtractedValues get _extracted => widget.result.extracted;
@@ -52,7 +86,6 @@ class _RegisterConfirmScreenState extends ConsumerState<RegisterConfirmScreen> {
     _section = TextEditingController(text: _extracted.section);
     _semester = TextEditingController(text: _extracted.semester);
     _licenseName = TextEditingController(text: _extracted.licenseName);
-    _plateNumber = TextEditingController(text: _extracted.plateNumber);
     _licenseExpiry = _extracted.licenseExpiry;
     _registrationExpiry = _extracted.registrationExpiry;
   }
@@ -64,7 +97,6 @@ class _RegisterConfirmScreenState extends ConsumerState<RegisterConfirmScreen> {
     _section.dispose();
     _semester.dispose();
     _licenseName.dispose();
-    _plateNumber.dispose();
     super.dispose();
   }
 
@@ -83,14 +115,17 @@ class _RegisterConfirmScreenState extends ConsumerState<RegisterConfirmScreen> {
     if (picked != null) onPicked(picked);
   }
 
+  /// Back to the plate photo, keeping the other three photographs.
+  void _retakePlatePhoto() {
+    final specs = documentSpecsFor(
+      ref.read(registrationNotifierProvider).affiliation,
+    );
+    context.go('/register/documents/${specs.length - 1}');
+  }
+
   Future<void> _submit(bool isStudent) async {
-    final plate = _plateNumber.text.trim();
-    if (plate.isEmpty) {
-      showAppMessage(
-        context,
-        'The plate number is needed — it is what the gate camera looks for.',
-        isError: true,
-      );
+    if (_color == null) {
+      showAppMessage(context, "Choose the vehicle's colour.", isError: true);
       return;
     }
 
@@ -105,11 +140,21 @@ class _RegisterConfirmScreenState extends ConsumerState<RegisterConfirmScreen> {
         if (isStudent) 'semester': _semester.text.trim(),
         'licenseName': _licenseName.text.trim(),
         'licenseExpiry': _licenseExpiry?.toIso8601String(),
-        'plateNumber': plate,
+        // Echoed back exactly as read. The server compares it against its own
+        // stored reading, so altering it here would be recorded as an edit
+        // rather than quietly accepted.
+        'plateNumber': _extracted.plateNumber,
         'registrationExpiry': _registrationExpiry?.toIso8601String(),
+        'vehicleType': _vehicleType,
+        'color': _color,
       });
 
       if (!mounted) return;
+
+      // The photos have done their job. Holding them would mean a second pass
+      // through the flow re-uploading this attempt's images.
+      ref.read(registrationNotifierProvider.notifier).clearCaptured();
+
       await CelebrationDialog.show(
         context,
         title: "You're all set!",
@@ -143,6 +188,52 @@ class _RegisterConfirmScreenState extends ConsumerState<RegisterConfirmScreen> {
             style: AppTextStyles.bodyMedium.copyWith(
               color: AppColors.textSecondary,
             ),
+          ),
+          const SizedBox(height: AppSpacing.lg),
+
+          _PlateCard(
+            plate: _extracted.plateNumber,
+            seenInPhoto: _extracted.platePhotoNumber,
+            agreement: _extracted.plateAgreement,
+            onRetakePhoto: _isSubmitting ? null : _retakePlatePhoto,
+          ),
+          const SizedBox(height: AppSpacing.lg),
+
+          Text('Your vehicle', style: AppTextStyles.h3),
+          const SizedBox(height: AppSpacing.xs),
+          Text(
+            'Neither of these is printed on the receipt, so they are the only '
+            'two things left to tell us.',
+            style: AppTextStyles.bodySmall.copyWith(
+              color: AppColors.textSecondary,
+            ),
+          ),
+          const SizedBox(height: AppSpacing.md),
+          Text('Type', style: AppTextStyles.labelSmall),
+          const SizedBox(height: 6),
+          Wrap(
+            spacing: AppSpacing.sm,
+            runSpacing: AppSpacing.sm,
+            children: _vehicleTypes.entries.map((entry) {
+              return SelectableChip(
+                label: entry.key,
+                icon: entry.value,
+                selected: _vehicleType == entry.key,
+                onTap: _isSubmitting
+                    ? () {}
+                    : () => setState(() => _vehicleType = entry.key),
+              );
+            }).toList(),
+          ),
+          const SizedBox(height: AppSpacing.md),
+          Text('Colour', style: AppTextStyles.labelSmall),
+          const SizedBox(height: 6),
+          _ColorPicker(
+            colors: _colors,
+            selected: _color,
+            onSelected: _isSubmitting
+                ? null
+                : (name) => setState(() => _color = name),
           ),
           const SizedBox(height: AppSpacing.lg),
 
@@ -201,11 +292,6 @@ class _RegisterConfirmScreenState extends ConsumerState<RegisterConfirmScreen> {
 
           Text('From your receipt', style: AppTextStyles.h3),
           const SizedBox(height: AppSpacing.sm),
-          _Field(
-            label: 'Plate number',
-            controller: _plateNumber,
-            flag: _extracted.flagFor('PlateNumber'),
-          ),
           _DateField(
             label: 'Registration expiry',
             value: _registrationExpiry,
@@ -216,16 +302,6 @@ class _RegisterConfirmScreenState extends ConsumerState<RegisterConfirmScreen> {
             ),
           ),
 
-          if (_extracted.platePhotoNumber != null)
-            Padding(
-              padding: const EdgeInsets.only(top: AppSpacing.sm),
-              child: Text(
-                'The plate in your photo read as '
-                '${_extracted.platePhotoNumber}.',
-                style: AppTextStyles.bodySmall,
-              ),
-            ),
-
           const SizedBox(height: AppSpacing.xl),
           AppButton(
             label: 'Submit registration',
@@ -235,6 +311,166 @@ class _RegisterConfirmScreenState extends ConsumerState<RegisterConfirmScreen> {
           const SizedBox(height: AppSpacing.lg),
         ],
       ),
+    );
+  }
+}
+
+/// The plate, and how much confidence there is in it.
+///
+/// Given its own card because it is the one value nobody typed and the one the
+/// gate depends on. The three outcomes read differently on purpose: agreement
+/// needs no action, a disagreement asks for a photograph, and a missing reading
+/// says an admin will finish the job — none of them is a dead end.
+class _PlateCard extends StatelessWidget {
+  const _PlateCard({
+    required this.plate,
+    required this.seenInPhoto,
+    required this.agreement,
+    required this.onRetakePhoto,
+  });
+
+  final String? plate;
+  final String? seenInPhoto;
+  final PlateAgreement agreement;
+  final VoidCallback? onRetakePhoto;
+
+  @override
+  Widget build(BuildContext context) {
+    final hasPlate = plate != null && plate!.isNotEmpty;
+
+    final (Color tint, IconData icon, String note) = switch (agreement) {
+      PlateAgreement.agreed => (
+        AppColors.successDefault,
+        Icons.verified_outlined,
+        'The plate on your receipt and the plate in your photo match.',
+      ),
+      PlateAgreement.differs => (
+        AppColors.errorDefault,
+        Icons.report_problem_outlined,
+        'Your photo reads $seenInPhoto, which is not what the receipt says. '
+            'Retake the plate photo, or an admin will check it by hand.',
+      ),
+      PlateAgreement.notChecked => (
+        AppColors.textSecondary,
+        Icons.help_outline,
+        hasPlate
+            ? "We couldn't read the plate in your photo, so this is from the "
+                  'receipt alone. An admin will confirm it.'
+            : "We couldn't read a plate from your receipt. An admin will add it "
+                  'before your account goes live.',
+      ),
+    };
+
+    return Container(
+      padding: const EdgeInsets.all(AppSpacing.md),
+      decoration: BoxDecoration(
+        color: AppColors.bgSurface,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: tint.withValues(alpha: 0.4)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('Plate number', style: AppTextStyles.labelSmall),
+          const SizedBox(height: AppSpacing.xs),
+          Text(
+            hasPlate ? plate! : 'Not read',
+            style: AppTextStyles.h1.copyWith(
+              letterSpacing: 2,
+              color: hasPlate ? AppColors.textPrimary : AppColors.textSecondary,
+            ),
+          ),
+          const SizedBox(height: AppSpacing.sm),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(icon, size: 18, color: tint),
+              const SizedBox(width: AppSpacing.xs),
+              Expanded(
+                child: Text(
+                  note,
+                  style: AppTextStyles.bodySmall.copyWith(color: tint),
+                ),
+              ),
+            ],
+          ),
+          if (agreement == PlateAgreement.differs ||
+              (agreement == PlateAgreement.notChecked && hasPlate))
+            Align(
+              alignment: Alignment.centerLeft,
+              child: TextButton(
+                onPressed: onRetakePhoto,
+                child: const Text('Retake the plate photo'),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ColorPicker extends StatelessWidget {
+  const _ColorPicker({
+    required this.colors,
+    required this.selected,
+    required this.onSelected,
+  });
+
+  final Map<String, Color> colors;
+  final String? selected;
+  final ValueChanged<String>? onSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    return Wrap(
+      spacing: AppSpacing.sm,
+      runSpacing: AppSpacing.sm,
+      children: colors.entries.map((entry) {
+        final isSelected = selected == entry.key;
+
+        return GestureDetector(
+          onTap: onSelected == null ? null : () => onSelected!(entry.key),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                  color: entry.value,
+                  shape: BoxShape.circle,
+                  border: Border.all(
+                    color: isSelected
+                        ? AppColors.brandPressed
+                        : AppColors.borderDefault,
+                    width: isSelected ? 3 : 1,
+                  ),
+                ),
+                child: isSelected
+                    ? Icon(
+                        Icons.check,
+                        size: 20,
+                        // White and yellow need a dark tick; everything else
+                        // needs a light one.
+                        color: entry.value.computeLuminance() > 0.6
+                            ? Colors.black87
+                            : Colors.white,
+                      )
+                    : null,
+              ),
+              const SizedBox(height: 4),
+              Text(
+                entry.key,
+                style: AppTextStyles.bodySmall.copyWith(
+                  color: isSelected
+                      ? AppColors.textPrimary
+                      : AppColors.textSecondary,
+                ),
+              ),
+            ],
+          ),
+        );
+      }).toList(),
     );
   }
 }

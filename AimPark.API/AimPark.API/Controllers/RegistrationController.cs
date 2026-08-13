@@ -39,12 +39,6 @@ namespace AimPark.API.Controllers
             return await _registrationService.CompleteProfileAsync(dto, GetSessionToken(), ct);
         }
 
-        [Authorize]
-        [HttpPost("vehicle")]
-        public Task<ActionResult<object>> RegisterVehicle([FromBody] VehicleDTO dto, CancellationToken ct)
-            => _registrationService.RegisterVehicleAsync(dto, GetUserId(), ct);
-
-        [Authorize]
         /// <summary>
         /// Uploads the documents and returns what the rules read, for the user to
         /// check before anything is committed.

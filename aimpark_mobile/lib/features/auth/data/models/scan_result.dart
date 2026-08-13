@@ -18,6 +18,27 @@ enum FieldFlag {
   };
 }
 
+/// Whether the plate photographed on the vehicle is the plate the receipt names.
+///
+/// Mirrors the C# `PlateAgreement` enum. This carries the plate now: nothing is
+/// typed, so two independent readings agreeing is the whole of the evidence.
+enum PlateAgreement {
+  /// One of the two readings is missing, so there was nothing to compare.
+  notChecked,
+
+  /// The photo shows the plate the receipt names.
+  agreed,
+
+  /// The photo shows a readable plate, and it is a different one.
+  differs;
+
+  static PlateAgreement fromWire(String? value) => switch (value) {
+    'Agreed' => PlateAgreement.agreed,
+    'Differs' => PlateAgreement.differs,
+    _ => PlateAgreement.notChecked,
+  };
+}
+
 /// One document the server could not read, and what to do about it.
 class DocumentDiagnosis {
   const DocumentDiagnosis({
@@ -57,6 +78,7 @@ class ExtractedValues {
     this.plateNumber,
     this.registrationExpiry,
     this.platePhotoNumber,
+    this.plateAgreement = PlateAgreement.notChecked,
     this.flags = const {},
   });
 
@@ -74,6 +96,9 @@ class ExtractedValues {
   /// What the photo of the physical plate read. Not editable — it is evidence
   /// for the reviewer, not a value the user is asked to agree to.
   final String? platePhotoNumber;
+
+  /// Whether [platePhotoNumber] agrees with [plateNumber].
+  final PlateAgreement plateAgreement;
 
   /// Field name to why it needs attention.
   final Map<String, FieldFlag> flags;
@@ -99,6 +124,7 @@ class ExtractedValues {
       plateNumber: json['plateNumber'] as String?,
       registrationExpiry: _date(json['registrationExpiry']),
       platePhotoNumber: json['platePhotoNumber'] as String?,
+      plateAgreement: PlateAgreement.fromWire(json['plateAgreement'] as String?),
       flags: flags,
     );
   }

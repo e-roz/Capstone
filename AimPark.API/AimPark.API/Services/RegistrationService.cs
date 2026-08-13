@@ -225,7 +225,10 @@ namespace AimPark.API.Services
                 AuthProvider = session.PendingAuthProvider ?? AuthProvider.Local,
                 ExternalProviderId = session.PendingExternalProviderId,
                 Role = UserRole.User,
-                RegistrationStep = RegistrationStep.VehicleInfo,
+                // Documents come before the vehicle now: the plate is read off the
+                // receipt rather than typed, so there is nothing to ask for until
+                // the receipt has been scanned.
+                RegistrationStep = RegistrationStep.DocumentUpload,
                 AccountStatus = AccountStatus.PendingReview,
                 VerificationStatus = VerificationStatus.NotStarted,
                 IsFirstLogin = true,
@@ -268,7 +271,7 @@ namespace AimPark.API.Services
 
             user.FullName = dto.FullName.Trim();
             user.Affiliation = affiliation;
-            user.RegistrationStep = RegistrationStep.VehicleInfo;
+            user.RegistrationStep = RegistrationStep.DocumentUpload;
             user.TermsAcceptedAt ??= DateTime.UtcNow;
             user.UpdatedAt = DateTime.UtcNow;
 
@@ -277,50 +280,33 @@ namespace AimPark.API.Services
 
             return new OkObjectResult(new CompleteProfileResponse
             {
-                Message = "Profile complete. Proceed to vehicle registration.",
+                Message = "Profile complete. Please upload your documents.",
                 Token = _tokenService.GenerateToken(user, registrationOnly: true)
             });
         }
 
-        public async Task<ActionResult<object>> RegisterVehicleAsync(VehicleDTO dto, Guid userId, CancellationToken ct)
+        /// <summary>
+        /// Moves an account off the retired vehicle-first step, if it is sitting on
+        /// one.
+        /// </summary>
+        /// <remarks>
+        /// Vehicle details used to be collected before the documents, so accounts
+        /// created under that flow can be parked at <see cref="RegistrationStep.VehicleInfo"/>
+        /// with no screen left to send them to. They are moved on rather than left
+        /// at a dead end.
+        ///
+        /// The enum member itself stays. It is persisted as an integer, so deleting
+        /// it would renumber <see cref="RegistrationStep.DocumentUpload"/> and
+        /// silently move every stored account one step backwards.
+        /// </remarks>
+        private static bool CarryPastRetiredVehicleStep(User user)
         {
-            var user = await _users.FindAsync(u => u.Id == userId, ct);
-            if (user is null)
-                return new NotFoundObjectResult(new { message = "User not found." });
-
             if (user.RegistrationStep != RegistrationStep.VehicleInfo)
-                return new BadRequestObjectResult(new { message = "Vehicle registration is not available at the current step." });
-
-            if (ValidationHelper.HasEmptyFields(dto.PlateNumber, dto.VehicleType, dto.Brand, dto.Model, dto.Color))
-                return new BadRequestObjectResult(new { message = "All vehicle fields are required." });
-
-            // Registration takes the first vehicle. Further ones are added after
-            // approval through POST /api/vehicles, so signup stays a straight line.
-            var plate = IdentifierNormalizer.NormalizePlate(dto.PlateNumber);
-            if (await _vehicles.ExistsAsync(v => v.PlateNumber == plate, ct))
-                return new BadRequestObjectResult(new { message = "Plate number already registered." });
-
-            if (!Enum.TryParse<VehicleType>(dto.VehicleType, true, out var vehicleType))
-                return new BadRequestObjectResult(new { message = "Invalid vehicle type." });
-
-            var vehicle = new Vehicle
-            {
-                PlateNumber = plate,
-                VehicleType = vehicleType,
-                Brand = dto.Brand,
-                Model = dto.Model,
-                Color = dto.Color,
-                UserId = userId
-            };
+                return false;
 
             user.RegistrationStep = RegistrationStep.DocumentUpload;
             user.UpdatedAt = DateTime.UtcNow;
-
-            await _vehicles.AddAsync(vehicle, ct);
-            _users.Update(user);
-            await _users.SaveAsync(ct);
-
-            return new OkObjectResult(new { message = "Step 2 complete. Please upload your documents." });
+            return true;
         }
 
         public async Task<ActionResult<ScanResultResponse>> ScanDocumentsAsync(DocumentUploadDTO dto, Guid userId, CancellationToken ct)
@@ -329,12 +315,19 @@ namespace AimPark.API.Services
             if (user is null)
                 return new NotFoundObjectResult(new { message = "User not found." });
 
+            var carried = CarryPastRetiredVehicleStep(user);
+
             if (user.RegistrationStep != RegistrationStep.DocumentUpload)
                 return new BadRequestObjectResult(new { message = "Document upload is not available at the current step." });
 
+            if (carried)
+                _users.Update(user);
+
+            // The vehicle is created from the confirmed values at the end of this
+            // flow, so at scan time there is usually nothing here. A re-applying
+            // account still has its old one, and keeping the link means the reviewer
+            // can see the attempt against the vehicle it was made for.
             var vehicle = await _vehicles.FindAsync(v => v.UserId == userId, ct);
-            if (vehicle is null)
-                return new BadRequestObjectResult(new { message = "Please complete vehicle registration first." });
 
             // A RAF only exists for students; everyone else brings a school ID.
             var identityType = user.Affiliation == Affiliation.Student
@@ -421,7 +414,7 @@ namespace AimPark.API.Services
             var verification = new DocumentVerification
             {
                 UserId = userId,
-                VehicleId = vehicle.Id,
+                VehicleId = vehicle?.Id,
                 ExtractedStudentNumber = extracted.StudentNumber,
                 ExtractedStudentName = extracted.StudentName,
                 ExtractedSection = extracted.Section,
@@ -457,6 +450,8 @@ namespace AimPark.API.Services
             if (user is null)
                 return new NotFoundObjectResult(new { message = "User not found." });
 
+            CarryPastRetiredVehicleStep(user);
+
             if (user.RegistrationStep != RegistrationStep.DocumentUpload)
                 return new BadRequestObjectResult(new { message = "Document confirmation is not available at the current step." });
 
@@ -465,6 +460,15 @@ namespace AimPark.API.Services
 
             if (verification is null)
                 return new NotFoundObjectResult(new { message = "That submission was not found. Please scan your documents again." });
+
+            if (string.IsNullOrWhiteSpace(dto.VehicleType))
+                return new BadRequestObjectResult(new { message = "Please choose whether this is a car or a motorcycle." });
+
+            if (!Enum.TryParse<VehicleType>(dto.VehicleType, true, out var vehicleType))
+                return new BadRequestObjectResult(new { message = "Invalid vehicle type." });
+
+            if (string.IsNullOrWhiteSpace(dto.Color))
+                return new BadRequestObjectResult(new { message = "Please choose the vehicle's colour." });
 
             verification.ConfirmedStudentNumber = FuzzyText.TrimValue(dto.StudentNumber);
             verification.ConfirmedStudentName = FuzzyText.TrimValue(dto.StudentName);
@@ -475,11 +479,20 @@ namespace AimPark.API.Services
             verification.ConfirmedPlateNumber = IdentifierNormalizer.NormalizePlate(dto.PlateNumber);
             verification.ConfirmedRegistrationExpiry = dto.RegistrationExpiry;
 
-            var vehicle = verification.VehicleId is null
-                ? null
-                : await _vehicles.FindAsync(v => v.Id == verification.VehicleId, ct);
+            var (vehicle, vehicleNote) = await UpsertVehicleFromReceiptAsync(verification, dto, vehicleType, userId, ct);
+            verification.VehicleId = vehicle?.Id;
 
+            // Evaluate rewrites Notes wholesale, so anything the upsert has to say is
+            // added after it rather than before.
             _preScreening.Evaluate(verification, user, vehicle);
+
+            if (vehicleNote is not null)
+            {
+                verification.Notes = string.IsNullOrWhiteSpace(verification.Notes)
+                    ? vehicleNote
+                    : $"{verification.Notes}\n{vehicleNote}";
+            }
+
             _verifications.Update(verification);
 
             user.RegistrationStep = RegistrationStep.Completed;
@@ -490,6 +503,67 @@ namespace AimPark.API.Services
             await _users.SaveAsync(ct);
 
             return new OkObjectResult(new { message = "Registration complete. Please wait for admin approval." });
+        }
+
+        /// <summary>
+        /// Creates or updates the applicant's vehicle from the plate the receipt
+        /// gave, plus the type and colour they chose.
+        /// </summary>
+        /// <remarks>
+        /// Two situations produce no vehicle at all, and neither is treated as a
+        /// failure the applicant has to solve. If nothing readable came off the
+        /// receipt there is no plate to store, and the plate column is unique, so a
+        /// blank row would collide with the next applicant in the same position. If
+        /// the plate already belongs to someone else, two accounts are claiming one
+        /// vehicle and only a person can work out which is right.
+        ///
+        /// In both cases the registration still completes and the reviewer is told
+        /// what is missing, because the alternative — refusing at the final step,
+        /// after four photographs — strands the applicant over something they
+        /// cannot influence.
+        /// </remarks>
+        private async Task<(Vehicle? Vehicle, string? Note)> UpsertVehicleFromReceiptAsync(
+            DocumentVerification verification,
+            ConfirmDocumentsDto dto,
+            VehicleType vehicleType,
+            Guid userId,
+            CancellationToken ct)
+        {
+            var plate = IdentifierNormalizer.NormalizePlate(
+                verification.ConfirmedPlateNumber ?? verification.ExtractedPlateNumber);
+
+            if (plate.Length == 0)
+            {
+                return (null,
+                    "No plate could be read from the receipt, so no vehicle record was created. " +
+                    "Add the vehicle by hand when approving, or the gate will have nothing to match.");
+            }
+
+            var existing = await _vehicles.FindAsync(v => v.PlateNumber == plate, ct);
+
+            if (existing is not null && existing.UserId != userId)
+            {
+                return (null,
+                    $"Plate {plate} is already registered to another account. No vehicle record was created.");
+            }
+
+            var expiry = verification.ConfirmedRegistrationExpiry ?? verification.ExtractedRegistrationExpiry;
+
+            var vehicle = existing ?? new Vehicle { PlateNumber = plate, UserId = userId };
+
+            vehicle.VehicleType = vehicleType;
+            vehicle.Color = dto.Color!.Trim();
+            vehicle.Brand = dto.Brand?.Trim() ?? string.Empty;
+            vehicle.Model = dto.Model?.Trim() ?? string.Empty;
+            vehicle.RegistrationValidThrough = expiry;
+            vehicle.RegistrationRenewalMonth = RegistrationRenewal.RenewalMonthFromPlate(plate);
+
+            if (existing is null)
+                await _vehicles.AddAsync(vehicle, ct);
+            else
+                _vehicles.Update(vehicle);
+
+            return (vehicle, null);
         }
 
         private static string LabelFor(DocumentType type) => type switch
