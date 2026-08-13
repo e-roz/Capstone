@@ -17,8 +17,11 @@ class DioClient {
     dio = Dio(
       BaseOptions(
         baseUrl: ApiConstants.baseUrl,
-        connectTimeout: const Duration(seconds: 30),
-        receiveTimeout: const Duration(seconds: 30),
+        // 60s, not 30s: the API is on Render's free tier, which sleeps after
+        // ~15 minutes idle. The first request then has to boot the container,
+        // which routinely takes 30-60s and used to fail outright.
+        connectTimeout: const Duration(seconds: 60),
+        receiveTimeout: const Duration(seconds: 60),
       ),
     );
 
@@ -29,8 +32,9 @@ class DioClient {
           if (jwt != null && jwt.isNotEmpty) {
             options.headers['Authorization'] = 'Bearer $jwt';
           } else {
-            final sessionToken =
-                await _storage.read(key: registrationSessionTokenKey);
+            final sessionToken = await _storage.read(
+              key: registrationSessionTokenKey,
+            );
             if (sessionToken != null && sessionToken.isNotEmpty) {
               options.headers['Authorization'] = 'Bearer $sessionToken';
             }
@@ -41,7 +45,9 @@ class DioClient {
           if (error.response?.statusCode == 401) {
             await _storage.delete(key: authTokenKey);
             await _storage.delete(key: registrationSessionTokenKey);
-            _router.go('/login');
+            // Expired session: the user is known to have an account, so drop
+            // them on the sign-in form rather than the welcome screen.
+            _router.go('/login/sign-in');
           }
           handler.next(error);
         },

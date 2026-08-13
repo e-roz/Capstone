@@ -62,7 +62,13 @@ class _UserDetailView extends ConsumerWidget {
             title: 'Personal Information',
             children: [
               _Field('Email', detail.email),
-              _Field('Phone', detail.phoneNumber ?? '—'),
+              _Field('Affiliation', detail.affiliation),
+              if (detail.studentNumber != null)
+                _Field('Student Number', detail.studentNumber!),
+              if (detail.section != null) _Field('Section', detail.section!),
+              if (detail.enrollmentValidUntil != null)
+                _Field('Enrolled Until',
+                    DateFormat('MMM d, yyyy').format(detail.enrollmentValidUntil!.toLocal())),
               _Field('Verification Status', detail.verificationStatus),
               _Field('Joined', DateFormat('MMM d, yyyy').format(detail.createdAt.toLocal())),
               if (detail.rejectionReason != null)
@@ -97,16 +103,18 @@ class _UserDetailView extends ConsumerWidget {
                 _Field('Suspended Until', 'Indefinite'),
             ],
           ),
-          if (detail.vehicle != null) ...[
+          for (final (i, vehicle) in detail.vehicles.indexed) ...[
             const SizedBox(height: 16),
             _SectionCard(
-              title: 'Vehicle Information',
+              title: detail.vehicles.length > 1
+                  ? 'Vehicle ${i + 1} of ${detail.vehicles.length}'
+                  : 'Vehicle Information',
               children: [
-                _Field('Brand', detail.vehicle!.brand ?? '—'),
-                _Field('Model', detail.vehicle!.model ?? '—'),
-                _Field('Vehicle Type', detail.vehicle!.vehicleType ?? '—'),
-                _Field('Plate Number', detail.vehicle!.plateNumber ?? '—'),
-                _Field('Color', detail.vehicle!.color ?? '—'),
+                _Field('Brand', vehicle.brand ?? '—'),
+                _Field('Model', vehicle.model ?? '—'),
+                _Field('Vehicle Type', vehicle.vehicleType ?? '—'),
+                _Field('Plate Number', vehicle.plateNumber ?? '—'),
+                _Field('Color', vehicle.color ?? '—'),
               ],
             ),
           ],

@@ -2,7 +2,10 @@ class RegistrationDetail {
   final String userId;
   final String fullName;
   final String email;
-  final String? phoneNumber;
+  final String affiliation;
+  final String? studentNumber;
+  final String? section;
+  final DateTime? enrollmentValidUntil;
   final String registrationStep;
   final String accountStatus;
   final String verificationStatus;
@@ -15,14 +18,18 @@ class RegistrationDetail {
   final String? rfidTagId;
   final String rfidStatus;
   final DateTime? rfidSuspendedUntil;
-  final VehicleInfo? vehicle;
+  /// Every vehicle on the account — one RFID card can cover several.
+  final List<VehicleInfo> vehicles;
   final List<DocumentInfo> documents;
 
   const RegistrationDetail({
     required this.userId,
     required this.fullName,
     required this.email,
-    this.phoneNumber,
+    required this.affiliation,
+    this.studentNumber,
+    this.section,
+    this.enrollmentValidUntil,
     required this.registrationStep,
     required this.accountStatus,
     required this.verificationStatus,
@@ -35,7 +42,7 @@ class RegistrationDetail {
     this.rfidTagId,
     required this.rfidStatus,
     this.rfidSuspendedUntil,
-    this.vehicle,
+    required this.vehicles,
     required this.documents,
   });
 
@@ -44,7 +51,12 @@ class RegistrationDetail {
         userId: json['userId']?.toString() ?? '',
         fullName: json['fullName']?.toString() ?? '',
         email: json['email']?.toString() ?? '',
-        phoneNumber: json['phoneNumber']?.toString(),
+        affiliation: json['affiliation']?.toString() ?? 'Student',
+        studentNumber: json['studentNumber']?.toString(),
+        section: json['section']?.toString(),
+        enrollmentValidUntil: json['enrollmentValidUntil'] != null
+            ? DateTime.tryParse(json['enrollmentValidUntil'].toString())
+            : null,
         registrationStep: json['registrationStep']?.toString() ?? '',
         accountStatus: json['accountStatus']?.toString() ?? '',
         verificationStatus: json['verificationStatus']?.toString() ?? '',
@@ -63,9 +75,9 @@ class RegistrationDetail {
         rfidSuspendedUntil: json['rfidSuspendedUntil'] != null
             ? DateTime.tryParse(json['rfidSuspendedUntil'].toString())
             : null,
-        vehicle: json['vehicle'] != null
-            ? VehicleInfo.fromJson(json['vehicle'] as Map<String, dynamic>)
-            : null,
+        vehicles: (json['vehicles'] as List<dynamic>? ?? [])
+            .map((v) => VehicleInfo.fromJson(v as Map<String, dynamic>))
+            .toList(),
         documents: (json['documents'] as List<dynamic>? ?? [])
             .map((d) => DocumentInfo.fromJson(d as Map<String, dynamic>))
             .toList(),

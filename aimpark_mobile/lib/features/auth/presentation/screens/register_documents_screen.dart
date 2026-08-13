@@ -72,7 +72,9 @@ class _RegisterDocumentsScreenState
           title: "You're all set!",
           message: 'Registration submitted — your account is pending review.',
         );
-        if (mounted) context.go('/login');
+        // Straight to the form, not the welcome screen — they just made an
+        // account, so "I already have an account" would be a wasted tap.
+        if (mounted) context.go('/login/sign-in');
       }
     } catch (e) {
       if (mounted) {
@@ -97,7 +99,9 @@ class _RegisterDocumentsScreenState
           const SizedBox(height: AppSpacing.xs),
           Text(
             'Please provide clear photos of your identification and vehicle documents.',
-            style: AppTextStyles.bodyMedium.copyWith(color: AppColors.textSecondary),
+            style: AppTextStyles.bodyMedium.copyWith(
+              color: AppColors.textSecondary,
+            ),
           ),
           const SizedBox(height: AppSpacing.lg),
           ImagePickerBox(

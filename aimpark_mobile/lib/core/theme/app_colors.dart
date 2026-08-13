@@ -35,6 +35,12 @@ abstract class AppColors {
   static const bgSurface = Color(0xFFFFFFFF);
   static const bgSurfaceAlt = Color(0xFFF5F5F5);
 
+  /// Full-bleed orange canvas behind the launch/splash screen. Taken verbatim
+  /// from the splash comp, which sits a touch warmer than [brandDefault] —
+  /// keep them separate so retuning the button orange never shifts the very
+  /// first frame of the app (and vice versa).
+  static const splashBackground = Color(0xFFF3821F);
+
   // Text
   static const textPrimary = Color(0xFF1A1A1A);
   static const textSecondary = Color(0xFF8A8A8A);

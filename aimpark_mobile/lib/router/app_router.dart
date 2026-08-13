@@ -15,6 +15,7 @@ import '../features/auth/presentation/screens/register_vehicle_screen.dart';
 import '../features/account/presentation/screens/change_password_screen.dart';
 import '../features/account/presentation/screens/edit_profile_screen.dart';
 import '../features/auth/presentation/screens/security_placeholder_screen.dart';
+import '../features/auth/presentation/screens/welcome_screen.dart';
 import '../features/splash/presentation/screens/splash_screen.dart';
 import '../features/dashboard/presentation/widgets/user_shell.dart';
 import '../features/incidents/presentation/screens/incident_detail_screen.dart';
@@ -51,11 +52,14 @@ GoRouter appRouter(Ref ref) {
       if (hasValidToken) {
         final homeRoute = JwtUtils.homeRouteForRole(JwtUtils.getRole(token));
 
-        if (location == '/login') {
+        // Covers both the welcome screen and the sign-in form under it — an
+        // already-authenticated user has no business on either.
+        if (location == '/login' || location.startsWith('/login/')) {
           return homeRoute ?? '/login';
         }
 
-        final withinOwnHomeArea = homeRoute != null &&
+        final withinOwnHomeArea =
+            homeRoute != null &&
             (location == homeRoute || location.startsWith('$homeRoute/'));
 
         if (_isProtectedRoute(location) && !withinOwnHomeArea) {
@@ -78,6 +82,10 @@ GoRouter appRouter(Ref ref) {
       ),
       GoRoute(
         path: '/login',
+        builder: (context, state) => const WelcomeScreen(),
+      ),
+      GoRoute(
+        path: '/login/sign-in',
         builder: (context, state) => const LoginScreen(),
       ),
       GoRoute(
@@ -129,8 +137,9 @@ GoRouter appRouter(Ref ref) {
       ),
       GoRoute(
         path: '/home/user/violations/:violationId',
-        builder: (context, state) =>
-            ViolationDetailScreen(violationId: state.pathParameters['violationId']!),
+        builder: (context, state) => ViolationDetailScreen(
+          violationId: state.pathParameters['violationId']!,
+        ),
       ),
       GoRoute(
         path: '/home/user/payments',
@@ -155,8 +164,9 @@ GoRouter appRouter(Ref ref) {
       ),
       GoRoute(
         path: '/home/user/incidents/:incidentId',
-        builder: (context, state) =>
-            IncidentDetailScreen(incidentId: state.pathParameters['incidentId']!),
+        builder: (context, state) => IncidentDetailScreen(
+          incidentId: state.pathParameters['incidentId']!,
+        ),
       ),
     ],
   );

@@ -83,7 +83,9 @@ class _RegisterEmailScreenState extends ConsumerState<RegisterEmailScreen> {
           const SizedBox(height: AppSpacing.xs),
           Text(
             'We will send a one-time password to verify your email address.',
-            style: AppTextStyles.bodyMedium.copyWith(color: AppColors.textSecondary),
+            style: AppTextStyles.bodyMedium.copyWith(
+              color: AppColors.textSecondary,
+            ),
           ),
           const SizedBox(height: AppSpacing.lg),
           AppTextField(
@@ -104,7 +106,7 @@ class _RegisterEmailScreenState extends ConsumerState<RegisterEmailScreen> {
           const SizedBox(height: AppSpacing.sm),
           Center(
             child: TextButton(
-              onPressed: _isLoading ? null : () => context.go('/login'),
+              onPressed: _isLoading ? null : () => context.go('/login/sign-in'),
               child: Text(
                 'Already have an account? Log in',
                 style: AppTextStyles.labelBold.copyWith(

@@ -49,8 +49,11 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     final password = _passwordController.text;
 
     if (email.isEmpty || password.isEmpty) {
-      showAppMessage(context, 'Please enter your email and password.',
-          isError: true);
+      showAppMessage(
+        context,
+        'Please enter your email and password.',
+        isError: true,
+      );
       return;
     }
 
@@ -58,10 +61,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
     try {
       final repo = ref.read(authRepositoryProvider);
-      final response = await repo.login({
-        'email': email,
-        'password': password,
-      });
+      final response = await repo.login({'email': email, 'password': password});
       final data = response.data as Map<String, dynamic>;
       final token = data['token'] as String?;
 
@@ -93,14 +93,17 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   /// is pending, rejected or suspended, and the body carries the detail that
   /// explains it. Returns true when the status screen was shown.
   bool _showAccountStatusIfBlocked(Object error) {
-    if (error is! DioException || error.response?.statusCode != 403) return false;
+    if (error is! DioException || error.response?.statusCode != 403) {
+      return false;
+    }
 
     final data = error.response?.data;
     if (data is! Map) return false;
 
     final status = data['registrationStatus'];
-    final accountStatus =
-        status is Map ? status['accountStatus']?.toString() : null;
+    final accountStatus = status is Map
+        ? status['accountStatus']?.toString()
+        : null;
     if (accountStatus == null) return false;
 
     final canReapplyRaw = status is Map ? status['canReapplyAt'] : null;
@@ -110,10 +113,12 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
         builder: (_) => AccountStatusScreen(
           accountStatus: accountStatus,
           message: data['message']?.toString(),
-          rejectionReason: data['rejectionReason']?.toString() ??
+          rejectionReason:
+              data['rejectionReason']?.toString() ??
               (status is Map ? status['rejectionReason']?.toString() : null),
-          canReapplyAt:
-              canReapplyRaw == null ? null : DateTime.tryParse(canReapplyRaw.toString()),
+          canReapplyAt: canReapplyRaw == null
+              ? null
+              : DateTime.tryParse(canReapplyRaw.toString()),
         ),
       ),
     );
@@ -137,8 +142,11 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
       if (idToken == null) {
         if (mounted) {
-          showAppMessage(context, 'Could not obtain Google token. Please try again.',
-              isError: true);
+          showAppMessage(
+            context,
+            'Could not obtain Google token. Please try again.',
+            isError: true,
+          );
         }
         return;
       }
@@ -149,7 +157,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       final token = data['token'] as String?;
 
       if (token == null || token.isEmpty) {
-        throw Exception(data['message']?.toString() ?? 'Google sign-in failed.');
+        throw Exception(
+          data['message']?.toString() ?? 'Google sign-in failed.',
+        );
       }
 
       await repo.saveToken(token);
@@ -159,7 +169,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       // RegisterProfileScreen hides the password fields and pre-fills the name.
       if (JwtUtils.isRegistrationOnly(token) &&
           JwtUtils.getRegistrationStep(token) == 'ProfileSetup') {
-        final fullName = data['fullName'] as String? ?? googleUser.displayName ?? '';
+        final fullName =
+            data['fullName'] as String? ?? googleUser.displayName ?? '';
         ref
             .read(registrationNotifierProvider.notifier)
             .setOAuthFlow(displayName: fullName);
@@ -181,7 +192,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
       final msg = apiErrorMessage(e);
       // HTTP 409 Conflict = email is already a local account
-      if (msg.contains('already registered') || msg.contains('password instead')) {
+      if (msg.contains('already registered') ||
+          msg.contains('password instead')) {
         if (mounted) {
           await showDialog<void>(
             context: context,
@@ -220,6 +232,14 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
     return Scaffold(
       backgroundColor: AppColors.bgPage,
+      appBar: AppBar(
+        backgroundColor: AppColors.bgPage,
+        elevation: 0,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back, color: AppColors.textPrimary),
+          onPressed: isAnyLoading ? null : () => context.go('/login'),
+        ),
+      ),
       body: SafeArea(
         child: Center(
           child: SingleChildScrollView(
@@ -231,21 +251,23 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                 children: [
                   Center(
                     child: Image.asset(
-                      'assets/images/owl_mascot.png',
-                      width: 110,
+                      'assets/images/owl_mascot_head.png',
+                      width: 96,
                     ),
                   ),
-                  const SizedBox(height: AppSpacing.md),
+                  const SizedBox(height: AppSpacing.lg),
                   Text(
-                    'AimPark',
+                    'Welcome back',
                     textAlign: TextAlign.center,
                     style: AppTextStyles.displayHero,
                   ),
-                  const SizedBox(height: 8),
+                  const SizedBox(height: AppSpacing.sm),
                   Text(
-                    'Log in to continue',
+                    'Log in to your AimPark account.',
                     textAlign: TextAlign.center,
-                    style: AppTextStyles.bodyMedium,
+                    style: AppTextStyles.bodyMedium.copyWith(
+                      color: AppColors.textSecondary,
+                    ),
                   ),
                   const SizedBox(height: AppSpacing.xl),
                   AppTextField(
@@ -279,22 +301,11 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                   ),
                   const SizedBox(height: AppSpacing.lg),
                   AppButton(
-                    label: 'Login',
+                    label: 'Log in',
                     isLoading: _isLoading,
                     onPressed: isAnyLoading ? null : _login,
                   ),
-                  const SizedBox(height: AppSpacing.xl),
-                  Row(
-                    children: [
-                      const Expanded(child: Divider(color: AppColors.borderDefault)),
-                      Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md),
-                        child: Text('or', style: AppTextStyles.labelSmall),
-                      ),
-                      const Expanded(child: Divider(color: AppColors.borderDefault)),
-                    ],
-                  ),
-                  const SizedBox(height: AppSpacing.lg),
+                  const SizedBox(height: AppSpacing.md),
                   AppButton(
                     label: 'Continue with Google',
                     style: AppButtonStyle.ghost,
@@ -302,7 +313,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                     icon: const Icon(Icons.g_mobiledata_rounded),
                     onPressed: isAnyLoading ? null : _googleLogin,
                   ),
-                  const SizedBox(height: AppSpacing.lg),
+                  const SizedBox(height: AppSpacing.sm),
                   Center(
                     child: TextButton(
                       onPressed: isAnyLoading

@@ -207,7 +207,14 @@ class _DetailView extends StatelessWidget {
             children: [
               _Field('Full Name', detail.fullName),
               _Field('Email', detail.email),
-              _Field('Phone', detail.phoneNumber ?? '—'),
+              _Field('Affiliation', detail.affiliation),
+              // Blank for faculty and staff, who have no RAF — the affiliation
+              // above is what tells the reviewer which of those this is.
+              if (detail.studentNumber != null)
+                _Field('Student Number', detail.studentNumber!),
+              if (detail.section != null) _Field('Section', detail.section!),
+              if (detail.enrollmentValidUntil != null)
+                _Field('Enrolled Until', _fmt(detail.enrollmentValidUntil!)),
               _Field('Account Status', detail.accountStatus),
               _Field('Verification Status', detail.verificationStatus),
               _Field('Registration Step', detail.registrationStep),
@@ -222,16 +229,20 @@ class _DetailView extends StatelessWidget {
                     _fmt(detail.canReapplyAt!)),
             ],
           ),
-          if (detail.vehicle != null) ...[
+          // One card per vehicle: a card holder may register several, and a single
+          // card would silently show only the first.
+          for (final (i, vehicle) in detail.vehicles.indexed) ...[
             const SizedBox(height: 16),
             _SectionCard(
-              title: 'Vehicle Information',
+              title: detail.vehicles.length > 1
+                  ? 'Vehicle ${i + 1} of ${detail.vehicles.length}'
+                  : 'Vehicle Information',
               children: [
-                _Field('Brand', detail.vehicle!.brand ?? '—'),
-                _Field('Model', detail.vehicle!.model ?? '—'),
-                _Field('Vehicle Type', detail.vehicle!.vehicleType ?? '—'),
-                _Field('Plate Number', detail.vehicle!.plateNumber ?? '—'),
-                _Field('Color', detail.vehicle!.color ?? '—'),
+                _Field('Brand', vehicle.brand ?? '—'),
+                _Field('Model', vehicle.model ?? '—'),
+                _Field('Vehicle Type', vehicle.vehicleType ?? '—'),
+                _Field('Plate Number', vehicle.plateNumber ?? '—'),
+                _Field('Color', vehicle.color ?? '—'),
               ],
             ),
           ],
