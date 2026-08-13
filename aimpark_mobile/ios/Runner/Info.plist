@@ -45,5 +45,9 @@
 	<true/>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
+	<key>NSCameraUsageDescription</key>
+	<string>AimPark uses the camera to photograph your registration documents.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>AimPark uses your photo library to attach photos to incident reports.</string>
 </dict>
 </plist>

@@ -41,6 +41,12 @@ dependencies:
   another_flushbar: ^1.12.30
   pin_code_fields: ^8.0.1
   image_picker: ^1.1.2
+  # Full-resolution capture. The picker downscales, and resolution is what makes
+  # a plate and a receipt's small print readable.
+  camera: ^0.11.0+2
+  # On-device text recognition. Runs on the phone so the server only ever
+  # receives text and rectangles, never has to host a vision model.
+  google_mlkit_text_recognition: ^0.15.0
   google_sign_in: ^6.2.1
   google_fonts: ^6.2.1
   rive: ^0.14.11

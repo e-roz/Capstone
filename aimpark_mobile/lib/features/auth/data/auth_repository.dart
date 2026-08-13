@@ -59,8 +59,15 @@ class AuthRepository {
     return _dio.post(ApiEndpoints.registerVehicle, data: body);
   }
 
-  Future<Response<dynamic>> uploadDocuments(FormData formData) {
-    return _dio.post(ApiEndpoints.uploadDocuments, data: formData);
+  /// Uploads the four photos with what the phone read from each, and gets back
+  /// the values for the user to check.
+  Future<Response<dynamic>> scanDocuments(FormData formData) {
+    return _dio.post(ApiEndpoints.scanDocuments, data: formData);
+  }
+
+  /// Commits the values the user agreed to and completes registration.
+  Future<Response<dynamic>> confirmDocuments(Map<String, dynamic> body) {
+    return _dio.post(ApiEndpoints.confirmDocuments, data: body);
   }
 
   Future<Response<dynamic>> googleSignIn(String idToken) {

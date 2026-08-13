@@ -6,7 +6,10 @@ class ApiEndpoints {
   static const resendOtp = '/api/auth/register/resend-otp';
   static const completeProfile = '/api/auth/register/complete-profile';
   static const registerVehicle = '/api/auth/register/vehicle';
-  static const uploadDocuments = '/api/auth/register/documents';
+  // Two calls, not one: the photos are read first and shown back to the user,
+  // and only the values they confirm are committed.
+  static const scanDocuments = '/api/auth/register/documents/scan';
+  static const confirmDocuments = '/api/auth/register/documents/confirm';
   static const login = '/api/auth/login';
   static const logout = '/api/auth/logout';
   static const googleSignIn = '/api/auth/google/signin';

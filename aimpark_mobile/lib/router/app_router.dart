@@ -7,6 +7,7 @@ import '../core/network/dio_client.dart';
 import '../core/utils/jwt_utils.dart';
 import '../features/auth/presentation/screens/admin_placeholder_screen.dart';
 import '../features/auth/presentation/screens/login_screen.dart';
+import '../features/auth/presentation/screens/ocr_debug_screen.dart';
 import '../features/auth/presentation/screens/register_documents_screen.dart';
 import '../features/auth/presentation/screens/register_email_screen.dart';
 import '../features/auth/presentation/screens/register_otp_screen.dart';
@@ -110,6 +111,12 @@ GoRouter appRouter(Ref ref) {
       GoRoute(
         path: '/register/documents',
         builder: (context, state) => const RegisterDocumentsScreen(),
+      ),
+      // Not linked from anywhere. Reached by typing the route, to photograph
+      // documents and copy the recognition payload out for rule calibration.
+      GoRoute(
+        path: '/dev/ocr',
+        builder: (context, state) => const OcrDebugScreen(),
       ),
       GoRoute(
         path: '/home/admin',

@@ -1,6 +1,6 @@
 # Pre-Screening — Build Progress
 
-**Last worked:** 2026-08-11
+**Last worked:** 2026-08-13
 **Design doc:** [document-pre-screening.md](document-pre-screening.md) — **partly out of date**, see "Design changes" below.
 
 ---
@@ -14,9 +14,9 @@
 | Stage 2 — scan/confirm endpoints | ✅ Done |
 | Stage 3 — extraction + verdicts | ✅ Done |
 | Stage 4 — admin surface | ⬜ Not started |
-| Mobile layer | ⬜ Not started |
+| Mobile capture + confirm | ✅ Built, unverified on a device |
 
-**51 tests passing.** API builds clean.
+**51 tests passing.** API builds clean. `flutter analyze` clean on both apps.
 
 ---
 
@@ -33,25 +33,44 @@ The doc still describes the old two-field, OR-only design. What actually got bui
 
 ---
 
+## What the mobile layer does now
+
+Built 2026-08-13, none of it run on a phone yet.
+
+- **`/dev/ocr`** — hidden route, not linked from anywhere. Pick a document type, photograph it, and see the image size, line count, mean confidence, every line with its box, and a **Copy payload JSON** button. This is the tool for widening the RAF corpus: photograph a form, copy the JSON, paste it into a test fixture.
+- **Capture screen** — `camera` at `ResolutionPreset.max` with a document-shaped guide frame, capture orientation locked to portrait, ML Kit run immediately on the shot.
+- **Documents step** — four tiles (RAF *or* school ID, licence, OR, plate photo), each captured through that screen, posted to `documents/scan` with its payload. Failures come back per document with the server's own retake wording.
+- **Confirm screen** — every extracted value editable, `NotFound` and `Derived` flags rendered as separate sentences, then `documents/confirm`.
+- **Affiliation** is now chosen on the profile step and sent. It previously was not, so every account defaulted to Student. The phone-number field, which the server had stopped accepting, is gone.
+
+---
+
 ## Next up
 
-**1. Dev-only extraction endpoint** — *agreed, not built.*
-`POST /api/dev/extract` taking pasted ML Kit JSON, returning what the rules extracted. Gated to `Development` environment only. Lets rules be tested against new documents in seconds with no phone.
+**1. Verify on a phone.** Nothing here has run on hardware. Watch three things in particular — see Risks below.
 
-**2. Mobile debug screen** — camera with frame overlay, full-resolution capture, ML Kit, results on screen. Hidden route so registration can be skipped. Not throwaway: this becomes the real capture screen.
+**2. Dev-only extraction endpoint** — *agreed, not built.*
+`POST /api/dev/extract` taking pasted ML Kit JSON, returning what the rules extracted. Gated to `Development` only. Now genuinely useful, because `/dev/ocr` produces the JSON to paste into it.
 
-**3. Stage 4** — admin diff view (what we read vs what the user typed), the semester end-date field, and copying confirmed values to `User`/`Vehicle` on approval.
+**3. Stage 4** — admin diff view (what we read vs what the user typed), the semester end-date field, and copying confirmed values to `User`/`Vehicle` on approval. Until that last part runs, an approved account has no plate on its vehicle record and the gate has nothing to match.
+
+---
+
+## Risks to check on the first device run
+
+- **Photo size vs the 8MB per-file cap.** `ResolutionPreset.max` on a high-megapixel phone can exceed it. The app checks before uploading and says which photo was too big, but if this fires on ordinary handsets the cap or the preset has to move.
+- **Box coordinates vs image dimensions.** The boxes come from ML Kit and the dimensions from Flutter's decoder. If they disagree about EXIF rotation every anchor rule misses. `/dev/ocr` shows a red warning when any box falls outside the image — check that it stays quiet.
+- **Confidence on iOS.** Only Android reports per-line confidence. A missing value is sent as 1.0, so blur detection is Android-only. Fine for an APK deliverable, wrong the day iOS matters.
 
 ---
 
 ## Known gaps
 
 - **`POST /api/vehicles` has no document check.** Requires an approved account, but the vehicle itself is unverified until Stage 4 wires pre-screening into it.
-- **The mobile app cannot complete registration.** It still posts the old field names to the removed `POST /registration/documents`.
 - **Orphaned blobs.** Re-scanning deletes the previous `Document` rows but not the stored files.
-- **RAF rules are calibrated against one form.** Collect 3–5 more, ideally different courses and year levels.
+- **RAF rules are calibrated against one form.** Collect 3–5 more, ideally different courses and year levels — `/dev/ocr` is how.
 - **Cue C rests on one receipt.** Confirm the plate-digit renewal rule against a second OR from a different vehicle.
-- **`UnitTest1.cs`** is the empty `dotnet new` placeholder; safe to delete.
+- **Where registration lands.** After confirming, the app still goes to `/login/sign-in` as it did before; because a token exists by then, the router forwards to `/home/user`. Unchanged behaviour, not verified as the intended one.
 
 ---
 

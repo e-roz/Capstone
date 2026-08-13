@@ -25,19 +25,18 @@ class RegisterProfileScreen extends ConsumerStatefulWidget {
 class _RegisterProfileScreenState extends ConsumerState<RegisterProfileScreen> {
   final _firstNameController = TextEditingController();
   final _lastNameController = TextEditingController();
-  final _phoneController = TextEditingController();
   final _passwordController = TextEditingController();
   final _confirmPasswordController = TextEditingController();
   bool _isLoading = false;
   bool _obscurePassword = true;
   bool _initialized = false;
   bool _acceptedTerms = false;
+  Affiliation _affiliation = Affiliation.student;
 
   @override
   void dispose() {
     _firstNameController.dispose();
     _lastNameController.dispose();
-    _phoneController.dispose();
     _passwordController.dispose();
     _confirmPasswordController.dispose();
     super.dispose();
@@ -96,18 +95,17 @@ class _RegisterProfileScreenState extends ConsumerState<RegisterProfileScreen> {
     try {
       final firstName = _firstNameController.text.trim();
       final lastName = _lastNameController.text.trim();
-      final phone = _phoneController.text.trim();
 
       final body = <String, dynamic>{
         'fullName': '$firstName $lastName',
         'acceptedTerms': _acceptedTerms,
+        'affiliation': _affiliation.wireName,
       };
       if (!isOAuth) {
         body['password'] = _passwordController.text;
       }
-      if (phone.isNotEmpty) {
-        body['phoneNumber'] = phone;
-      }
+
+      ref.read(registrationNotifierProvider.notifier).setAffiliation(_affiliation);
 
       final repo = ref.read(authRepositoryProvider);
       final response = await repo.completeProfile(body);
@@ -166,14 +164,19 @@ class _RegisterProfileScreenState extends ConsumerState<RegisterProfileScreen> {
             autofillHints: const [AutofillHints.familyName],
           ),
           const SizedBox(height: AppSpacing.md),
-          AppTextField(
-            label: 'Phone Number (optional)',
-            controller: _phoneController,
-            keyboardType: TextInputType.phone,
-            textInputAction: isOAuth ? TextInputAction.done : TextInputAction.next,
-            autofillHints: const [AutofillHints.telephoneNumber],
-            prefixIcon: Icons.phone_outlined,
-            onSubmitted: isOAuth ? (_) => _isLoading ? null : _submit(true) : null,
+          // Decides which document proves affiliation at the upload step: a
+          // registration form for students, a school ID for everyone else.
+          Text('I am a…', style: AppTextStyles.labelBold),
+          const SizedBox(height: AppSpacing.sm),
+          SegmentedButton<Affiliation>(
+            segments: [
+              for (final option in Affiliation.values)
+                ButtonSegment(value: option, label: Text(option.label)),
+            ],
+            selected: {_affiliation},
+            showSelectedIcon: false,
+            onSelectionChanged: (selection) =>
+                setState(() => _affiliation = selection.first),
           ),
           // Password fields: only shown for local (non-OAuth) registration
           if (!isOAuth) ...[
