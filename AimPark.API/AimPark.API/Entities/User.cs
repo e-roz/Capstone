@@ -10,15 +10,28 @@ namespace AimPark.API.Entities
         public string Email { get; set; } = string.Empty;
         public bool IsEmailVerified { get; set; }
 
-        public string? PhoneNumber { get; set; }
-        public bool IsPhoneVerified { get; set; }
-
         public string? PasswordHash { get; set; }
 
         public AuthProvider AuthProvider { get; set; }
         public string? ExternalProviderId { get; set; }
 
         public UserRole Role { get; set; }
+
+        /// <summary>Student, faculty, or staff — decides which documents apply.</summary>
+        public Affiliation Affiliation { get; set; } = Affiliation.Student;
+
+        // Read from the RAF. Null on faculty and staff, who have no RAF — which is
+        // why Affiliation has to exist: otherwise a blank here has two meanings.
+        public string? StudentNumber { get; set; }
+        public string? Section { get; set; }
+
+        /// <summary>
+        /// End of the enrolled semester, derived from the RAF rather than stored as
+        /// its printed text — "is this still current" is then one date comparison.
+        /// Null means no expiry, which is the correct answer for faculty and staff.
+        /// </summary>
+        public DateTime? EnrollmentValidUntil { get; set; }
+
         public RegistrationStep RegistrationStep { get; set; }
         public AccountStatus AccountStatus { get; set; }
 

@@ -12,7 +12,8 @@ namespace AimPark.API.Interfaces
         Task<ActionResult<CompleteProfileResponse>> CompleteProfileAsync(CompleteProfileDto dto, string? sessionToken, CancellationToken ct);
         Task<ActionResult<CompleteProfileResponse>> CompleteProfileForAuthenticatedUserAsync(CompleteProfileDto dto, Guid userId, CancellationToken ct);
         Task<ActionResult<object>> RegisterVehicleAsync(VehicleDTO dto, Guid userId, CancellationToken ct);
-        Task<ActionResult<object>> RegisterDocumentsAsync(DocumentUploadDTO dto, Guid userId, CancellationToken ct);
+        Task<ActionResult<ScanResultResponse>> ScanDocumentsAsync(DocumentUploadDTO dto, Guid userId, CancellationToken ct);
+        Task<ActionResult<object>> ConfirmDocumentsAsync(ConfirmDocumentsDto dto, Guid userId, CancellationToken ct);
         Task<ActionResult<ReapplyResponse>> ReapplyAsync(Guid userId, CancellationToken ct);
         Task<ActionResult<RegistrationStatusResponse>> GetStatusAsync(Guid userId, CancellationToken ct);
         Task<ActionResult<OAuthCallbackResponse>> HandleOAuthCallbackAsync(AuthProvider provider, string email, string externalId, string? fullName, CancellationToken ct);

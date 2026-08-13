@@ -1,12 +1,13 @@
-﻿namespace AimPark.API.Entities
+using AimPark.API.Enums;
+
+namespace AimPark.API.Entities
 {
     public class Document
     {
         public Guid Id { get; set; } = Guid.NewGuid();
 
 
-        // "license", "OR", "CR"
-        public string Type { get; set; } = string.Empty;
+        public DocumentType Type { get; set; }
         public string FileName { get; set; } = string.Empty;
 
         //local file path

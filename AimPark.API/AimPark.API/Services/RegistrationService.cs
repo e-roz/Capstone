@@ -12,33 +12,47 @@ namespace AimPark.API.Services
         private const int SessionTtlHours = 24;
         private const int ReapplyCooldownHours = 24;
 
+        // Some documents genuinely cannot be read — a faded photocopy folded down
+        // the middle is not the user's fault and no retake fixes it. Try hard, then
+        // let them type the values and move on.
+        private const int MaxScanAttempts = 3;
+
         private readonly IRepository<User> _users;
         private readonly IRepository<Vehicle> _vehicles;
         private readonly IRepository<Document> _documents;
+        private readonly IRepository<DocumentVerification> _verifications;
         private readonly IRepository<RegistrationSession> _sessions;
         private readonly IOtpService _otpService;
         private readonly IEmailService _emailService;
         private readonly IFileStorageService _fileStorage;
         private readonly ITokenService _tokenService;
+        private readonly IDocumentExtractionService _extraction;
+        private readonly IPreScreeningService _preScreening;
 
         public RegistrationService(
             IRepository<User> users,
             IRepository<Vehicle> vehicles,
             IRepository<Document> documents,
+            IRepository<DocumentVerification> verifications,
             IRepository<RegistrationSession> sessions,
             IOtpService otpService,
             IEmailService emailService,
             IFileStorageService fileStorage,
-            ITokenService tokenService)
+            ITokenService tokenService,
+            IDocumentExtractionService extraction,
+            IPreScreeningService preScreening)
         {
             _users = users;
             _vehicles = vehicles;
             _documents = documents;
+            _verifications = verifications;
             _sessions = sessions;
             _otpService = otpService;
             _emailService = emailService;
             _fileStorage = fileStorage;
             _tokenService = tokenService;
+            _extraction = extraction;
+            _preScreening = preScreening;
         }
 
 
@@ -194,9 +208,8 @@ namespace AimPark.API.Services
                     return new BadRequestObjectResult(new { message = "Password must be between 8 and 128 characters." });
             }
 
-            var phone = IdentifierNormalizer.NormalizePhone(dto.PhoneNumber);
-            if (phone is not null && await _users.ExistsAsync(u => u.PhoneNumber == phone, ct))
-                return new BadRequestObjectResult(new { message = "Phone number already registered." });
+            if (!TryParseAffiliation(dto.Affiliation, out var affiliation))
+                return new BadRequestObjectResult(new { message = "Invalid affiliation." });
 
             var now = DateTime.UtcNow;
             var user = new User
@@ -205,8 +218,7 @@ namespace AimPark.API.Services
                 FullName = dto.FullName.Trim(),
                 Email = session.Email,
                 IsEmailVerified = true,
-                PhoneNumber = phone,
-                IsPhoneVerified = false,
+                Affiliation = affiliation,
                 PasswordHash = isOAuth || string.IsNullOrWhiteSpace(dto.Password)
                     ? null
                     : BCrypt.Net.BCrypt.HashPassword(dto.Password, workFactor: 12),
@@ -251,12 +263,11 @@ namespace AimPark.API.Services
             if (user.RegistrationStep != RegistrationStep.ProfileSetup)
                 return new BadRequestObjectResult(new { message = "Profile setup is not available at the current step." });
 
-            var phone = IdentifierNormalizer.NormalizePhone(dto.PhoneNumber);
-            if (phone is not null && await _users.ExistsAsync(u => u.PhoneNumber == phone && u.Id != userId, ct))
-                return new BadRequestObjectResult(new { message = "Phone number already registered." });
+            if (!TryParseAffiliation(dto.Affiliation, out var affiliation))
+                return new BadRequestObjectResult(new { message = "Invalid affiliation." });
 
             user.FullName = dto.FullName.Trim();
-            user.PhoneNumber = phone;
+            user.Affiliation = affiliation;
             user.RegistrationStep = RegistrationStep.VehicleInfo;
             user.TermsAcceptedAt ??= DateTime.UtcNow;
             user.UpdatedAt = DateTime.UtcNow;
@@ -280,21 +291,21 @@ namespace AimPark.API.Services
             if (user.RegistrationStep != RegistrationStep.VehicleInfo)
                 return new BadRequestObjectResult(new { message = "Vehicle registration is not available at the current step." });
 
-            if (await _vehicles.ExistsAsync(v => v.UserId == userId, ct))
-                return new BadRequestObjectResult(new { message = "Vehicle already registered for this user." });
-
-            if (await _vehicles.ExistsAsync(v => v.PlateNumber == dto.PlateNumber, ct))
-                return new BadRequestObjectResult(new { message = "Plate number already registered." });
-
             if (ValidationHelper.HasEmptyFields(dto.PlateNumber, dto.VehicleType, dto.Brand, dto.Model, dto.Color))
                 return new BadRequestObjectResult(new { message = "All vehicle fields are required." });
+
+            // Registration takes the first vehicle. Further ones are added after
+            // approval through POST /api/vehicles, so signup stays a straight line.
+            var plate = IdentifierNormalizer.NormalizePlate(dto.PlateNumber);
+            if (await _vehicles.ExistsAsync(v => v.PlateNumber == plate, ct))
+                return new BadRequestObjectResult(new { message = "Plate number already registered." });
 
             if (!Enum.TryParse<VehicleType>(dto.VehicleType, true, out var vehicleType))
                 return new BadRequestObjectResult(new { message = "Invalid vehicle type." });
 
             var vehicle = new Vehicle
             {
-                PlateNumber = dto.PlateNumber,
+                PlateNumber = plate,
                 VehicleType = vehicleType,
                 Brand = dto.Brand,
                 Model = dto.Model,
@@ -312,7 +323,7 @@ namespace AimPark.API.Services
             return new OkObjectResult(new { message = "Step 2 complete. Please upload your documents." });
         }
 
-        public async Task<ActionResult<object>> RegisterDocumentsAsync(DocumentUploadDTO dto, Guid userId, CancellationToken ct)
+        public async Task<ActionResult<ScanResultResponse>> ScanDocumentsAsync(DocumentUploadDTO dto, Guid userId, CancellationToken ct)
         {
             var user = await _users.FindAsync(u => u.Id == userId, ct);
             if (user is null)
@@ -321,18 +332,25 @@ namespace AimPark.API.Services
             if (user.RegistrationStep != RegistrationStep.DocumentUpload)
                 return new BadRequestObjectResult(new { message = "Document upload is not available at the current step." });
 
-            if (!await _vehicles.ExistsAsync(v => v.UserId == userId, ct))
+            var vehicle = await _vehicles.FindAsync(v => v.UserId == userId, ct);
+            if (vehicle is null)
                 return new BadRequestObjectResult(new { message = "Please complete vehicle registration first." });
 
-            var allowedExtensions = new[] { ".jpg", ".jpeg", ".png", ".pdf" };
+            // A RAF only exists for students; everyone else brings a school ID.
+            var identityType = user.Affiliation == Affiliation.Student
+                ? DocumentType.Raf
+                : DocumentType.SchoolId;
+
             var files = new[]
             {
-                (dto.License, "License"),
-                (dto.OR, "OR"),
-                (dto.CR, "CR")
+                (dto.IdentityDocument, identityType, dto.IdentityDocumentOcr),
+                (dto.License, DocumentType.License, dto.LicenseOcr),
+                (dto.OfficialReceipt, DocumentType.OfficialReceipt, dto.OfficialReceiptOcr),
+                (dto.PlatePhoto, DocumentType.PlatePhoto, dto.PlatePhotoOcr)
             };
 
-            foreach (var (file, type) in files)
+            var allowedExtensions = new[] { ".jpg", ".jpeg", ".png", ".pdf" };
+            foreach (var (file, type, _) in files)
             {
                 if (file is null || file.Length == 0)
                     return new BadRequestObjectResult(new { message = $"{type} document is required." });
@@ -341,14 +359,48 @@ namespace AimPark.API.Services
                 if (!allowedExtensions.Contains(ext))
                     return new BadRequestObjectResult(new { message = $"{type} must be JPG, PNG or PDF." });
 
-                if (file.Length > 5 * 1024 * 1024)
-                    return new BadRequestObjectResult(new { message = $"{type} must not exceed 5MB." });
+                if (file.Length > 8 * 1024 * 1024)
+                    return new BadRequestObjectResult(new { message = $"{type} must not exceed 8MB." });
             }
 
-            var documents = new List<Document>();
-            foreach (var (file, type) in files)
+            // Attempts are counted by counting drafts rather than with a column, so
+            // the reviewer can see every try and what each one read.
+            var previousAttempts = (await _verifications.GetAllAsync(v => v.UserId == userId, ct)).Count;
+            var triesLeft = Math.Max(0, MaxScanAttempts - previousAttempts - 1);
+
+            var payloads = files.ToDictionary(
+                f => f.Item2,
+                f => OcrPayloadParser.Parse(f.Item3));
+
+            var diagnostics = new List<DocumentDiagnosisDto>();
+            foreach (var (_, type, _) in files)
             {
-                var filePath = await _fileStorage.SaveFileAsync(userId, type, file!, ct);
+                var payload = payloads[type];
+                if (payload is null)
+                    continue;
+
+                var reason = OcrCleanup.Diagnose(payload.Lines);
+                if (reason == ScanFailureReason.None)
+                    continue;
+
+                diagnostics.Add(new DocumentDiagnosisDto
+                {
+                    DocumentType = type.ToString(),
+                    Reason = reason.ToString(),
+                    Message = OcrCleanup.MessageFor(reason, LabelFor(type))
+                });
+            }
+
+            // Each scan replaces the stored images, so the reviewer sees the attempt
+            // the user actually settled on rather than three sets of photos.
+            var existing = await _documents.GetAllAsync(d => d.UserId == userId, ct);
+            foreach (var old in existing)
+                _documents.Delete(old);
+
+            var documents = new List<Document>();
+            foreach (var (file, type, _) in files)
+            {
+                var filePath = await _fileStorage.SaveFileAsync(userId, type.ToString(), file!, ct);
                 documents.Add(new Document
                 {
                     Type = type,
@@ -360,6 +412,76 @@ namespace AimPark.API.Services
 
             await _documents.AddRangeAsync(documents, ct);
 
+            var extracted = _extraction.Extract(
+                payloads[identityType],
+                payloads[DocumentType.License],
+                payloads[DocumentType.OfficialReceipt],
+                payloads[DocumentType.PlatePhoto]);
+
+            var verification = new DocumentVerification
+            {
+                UserId = userId,
+                VehicleId = vehicle.Id,
+                ExtractedStudentNumber = extracted.StudentNumber,
+                ExtractedStudentName = extracted.StudentName,
+                ExtractedSection = extracted.Section,
+                ExtractedSemester = extracted.Semester,
+                ExtractedLicenseName = extracted.LicenseName,
+                ExtractedLicenseExpiry = extracted.LicenseExpiry,
+                ExtractedPlateNumber = extracted.PlateNumber,
+                ExtractedRegistrationExpiry = extracted.RegistrationExpiry,
+                ExtractedPlatePhotoNumber = extracted.PlatePhotoNumber,
+                Result = VerificationStatus.NotStarted
+            };
+
+            await _verifications.AddAsync(verification, ct);
+            await _verifications.SaveAsync(ct);
+
+            return new OkObjectResult(new ScanResultResponse
+            {
+                VerificationId = verification.Id,
+                TriesLeft = triesLeft,
+                // A retake only helps while something was unreadable and attempts
+                // remain. Once they are spent the user types the values instead —
+                // a loop repeating "too blurry" on an unreadable document is the
+                // worst outcome available.
+                CanContinue = diagnostics.Count == 0 || triesLeft <= 0,
+                Diagnostics = diagnostics,
+                Extracted = extracted
+            });
+        }
+
+        public async Task<ActionResult<object>> ConfirmDocumentsAsync(ConfirmDocumentsDto dto, Guid userId, CancellationToken ct)
+        {
+            var user = await _users.FindAsync(u => u.Id == userId, ct);
+            if (user is null)
+                return new NotFoundObjectResult(new { message = "User not found." });
+
+            if (user.RegistrationStep != RegistrationStep.DocumentUpload)
+                return new BadRequestObjectResult(new { message = "Document confirmation is not available at the current step." });
+
+            var verification = await _verifications.FindAsync(
+                v => v.Id == dto.VerificationId && v.UserId == userId, ct);
+
+            if (verification is null)
+                return new NotFoundObjectResult(new { message = "That submission was not found. Please scan your documents again." });
+
+            verification.ConfirmedStudentNumber = FuzzyText.TrimValue(dto.StudentNumber);
+            verification.ConfirmedStudentName = FuzzyText.TrimValue(dto.StudentName);
+            verification.ConfirmedSection = FuzzyText.TrimValue(dto.Section);
+            verification.ConfirmedSemester = FuzzyText.TrimValue(dto.Semester);
+            verification.ConfirmedLicenseName = FuzzyText.TrimValue(dto.LicenseName);
+            verification.ConfirmedLicenseExpiry = dto.LicenseExpiry;
+            verification.ConfirmedPlateNumber = IdentifierNormalizer.NormalizePlate(dto.PlateNumber);
+            verification.ConfirmedRegistrationExpiry = dto.RegistrationExpiry;
+
+            var vehicle = verification.VehicleId is null
+                ? null
+                : await _vehicles.FindAsync(v => v.Id == verification.VehicleId, ct);
+
+            _preScreening.Evaluate(verification, user, vehicle);
+            _verifications.Update(verification);
+
             user.RegistrationStep = RegistrationStep.Completed;
             user.AccountStatus = AccountStatus.PendingReview;
             user.VerificationStatus = VerificationStatus.ManualReview;
@@ -369,6 +491,16 @@ namespace AimPark.API.Services
 
             return new OkObjectResult(new { message = "Registration complete. Please wait for admin approval." });
         }
+
+        private static string LabelFor(DocumentType type) => type switch
+        {
+            DocumentType.Raf => "registration form",
+            DocumentType.SchoolId => "school ID",
+            DocumentType.License => "driver's licence",
+            DocumentType.OfficialReceipt => "official receipt",
+            DocumentType.PlatePhoto => "plate photo",
+            _ => "document"
+        };
 
         public async Task<ActionResult<ReapplyResponse>> ReapplyAsync(Guid userId, CancellationToken ct)
         {
@@ -414,6 +546,21 @@ namespace AimPark.API.Services
                 return new NotFoundObjectResult(new { message = "User not found." });
 
             return new OkObjectResult(MapStatus(user));
+        }
+
+        // Absent means Student — the overwhelming majority, and the app did not send
+        // this field before. An unrecognised value is rejected rather than silently
+        // defaulted, since it would decide which documents get asked for.
+        private static bool TryParseAffiliation(string? value, out Affiliation affiliation)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                affiliation = Affiliation.Student;
+                return true;
+            }
+
+            return Enum.TryParse(value, ignoreCase: true, out affiliation)
+                   && Enum.IsDefined(affiliation);
         }
 
         public async Task<ActionResult<OAuthCallbackResponse>> HandleOAuthCallbackAsync(

@@ -69,7 +69,7 @@ namespace AimPark.API.Services
             if (user is null)
                 return new NotFoundObjectResult(new { message = "User not found." });
 
-            var vehicle = await _vehicles.FindAsync(v => v.UserId == userId, ct);
+            var vehicles = await _vehicles.GetAllAsync(v => v.UserId == userId, ct);
             var documents = await _documents.GetAllAsync(d => d.UserId == userId, ct);
 
             var documentResponses = new List<DocumentDetailResponse>();
@@ -78,7 +78,7 @@ namespace AimPark.API.Services
                 documentResponses.Add(new DocumentDetailResponse
                 {
                     Id = d.Id,
-                    Type = d.Type,
+                    Type = d.Type.ToString(),
                     FileName = d.FileName,
                     FilePath = await _fileStorage.GetFileUrlAsync(d.FilePath, ct),
                     UploadedAt = d.UploadedAt
@@ -90,7 +90,10 @@ namespace AimPark.API.Services
                 UserId = user.Id,
                 FullName = user.FullName,
                 Email = user.Email,
-                PhoneNumber = user.PhoneNumber,
+                Affiliation = user.Affiliation.ToString(),
+                StudentNumber = user.StudentNumber,
+                Section = user.Section,
+                EnrollmentValidUntil = user.EnrollmentValidUntil,
                 RegistrationStep = user.RegistrationStep.ToString(),
                 AccountStatus = user.AccountStatus.ToString(),
                 VerificationStatus = user.VerificationStatus.ToString(),
@@ -103,14 +106,14 @@ namespace AimPark.API.Services
                 RfidTagId = user.RfidTagId,
                 RfidStatus = user.RfidStatus.ToString(),
                 RfidSuspendedUntil = user.RfidSuspendedUntil,
-                Vehicle = vehicle is null ? null : new VehicleDTO
+                Vehicles = vehicles.Select(v => new VehicleDTO
                 {
-                    PlateNumber = vehicle.PlateNumber,
-                    VehicleType = vehicle.VehicleType.ToString(),
-                    Brand = vehicle.Brand,
-                    Model = vehicle.Model,
-                    Color = vehicle.Color
-                },
+                    PlateNumber = v.PlateNumber,
+                    VehicleType = v.VehicleType.ToString(),
+                    Brand = v.Brand,
+                    Model = v.Model,
+                    Color = v.Color
+                }).ToList(),
                 Documents = documentResponses
             });
         }

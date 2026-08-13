@@ -11,6 +11,7 @@ namespace AimPark.API.Data
         public DbSet<User> Users { get; set; }
         public DbSet<Vehicle> vehicles { get; set; }
         public DbSet<Document> Documents { get; set; }
+        public DbSet<DocumentVerification> DocumentVerifications { get; set; }
         public DbSet<RegistrationSession> RegistrationSessions { get; set; }
         public DbSet<AdminAuditLog> AdminAuditLogs { get; set; }
         public DbSet<ParkingSlot> ParkingSlots { get; set; }
@@ -37,11 +38,17 @@ namespace AimPark.API.Data
                 entity.HasIndex(u => u.Email)
                       .IsUnique();
 
-                entity.HasIndex(u => u.PhoneNumber)
+                // One student, one account — otherwise the same person registers twice
+                // under two emails and collects two RFID cards. Filtered, because
+                // faculty and staff have no student number and must not collide.
+                entity.HasIndex(u => u.StudentNumber)
                       .IsUnique()
-                      .HasFilter("\"PhoneNumber\" IS NOT NULL AND \"PhoneNumber\" <> ''");
+                      .HasFilter("\"StudentNumber\" IS NOT NULL AND \"StudentNumber\" <> ''");
 
                 entity.Property(u => u.AuthProvider)
+                      .HasConversion<string>();
+
+                entity.Property(u => u.Affiliation)
                       .HasConversion<string>();
 
                 entity.Property(u => u.RegistrationStep)
@@ -109,9 +116,12 @@ namespace AimPark.API.Data
                 entity.Property(v => v.VehicleType)
                       .HasConversion<string>();
 
+                // Many vehicles per user — one RFID card covers all of them. The plate
+                // index above stays unique regardless: ALPR looks a plate up and must
+                // get exactly one vehicle back, or the gate cannot decide.
                 entity.HasOne(v => v.User)
-                      .WithOne()
-                      .HasForeignKey<Vehicle>(v => v.UserId)
+                      .WithMany()
+                      .HasForeignKey(v => v.UserId)
                       .OnDelete(DeleteBehavior.Cascade);
             });
 
@@ -120,10 +130,45 @@ namespace AimPark.API.Data
                 entity.HasKey(d => d.Id);
                 entity.HasIndex(d => d.UserId);
 
+                entity.Property(d => d.Type)
+                      .HasConversion<string>();
+
                 entity.HasOne(d => d.User)
                       .WithMany()
                       .HasForeignKey(d => d.UserId)
                       .OnDelete(DeleteBehavior.Cascade);
+            });
+
+            modelBuilder.Entity<DocumentVerification>(entity =>
+            {
+                entity.HasKey(v => v.Id);
+
+                // The review queue lists a user's submissions newest first.
+                entity.HasIndex(v => v.UserId);
+                entity.HasIndex(v => v.CreatedAt);
+
+                entity.Property(v => v.NameMatch).HasConversion<string>();
+                entity.Property(v => v.PlateMatch).HasConversion<string>();
+                entity.Property(v => v.PlatePhotoMatch).HasConversion<string>();
+                entity.Property(v => v.LicenseValidity).HasConversion<string>();
+                entity.Property(v => v.RegistrationValidity).HasConversion<string>();
+                entity.Property(v => v.EnrollmentValidity).HasConversion<string>();
+                entity.Property(v => v.Result).HasConversion<string>();
+
+                entity.Property(v => v.CreatedAt)
+                      .HasDefaultValueSql("NOW()");
+
+                entity.HasOne(v => v.User)
+                      .WithMany()
+                      .HasForeignKey(v => v.UserId)
+                      .OnDelete(DeleteBehavior.Cascade);
+
+                // Losing the vehicle must not destroy the evidence behind a decision
+                // already made about the person.
+                entity.HasOne(v => v.Vehicle)
+                      .WithMany()
+                      .HasForeignKey(v => v.VehicleId)
+                      .OnDelete(DeleteBehavior.SetNull);
             });
 
             modelBuilder.Entity<ParkingSlot>(entity =>

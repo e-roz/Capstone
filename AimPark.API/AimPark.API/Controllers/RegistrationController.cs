@@ -45,11 +45,27 @@ namespace AimPark.API.Controllers
             => _registrationService.RegisterVehicleAsync(dto, GetUserId(), ct);
 
         [Authorize]
-        [HttpPost("documents")]
-        [RequestSizeLimit(10 * 1024 * 1024)]
-        [RequestFormLimits(MultipartBodyLengthLimit = 10 * 1024 * 1024)]
-        public Task<ActionResult<object>> RegisterDocuments([FromForm] DocumentUploadDTO dto, CancellationToken ct)
-            => _registrationService.RegisterDocumentsAsync(dto, GetUserId(), ct);
+        /// <summary>
+        /// Uploads the documents and returns what the rules read, for the user to
+        /// check before anything is committed.
+        /// </summary>
+        [Authorize]
+        [HttpPost("documents/scan")]
+        // Four photos captured at full resolution, plus their OCR payloads. The old
+        // 10 MB ceiling was sized for downscaled picker images and will reject a
+        // legitimate submission now that resolution is what makes the plate readable.
+        [RequestSizeLimit(25 * 1024 * 1024)]
+        [RequestFormLimits(MultipartBodyLengthLimit = 25 * 1024 * 1024)]
+        public Task<ActionResult<ScanResultResponse>> ScanDocuments([FromForm] DocumentUploadDTO dto, CancellationToken ct)
+            => _registrationService.ScanDocumentsAsync(dto, GetUserId(), ct);
+
+        /// <summary>
+        /// Records the values the user confirmed and completes registration.
+        /// </summary>
+        [Authorize]
+        [HttpPost("documents/confirm")]
+        public Task<ActionResult<object>> ConfirmDocuments([FromBody] ConfirmDocumentsDto dto, CancellationToken ct)
+            => _registrationService.ConfirmDocumentsAsync(dto, GetUserId(), ct);
 
         [Authorize]
         [HttpPost("reapply")]

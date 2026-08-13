@@ -27,8 +27,11 @@ namespace AimPark.API.Services
                 UserId = user.Id,
                 FullName = user.FullName,
                 Email = user.Email,
-                PhoneNumber = user.PhoneNumber,
                 Role = user.Role.ToString(),
+                Affiliation = user.Affiliation.ToString(),
+                StudentNumber = user.StudentNumber,
+                Section = user.Section,
+                EnrollmentValidUntil = user.EnrollmentValidUntil,
                 AccountStatus = user.AccountStatus.ToString(),
                 CreatedAt = user.CreatedAt
             });
@@ -45,7 +48,6 @@ namespace AimPark.API.Services
                 return new NotFoundObjectResult(new { message = "User not found." });
 
             user.FullName = dto.FullName.Trim();
-            user.PhoneNumber = dto.PhoneNumber;
             user.UpdatedAt = DateTime.UtcNow;
 
             _users.Update(user);
