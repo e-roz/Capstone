@@ -5,8 +5,10 @@ import 'package:go_router/go_router.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_spacing.dart';
 import '../../../../core/theme/app_text_styles.dart';
+import '../../../../core/utils/formatters.dart';
 import '../../../../core/widgets/app_badge.dart';
 import '../../../../core/widgets/app_card.dart';
+import '../../../../core/widgets/app_state_views.dart';
 import '../../data/models/violation.dart';
 import '../providers/violations_provider.dart';
 
@@ -27,15 +29,18 @@ class ViolationsListScreen extends ConsumerWidget {
       body: SafeArea(
         child: violationsAsync.when(
           loading: () => const Center(child: CircularProgressIndicator()),
-          error: (error, _) => Center(
-            child: TextButton(
-              onPressed: () => ref.read(violationsNotifierProvider.notifier).refresh(),
-              child: const Text('Retry'),
-            ),
+          error: (error, _) => AppErrorState(
+            title: "Couldn't load your violations",
+            onRetry: () => ref.read(violationsNotifierProvider.notifier).refresh(),
           ),
           data: (result) {
             if (result.violations.isEmpty) {
-              return const _EmptyState();
+              return const AppEmptyState(
+                icon: Icons.verified_rounded,
+                iconColor: AppColors.successDefault,
+                title: 'Squeaky clean!',
+                message: 'No violations on your record.',
+              );
             }
             return RefreshIndicator(
               onRefresh: () => ref.read(violationsNotifierProvider.notifier).refresh(),
@@ -78,58 +83,31 @@ class _ViolationTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
+    return AppCard(
       onTap: onTap,
-      child: AppCard(
-        child: Row(
-          children: [
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    violation.policyRuleTitle,
-                    style: AppTextStyles.bodyMedium.copyWith(fontWeight: FontWeight.w700),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    '₱${violation.penaltyAmount.toStringAsFixed(2)} · ${violation.createdAt.month}/${violation.createdAt.day}/${violation.createdAt.year}',
-                    style: AppTextStyles.bodySmall,
-                  ),
-                ],
-              ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  violation.policyRuleTitle,
+                  style: AppTextStyles.bodyMedium.copyWith(fontWeight: FontWeight.w700),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  '${Formatters.peso(violation.penaltyAmount)} · '
+                  '${Formatters.date(violation.createdAt)}',
+                  style: AppTextStyles.bodySmall,
+                ),
+              ],
             ),
-            AppBadge(label: violation.status, tone: _tone),
-            const SizedBox(width: AppSpacing.xs),
-            const Icon(Icons.chevron_right_rounded, color: AppColors.textSecondary),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _EmptyState extends StatelessWidget {
-  const _EmptyState();
-
-  @override
-  Widget build(BuildContext context) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(AppSpacing.lg),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Icon(Icons.verified_rounded, size: 48, color: AppColors.successDefault),
-            const SizedBox(height: AppSpacing.md),
-            Text('Squeaky clean!', style: AppTextStyles.h2),
-            const SizedBox(height: AppSpacing.xs),
-            Text(
-              'No violations on your record.',
-              style: AppTextStyles.bodyMedium.copyWith(color: AppColors.textSecondary),
-            ),
-          ],
-        ),
+          ),
+          AppBadge(label: violation.status, tone: _tone),
+          const SizedBox(width: AppSpacing.xs),
+          const Icon(Icons.chevron_right_rounded, color: AppColors.textSecondary),
+        ],
       ),
     );
   }

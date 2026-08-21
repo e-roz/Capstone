@@ -8,6 +8,7 @@ import '../../../../core/utils/api_error_message.dart';
 import '../../../../core/utils/app_flushbar.dart';
 import '../../../../core/widgets/app_button.dart';
 import '../../../../core/widgets/app_card.dart';
+import '../../../../core/widgets/app_state_views.dart';
 import '../../data/models/parking_slot.dart';
 import '../providers/parking_history_provider.dart';
 
@@ -52,11 +53,9 @@ class _ParkingSlotsScreenState extends ConsumerState<ParkingSlotsScreen> {
       body: SafeArea(
         child: availabilityAsync.when(
           loading: () => const Center(child: CircularProgressIndicator()),
-          error: (error, _) => Center(
-            child: TextButton(
-              onPressed: () => ref.invalidate(parkingAvailabilityProvider),
-              child: const Text('Retry'),
-            ),
+          error: (error, _) => AppErrorState(
+            title: "Couldn't load slot availability",
+            onRetry: () => ref.invalidate(parkingAvailabilityProvider),
           ),
           data: (availability) {
             return RefreshIndicator(

@@ -6,9 +6,11 @@ import '../../../../core/theme/app_spacing.dart';
 import '../../../../core/theme/app_text_styles.dart';
 import '../../../../core/utils/api_error_message.dart';
 import '../../../../core/utils/app_flushbar.dart';
+import '../../../../core/utils/formatters.dart';
 import '../../../../core/widgets/app_badge.dart';
 import '../../../../core/widgets/app_button.dart';
 import '../../../../core/widgets/app_card.dart';
+import '../../../../core/widgets/app_state_views.dart';
 import '../../../../core/widgets/celebration_dialog.dart';
 import '../providers/payments_provider.dart';
 
@@ -56,11 +58,9 @@ class _PaymentDetailScreenState extends ConsumerState<PaymentDetailScreen> {
       body: SafeArea(
         child: detailAsync.when(
           loading: () => const Center(child: CircularProgressIndicator()),
-          error: (error, _) => Center(
-            child: TextButton(
-              onPressed: () => ref.invalidate(paymentDetailProvider(widget.paymentId)),
-              child: const Text('Retry'),
-            ),
+          error: (error, _) => AppErrorState(
+            title: "Couldn't load this payment",
+            onRetry: () => ref.invalidate(paymentDetailProvider(widget.paymentId)),
           ),
           data: (payment) {
             return ListView(
@@ -77,7 +77,7 @@ class _PaymentDetailScreenState extends ConsumerState<PaymentDetailScreen> {
                       ),
                       const SizedBox(height: 4),
                       Text(
-                        '₱${payment.amountDue.toStringAsFixed(2)}',
+                        Formatters.peso(payment.amountDue),
                         style: AppTextStyles.displayHero.copyWith(
                           color: AppColors.textOnBrand,
                           fontSize: 32,
@@ -130,28 +130,21 @@ class _PaymentDetailScreenState extends ConsumerState<PaymentDetailScreen> {
                       const SizedBox(height: AppSpacing.sm),
                       if (payment.slotCode != null)
                         _InfoRow(label: 'Slot', value: payment.slotCode!),
-                      _InfoRow(label: 'Duration', value: '${payment.durationMinutes} min'),
+                      _InfoRow(
+                        label: 'Duration',
+                        value: Formatters.duration(
+                          Duration(minutes: payment.durationMinutes),
+                        ),
+                      ),
                       _InfoRow(
                         label: 'Rate',
-                        value: '₱${payment.ratePerHourApplied.toStringAsFixed(2)}/hr',
+                        value: '${Formatters.peso(payment.ratePerHourApplied)}/hr',
                       ),
-                      _InfoRow(
-                        label: 'Created',
-                        value:
-                            '${payment.createdAt.month}/${payment.createdAt.day}/${payment.createdAt.year}',
-                      ),
+                      _InfoRow(label: 'Created', value: Formatters.date(payment.createdAt)),
                       if (payment.dueAt != null)
-                        _InfoRow(
-                          label: 'Due by',
-                          value:
-                              '${payment.dueAt!.month}/${payment.dueAt!.day}/${payment.dueAt!.year}',
-                        ),
+                        _InfoRow(label: 'Due by', value: Formatters.date(payment.dueAt!)),
                       if (payment.paidAt != null)
-                        _InfoRow(
-                          label: 'Paid',
-                          value:
-                              '${payment.paidAt!.month}/${payment.paidAt!.day}/${payment.paidAt!.year}',
-                        ),
+                        _InfoRow(label: 'Paid', value: Formatters.date(payment.paidAt!)),
                     ],
                   ),
                 ),

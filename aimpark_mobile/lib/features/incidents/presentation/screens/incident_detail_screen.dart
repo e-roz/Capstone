@@ -7,9 +7,11 @@ import '../../../../core/theme/app_spacing.dart';
 import '../../../../core/theme/app_text_styles.dart';
 import '../../../../core/utils/api_error_message.dart';
 import '../../../../core/utils/app_flushbar.dart';
+import '../../../../core/utils/formatters.dart';
 import '../../../../core/widgets/app_badge.dart';
 import '../../../../core/widgets/app_button.dart';
 import '../../../../core/widgets/app_card.dart';
+import '../../../../core/widgets/app_state_views.dart';
 import '../../data/models/incident.dart';
 import '../providers/incidents_provider.dart';
 import 'edit_incident_screen.dart';
@@ -86,11 +88,9 @@ class IncidentDetailScreen extends ConsumerWidget {
       body: SafeArea(
         child: detailAsync.when(
           loading: () => const Center(child: CircularProgressIndicator()),
-          error: (error, _) => Center(
-            child: TextButton(
-              onPressed: () => ref.invalidate(incidentDetailProvider(incidentId)),
-              child: const Text('Retry'),
-            ),
+          error: (error, _) => AppErrorState(
+            title: "Couldn't load this report",
+            onRetry: () => ref.invalidate(incidentDetailProvider(incidentId)),
           ),
           data: (incident) {
             return ListView(
@@ -122,7 +122,7 @@ class IncidentDetailScreen extends ConsumerWidget {
                       ],
                       const SizedBox(height: 4),
                       Text(
-                        'Reported ${incident.createdAt.month}/${incident.createdAt.day}/${incident.createdAt.year}',
+                        'Reported ${Formatters.date(incident.createdAt)}',
                         style: AppTextStyles.labelSmall.copyWith(color: AppColors.textSecondary),
                       ),
                     ],

@@ -6,9 +6,11 @@ import '../../../../core/theme/app_spacing.dart';
 import '../../../../core/theme/app_text_styles.dart';
 import '../../../../core/utils/api_error_message.dart';
 import '../../../../core/utils/app_flushbar.dart';
+import '../../../../core/utils/formatters.dart';
 import '../../../../core/widgets/app_badge.dart';
 import '../../../../core/widgets/app_button.dart';
 import '../../../../core/widgets/app_card.dart';
+import '../../../../core/widgets/app_state_views.dart';
 import '../../../../core/widgets/celebration_dialog.dart';
 import '../../../auth/presentation/widgets/image_picker_box.dart';
 import '../providers/violations_provider.dart';
@@ -149,11 +151,9 @@ class ViolationDetailScreen extends ConsumerWidget {
       body: SafeArea(
         child: detailAsync.when(
           loading: () => const Center(child: CircularProgressIndicator()),
-          error: (error, _) => Center(
-            child: TextButton(
-              onPressed: () => ref.invalidate(violationDetailProvider(violationId)),
-              child: const Text('Retry'),
-            ),
+          error: (error, _) => AppErrorState(
+            title: "Couldn't load this violation",
+            onRetry: () => ref.invalidate(violationDetailProvider(violationId)),
           ),
           data: (violation) {
             return ListView(
@@ -175,18 +175,17 @@ class ViolationDetailScreen extends ConsumerWidget {
                       const SizedBox(height: AppSpacing.sm),
                       Text(violation.description, style: AppTextStyles.bodyMedium),
                       const SizedBox(height: AppSpacing.md),
-                      _InfoRow(label: 'Penalty', value: '₱${violation.penaltyAmount.toStringAsFixed(2)}'),
+                      _InfoRow(
+                        label: 'Penalty',
+                        value: Formatters.peso(violation.penaltyAmount),
+                      ),
                       _InfoRow(
                         label: 'Suspension',
                         value: violation.suspensionDays != null
                             ? '${violation.suspensionType} · ${violation.suspensionDays} day(s)'
                             : violation.suspensionType,
                       ),
-                      _InfoRow(
-                        label: 'Issued',
-                        value:
-                            '${violation.createdAt.month}/${violation.createdAt.day}/${violation.createdAt.year}',
-                      ),
+                      _InfoRow(label: 'Issued', value: Formatters.date(violation.createdAt)),
                     ],
                   ),
                 ),

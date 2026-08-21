@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../theme/app_colors.dart';
 import '../theme/app_spacing.dart';
@@ -78,7 +79,14 @@ class AppBottomNav extends StatelessWidget {
               final selected = i == currentIndex;
               final item = items[i];
               return GestureDetector(
-                onTap: () => onTap(i),
+                onTap: () {
+                  // Skipped when the tab is already active — a haptic that
+                  // fires on a tap that changes nothing trains the user to
+                  // distrust it.
+                  if (selected) return;
+                  HapticFeedback.selectionClick();
+                  onTap(i);
+                },
                 behavior: HitTestBehavior.opaque,
                 child: AnimatedContainer(
                   duration: const Duration(milliseconds: 150),

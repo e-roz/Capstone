@@ -5,10 +5,13 @@ import 'package:go_router/go_router.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_spacing.dart';
 import '../../../../core/theme/app_text_styles.dart';
+import '../../../../core/utils/formatters.dart';
 import '../../../../core/widgets/app_avatar.dart';
 import '../../../../core/widgets/app_badge.dart';
 import '../../../../core/widgets/app_button.dart';
 import '../../../../core/widgets/app_card.dart';
+import '../../../../core/widgets/app_skeleton.dart';
+import '../../../../core/widgets/app_state_views.dart';
 import '../../../../core/widgets/good_standing_meter.dart';
 import '../../../../core/widgets/points_counter.dart';
 import '../../../../core/widgets/streak_badge.dart';
@@ -71,6 +74,37 @@ class UserDashboardScreen extends ConsumerWidget {
     final historyAsync = ref.watch(parkingHistoryNotifierProvider);
     final violationsAsync = ref.watch(violationsNotifierProvider);
 
+    // Home draws on three providers at once, so it needs its own answer to
+    // "has anything arrived yet". Reading `.valueOrNull` alone — which is what
+    // this did — meant the first frame after login rendered a fully populated
+    // screen out of three nulls: a greeting to "there", a 0-day streak, 0
+    // points, "Not Parked", and a Gold standing tier nobody had earned. All of
+    // it then rearranged itself a moment later. `hasValue || hasError` rather
+    // than `!isLoading` so a pull-to-refresh keeps showing the data underneath
+    // instead of flashing back to skeletons.
+    bool settled(AsyncValue<Object?> value) => value.hasValue || value.hasError;
+    final isFirstLoad =
+        !(settled(profileAsync) && settled(historyAsync) && settled(violationsAsync));
+
+    // Only when nothing at all came back. One failed provider still leaves a
+    // useful screen, so it degrades rather than blocking the other two.
+    final allFailed = !profileAsync.hasValue &&
+        !historyAsync.hasValue &&
+        !violationsAsync.hasValue &&
+        (profileAsync.hasError || historyAsync.hasError || violationsAsync.hasError);
+
+    if (allFailed) {
+      return Scaffold(
+        backgroundColor: AppColors.bgPage,
+        body: SafeArea(
+          child: AppErrorState(
+            title: "Couldn't load your dashboard",
+            onRetry: () => _refresh(ref),
+          ),
+        ),
+      );
+    }
+
     final history = historyAsync.valueOrNull;
     final violations = violationsAsync.valueOrNull;
     final streakDays = _computeStreak(history, violations);
@@ -84,65 +118,89 @@ class UserDashboardScreen extends ConsumerWidget {
         child: RefreshIndicator(
           onRefresh: () => _refresh(ref),
           child: ListView(
-          padding: const EdgeInsets.fromLTRB(
-            AppSpacing.md, AppSpacing.md, AppSpacing.md, AppSpacing.xl,
-          ),
-          children: [
-            _Header(
-              name: profileAsync.valueOrNull?.fullName ?? 'there',
-              streakDays: streakDays,
-              points: points,
+            padding: const EdgeInsets.fromLTRB(
+              AppSpacing.md, AppSpacing.md, AppSpacing.md, AppSpacing.xl,
             ),
-            const SizedBox(height: AppSpacing.lg),
-            _ParkingStatusCard(entry: history?.currentlyParked),
-            const SizedBox(height: AppSpacing.md),
-            AppCard(child: GoodStandingMeter(level: standing.level, tierLabel: standing.tier)),
-            const SizedBox(height: AppSpacing.lg),
-            Text('Quick Actions', style: AppTextStyles.h3),
-            const SizedBox(height: AppSpacing.sm),
-            Row(
-              children: [
-                Expanded(
-                  child: AppButton(
-                    label: 'Scan History',
-                    style: AppButtonStyle.secondary,
-                    onPressed: onNavigateToHistory,
-                  ),
+            children: [
+              if (isFirstLoad) ...[
+                const _HeaderSkeleton(),
+                const SizedBox(height: AppSpacing.lg),
+                const AppSkeleton.block(height: 92),
+                const SizedBox(height: AppSpacing.md),
+                const AppSkeleton.block(height: 72),
+              ] else ...[
+                _Header(
+                  name: profileAsync.valueOrNull?.fullName ?? 'there',
+                  streakDays: streakDays,
+                  points: points,
                 ),
-                const SizedBox(width: AppSpacing.sm),
-                Expanded(
-                  child: AppButton(
-                    label: 'Report Issue',
-                    style: AppButtonStyle.ghost,
-                    onPressed: () => context.push('/home/user/incidents/new'),
+                const SizedBox(height: AppSpacing.lg),
+                _ParkingStatusCard(
+                  entry: history?.currentlyParked,
+                  onTap: () => context.push('/home/user/parking-slots'),
+                ),
+                const SizedBox(height: AppSpacing.md),
+                AppCard(
+                  child: GoodStandingMeter(
+                    level: standing.level,
+                    tierLabel: standing.tier,
                   ),
                 ),
               ],
-            ),
-            const SizedBox(height: AppSpacing.lg),
-            Text('Recent Activity', style: AppTextStyles.h3),
-            const SizedBox(height: AppSpacing.sm),
-            if (recentLogs.isEmpty)
-              Text(
-                'No parking activity yet.',
-                style: AppTextStyles.bodyMedium.copyWith(color: AppColors.textSecondary),
-              )
-            else
-              for (final log in recentLogs) ...[
-                _ActivityTile(
-                  icon: log.isOpen ? Icons.login_rounded : Icons.logout_rounded,
-                  title: log.isOpen
-                      ? 'Entered ${log.slotCode ?? 'a slot'}'
-                      : 'Exited ${log.slotCode ?? 'a slot'}',
-                  subtitle: _relativeDay(log.entryTime),
-                  points: '+10 pts',
-                  onTap: log.paymentId == null
-                      ? null
-                      : () => context.push('/home/user/payments/${log.paymentId}'),
-                ),
-                const SizedBox(height: AppSpacing.sm),
-              ],
-          ],
+              const SizedBox(height: AppSpacing.lg),
+              // Quick Actions carry no data, so they stay live during the first
+              // load — there is no reason to make someone wait to report an
+              // incident just because their streak hasn't arrived.
+              Text('Quick Actions', style: AppTextStyles.h3),
+              const SizedBox(height: AppSpacing.sm),
+              Row(
+                children: [
+                  Expanded(
+                    child: AppButton(
+                      label: 'Scan History',
+                      style: AppButtonStyle.secondary,
+                      onPressed: onNavigateToHistory,
+                    ),
+                  ),
+                  const SizedBox(width: AppSpacing.sm),
+                  Expanded(
+                    child: AppButton(
+                      label: 'Report Issue',
+                      style: AppButtonStyle.ghost,
+                      onPressed: () => context.push('/home/user/incidents/new'),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: AppSpacing.lg),
+              Text('Recent Activity', style: AppTextStyles.h3),
+              const SizedBox(height: AppSpacing.sm),
+              if (isFirstLoad)
+                for (var i = 0; i < 3; i++) ...[
+                  const AppSkeleton.block(height: 64),
+                  const SizedBox(height: AppSpacing.sm),
+                ]
+              else if (recentLogs.isEmpty)
+                Text(
+                  'No parking activity yet.',
+                  style: AppTextStyles.bodyMedium.copyWith(color: AppColors.textSecondary),
+                )
+              else
+                for (final log in recentLogs) ...[
+                  _ActivityTile(
+                    icon: log.isOpen ? Icons.login_rounded : Icons.logout_rounded,
+                    title: log.isOpen
+                        ? 'Entered ${log.slotCode ?? 'a slot'}'
+                        : 'Exited ${log.slotCode ?? 'a slot'}',
+                    subtitle: Formatters.relativeDay(log.entryTime),
+                    points: '+10 pts',
+                    onTap: log.paymentId == null
+                        ? null
+                        : () => context.push('/home/user/payments/${log.paymentId}'),
+                  ),
+                  const SizedBox(height: AppSpacing.sm),
+                ],
+            ],
           ),
         ),
       ),
@@ -159,14 +217,34 @@ class UserDashboardScreen extends ConsumerWidget {
     ]);
   }
 
-  static String _relativeDay(DateTime time) {
-    final now = DateTime.now();
-    final today = DateTime(now.year, now.month, now.day);
-    final day = DateTime(time.year, time.month, time.day);
-    final diff = today.difference(day).inDays;
-    if (diff == 0) return 'Today';
-    if (diff == 1) return 'Yesterday';
-    return '${time.month}/${time.day}/${time.year}';
+}
+
+/// Mirrors [_Header]'s layout so the row doesn't jump when the real name,
+/// streak and points land.
+class _HeaderSkeleton extends StatelessWidget {
+  const _HeaderSkeleton();
+
+  @override
+  Widget build(BuildContext context) {
+    return const Row(
+      children: [
+        AppSkeleton(width: 44, height: 44, radius: AppRadius.full),
+        SizedBox(width: AppSpacing.sm),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              AppSkeleton.line(width: 88, height: 11),
+              SizedBox(height: 6),
+              AppSkeleton.line(width: 150, height: 18),
+            ],
+          ),
+        ),
+        AppSkeleton(width: 52, height: 30, radius: AppRadius.full),
+        SizedBox(width: AppSpacing.sm),
+        AppSkeleton(width: 52, height: 30, radius: AppRadius.full),
+      ],
+    );
   }
 }
 
@@ -205,60 +283,41 @@ class _Header extends StatelessWidget {
 }
 
 class _ParkingStatusCard extends StatelessWidget {
-  const _ParkingStatusCard({required this.entry});
+  const _ParkingStatusCard({required this.entry, required this.onTap});
+
   final ParkingHistoryEntry? entry;
-
-  String _formatTime(DateTime t) {
-    final hour = t.hour % 12 == 0 ? 12 : t.hour % 12;
-    final minute = t.minute.toString().padLeft(2, '0');
-    final period = t.hour >= 12 ? 'PM' : 'AM';
-    return '$hour:$minute $period';
-  }
-
-  String _formatDuration(Duration d) {
-    final hours = d.inHours;
-    final minutes = d.inMinutes % 60;
-    if (hours == 0) return '${minutes}m';
-    return '${hours}h ${minutes}m';
-  }
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: () => context.push('/home/user/parking-slots'),
-      child: AppCard(
-        color: AppColors.brandDefault,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(
-                  entry != null ? 'Currently Parked' : 'Not Parked',
-                  style: AppTextStyles.labelBold.copyWith(color: AppColors.textOnBrand),
-                ),
-                if (entry?.slotCode != null)
-                  AppBadge(label: entry!.slotCode!, tone: AppBadgeTone.success),
-              ],
+    return AppCard(
+      onTap: onTap,
+      color: AppColors.brandDefault,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                entry != null ? 'Currently Parked' : 'Not Parked',
+                style: AppTextStyles.labelBold.copyWith(color: AppColors.textOnBrand),
+              ),
+              if (entry?.slotCode != null)
+                AppBadge(label: entry!.slotCode!, tone: AppBadgeTone.success),
+            ],
+          ),
+          const SizedBox(height: AppSpacing.sm),
+          Text(
+            entry != null
+                ? 'Since ${Formatters.time(entry!.entryTime)} · '
+                    '${Formatters.duration(entry!.duration)}'
+                : 'Tap to check live availability',
+            style: AppTextStyles.bodyMedium.copyWith(
+              color: AppColors.textOnBrand.withValues(alpha: 0.85),
             ),
-            const SizedBox(height: AppSpacing.sm),
-            if (entry != null) ...[
-              Text(
-                'Since ${_formatTime(entry!.entryTime)} · ${_formatDuration(entry!.duration)}',
-                style: AppTextStyles.bodyMedium.copyWith(
-                  color: AppColors.textOnBrand.withValues(alpha: 0.85),
-                ),
-              ),
-            ] else
-              Text(
-                'Tap to check live availability',
-                style: AppTextStyles.bodyMedium.copyWith(
-                  color: AppColors.textOnBrand.withValues(alpha: 0.85),
-                ),
-              ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
@@ -284,8 +343,12 @@ class _ActivityTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final card = AppCard(
-      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md, vertical: AppSpacing.sm),
+    return AppCard(
+      onTap: onTap,
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppSpacing.md,
+        vertical: AppSpacing.sm,
+      ),
       child: Row(
         children: [
           Container(
@@ -302,7 +365,10 @@ class _ActivityTile extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(title, style: AppTextStyles.bodyMedium.copyWith(fontWeight: FontWeight.w700)),
+                Text(
+                  title,
+                  style: AppTextStyles.bodyMedium.copyWith(fontWeight: FontWeight.w700),
+                ),
                 Text(subtitle, style: AppTextStyles.bodySmall),
               ],
             ),
@@ -322,14 +388,6 @@ class _ActivityTile extends StatelessWidget {
             ),
         ],
       ),
-    );
-
-    if (onTap == null) return card;
-
-    return GestureDetector(
-      onTap: onTap,
-      behavior: HitTestBehavior.opaque,
-      child: card,
     );
   }
 }

@@ -5,9 +5,10 @@ import 'package:go_router/go_router.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_spacing.dart';
 import '../../../../core/theme/app_text_styles.dart';
+import '../../../../core/utils/formatters.dart';
 import '../../../../core/widgets/app_badge.dart';
-import '../../../../core/widgets/app_button.dart';
 import '../../../../core/widgets/app_card.dart';
+import '../../../../core/widgets/app_state_views.dart';
 import '../../data/models/incident.dart';
 import '../providers/incidents_provider.dart';
 
@@ -34,16 +35,18 @@ class IncidentsListScreen extends ConsumerWidget {
       body: SafeArea(
         child: incidentsAsync.when(
           loading: () => const Center(child: CircularProgressIndicator()),
-          error: (error, _) => Center(
-            child: TextButton(
-              onPressed: () => ref.read(incidentsNotifierProvider.notifier).refresh(),
-              child: const Text('Retry'),
-            ),
+          error: (error, _) => AppErrorState(
+            title: "Couldn't load your reports",
+            onRetry: () => ref.read(incidentsNotifierProvider.notifier).refresh(),
           ),
           data: (result) {
             if (result.incidents.isEmpty) {
-              return _EmptyState(
-                onReport: () => context.push('/home/user/incidents/new'),
+              return AppEmptyState(
+                icon: Icons.report_rounded,
+                title: 'No reports yet',
+                message: 'Spot something wrong in the parking area? Let us know.',
+                actionLabel: 'Report an Incident',
+                onAction: () => context.push('/home/user/incidents/new'),
               );
             }
             return RefreshIndicator(
@@ -88,62 +91,27 @@ class _IncidentTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
+    return AppCard(
       onTap: onTap,
-      child: AppCard(
-        child: Row(
-          children: [
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    incident.category,
-                    style: AppTextStyles.bodyMedium.copyWith(fontWeight: FontWeight.w700),
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    '${incident.createdAt.month}/${incident.createdAt.day}/${incident.createdAt.year}',
-                    style: AppTextStyles.bodySmall,
-                  ),
-                ],
-              ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  incident.category,
+                  style: AppTextStyles.bodyMedium.copyWith(fontWeight: FontWeight.w700),
+                ),
+                const SizedBox(height: 2),
+                Text(Formatters.date(incident.createdAt), style: AppTextStyles.bodySmall),
+              ],
             ),
-            AppBadge(label: incident.status, tone: _tone),
-            const SizedBox(width: AppSpacing.xs),
-            const Icon(Icons.chevron_right_rounded, color: AppColors.textSecondary),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _EmptyState extends StatelessWidget {
-  const _EmptyState({required this.onReport});
-  final VoidCallback onReport;
-
-  @override
-  Widget build(BuildContext context) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(AppSpacing.lg),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Icon(Icons.report_rounded, size: 48, color: AppColors.textDisabled),
-            const SizedBox(height: AppSpacing.md),
-            Text('No reports yet', style: AppTextStyles.h2),
-            const SizedBox(height: AppSpacing.xs),
-            Text(
-              'Spot something wrong in the parking area? Let us know.',
-              textAlign: TextAlign.center,
-              style: AppTextStyles.bodyMedium.copyWith(color: AppColors.textSecondary),
-            ),
-            const SizedBox(height: AppSpacing.lg),
-            AppButton(label: 'Report an Incident', onPressed: onReport),
-          ],
-        ),
+          ),
+          AppBadge(label: incident.status, tone: _tone),
+          const SizedBox(width: AppSpacing.xs),
+          const Icon(Icons.chevron_right_rounded, color: AppColors.textSecondary),
+        ],
       ),
     );
   }

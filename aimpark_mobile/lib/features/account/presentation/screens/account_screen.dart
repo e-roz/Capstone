@@ -8,6 +8,7 @@ import '../../../../core/theme/app_text_styles.dart';
 import '../../../../core/widgets/app_avatar.dart';
 import '../../../../core/widgets/app_badge.dart';
 import '../../../../core/widgets/app_card.dart';
+import '../../../../core/widgets/app_state_views.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../../notifications/presentation/providers/push_registration_provider.dart';
 import '../../data/models/my_profile.dart';
@@ -67,11 +68,9 @@ class AccountScreen extends ConsumerWidget {
       body: SafeArea(
         child: profileAsync.when(
           loading: () => const Center(child: CircularProgressIndicator()),
-          error: (error, _) => Center(
-            child: TextButton(
-              onPressed: () => ref.read(profileNotifierProvider.notifier).refresh(),
-              child: const Text('Retry'),
-            ),
+          error: (error, _) => AppErrorState(
+            title: "Couldn't load your profile",
+            onRetry: () => ref.read(profileNotifierProvider.notifier).refresh(),
           ),
           data: (profile) {
             return RefreshIndicator(
@@ -231,26 +230,24 @@ class _MenuTile extends StatelessWidget {
   Widget build(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.only(bottom: AppSpacing.sm),
-      child: GestureDetector(
+      child: AppCard(
         onTap: onTap,
-        child: AppCard(
-          child: Row(
-            children: [
-              Icon(icon, color: tone ?? AppColors.textSecondary, size: 22),
-              const SizedBox(width: AppSpacing.sm),
-              Expanded(
-                child: Text(
-                  label,
-                  style: AppTextStyles.bodyMedium.copyWith(
-                    fontWeight: FontWeight.w700,
-                    color: tone,
-                  ),
+        child: Row(
+          children: [
+            Icon(icon, color: tone ?? AppColors.textSecondary, size: 22),
+            const SizedBox(width: AppSpacing.sm),
+            Expanded(
+              child: Text(
+                label,
+                style: AppTextStyles.bodyMedium.copyWith(
+                  fontWeight: FontWeight.w700,
+                  color: tone,
                 ),
               ),
-              if (tone == null)
-                const Icon(Icons.chevron_right_rounded, color: AppColors.textSecondary),
-            ],
-          ),
+            ),
+            if (tone == null)
+              const Icon(Icons.chevron_right_rounded, color: AppColors.textSecondary),
+          ],
         ),
       ),
     );
