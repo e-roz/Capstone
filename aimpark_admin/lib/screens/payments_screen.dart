@@ -2,12 +2,20 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
+import '../core/utils/responsive.dart';
 import '../models/payment.dart';
 import '../providers/payments_provider.dart';
-import '../core/utils/responsive.dart';
-import '../widgets/page_header.dart';
+import '../theme/theme.dart';
+import '../widgets/ui/ui.dart';
 
-const _statuses = ['Pending', 'Paid', 'Waived'];
+const _statuses = [
+  AppFilterOption('Pending', 'Pending'),
+  AppFilterOption('Paid', 'Paid'),
+  AppFilterOption('Waived', 'Waived'),
+];
+
+final _money = NumberFormat.currency(symbol: '₱', decimalDigits: 2);
+final _dateTime = DateFormat('MMM d, yyyy HH:mm');
 
 class PaymentsScreen extends ConsumerWidget {
   const PaymentsScreen({super.key});
@@ -15,60 +23,157 @@ class PaymentsScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final query = ref.watch(paymentsQueryNotifierProvider);
-    final async = ref.watch(paymentListProvider);
     final ratesAsync = ref.watch(parkingRatesProvider);
 
-    return Scaffold(
-      backgroundColor: const Color(0xFFF5F7FA),
-      body: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            PageHeader(
-              title: 'Payments',
-              actions: [
-                DropdownButton<String?>(
-                  value: query.status,
-                  hint: const Text('All Status'),
-                  items: [
-                    const DropdownMenuItem(value: null, child: Text('All Status')),
-                    ..._statuses.map(
-                        (s) => DropdownMenuItem(value: s, child: Text(s))),
+    return AppPage(
+      title: 'Payments',
+      subtitle: 'Parking charges raised at exit, and how they were settled.',
+      // Manage Rates and Refresh sit on the toolbar rather than beside the
+      // title, so they line up with the Status filter instead of floating a row
+      // above it — the two rows of controls read as one strip.
+      toolbar: AppToolbar(
+        filters: [
+          AppFilterDropdown<String>(
+            label: 'Status',
+            value: query.status,
+            options: _statuses,
+            allLabel: 'All statuses',
+            onChanged:
+                ref.read(paymentsQueryNotifierProvider.notifier).setStatus,
+          ),
+        ],
+        trailing: [
+          OutlinedButton.icon(
+            icon: const Icon(Icons.tune, size: AppSizes.iconSm),
+            label: const Text('Manage Rates'),
+            onPressed: () =>
+                _showRates(context, ref, ratesAsync.valueOrNull ?? []),
+          ),
+          IconButton(
+            icon: const Icon(Icons.refresh),
+            tooltip: 'Refresh',
+            onPressed: () {
+              ref.invalidate(paymentListProvider);
+              ref.invalidate(parkingRatesProvider);
+            },
+          ),
+        ],
+      ),
+      body: AsyncView(
+        value: ref.watch(paymentListProvider),
+        onRetry: () => ref.invalidate(paymentListProvider),
+        isEmpty: (page) => page.payments.isEmpty,
+        empty: AppEmptyState(
+          icon: Icons.receipt_long_outlined,
+          title: query.status == null
+              ? 'No payments yet'
+              : 'No ${query.status!.toLowerCase()} payments',
+          message: query.status == null
+              ? 'Charges appear here once a vehicle exits the lot.'
+              : 'Clear the filter to see every payment.',
+        ),
+        data: (page) => AppDataTable(
+          minWidth: 1000,
+          columns: const [
+            DataColumn(label: Text('Source')),
+            DataColumn(label: Text('Slot')),
+            DataColumn(label: Text('Duration'), numeric: true),
+            DataColumn(label: Text('Rate/hr'), numeric: true),
+            DataColumn(label: Text('Amount Due'), numeric: true),
+            DataColumn(label: Text('Status')),
+            DataColumn(label: Text('Created')),
+            DataColumn(label: Text('')),
+          ],
+          rows: [for (final p in page.payments) _row(context, p)],
+          footer: AppPagination(
+            page: page.page,
+            pageSize: page.pageSize,
+            total: page.totalCount,
+            itemLabel: 'payments',
+            onPage: ref.read(paymentsQueryNotifierProvider.notifier).setPage,
+          ),
+        ),
+      ),
+    );
+  }
+
+  DataRow _row(BuildContext context, PaymentTransaction p) {
+    final t = context.tokens;
+    final text = Theme.of(context).textTheme;
+
+    return DataRow(cells: [
+      DataCell(Text(p.source, style: text.titleSmall)),
+      DataCell(Text(p.slotCode ?? '—')),
+      DataCell(AppNumericCell('${p.durationMinutes} min')),
+      DataCell(AppNumericCell(_money.format(p.ratePerHourApplied))),
+      DataCell(AppNumericCell(_money.format(p.amountDue), emphasis: true)),
+      DataCell(StatusPill.of(p.status,
+          intent: StatusIntents.payment(p.status), dense: true)),
+      DataCell(Text(
+        _dateTime.format(p.createdAt.toLocal()),
+        style: text.bodySmall?.copyWith(color: t.text.secondary),
+      )),
+      DataCell(AppRowAction(
+        icon: Icons.receipt_long,
+        label: 'Receipt',
+        onPressed: () => _showReceipt(context, p),
+      )),
+    ]);
+  }
+
+  /// Every field is already present in the list response, so the receipt needs
+  /// no extra fetch — it renders what is loaded.
+  Future<void> _showReceipt(BuildContext context, PaymentTransaction p) {
+    final t = context.tokens;
+    final text = Theme.of(context).textTheme;
+
+    String time(DateTime? at) =>
+        at == null ? '—' : _dateTime.format(at.toLocal());
+
+    return showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Payment Receipt'),
+        content: SizedBox(
+          width: context.dialogWidth(420),
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      _money.format(p.amountDue),
+                      style: AppTypography.tabular(text.displaySmall!),
+                    ),
+                    StatusPill.of(p.status,
+                        intent: StatusIntents.payment(p.status)),
                   ],
-                  onChanged: (v) =>
-                      ref.read(paymentsQueryNotifierProvider.notifier).setStatus(v),
                 ),
-                OutlinedButton.icon(
-                  icon: const Icon(Icons.tune, size: 16),
-                  label: const Text('Manage Rates'),
-                  onPressed: () => _showRates(context, ref, ratesAsync.valueOrNull ?? []),
+                const Divider(height: AppSpacing.x6),
+                _ReceiptRow(label: 'Source', value: p.source),
+                _ReceiptRow(label: 'Slot', value: p.slotCode ?? '—'),
+                _ReceiptRow(label: 'Entry', value: time(p.entryTime)),
+                _ReceiptRow(label: 'Exit', value: time(p.exitTime)),
+                _ReceiptRow(
+                    label: 'Duration', value: '${p.durationMinutes} min'),
+                _ReceiptRow(
+                  label: 'Rate applied',
+                  value: '${_money.format(p.ratePerHourApplied)}/hr',
                 ),
-                IconButton(
-                  icon: const Icon(Icons.refresh),
-                  tooltip: 'Refresh',
-                  onPressed: () {
-                    ref.invalidate(paymentListProvider);
-                    ref.invalidate(parkingRatesProvider);
-                  },
+                const Divider(height: AppSpacing.x6),
+                _ReceiptRow(label: 'Created', value: time(p.createdAt)),
+                _ReceiptRow(label: 'Paid', value: time(p.paidAt)),
+                const SizedBox(height: AppSpacing.x3),
+                SelectableText(
+                  'Ref ${p.paymentId}',
+                  style: text.labelSmall?.copyWith(color: t.text.tertiary),
                 ),
               ],
             ),
-            const SizedBox(height: 16),
-            Expanded(
-              child: async.when(
-                loading: () => const Center(child: CircularProgressIndicator()),
-                error: (e, _) => Center(child: Text('Failed to load payments: $e')),
-                data: (page) => Column(
-                  children: [
-                    Expanded(child: _PaymentTable(page: page)),
-                    const SizedBox(height: 12),
-                    _Pagination(page: page),
-                  ],
-                ),
-              ),
-            ),
-          ],
+          ),
         ),
       ),
     );
@@ -79,7 +184,18 @@ class PaymentsScreen extends ConsumerWidget {
     await showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Parking Rates'),
+        // The close affordance sits with the title rather than in the action
+        // row, where it competed with "Add / Update Rate" for the eye.
+        title: Row(
+          children: [
+            const Expanded(child: Text('Parking Rates')),
+            IconButton(
+              icon: const Icon(Icons.close),
+              tooltip: 'Close',
+              onPressed: () => Navigator.pop(ctx),
+            ),
+          ],
+        ),
         content: SizedBox(
           width: context.dialogWidth(420),
           child: Column(
@@ -87,20 +203,25 @@ class PaymentsScreen extends ConsumerWidget {
             children: [
               if (rates.isEmpty)
                 const Padding(
-                  padding: EdgeInsets.symmetric(vertical: 12),
+                  padding: EdgeInsets.symmetric(vertical: AppSpacing.x3),
                   child: Text('No rates configured yet.'),
                 )
               else
                 ...rates.map((r) => ListTile(
                       dense: true,
+                      contentPadding: EdgeInsets.zero,
                       title: Text(r.vehicleType ?? 'Default rate'),
                       subtitle: Text(
                           'Updated ${DateFormat('MMM d, yyyy').format(r.updatedAt.toLocal())}'),
-                      trailing: Text('₱${r.ratePerHour.toStringAsFixed(2)}/hr'),
+                      trailing: Text(
+                        '${_money.format(r.ratePerHour)}/hr',
+                        style: AppTypography.tabular(
+                            Theme.of(ctx).textTheme.titleSmall!),
+                      ),
                     )),
-              const Divider(),
+              const Divider(height: AppSpacing.x6),
               FilledButton.icon(
-                icon: const Icon(Icons.add, size: 16),
+                icon: const Icon(Icons.add, size: AppSizes.iconSm),
                 label: const Text('Add / Update Rate'),
                 onPressed: () async {
                   Navigator.pop(ctx);
@@ -110,9 +231,6 @@ class PaymentsScreen extends ConsumerWidget {
             ],
           ),
         ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Close')),
-        ],
       ),
     );
   }
@@ -134,15 +252,16 @@ class PaymentsScreen extends ConsumerWidget {
               TextFormField(
                 controller: vehicleTypeCtrl,
                 decoration: const InputDecoration(
-                    labelText: 'Vehicle Type (blank = default)',
-                    border: OutlineInputBorder()),
+                  labelText: 'Vehicle type',
+                  helperText: 'Leave blank to set the default rate',
+                ),
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: AppSpacing.x4),
               TextFormField(
                 controller: rateCtrl,
                 keyboardType: TextInputType.number,
                 decoration: const InputDecoration(
-                    labelText: 'Rate per Hour', border: OutlineInputBorder()),
+                    label: AppFieldLabel('Rate per hour', isRequired: true)),
                 validator: (v) => double.tryParse(v ?? '') == null
                     ? 'Enter a valid number'
                     : null,
@@ -178,120 +297,8 @@ class PaymentsScreen extends ConsumerWidget {
   }
 }
 
-class _PaymentTable extends StatelessWidget {
-  const _PaymentTable({required this.page});
-
-  final PaymentListPage page;
-
-  @override
-  Widget build(BuildContext context) {
-    if (page.payments.isEmpty) {
-      return const Center(child: Text('No payments found.'));
-    }
-
-    return Card(
-      elevation: 1,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      clipBehavior: Clip.hardEdge,
-      child: SingleChildScrollView(
-        child: SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
-          child: DataTable(
-            headingRowColor: WidgetStateProperty.all(Colors.grey.shade100),
-            columns: const [
-              DataColumn(label: Text('Source')),
-              DataColumn(label: Text('Slot')),
-              DataColumn(label: Text('Duration')),
-              DataColumn(label: Text('Rate/hr')),
-              DataColumn(label: Text('Amount Due')),
-              DataColumn(label: Text('Status')),
-              DataColumn(label: Text('Created')),
-              DataColumn(label: Text('')),
-            ],
-            rows: page.payments.map((p) => _row(context, p)).toList(),
-          ),
-        ),
-      ),
-    );
-  }
-
-  DataRow _row(BuildContext context, PaymentTransaction p) => DataRow(cells: [
-        DataCell(Text(p.source)),
-        DataCell(Text(p.slotCode ?? '—')),
-        DataCell(Text('${p.durationMinutes} min')),
-        DataCell(Text('₱${p.ratePerHourApplied.toStringAsFixed(2)}')),
-        DataCell(Text('₱${p.amountDue.toStringAsFixed(2)}')),
-        DataCell(_StatusChip(status: p.status)),
-        DataCell(Text(DateFormat('MMM d, yyyy HH:mm').format(p.createdAt.toLocal()))),
-        DataCell(OutlinedButton.icon(
-          icon: const Icon(Icons.receipt_long, size: 14),
-          label: const Text('Receipt', style: TextStyle(fontSize: 12)),
-          style: OutlinedButton.styleFrom(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-            minimumSize: Size.zero,
-            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-          ),
-          onPressed: () => _showReceipt(context, p),
-        )),
-      ]);
-
-  /// Every field is already present in the list response, so the receipt needs
-  /// no extra fetch — it renders what is loaded.
-  Future<void> _showReceipt(BuildContext context, PaymentTransaction p) {
-    String time(DateTime? t) =>
-        t == null ? '—' : DateFormat('MMM d, yyyy HH:mm').format(t.toLocal());
-
-    return showDialog<void>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Payment Receipt'),
-        content: SizedBox(
-          width: context.dialogWidth(420),
-          child: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text(
-                      '₱${p.amountDue.toStringAsFixed(2)}',
-                      style: const TextStyle(
-                          fontSize: 28, fontWeight: FontWeight.bold),
-                    ),
-                    _StatusChip(status: p.status),
-                  ],
-                ),
-                const Divider(height: 24),
-                _ReceiptRow(label: 'Source', value: p.source),
-                _ReceiptRow(label: 'Slot', value: p.slotCode ?? '—'),
-                _ReceiptRow(label: 'Entry', value: time(p.entryTime)),
-                _ReceiptRow(label: 'Exit', value: time(p.exitTime)),
-                _ReceiptRow(label: 'Duration', value: '${p.durationMinutes} min'),
-                _ReceiptRow(
-                    label: 'Rate applied',
-                    value: '₱${p.ratePerHourApplied.toStringAsFixed(2)}/hr'),
-                const Divider(height: 24),
-                _ReceiptRow(label: 'Created', value: time(p.createdAt)),
-                _ReceiptRow(label: 'Paid', value: time(p.paidAt)),
-                const SizedBox(height: 12),
-                SelectableText(
-                  'Ref ${p.paymentId}',
-                  style: const TextStyle(fontSize: 11, color: Colors.black45),
-                ),
-              ],
-            ),
-          ),
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Close')),
-        ],
-      ),
-    );
-  }
-}
-
+/// Label left, value right — the shape a receipt wants, where [AppField]'s
+/// stacked label-over-value would double the dialog's height.
 class _ReceiptRow extends StatelessWidget {
   const _ReceiptRow({required this.label, required this.value});
 
@@ -300,79 +307,18 @@ class _ReceiptRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final t = context.tokens;
+    final text = Theme.of(context).textTheme;
+
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 3),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Text(label, style: const TextStyle(color: Colors.black54)),
-          Text(value, style: const TextStyle(fontWeight: FontWeight.w600)),
+          Text(label, style: text.bodyMedium?.copyWith(color: t.text.secondary)),
+          Text(value, style: text.titleSmall),
         ],
       ),
-    );
-  }
-}
-
-class _StatusChip extends StatelessWidget {
-  const _StatusChip({required this.status});
-
-  final String status;
-
-  @override
-  Widget build(BuildContext context) {
-    Color color;
-    switch (status) {
-      case 'Paid':
-        color = Colors.green;
-        break;
-      case 'Waived':
-        color = Colors.blueGrey;
-        break;
-      default:
-        color = Colors.orange;
-    }
-    return Chip(
-      label: Text(status, style: const TextStyle(fontSize: 12, color: Colors.white)),
-      backgroundColor: color,
-      padding: EdgeInsets.zero,
-      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-    );
-  }
-}
-
-class _Pagination extends ConsumerWidget {
-  const _Pagination({required this.page});
-
-  final PaymentListPage page;
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final totalPages = (page.totalCount / page.pageSize).ceil().clamp(1, 999999);
-    final currentPage = page.page;
-
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        Text(
-            'Showing ${page.payments.length} of ${page.totalCount} payments • Page $currentPage of $totalPages'),
-        const SizedBox(width: 16),
-        IconButton(
-          icon: const Icon(Icons.chevron_left),
-          onPressed: currentPage > 1
-              ? () => ref
-                  .read(paymentsQueryNotifierProvider.notifier)
-                  .setPage(currentPage - 1)
-              : null,
-        ),
-        IconButton(
-          icon: const Icon(Icons.chevron_right),
-          onPressed: currentPage < totalPages
-              ? () => ref
-                  .read(paymentsQueryNotifierProvider.notifier)
-                  .setPage(currentPage + 1)
-              : null,
-        ),
-      ],
     );
   }
 }

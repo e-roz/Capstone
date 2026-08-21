@@ -40,4 +40,15 @@ class JwtUtils {
   }
 
   static bool isAdmin(String token) => getRole(token) == 'Admin';
+
+  /// Returns the email claim, or null if not present. The sidebar's user chip
+  /// shows this: the token carries no display name, and an email is at least
+  /// true, where an invented "Administrator" would not be.
+  static String? getEmail(String token) {
+    final payload = _decodePayload(token);
+    if (payload == null) return null;
+    const emailKey =
+        'http://schemas.xmlsoap.org/ws/2005/05/identity/claims/emailaddress';
+    return (payload[emailKey] ?? payload['email'])?.toString();
+  }
 }

@@ -31,6 +31,18 @@ namespace AimPark.API.Services
             var occupiedSlots = await _db.Set<ParkingSlot>()
                 .CountAsync(s => s.Status == ParkingSlotStatus.Occupied, ct);
 
+            // Counted, not derived. `total - occupied` treated an out-of-service
+            // bay as free space, so a lot with 2 cars and 8 broken bays reported
+            // 8 available — the dashboard's headline number was wrong whenever
+            // any bay was down. Reserved bays are not free either, so counting
+            // Available directly is the only definition that stays honest as
+            // more statuses are added.
+            var availableSlots = await _db.Set<ParkingSlot>()
+                .CountAsync(s => s.Status == ParkingSlotStatus.Available, ct);
+
+            var outOfServiceSlots = await _db.Set<ParkingSlot>()
+                .CountAsync(s => s.Status == ParkingSlotStatus.OutOfService, ct);
+
             var sessionsToday = await _db.Set<ParkingLog>()
                 .CountAsync(l => l.EntryTime >= today && l.EntryTime < tomorrow, ct);
 
@@ -53,7 +65,8 @@ namespace AimPark.API.Services
                 ActiveUsers = activeUsers,
                 TotalSlots = totalSlots,
                 OccupiedSlots = occupiedSlots,
-                AvailableSlots = totalSlots - occupiedSlots,
+                AvailableSlots = availableSlots,
+                OutOfServiceSlots = outOfServiceSlots,
                 SessionsToday = sessionsToday,
                 RevenueCollected = revenueCollected,
                 RevenuePending = revenuePending,

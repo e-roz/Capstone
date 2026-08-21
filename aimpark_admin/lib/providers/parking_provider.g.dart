@@ -44,7 +44,7 @@ final activeParkingSessionsProvider =
 // ignore: unused_element
 typedef ActiveParkingSessionsRef =
     AutoDisposeFutureProviderRef<List<ActiveParkingSession>>;
-String _$parkingActionsHash() => r'81523a79bdabf9edee92ed483ac2201414d2d205';
+String _$parkingActionsHash() => r'b2c7db78b5daa6aaa8e939cc87da8dc6d92b8e2f';
 
 /// See also [ParkingActions].
 @ProviderFor(ParkingActions)

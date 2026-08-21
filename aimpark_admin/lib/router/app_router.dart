@@ -1,11 +1,11 @@
-import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:go_router/go_router.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 
 import '../core/utils/jwt_utils.dart';
-import '../screens/audit_log_screen.dart';
+import '../screens/system_logs_screen.dart';
+import '../screens/dashboard_screen.dart';
 import '../screens/incidents_screen.dart';
 import '../screens/login_screen.dart';
 import '../screens/notifications_screen.dart';
@@ -27,16 +27,16 @@ const _storage = FlutterSecureStorage();
 @Riverpod(keepAlive: true)
 GoRouter appRouter(Ref ref) {
   return GoRouter(
-    initialLocation: '/pending',
+    initialLocation: '/dashboard',
     redirect: (context, state) async {
       final token = await _storage.read(key: 'admin_auth_token');
       final location = state.matchedLocation;
       final isLoggedIn = token != null && JwtUtils.isValid(token);
-      final isAdmin = isLoggedIn && JwtUtils.isAdmin(token!);
+      final isAdmin = isLoggedIn && JwtUtils.isAdmin(token);
 
       if (location == '/login') {
         // If already a valid admin, skip login screen
-        return isAdmin ? '/pending' : null;
+        return isAdmin ? '/dashboard' : null;
       }
 
       // All other routes require admin
@@ -53,6 +53,10 @@ GoRouter appRouter(Ref ref) {
       ShellRoute(
         builder: (context, state, child) => AdminShell(child: child),
         routes: [
+          GoRoute(
+            path: '/dashboard',
+            builder: (context, state) => const DashboardScreen(),
+          ),
           GoRoute(
             path: '/pending',
             builder: (context, state) =>
@@ -75,8 +79,8 @@ GoRouter appRouter(Ref ref) {
             ),
           ),
           GoRoute(
-            path: '/audit-logs',
-            builder: (context, state) => const AuditLogScreen(),
+            path: '/system-logs',
+            builder: (context, state) => const SystemLogsScreen(),
           ),
           GoRoute(
             path: '/parking',

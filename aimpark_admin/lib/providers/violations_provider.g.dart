@@ -42,6 +42,24 @@ final violationListProvider =
 @Deprecated('Will be removed in 3.0. Use Ref instead')
 // ignore: unused_element
 typedef ViolationListRef = AutoDisposeFutureProviderRef<ViolationListPage>;
+String _$violationLogListHash() => r'55231a23e1711f8a4b54d8e57a6e1c467756efd7';
+
+/// See also [violationLogList].
+@ProviderFor(violationLogList)
+final violationLogListProvider =
+    AutoDisposeFutureProvider<ViolationListPage>.internal(
+      violationLogList,
+      name: r'violationLogListProvider',
+      debugGetCreateSourceHash: const bool.fromEnvironment('dart.vm.product')
+          ? null
+          : _$violationLogListHash,
+      dependencies: null,
+      allTransitiveDependencies: null,
+    );
+
+@Deprecated('Will be removed in 3.0. Use Ref instead')
+// ignore: unused_element
+typedef ViolationLogListRef = AutoDisposeFutureProviderRef<ViolationListPage>;
 String _$appealListHash() => r'6ad3dadbd547e358885dfec0d763f9614f1957b6';
 
 /// See also [appealList].
@@ -96,6 +114,33 @@ final violationsQueryNotifierProvider =
     );
 
 typedef _$ViolationsQueryNotifier = AutoDisposeNotifier<ViolationsQuery>;
+String _$violationLogsQueryNotifierHash() =>
+    r'a00059fa5216ceb7326d6be01ef6876f1a4974f0';
+
+/// The same endpoint as [violationList], behind its own query state.
+///
+/// System Logs shows violations as an audit trail while Violation Tracking
+/// shows them as a work queue. Sharing one notifier between the two would mean
+/// filtering the log silently re-filtered the queue you left behind on the
+/// other screen, and paging one paged the other.
+///
+/// Copied from [ViolationLogsQueryNotifier].
+@ProviderFor(ViolationLogsQueryNotifier)
+final violationLogsQueryNotifierProvider =
+    AutoDisposeNotifierProvider<
+      ViolationLogsQueryNotifier,
+      ViolationsQuery
+    >.internal(
+      ViolationLogsQueryNotifier.new,
+      name: r'violationLogsQueryNotifierProvider',
+      debugGetCreateSourceHash: const bool.fromEnvironment('dart.vm.product')
+          ? null
+          : _$violationLogsQueryNotifierHash,
+      dependencies: null,
+      allTransitiveDependencies: null,
+    );
+
+typedef _$ViolationLogsQueryNotifier = AutoDisposeNotifier<ViolationsQuery>;
 String _$appealsQueryNotifierHash() =>
     r'bdba963767734d4edbf144c4d9ab510dc2029be9';
 
@@ -113,7 +158,7 @@ final appealsQueryNotifierProvider =
     );
 
 typedef _$AppealsQueryNotifier = AutoDisposeNotifier<AppealsQuery>;
-String _$violationActionsHash() => r'1eb6d61bcdd1c8b64b8ba210dea5280167b0ccc3';
+String _$violationActionsHash() => r'409f0770711cfbc288dddc75e409a47c50da8c94';
 
 /// See also [ViolationActions].
 @ProviderFor(ViolationActions)

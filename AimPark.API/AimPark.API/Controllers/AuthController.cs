@@ -23,6 +23,7 @@ namespace AimPark.API.Controllers
         private readonly IConfiguration _config;
         private readonly IOtpService _otpService;
         private readonly IEmailService _emailService;
+        private readonly IUserActivityLogger _activity;
 
         public AuthController(
             IRepository<User> users,
@@ -30,8 +31,10 @@ namespace AimPark.API.Controllers
             IRegistrationService registrationService,
             IConfiguration config,
             IOtpService otpService,
-            IEmailService emailService)
+            IEmailService emailService,
+            IUserActivityLogger activity)
         {
+            _activity = activity;
             _tokenService = tokenService;
             _users = users;
             _registrationService = registrationService;
@@ -52,6 +55,16 @@ namespace AimPark.API.Controllers
             if (user is null || user.PasswordHash is null ||
                 !BCrypt.Net.BCrypt.Verify(dto.Password, user.PasswordHash))
             {
+                // Logged even when the address is unknown: a run of these against
+                // one address is the signal somebody is guessing passwords, and
+                // that pattern is invisible if only real accounts are recorded.
+                await _activity.LogAsync(
+                    user?.Id,
+                    email,
+                    UserActivities.LoginFailed,
+                    user is null ? "No account for this address" : "Wrong password",
+                    ct);
+
                 return Unauthorized(new LoginResponse { Message = "Invalid credentials." });
             }
 
@@ -106,6 +119,9 @@ namespace AimPark.API.Controllers
                         RegistrationStatus = MapStatus(user)
                     });
             }
+
+            await _activity.LogAsync(
+                user.Id, user.Email, UserActivities.Login, $"Role: {user.Role}", ct);
 
             return Ok(new LoginResponse
             {

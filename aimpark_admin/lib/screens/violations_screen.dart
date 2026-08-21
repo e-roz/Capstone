@@ -2,112 +2,45 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
+import '../core/utils/responsive.dart';
 import '../models/violation.dart';
 import '../providers/violations_provider.dart';
+import '../theme/theme.dart';
+import '../widgets/ui/ui.dart';
 import '../widgets/user_picker.dart';
-import '../core/utils/responsive.dart';
 
-const _violationStatuses = ['Issued', 'Appealed', 'Upheld', 'Overturned', 'Dismissed'];
-const _appealStatuses = ['Pending', 'Approved', 'Denied'];
+const _violationStatuses = [
+  'Issued',
+  'Appealed',
+  'Upheld',
+  'Overturned',
+  'Dismissed'
+];
+const _violationSuspensions = ['None', 'Temporary', 'Permanent'];
 
-class ViolationsScreen extends StatelessWidget {
+final _money = NumberFormat.currency(symbol: '₱', decimalDigits: 2);
+
+class ViolationsScreen extends ConsumerWidget {
   const ViolationsScreen({super.key});
 
   @override
-  Widget build(BuildContext context) {
-    return DefaultTabController(
-      length: 2,
-      child: Scaffold(
-        backgroundColor: const Color(0xFFF5F7FA),
-        body: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text('Violations',
-                  style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
-              const SizedBox(height: 12),
-              const TabBar(
-                isScrollable: true,
-                tabs: [Tab(text: 'Violations'), Tab(text: 'Appeals')],
-              ),
-              const SizedBox(height: 12),
-              const Expanded(
-                child: TabBarView(
-                  children: [_ViolationsTab(), _AppealsTab()],
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-// ── Violations tab ───────────────────────────────────────────────────────────
-
-class _ViolationsTab extends ConsumerWidget {
-  const _ViolationsTab();
-
-  @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final query = ref.watch(violationsQueryNotifierProvider);
-    final async = ref.watch(violationListProvider);
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          children: [
-            DropdownButton<String?>(
-              value: query.status,
-              hint: const Text('All Status'),
-              items: [
-                const DropdownMenuItem(value: null, child: Text('All Status')),
-                ..._violationStatuses
-                    .map((s) => DropdownMenuItem(value: s, child: Text(s))),
-              ],
-              onChanged: (v) =>
-                  ref.read(violationsQueryNotifierProvider.notifier).setStatus(v),
-            ),
-            const Spacer(),
-            FilledButton.icon(
-              icon: const Icon(Icons.add, size: 16),
-              label: const Text('Issue Violation'),
-              onPressed: () => _showIssueViolation(context, ref),
-            ),
-            const SizedBox(width: 8),
-            IconButton(
-              icon: const Icon(Icons.refresh),
-              tooltip: 'Refresh',
-              onPressed: () => ref.invalidate(violationListProvider),
-            ),
-          ],
-        ),
-        const SizedBox(height: 12),
-        Expanded(
-          child: async.when(
-            loading: () => const Center(child: CircularProgressIndicator()),
-            error: (e, _) => Center(child: Text('Failed to load violations: $e')),
-            data: (page) => Column(
-              children: [
-                Expanded(child: _ViolationTable(page: page)),
-                const SizedBox(height: 12),
-                _PageBar(
-                  label: 'violations',
-                  count: page.violations.length,
-                  total: page.totalCount,
-                  page: page.page,
-                  pageSize: page.pageSize,
-                  onPage: (p) =>
-                      ref.read(violationsQueryNotifierProvider.notifier).setPage(p),
-                ),
-              ],
-            ),
-          ),
+    return AppPage(
+      title: 'Violation Tracking',
+      subtitle: 'Offences on record, and the penalties and suspensions '
+          'attached to them.',
+      actions: [
+        FilledButton.icon(
+          icon: const Icon(Icons.add, size: AppSizes.iconSm),
+          label: const Text('Issue Violation'),
+          onPressed: () => _showIssueViolation(context, ref),
         ),
       ],
+      // Appeals used to be a second tab here. They now live on Incidents &
+      // Appeals, which is where the capstone document puts them and where an
+      // administrator looking for "things to decide" would go. A violation that
+      // has been contested still shows up below with an `Appealed` status.
+      body: const _ViolationsTab(),
     );
   }
 
@@ -138,93 +71,94 @@ class _ViolationsTab extends ConsumerWidget {
         builder: (ctx, setState) => AlertDialog(
           title: const Text('Issue Violation'),
           content: SizedBox(
-            width: context.dialogWidth(400),
+            width: context.dialogWidth(420),
             child: Form(
               key: formKey,
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  UserPickerField(
-                    selected: picked,
-                    errorText: userError,
-                    onChanged: (u) => setState(() {
-                      picked = u;
-                      userError = null;
-                    }),
-                  ),
-                  const SizedBox(height: 12),
-                  DropdownButtonFormField<String>(
-                    initialValue: ruleId,
-                    decoration: const InputDecoration(
-                        labelText: 'Policy Rule', border: OutlineInputBorder()),
-                    items: activeRules
-                        .map((r) =>
-                            DropdownMenuItem(value: r.ruleId, child: Text(r.title)))
-                        .toList(),
-                    onChanged: (v) => setState(() => ruleId = v),
-                    validator: (v) => v == null ? 'Select a rule' : null,
-                  ),
-                  const SizedBox(height: 12),
-                  TextFormField(
-                    controller: descriptionCtrl,
-                    maxLines: 3,
-                    decoration: const InputDecoration(
-                        labelText: 'Description', border: OutlineInputBorder()),
-                    validator: (v) =>
-                        (v == null || v.isEmpty) ? 'Description is required' : null,
-                  ),
-                  const SizedBox(height: 16),
-                  // The API has always accepted these; leaving them out of the
-                  // dialog meant every violation silently took the rule default.
-                  const Align(
-                    alignment: Alignment.centerLeft,
-                    child: Text(
-                        'Leave blank to use the policy rule defaults.',
-                        style: TextStyle(fontSize: 12, color: Colors.black54)),
-                  ),
-                  const SizedBox(height: 8),
-                  TextFormField(
-                    controller: penaltyCtrl,
-                    keyboardType: TextInputType.number,
-                    decoration: const InputDecoration(
-                        labelText: 'Penalty amount (override)',
-                        prefixText: '₱',
-                        border: OutlineInputBorder()),
-                    validator: (v) => (v == null || v.isEmpty)
-                        ? null
-                        : (double.tryParse(v) == null ? 'Enter a valid amount' : null),
-                  ),
-                  const SizedBox(height: 12),
-                  DropdownButtonFormField<String?>(
-                    initialValue: suspensionOverride,
-                    decoration: const InputDecoration(
-                        labelText: 'Suspension (override)',
-                        border: OutlineInputBorder()),
-                    items: const [
-                      DropdownMenuItem(value: null, child: Text('Use rule default')),
-                      DropdownMenuItem(value: 'None', child: Text('None')),
-                      DropdownMenuItem(value: 'Temporary', child: Text('Temporary')),
-                      DropdownMenuItem(value: 'Permanent', child: Text('Permanent')),
-                    ],
-                    onChanged: (v) => setState(() => suspensionOverride = v),
-                  ),
-                  if (suspensionOverride == 'Temporary') ...[
-                    const SizedBox(height: 12),
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    UserPickerField(
+                      selected: picked,
+                      errorText: userError,
+                      onChanged: (u) => setState(() {
+                        picked = u;
+                        userError = null;
+                      }),
+                    ),
+                    const SizedBox(height: AppSpacing.x3),
+                    DropdownButtonFormField<String>(
+                      initialValue: ruleId,
+                      decoration:
+                          const InputDecoration(labelText: 'Policy Rule'),
+                      items: activeRules
+                          .map((r) => DropdownMenuItem(
+                              value: r.ruleId, child: Text(r.title)))
+                          .toList(),
+                      onChanged: (v) => setState(() => ruleId = v),
+                      validator: (v) => v == null ? 'Select a rule' : null,
+                    ),
+                    const SizedBox(height: AppSpacing.x3),
                     TextFormField(
-                      controller: daysCtrl,
+                      controller: descriptionCtrl,
+                      maxLines: 3,
+                      decoration:
+                          const InputDecoration(labelText: 'Description'),
+                      validator: (v) => (v == null || v.isEmpty)
+                          ? 'Description is required'
+                          : null,
+                    ),
+                    const SizedBox(height: AppSpacing.x5),
+                    // The API has always accepted these; leaving them out of the
+                    // dialog meant every violation silently took the rule default.
+                    _OverrideHeading(),
+                    const SizedBox(height: AppSpacing.x3),
+                    TextFormField(
+                      controller: penaltyCtrl,
                       keyboardType: TextInputType.number,
                       decoration: const InputDecoration(
-                          labelText: 'Suspension days',
-                          border: OutlineInputBorder()),
-                      validator: (v) {
-                        final n = int.tryParse(v ?? '');
-                        return (n == null || n <= 0)
-                            ? 'Enter a positive number of days'
-                            : null;
-                      },
+                        labelText: 'Penalty amount (override)',
+                        prefixText: '₱',
+                      ),
+                      validator: (v) => (v == null || v.isEmpty)
+                          ? null
+                          : (double.tryParse(v) == null
+                              ? 'Enter a valid amount'
+                              : null),
                     ),
+                    const SizedBox(height: AppSpacing.x3),
+                    DropdownButtonFormField<String?>(
+                      initialValue: suspensionOverride,
+                      decoration: const InputDecoration(
+                          labelText: 'Suspension (override)'),
+                      items: const [
+                        DropdownMenuItem(
+                            value: null, child: Text('Use rule default')),
+                        DropdownMenuItem(value: 'None', child: Text('None')),
+                        DropdownMenuItem(
+                            value: 'Temporary', child: Text('Temporary')),
+                        DropdownMenuItem(
+                            value: 'Permanent', child: Text('Permanent')),
+                      ],
+                      onChanged: (v) => setState(() => suspensionOverride = v),
+                    ),
+                    if (suspensionOverride == 'Temporary') ...[
+                      const SizedBox(height: AppSpacing.x3),
+                      TextFormField(
+                        controller: daysCtrl,
+                        keyboardType: TextInputType.number,
+                        decoration:
+                            const InputDecoration(labelText: 'Suspension days'),
+                        validator: (v) {
+                          final n = int.tryParse(v ?? '');
+                          return (n == null || n <= 0)
+                              ? 'Enter a positive number of days'
+                              : null;
+                        },
+                      ),
+                    ],
                   ],
-                ],
+                ),
               ),
             ),
           ),
@@ -266,90 +200,194 @@ class _ViolationsTab extends ConsumerWidget {
   }
 }
 
-class _ViolationTable extends ConsumerWidget {
-  const _ViolationTable({required this.page});
-
-  final ViolationListPage page;
-
+/// The divider between "what happened" and "what to do differently from the
+/// rule", so the override fields do not read as required.
+class _OverrideHeading extends StatelessWidget {
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    if (page.violations.isEmpty) {
-      return const Center(child: Text('No violations found.'));
-    }
+  Widget build(BuildContext context) {
+    final t = context.tokens;
+    final text = Theme.of(context).textTheme;
 
-    return Card(
-      elevation: 1,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      clipBehavior: Clip.hardEdge,
-      child: SingleChildScrollView(
-        child: SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
-          child: DataTable(
-          headingRowColor: WidgetStateProperty.all(Colors.grey.shade100),
-          columns: const [
-            DataColumn(label: Text('Rule')),
-            DataColumn(label: Text('Status')),
-            DataColumn(label: Text('Penalty')),
-            DataColumn(label: Text('Suspension')),
-            DataColumn(label: Text('Issued')),
-            DataColumn(label: Text('Actions')),
-          ],
-          rows: page.violations.map((v) => _row(context, ref, v)).toList(),
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('Overrides', style: text.titleSmall),
+          const SizedBox(height: AppSpacing.labelGap),
+          Text(
+            'Leave blank to use the policy rule defaults.',
+            style: text.bodySmall?.copyWith(color: t.text.secondary),
           ),
-        ),
+        ],
       ),
     );
   }
+}
 
-  DataRow _row(BuildContext context, WidgetRef ref, ViolationSummary v) => DataRow(
-        cells: [
-          DataCell(Text(v.policyRuleTitle)),
-          DataCell(_StatusChip(status: v.status)),
-          DataCell(Text('₱${v.penaltyAmount.toStringAsFixed(2)}')),
-          DataCell(Text(v.suspensionType)),
-          DataCell(Text(DateFormat('MMM d, yyyy').format(v.createdAt.toLocal()))),
-          DataCell(
-            (v.status == 'Issued' || v.status == 'Appealed')
-                ? Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      // Editable only while Issued — once appealed, this record
-                      // is what both sides are arguing about.
-                      if (v.status == 'Issued') ...[
-                        OutlinedButton(
-                          style: _compactButton,
-                          onPressed: () => _showEdit(context, ref, v),
-                          child: const Text('Edit',
-                              style: TextStyle(fontSize: 12)),
-                        ),
-                        const SizedBox(width: 6),
-                      ],
-                      OutlinedButton(
-                        style: _compactButton,
-                        onPressed: () async {
-                          final msg = await ref
-                              .read(violationActionsProvider.notifier)
-                              .dismiss(v.violationId);
-                          if (!context.mounted) return;
-                          ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(content: Text(msg ?? 'Violation dismissed.')));
-                          ref.invalidate(violationListProvider);
-                        },
-                        child: const Text('Dismiss',
-                            style: TextStyle(fontSize: 12)),
-                      ),
-                    ],
-                  )
-                : const SizedBox.shrink(),
+// ── Violations tab ───────────────────────────────────────────────────────────
+
+class _ViolationsTab extends ConsumerWidget {
+  const _ViolationsTab();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final query = ref.watch(violationsQueryNotifierProvider);
+    final notifier = ref.read(violationsQueryNotifierProvider.notifier);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        AppToolbar(
+          filters: [
+            AppFilterDropdown<String>(
+              label: 'Status',
+              value: query.status,
+              options: [
+                for (final s in _violationStatuses) AppFilterOption(s, s),
+              ],
+              allLabel: 'All statuses',
+              onChanged: notifier.setStatus,
+            ),
+          ],
+          trailing: [
+            IconButton(
+              icon: const Icon(Icons.refresh),
+              tooltip: 'Refresh',
+              onPressed: () => ref.invalidate(violationListProvider),
+            ),
+          ],
+        ),
+        const SizedBox(height: AppSpacing.headingGap),
+        Expanded(
+          child: AsyncView(
+            value: ref.watch(violationListProvider),
+            onRetry: () => ref.invalidate(violationListProvider),
+            isEmpty: (page) => page.violations.isEmpty,
+            empty: AppEmptyState(
+              icon: Icons.gavel_outlined,
+              title: query.status == null
+                  ? 'No violations issued'
+                  : 'No ${query.status!.toLowerCase()} violations',
+              message: query.status == null
+                  ? 'Offences you record against a policy rule appear here.'
+                  : 'Clear the filter to see every violation on record.',
+            ),
+            data: (page) => AppDataTable(
+              minWidth: 900,
+              columns: const [
+                DataColumn(label: Text('Rule')),
+                DataColumn(label: Text('Status')),
+                DataColumn(label: Text('Penalty'), numeric: true),
+                DataColumn(label: Text('Suspension')),
+                DataColumn(label: Text('Issued')),
+                DataColumn(label: Text('')),
+              ],
+              rows: [
+                for (final v in page.violations) _row(context, ref, v),
+              ],
+              footer: AppPagination(
+                page: page.page,
+                pageSize: page.pageSize,
+                total: page.totalCount,
+                itemLabel: 'violations',
+                onPage: notifier.setPage,
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  DataRow _row(BuildContext context, WidgetRef ref, ViolationSummary v) {
+    final t = context.tokens;
+    final text = Theme.of(context).textTheme;
+    final actionable = v.status == 'Issued' || v.status == 'Appealed';
+
+    return DataRow(cells: [
+      DataCell(Text(v.policyRuleTitle, style: text.titleSmall)),
+      DataCell(StatusPill.of(
+        v.status,
+        intent: StatusIntents.violation(v.status),
+        dense: true,
+      )),
+      DataCell(AppNumericCell(_money.format(v.penaltyAmount))),
+      DataCell(v.suspensionType == 'None'
+          ? Text('—', style: text.bodyMedium?.copyWith(color: t.text.tertiary))
+          : StatusPill.of(
+              v.suspensionType,
+              intent: v.suspensionType == 'Permanent'
+                  ? StatusIntent.danger
+                  : StatusIntent.warning,
+              dense: true,
+              showDot: false,
+            )),
+      DataCell(Text(
+        DateFormat('MMM d, yyyy').format(v.createdAt.toLocal()),
+        style: text.bodySmall?.copyWith(color: t.text.secondary),
+      )),
+      DataCell(
+        !actionable
+            ? const SizedBox.shrink()
+            : Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // Editable only while Issued — once appealed, this record
+                  // is what both sides are arguing about.
+                  if (v.status == 'Issued') ...[
+                    AppRowAction(
+                      label: 'Edit',
+                      onPressed: () => _showEdit(context, ref, v),
+                    ),
+                    const SizedBox(width: AppSpacing.controlGap),
+                  ],
+                  AppRowAction(
+                    label: 'Dismiss',
+                    intent: StatusIntent.danger,
+                    onPressed: () => _dismiss(context, ref, v),
+                  ),
+                ],
+              ),
+      ),
+    ]);
+  }
+
+  Future<void> _dismiss(
+      BuildContext context, WidgetRef ref, ViolationSummary v) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Dismiss Violation'),
+        content: SizedBox(
+          width: 420,
+          child: Text(
+              'Dismiss the "${v.policyRuleTitle}" violation? Any penalty and '
+              'suspension it carries are lifted.'),
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancel')),
+          FilledButton(
+            style: FilledButton.styleFrom(
+                backgroundColor: ctx.tokens.status.danger.solid),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Dismiss'),
           ),
         ],
-      );
+      ),
+    );
+    if (confirmed != true || !context.mounted) return;
 
-  static final _compactButton = OutlinedButton.styleFrom(
-    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-    minimumSize: Size.zero,
-    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-  );
+    final msg = await ref
+        .read(violationActionsProvider.notifier)
+        .dismiss(v.violationId);
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context)
+        .showSnackBar(SnackBar(content: Text(msg ?? 'Violation dismissed.')));
+    ref.invalidate(violationListProvider);
+  }
 
   Future<void> _showEdit(
       BuildContext context, WidgetRef ref, ViolationSummary v) async {
@@ -366,37 +404,34 @@ class _ViolationTable extends ConsumerWidget {
         builder: (ctx, setState) => AlertDialog(
           title: const Text('Edit Violation'),
           content: SizedBox(
-            width: context.dialogWidth(400),
+            width: context.dialogWidth(420),
             child: Form(
               key: formKey,
               child: SingleChildScrollView(
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Align(
-                      alignment: Alignment.centerLeft,
-                      child: Text(v.policyRuleTitle,
-                          style: const TextStyle(fontWeight: FontWeight.w600)),
-                    ),
-                    const SizedBox(height: 12),
+                    Text(v.policyRuleTitle,
+                        style: Theme.of(ctx).textTheme.titleSmall),
+                    const SizedBox(height: AppSpacing.x3),
                     TextFormField(
                       controller: descriptionCtrl,
                       maxLines: 3,
-                      decoration: const InputDecoration(
-                          labelText: 'Description',
-                          border: OutlineInputBorder()),
+                      decoration:
+                          const InputDecoration(labelText: 'Description'),
                       validator: (v) => (v == null || v.trim().isEmpty)
                           ? 'Description is required'
                           : null,
                     ),
-                    const SizedBox(height: 12),
+                    const SizedBox(height: AppSpacing.x3),
                     TextFormField(
                       controller: penaltyCtrl,
                       keyboardType: TextInputType.number,
                       decoration: const InputDecoration(
-                          labelText: 'Penalty amount',
-                          prefixText: '₱',
-                          border: OutlineInputBorder()),
+                        labelText: 'Penalty amount',
+                        prefixText: '₱',
+                      ),
                       validator: (v) {
                         final n = double.tryParse(v ?? '');
                         return (n == null || n < 0)
@@ -404,13 +439,14 @@ class _ViolationTable extends ConsumerWidget {
                             : null;
                       },
                     ),
-                    const SizedBox(height: 12),
+                    const SizedBox(height: AppSpacing.x3),
                     DropdownButtonFormField<String>(
-                      initialValue: _violationSuspensions.contains(suspensionType)
-                          ? suspensionType
-                          : 'None',
-                      decoration: const InputDecoration(
-                          labelText: 'Suspension', border: OutlineInputBorder()),
+                      initialValue:
+                          _violationSuspensions.contains(suspensionType)
+                              ? suspensionType
+                              : 'None',
+                      decoration:
+                          const InputDecoration(labelText: 'Suspension'),
                       items: _violationSuspensions
                           .map((s) =>
                               DropdownMenuItem(value: s, child: Text(s)))
@@ -419,13 +455,12 @@ class _ViolationTable extends ConsumerWidget {
                           setState(() => suspensionType = val ?? 'None'),
                     ),
                     if (suspensionType == 'Temporary') ...[
-                      const SizedBox(height: 12),
+                      const SizedBox(height: AppSpacing.x3),
                       TextFormField(
                         controller: daysCtrl,
                         keyboardType: TextInputType.number,
-                        decoration: const InputDecoration(
-                            labelText: 'Suspension days',
-                            border: OutlineInputBorder()),
+                        decoration:
+                            const InputDecoration(labelText: 'Suspension days'),
                         validator: (v) {
                           final n = int.tryParse(v ?? '');
                           return (n == null || n <= 0)
@@ -470,259 +505,5 @@ class _ViolationTable extends ConsumerWidget {
     ScaffoldMessenger.of(context)
         .showSnackBar(SnackBar(content: Text(msg ?? 'Violation updated.')));
     ref.invalidate(violationListProvider);
-  }
-}
-
-const _violationSuspensions = ['None', 'Temporary', 'Permanent'];
-
-// ── Appeals tab ──────────────────────────────────────────────────────────────
-
-class _AppealsTab extends ConsumerWidget {
-  const _AppealsTab();
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final query = ref.watch(appealsQueryNotifierProvider);
-    final async = ref.watch(appealListProvider);
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          children: [
-            DropdownButton<String?>(
-              value: query.status,
-              hint: const Text('All Status'),
-              items: [
-                const DropdownMenuItem(value: null, child: Text('All Status')),
-                ..._appealStatuses
-                    .map((s) => DropdownMenuItem(value: s, child: Text(s))),
-              ],
-              onChanged: (v) =>
-                  ref.read(appealsQueryNotifierProvider.notifier).setStatus(v),
-            ),
-            const Spacer(),
-            IconButton(
-              icon: const Icon(Icons.refresh),
-              tooltip: 'Refresh',
-              onPressed: () => ref.invalidate(appealListProvider),
-            ),
-          ],
-        ),
-        const SizedBox(height: 12),
-        Expanded(
-          child: async.when(
-            loading: () => const Center(child: CircularProgressIndicator()),
-            error: (e, _) => Center(child: Text('Failed to load appeals: $e')),
-            data: (page) => Column(
-              children: [
-                Expanded(child: _AppealList(page: page)),
-                const SizedBox(height: 12),
-                _PageBar(
-                  label: 'appeals',
-                  count: page.appeals.length,
-                  total: page.totalCount,
-                  page: page.page,
-                  pageSize: page.pageSize,
-                  onPage: (p) =>
-                      ref.read(appealsQueryNotifierProvider.notifier).setPage(p),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _AppealList extends ConsumerWidget {
-  const _AppealList({required this.page});
-
-  final ViolationAppealListPage page;
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    if (page.appeals.isEmpty) {
-      return const Center(child: Text('No appeals found.'));
-    }
-
-    return ListView.separated(
-      itemCount: page.appeals.length,
-      separatorBuilder: (_, _) => const SizedBox(height: 8),
-      itemBuilder: (context, i) => _AppealCard(appeal: page.appeals[i]),
-    );
-  }
-}
-
-class _AppealCard extends ConsumerWidget {
-  const _AppealCard({required this.appeal});
-
-  final ViolationAppeal appeal;
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    return Card(
-      elevation: 1,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            _StatusChip(status: appeal.status),
-            const SizedBox(width: 16),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text('Violation ${appeal.violationId.substring(0, 8)}…',
-                      style: const TextStyle(fontWeight: FontWeight.w600)),
-                  Padding(
-                    padding: const EdgeInsets.only(top: 4),
-                    child: Text(appeal.reasonText, style: const TextStyle(fontSize: 13)),
-                  ),
-                  if (appeal.adminNotes != null && appeal.adminNotes!.isNotEmpty)
-                    Padding(
-                      padding: const EdgeInsets.only(top: 4),
-                      child: Text('Admin notes: ${appeal.adminNotes}',
-                          style: const TextStyle(fontSize: 12, color: Colors.black54)),
-                    ),
-                  Padding(
-                    padding: const EdgeInsets.only(top: 4),
-                    child: Text(
-                        DateFormat('MMM d, yyyy HH:mm').format(appeal.createdAt.toLocal()),
-                        style: const TextStyle(fontSize: 12, color: Colors.black54)),
-                  ),
-                ],
-              ),
-            ),
-            if (appeal.status == 'Pending')
-              Row(
-                children: [
-                  OutlinedButton(
-                    style: OutlinedButton.styleFrom(foregroundColor: Colors.green),
-                    onPressed: () => _decide(context, ref, true),
-                    child: const Text('Approve'),
-                  ),
-                  const SizedBox(width: 8),
-                  OutlinedButton(
-                    style: OutlinedButton.styleFrom(foregroundColor: Colors.red),
-                    onPressed: () => _decide(context, ref, false),
-                    child: const Text('Deny'),
-                  ),
-                ],
-              ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Future<void> _decide(BuildContext context, WidgetRef ref, bool approve) async {
-    final notesCtrl = TextEditingController();
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text(approve ? 'Approve Appeal' : 'Deny Appeal'),
-        content: TextField(
-          controller: notesCtrl,
-          maxLines: 2,
-          decoration: const InputDecoration(
-              labelText: 'Admin notes (optional)', border: OutlineInputBorder()),
-        ),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('Cancel')),
-          FilledButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: Text(approve ? 'Approve' : 'Deny'),
-          ),
-        ],
-      ),
-    );
-
-    if (confirmed != true || !context.mounted) return;
-    final msg = await ref.read(violationActionsProvider.notifier).decideAppeal(
-        appeal.appealId, approve, notesCtrl.text.trim().isEmpty ? null : notesCtrl.text.trim());
-    if (!context.mounted) return;
-    ScaffoldMessenger.of(context)
-        .showSnackBar(SnackBar(content: Text(msg ?? 'Appeal decided.')));
-    ref.invalidate(appealListProvider);
-    ref.invalidate(violationListProvider);
-  }
-}
-
-// ── Shared widgets ───────────────────────────────────────────────────────────
-
-class _StatusChip extends StatelessWidget {
-  const _StatusChip({required this.status});
-
-  final String status;
-
-  @override
-  Widget build(BuildContext context) {
-    Color color;
-    switch (status) {
-      case 'Approved':
-      case 'Overturned':
-      case 'Dismissed':
-        color = Colors.green;
-        break;
-      case 'Denied':
-      case 'Upheld':
-        color = Colors.red;
-        break;
-      case 'Appealed':
-        color = Colors.orange;
-        break;
-      default:
-        color = Colors.blueGrey;
-    }
-    return Chip(
-      label: Text(status, style: const TextStyle(fontSize: 12, color: Colors.white)),
-      backgroundColor: color,
-      padding: EdgeInsets.zero,
-      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-    );
-  }
-}
-
-class _PageBar extends StatelessWidget {
-  const _PageBar({
-    required this.label,
-    required this.count,
-    required this.total,
-    required this.page,
-    required this.pageSize,
-    required this.onPage,
-  });
-
-  final String label;
-  final int count;
-  final int total;
-  final int page;
-  final int pageSize;
-  final ValueChanged<int> onPage;
-
-  @override
-  Widget build(BuildContext context) {
-    final totalPages = (total / pageSize).ceil().clamp(1, 999999);
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        Text('Showing $count of $total $label • Page $page of $totalPages'),
-        const SizedBox(width: 16),
-        IconButton(
-          icon: const Icon(Icons.chevron_left),
-          onPressed: page > 1 ? () => onPage(page - 1) : null,
-        ),
-        IconButton(
-          icon: const Icon(Icons.chevron_right),
-          onPressed: page < totalPages ? () => onPage(page + 1) : null,
-        ),
-      ],
-    );
   }
 }

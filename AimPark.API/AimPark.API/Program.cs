@@ -1,5 +1,6 @@
 using AimPark.API.Auth;
 using AimPark.API.Data;
+using AimPark.API.Middleware;
 using AimPark.API.Interfaces;
 using AimPark.API.Services;
 using Microsoft.AspNetCore.Authentication;
@@ -125,6 +126,9 @@ builder.Services.AddScoped<IRegistrationService, RegistrationService>();
 builder.Services.AddScoped<IAdminRegistrationService, AdminRegistrationService>();
 builder.Services.AddScoped<IAdminUserService, AdminUserService>();
 builder.Services.AddScoped<IAdminAuditLogService, AdminAuditLogService>();
+builder.Services.AddHttpContextAccessor();
+builder.Services.AddScoped<IAdminLogService, AdminLogService>();
+builder.Services.AddScoped<IUserActivityLogger, UserActivityLogger>();
 builder.Services.AddScoped<IParkingSlotService, ParkingSlotService>();
 builder.Services.AddScoped<IParkingHistoryService, ParkingHistoryService>();
 builder.Services.AddScoped<IParkingAllocationService, ParkingAllocationService>();
@@ -193,6 +197,12 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseCors("AllowAdminWeb");
+
+// Deliberately *inside* UseCors. The CORS middleware attaches its headers via a
+// response-starting callback, so an error written here still carries them —
+// which is what stops an unhandled 500 from surfacing in the browser as a
+// phantom CORS failure.
+app.UseGlobalExceptionHandler();
 
 app.UseAuthentication();
 app.UseAuthorization();

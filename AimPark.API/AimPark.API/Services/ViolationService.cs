@@ -58,7 +58,7 @@ namespace AimPark.API.Services
         // POST /api/admin/policy-rules
         public async Task<ActionResult<object>> CreatePolicyRuleAsync(UpsertPolicyRuleDto dto, CancellationToken ct)
         {
-            var validation = ValidateRuleDto(dto, out var suspensionType);
+            var validation = ValidateRuleDto(dto, out var suspensionType, out var category);
             if (validation is not null)
                 return validation;
 
@@ -68,6 +68,7 @@ namespace AimPark.API.Services
                 Id = Guid.NewGuid(),
                 Title = dto.Title.Trim(),
                 Description = dto.Description.Trim(),
+                Category = category,
                 DefaultPenaltyAmount = dto.DefaultPenaltyAmount,
                 DefaultSuspensionType = suspensionType,
                 DefaultSuspensionDays = dto.DefaultSuspensionDays,
@@ -85,7 +86,7 @@ namespace AimPark.API.Services
         // PUT /api/admin/policy-rules/{id}
         public async Task<ActionResult<object>> UpdatePolicyRuleAsync(Guid ruleId, UpsertPolicyRuleDto dto, CancellationToken ct)
         {
-            var validation = ValidateRuleDto(dto, out var suspensionType);
+            var validation = ValidateRuleDto(dto, out var suspensionType, out var category);
             if (validation is not null)
                 return validation;
 
@@ -95,6 +96,7 @@ namespace AimPark.API.Services
 
             rule.Title = dto.Title.Trim();
             rule.Description = dto.Description.Trim();
+            rule.Category = category;
             rule.DefaultPenaltyAmount = dto.DefaultPenaltyAmount;
             rule.DefaultSuspensionType = suspensionType;
             rule.DefaultSuspensionDays = dto.DefaultSuspensionDays;
@@ -512,12 +514,19 @@ namespace AimPark.API.Services
             user.UpdatedAt = DateTime.UtcNow;
         }
 
-        private static BadRequestObjectResult? ValidateRuleDto(UpsertPolicyRuleDto dto, out SuspensionType suspensionType)
+        private static BadRequestObjectResult? ValidateRuleDto(
+            UpsertPolicyRuleDto dto,
+            out SuspensionType suspensionType,
+            out PolicyCategory category)
         {
             suspensionType = SuspensionType.None;
+            category = PolicyCategory.Parking;
 
             if (string.IsNullOrWhiteSpace(dto.Title))
                 return new BadRequestObjectResult(new { message = "Title is required." });
+
+            if (!Enum.TryParse(dto.Category, true, out category))
+                return new BadRequestObjectResult(new { message = "Invalid policy category." });
 
             if (dto.DefaultPenaltyAmount < 0)
                 return new BadRequestObjectResult(new { message = "Default penalty amount must be zero or greater." });
@@ -612,6 +621,7 @@ namespace AimPark.API.Services
             RuleId = r.Id,
             Title = r.Title,
             Description = r.Description,
+            Category = r.Category.ToString(),
             DefaultPenaltyAmount = r.DefaultPenaltyAmount,
             DefaultSuspensionType = r.DefaultSuspensionType.ToString(),
             DefaultSuspensionDays = r.DefaultSuspensionDays,

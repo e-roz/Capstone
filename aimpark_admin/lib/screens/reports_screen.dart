@@ -2,126 +2,249 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
+import '../core/utils/csv_export.dart';
 import '../models/report.dart';
 import '../providers/reports_provider.dart';
-import '../widgets/page_header.dart';
+import '../theme/theme.dart';
+import '../widgets/ui/ui.dart';
 
+final _money = NumberFormat.currency(symbol: '₱', decimalDigits: 0);
+final _moneyExact = NumberFormat.currency(symbol: '₱', decimalDigits: 2);
+final _dayLabel = DateFormat('M/d');
+
+/// The place to *study* the numbers, where the dashboard is the place to notice
+/// them. Same providers, a selectable window, full breakdowns, and the export
+/// the capstone document calls "Generated Reports".
 class ReportsScreen extends ConsumerWidget {
   const ReportsScreen({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final summaryAsync = ref.watch(reportsSummaryProvider);
-    final occupancyAsync = ref.watch(occupancyTrendProvider(days: 14));
-    final peakHoursAsync = ref.watch(peakHoursProvider(days: 30));
-    final revenueAsync = ref.watch(revenueTrendProvider(days: 14));
-    final violationsAsync = ref.watch(violationsBreakdownProvider);
+    final days = ref.watch(reportWindowProvider);
+    final caption = 'Last $days days';
 
-    return Scaffold(
-      backgroundColor: const Color(0xFFF5F7FA),
-      body: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            PageHeader(
-              title: 'Reports & Analytics',
-              actions: [
-                IconButton(
-                  icon: const Icon(Icons.refresh),
-                  tooltip: 'Refresh',
-                  onPressed: () {
-                    ref.invalidate(reportsSummaryProvider);
-                    ref.invalidate(occupancyTrendProvider);
-                    ref.invalidate(peakHoursProvider);
-                    ref.invalidate(revenueTrendProvider);
-                    ref.invalidate(violationsBreakdownProvider);
-                  },
-                ),
-              ],
-            ),
-            const SizedBox(height: 16),
-            Expanded(
-              child: SingleChildScrollView(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    summaryAsync.when(
-                      loading: () =>
-                          const Center(child: CircularProgressIndicator()),
-                      error: (e, _) => Text('Failed to load summary: $e'),
-                      data: (s) => _SummaryTiles(summary: s),
+    final summary = ref.watch(reportsSummaryProvider);
+    final occupancy = ref.watch(occupancyTrendProvider(days: days));
+    final peaks = ref.watch(peakHoursProvider(days: days));
+    final revenue = ref.watch(revenueTrendProvider(days: days));
+    final breakdown = ref.watch(violationsBreakdownProvider);
+
+    final ready = summary.hasValue &&
+        occupancy.hasValue &&
+        peaks.hasValue &&
+        revenue.hasValue &&
+        breakdown.hasValue;
+
+    return AppPage(
+      title: 'Reports & Monitoring',
+      subtitle: 'Usage, revenue and enforcement across the whole system.',
+      scrollable: true,
+      actions: [
+        // Disabled until every series has landed. A CSV built from four loaded
+        // charts and one still spinning would be quietly incomplete, which is
+        // worse than a button that is not offered yet.
+        OutlinedButton.icon(
+          icon: const Icon(Icons.download_outlined, size: AppSizes.iconSm),
+          label: const Text('Export CSV'),
+          onPressed: !ready
+              ? null
+              : () => _export(
+                    context,
+                    days: days,
+                    summary: summary.requireValue,
+                    occupancy: occupancy.requireValue,
+                    peaks: peaks.requireValue,
+                    revenue: revenue.requireValue,
+                    breakdown: breakdown.requireValue,
+                  ),
+        ),
+        IconButton(
+          icon: const Icon(Icons.refresh),
+          tooltip: 'Refresh',
+          onPressed: () {
+            ref.invalidate(reportsSummaryProvider);
+            ref.invalidate(occupancyTrendProvider);
+            ref.invalidate(peakHoursProvider);
+            ref.invalidate(revenueTrendProvider);
+            ref.invalidate(violationsBreakdownProvider);
+          },
+        ),
+      ],
+      toolbar: AppToolbar(
+        filters: [
+          AppFilterDropdown<int>(
+            label: 'Period',
+            value: days,
+            options: [
+              for (final d in reportWindowOptions)
+                AppFilterOption(d, 'Last $d days'),
+            ],
+            allLabel: 'Last 14 days',
+            onChanged: (value) =>
+                ref.read(reportWindowProvider.notifier).setDays(value ?? 14),
+          ),
+        ],
+      ),
+      body: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          AsyncView(
+            value: summary,
+            onRetry: () => ref.invalidate(reportsSummaryProvider),
+            loading: const SizedBox(height: 120, child: AppLoadingState()),
+            data: (summary) => _SummaryTiles(summary: summary),
+          ),
+          const SizedBox(height: AppSpacing.gutter),
+          _ChartPanel(
+            title: 'Parking sessions',
+            caption: caption,
+            child: AsyncView(
+              value: occupancy,
+              onRetry: () => ref.invalidate(occupancyTrendProvider),
+              data: (points) => AppBarChart(
+                height: 260,
+                data: [
+                  for (final p in points)
+                    AppChartDatum(
+                      label: _dayLabel.format(p.date.toLocal()),
+                      value: p.count.toDouble(),
+                      tooltip:
+                          '${_dayLabel.format(p.date.toLocal())} · ${p.count} sessions',
                     ),
-                    const SizedBox(height: 24),
-                    _ChartCard(
-                      title: 'Parking Sessions — Last 14 Days',
-                      child: occupancyAsync.when(
-                        loading: () =>
-                            const Center(child: CircularProgressIndicator()),
-                        error: (e, _) => Text('Failed to load: $e'),
-                        data: (points) => _SimpleBarChart(
-                          bars: points
-                              .map((p) => _Bar(
-                                  label: DateFormat('M/d').format(p.date.toLocal()),
-                                  value: p.count.toDouble(),
-                                  tooltip: '${p.count} sessions'))
-                              .toList(),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 24),
-                    _ChartCard(
-                      title: 'Peak Hours — Last 30 Days',
-                      child: peakHoursAsync.when(
-                        loading: () =>
-                            const Center(child: CircularProgressIndicator()),
-                        error: (e, _) => Text('Failed to load: $e'),
-                        data: (points) => _SimpleBarChart(
-                          bars: points
-                              .map((p) => _Bar(
-                                  label: p.hour.toString(),
-                                  value: p.count.toDouble(),
-                                  tooltip: '${p.count} entries at ${p.hour}:00'))
-                              .toList(),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 24),
-                    _ChartCard(
-                      title: 'Revenue Collected — Last 14 Days',
-                      child: revenueAsync.when(
-                        loading: () =>
-                            const Center(child: CircularProgressIndicator()),
-                        error: (e, _) => Text('Failed to load: $e'),
-                        data: (points) => _SimpleBarChart(
-                          bars: points
-                              .map((p) => _Bar(
-                                  label: DateFormat('M/d').format(p.date.toLocal()),
-                                  value: p.amount,
-                                  tooltip: '₱${p.amount.toStringAsFixed(2)}'))
-                              .toList(),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 24),
-                    violationsAsync.when(
-                      loading: () =>
-                          const Center(child: CircularProgressIndicator()),
-                      error: (e, _) => Text('Failed to load violation breakdown: $e'),
-                      data: (breakdown) => _ViolationBreakdownSection(breakdown: breakdown),
-                    ),
-                  ],
-                ),
+                ],
               ),
             ),
-          ],
-        ),
+          ),
+          const SizedBox(height: AppSpacing.gutter),
+          _ChartPanel(
+            title: 'Peak hours',
+            caption: caption,
+            child: AsyncView(
+              value: peaks,
+              onRetry: () => ref.invalidate(peakHoursProvider),
+              data: (points) => AppBarChart(
+                height: 260,
+                seriesIndex: 2,
+                data: [
+                  for (final p in points)
+                    AppChartDatum(
+                      label: '${p.hour}',
+                      value: p.count.toDouble(),
+                      tooltip: '${p.count} entries around ${_hour(p.hour)}',
+                    ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: AppSpacing.gutter),
+          _ChartPanel(
+            title: 'Revenue collected',
+            caption: caption,
+            child: AsyncView(
+              value: revenue,
+              onRetry: () => ref.invalidate(revenueTrendProvider),
+              data: (points) => AppAreaChart(
+                height: 260,
+                seriesIndex: 5,
+                valueLabel: _money.format,
+                data: [
+                  for (final p in points)
+                    AppChartDatum(
+                      label: _dayLabel.format(p.date.toLocal()),
+                      value: p.amount,
+                      tooltip:
+                          '${_dayLabel.format(p.date.toLocal())} · ${_moneyExact.format(p.amount)}',
+                    ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: AppSpacing.gutter),
+          AsyncView(
+            value: breakdown,
+            onRetry: () => ref.invalidate(violationsBreakdownProvider),
+            data: (breakdown) => _BreakdownSection(breakdown: breakdown),
+          ),
+        ],
       ),
     );
   }
+
+  /// Exports every series on the page as one CSV.
+  ///
+  /// Written as labelled blocks rather than one wide table: these series have
+  /// genuinely different shapes — a day, an hour of the day, a rule — and
+  /// forcing them into shared columns produces a sheet nobody can read. Each
+  /// block can be selected and charted on its own in Excel.
+  void _export(
+    BuildContext context, {
+    required int days,
+    required ReportsSummary summary,
+    required List<DailyCountPoint> occupancy,
+    required List<PeakHourPoint> peaks,
+    required List<RevenuePoint> revenue,
+    required ViolationBreakdown breakdown,
+  }) {
+    final now = DateTime.now();
+    final isoDay = DateFormat('yyyy-MM-dd');
+
+    final rows = <List<Object?>>[
+      ['Generated', DateFormat('yyyy-MM-dd HH:mm').format(now)],
+      ['Period', 'Last $days days'],
+      [],
+      ['Summary'],
+      ['Total users', summary.totalUsers],
+      ['Active users', summary.activeUsers],
+      ['Total slots', summary.totalSlots],
+      ['Occupied slots', summary.occupiedSlots],
+      ['Available slots', summary.availableSlots],
+      ['Out of service slots', summary.outOfServiceSlots],
+      ['Sessions today', summary.sessionsToday],
+      ['Revenue collected', summary.revenueCollected.toStringAsFixed(2)],
+      ['Revenue pending', summary.revenuePending.toStringAsFixed(2)],
+      ['Violations issued', summary.violationsIssued],
+      ['Open incidents', summary.openIncidents],
+      [],
+      ['Parking sessions'],
+      ['Date', 'Sessions'],
+      for (final p in occupancy) [isoDay.format(p.date.toLocal()), p.count],
+      [],
+      ['Peak hours'],
+      ['Hour', 'Entries'],
+      for (final p in peaks) [_hour(p.hour), p.count],
+      [],
+      ['Revenue collected'],
+      ['Date', 'Amount'],
+      for (final p in revenue)
+        [isoDay.format(p.date.toLocal()), p.amount.toStringAsFixed(2)],
+      [],
+      ['Violations by status'],
+      ['Status', 'Count'],
+      for (final s in breakdown.byStatus) [s.status, s.count],
+      [],
+      ['Most violated rules'],
+      ['Rule', 'Count'],
+      for (final r in breakdown.byRule) [r.ruleTitle, r.count],
+    ];
+
+    CsvExport.save(
+      fileName: 'aimpark-report-${DateFormat('yyyyMMdd-HHmm').format(now)}.csv',
+      headers: const ['AimPark — Reports & Monitoring'],
+      rows: rows,
+    );
+
+    ScaffoldMessenger.of(context)
+        .showSnackBar(const SnackBar(content: Text('Report exported.')));
+  }
+
+  static String _hour(int hour) {
+    final suffix = hour < 12 ? 'am' : 'pm';
+    final display = hour % 12 == 0 ? 12 : hour % 12;
+    return '$display$suffix';
+  }
 }
 
-// ── Summary tiles ─────────────────────────────────────────────────────────
+// ── Summary tiles ────────────────────────────────────────────────────────────
 
 class _SummaryTiles extends StatelessWidget {
   const _SummaryTiles({required this.summary});
@@ -130,216 +253,235 @@ class _SummaryTiles extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final tiles = [
-      _Tile('Total Users', '${summary.totalUsers}', Icons.people, Colors.blue),
-      _Tile('Active Users', '${summary.activeUsers}', Icons.person, Colors.green),
-      _Tile('Slots Occupied', '${summary.occupiedSlots}/${summary.totalSlots}',
-          Icons.local_parking, Colors.orange),
-      _Tile('Sessions Today', '${summary.sessionsToday}', Icons.directions_car,
-          Colors.purple),
-      _Tile('Revenue Collected', '₱${summary.revenueCollected.toStringAsFixed(2)}',
-          Icons.payments, Colors.teal),
-      _Tile('Revenue Pending', '₱${summary.revenuePending.toStringAsFixed(2)}',
-          Icons.hourglass_bottom, Colors.amber),
-      _Tile('Violations Issued', '${summary.violationsIssued}', Icons.gavel,
-          Colors.red),
-      _Tile('Open Incidents', '${summary.openIncidents}', Icons.report,
-          Colors.deepOrange),
-    ];
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final columns = (constraints.maxWidth / 220).floor().clamp(1, 4);
+        final width =
+            (constraints.maxWidth - AppSpacing.gutter * (columns - 1)) / columns;
 
-    return Wrap(
-      spacing: 12,
-      runSpacing: 12,
-      children: tiles,
-    );
-  }
-}
-
-class _Tile extends StatelessWidget {
-  const _Tile(this.label, this.value, this.icon, this.color);
-
-  final String label;
-  final String value;
-  final IconData icon;
-  final Color color;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: 200,
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 4)],
-      ),
-      child: Row(
-        children: [
-          Icon(icon, color: color, size: 28),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(value,
-                    style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-                Text(label,
-                    style: const TextStyle(fontSize: 12, color: Colors.black54)),
-              ],
+        return Wrap(
+          spacing: AppSpacing.gutter,
+          runSpacing: AppSpacing.gutter,
+          children: [
+            MetricCard(
+              width: width,
+              label: 'Total users',
+              value: '${summary.totalUsers}',
+              icon: Icons.people_outline,
+              intent: StatusIntent.info,
+              caption: '${summary.activeUsers} active',
             ),
-          ),
-        ],
-      ),
+            MetricCard(
+              width: width,
+              label: 'Slots occupied',
+              // Against usable bays, not every bay that exists — an out-of-
+              // service bay is not capacity you can sell.
+              value: '${summary.occupiedSlots}/${summary.usableSlots}',
+              icon: Icons.local_parking_outlined,
+              intent: StatusIntent.accent,
+              caption: summary.outOfServiceSlots > 0
+                  ? '${summary.availableSlots} free · ${summary.outOfServiceSlots} out of service'
+                  : '${summary.availableSlots} free',
+            ),
+            MetricCard(
+              width: width,
+              label: 'Sessions today',
+              value: '${summary.sessionsToday}',
+              icon: Icons.directions_car_outlined,
+              intent: StatusIntent.info,
+            ),
+            MetricCard(
+              width: width,
+              label: 'Revenue collected',
+              value: _money.format(summary.revenueCollected),
+              icon: Icons.payments_outlined,
+              intent: StatusIntent.success,
+              caption: '${_money.format(summary.revenuePending)} pending',
+            ),
+            MetricCard(
+              width: width,
+              label: 'Violations issued',
+              value: '${summary.violationsIssued}',
+              icon: Icons.gavel_outlined,
+              intent: StatusIntent.warning,
+            ),
+            MetricCard(
+              width: width,
+              label: 'Open incidents',
+              value: '${summary.openIncidents}',
+              icon: Icons.report_outlined,
+              intent: summary.openIncidents > 0
+                  ? StatusIntent.danger
+                  : StatusIntent.success,
+            ),
+          ],
+        );
+      },
     );
   }
 }
 
-// ── Chart card + simple bar chart (no external chart dependency) ──────────
+// ── Violation breakdown ──────────────────────────────────────────────────────
 
-class _ChartCard extends StatelessWidget {
-  const _ChartCard({required this.title, required this.child});
-
-  final String title;
-  final Widget child;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 4)],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(title, style: const TextStyle(fontWeight: FontWeight.w600)),
-          const SizedBox(height: 16),
-          SizedBox(height: 160, child: child),
-        ],
-      ),
-    );
-  }
-}
-
-class _Bar {
-  const _Bar({required this.label, required this.value, required this.tooltip});
-
-  final String label;
-  final double value;
-  final String tooltip;
-}
-
-class _SimpleBarChart extends StatelessWidget {
-  const _SimpleBarChart({required this.bars});
-
-  final List<_Bar> bars;
-
-  @override
-  Widget build(BuildContext context) {
-    if (bars.isEmpty) {
-      return const Center(child: Text('No data yet.'));
-    }
-    final maxValue = bars.map((b) => b.value).fold<double>(0, (a, b) => b > a ? b : a);
-
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.end,
-      children: bars
-          .map((b) => Expanded(
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 2),
-                  child: Tooltip(
-                    message: b.tooltip,
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.end,
-                      children: [
-                        Container(
-                          height: maxValue == 0 ? 2 : 4 + (b.value / maxValue) * 110,
-                          decoration: BoxDecoration(
-                            color: Theme.of(context).colorScheme.primary,
-                            borderRadius: BorderRadius.circular(3),
-                          ),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(b.label,
-                            style: const TextStyle(fontSize: 9, color: Colors.black54),
-                            overflow: TextOverflow.ellipsis),
-                      ],
-                    ),
-                  ),
-                ),
-              ))
-          .toList(),
-    );
-  }
-}
-
-// ── Violation breakdown ─────────────────────────────────────────────────────
-
-class _ViolationBreakdownSection extends StatelessWidget {
-  const _ViolationBreakdownSection({required this.breakdown});
+class _BreakdownSection extends StatelessWidget {
+  const _BreakdownSection({required this.breakdown});
 
   final ViolationBreakdown breakdown;
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Expanded(child: _BreakdownCard(
-          title: 'Violations by Status',
-          rows: breakdown.byStatus.isEmpty
-              ? [const Text('No violations yet.')]
-              : breakdown.byStatus
-                  .map((s) => _breakdownRow(s.status, s.count))
-                  .toList(),
-        )),
-        const SizedBox(width: 16),
-        Expanded(child: _BreakdownCard(
-          title: 'Top Violated Rules',
-          rows: breakdown.byRule.isEmpty
-              ? [const Text('No violations yet.')]
-              : breakdown.byRule
-                  .map((r) => _breakdownRow(r.ruleTitle, r.count))
-                  .toList(),
-        )),
-      ],
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final byStatus = AppSectionCard(
+          title: 'Violations by status',
+          icon: Icons.pie_chart_outline,
+          child: _BarList(
+            rows: [
+              for (final s in breakdown.byStatus)
+                (
+                  label: s.status,
+                  count: s.count,
+                  intent: StatusIntents.violation(s.status)
+                ),
+            ],
+          ),
+        );
+
+        final byRule = AppSectionCard(
+          title: 'Most violated rules',
+          icon: Icons.rule,
+          child: _BarList(
+            rows: [
+              for (final r in breakdown.byRule)
+                (
+                  label: r.ruleTitle,
+                  count: r.count,
+                  intent: StatusIntent.warning
+                ),
+            ],
+          ),
+        );
+
+        if (constraints.maxWidth < 900) {
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              byStatus,
+              const SizedBox(height: AppSpacing.gutter),
+              byRule,
+            ],
+          );
+        }
+
+        return Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(child: byStatus),
+            const SizedBox(width: AppSpacing.gutter),
+            Expanded(child: byRule),
+          ],
+        );
+      },
     );
   }
-
-  Widget _breakdownRow(String label, int count) => Padding(
-        padding: const EdgeInsets.symmetric(vertical: 4),
-        child: Row(
-          children: [
-            Expanded(child: Text(label, overflow: TextOverflow.ellipsis)),
-            Text('$count', style: const TextStyle(fontWeight: FontWeight.w600)),
-          ],
-        ),
-      );
 }
 
-class _BreakdownCard extends StatelessWidget {
-  const _BreakdownCard({required this.title, required this.rows});
+/// A ranked list where each row carries its own proportion bar.
+///
+/// The old version was a label and a number in a row, which made the reader do
+/// the comparison arithmetic. The bar does it for them, and costs one Container.
+class _BarList extends StatelessWidget {
+  const _BarList({required this.rows});
 
-  final String title;
-  final List<Widget> rows;
+  final List<({String label, int count, StatusIntent intent})> rows;
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 4)],
-      ),
+    final t = context.tokens;
+    final text = Theme.of(context).textTheme;
+
+    if (rows.isEmpty) {
+      return Text(
+        'No violations recorded yet.',
+        style: text.bodySmall?.copyWith(color: t.text.secondary),
+      );
+    }
+
+    final max = rows.map((r) => r.count).reduce((a, b) => a > b ? a : b);
+
+    return Column(
+      children: [
+        for (final row in rows)
+          Padding(
+            padding: const EdgeInsets.only(bottom: AppSpacing.x3),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        row.label,
+                        overflow: TextOverflow.ellipsis,
+                        style: text.bodyMedium,
+                      ),
+                    ),
+                    const SizedBox(width: AppSpacing.x2),
+                    Text('${row.count}',
+                        style: AppTypography.tabular(text.titleSmall!)),
+                  ],
+                ),
+                const SizedBox(height: AppSpacing.x1),
+                ClipRRect(
+                  borderRadius: AppRadii.fullAll,
+                  child: LinearProgressIndicator(
+                    value: max == 0 ? 0 : row.count / max,
+                    minHeight: 6,
+                    backgroundColor: t.surface.muted,
+                    valueColor:
+                        AlwaysStoppedAnimation(t.status.of(row.intent).solid),
+                  ),
+                ),
+              ],
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+// ── Layout ───────────────────────────────────────────────────────────────────
+
+class _ChartPanel extends StatelessWidget {
+  const _ChartPanel({
+    required this.title,
+    required this.caption,
+    required this.child,
+  });
+
+  final String title;
+  final String caption;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = context.tokens;
+    final text = Theme.of(context).textTheme;
+
+    return AppCard(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(title, style: const TextStyle(fontWeight: FontWeight.w600)),
-          const SizedBox(height: 8),
-          ...rows,
+          Row(
+            children: [
+              Text(title, style: text.titleMedium),
+              const Spacer(),
+              Text(caption,
+                  style: text.labelSmall?.copyWith(color: t.text.secondary)),
+            ],
+          ),
+          const SizedBox(height: AppSpacing.x4),
+          child,
         ],
       ),
     );

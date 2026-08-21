@@ -27,6 +27,7 @@ class PolicyRuleActions extends _$PolicyRuleActions {
   Future<String?> create({
     required String title,
     required String description,
+    required String category,
     required double defaultPenaltyAmount,
     required String defaultSuspensionType,
     int? defaultSuspensionDays,
@@ -37,6 +38,7 @@ class PolicyRuleActions extends _$PolicyRuleActions {
         final res = await dio.post(ApiEndpoints.policyRules, data: {
           'title': title,
           'description': description,
+          'category': category,
           'defaultPenaltyAmount': defaultPenaltyAmount,
           'defaultSuspensionType': defaultSuspensionType,
           'defaultSuspensionDays': defaultSuspensionDays,
@@ -49,6 +51,7 @@ class PolicyRuleActions extends _$PolicyRuleActions {
     required String ruleId,
     required String title,
     required String description,
+    required String category,
     required double defaultPenaltyAmount,
     required String defaultSuspensionType,
     int? defaultSuspensionDays,
@@ -59,6 +62,7 @@ class PolicyRuleActions extends _$PolicyRuleActions {
         final res = await dio.put(ApiEndpoints.policyRule(ruleId), data: {
           'title': title,
           'description': description,
+          'category': category,
           'defaultPenaltyAmount': defaultPenaltyAmount,
           'defaultSuspensionType': defaultSuspensionType,
           'defaultSuspensionDays': defaultSuspensionDays,
@@ -113,6 +117,40 @@ class ViolationsQueryNotifier extends _$ViolationsQueryNotifier {
 @riverpod
 Future<ViolationListPage> violationList(Ref ref) async {
   final query = ref.watch(violationsQueryNotifierProvider);
+  final dio = ref.watch(dioProvider);
+
+  final params = <String, dynamic>{
+    'page': query.page,
+    'pageSize': query.pageSize,
+    if (query.status != null) 'status': query.status,
+  };
+
+  final response =
+      await dio.get(ApiEndpoints.violations, queryParameters: params);
+  return ViolationListPage.fromJson(response.data as Map<String, dynamic>);
+}
+
+// ── Violation logs (System Logs module) ─────────────────────────────────────
+
+/// The same endpoint as [violationList], behind its own query state.
+///
+/// System Logs shows violations as an audit trail while Violation Tracking
+/// shows them as a work queue. Sharing one notifier between the two would mean
+/// filtering the log silently re-filtered the queue you left behind on the
+/// other screen, and paging one paged the other.
+@riverpod
+class ViolationLogsQueryNotifier extends _$ViolationLogsQueryNotifier {
+  @override
+  ViolationsQuery build() => const ViolationsQuery();
+
+  void setPage(int page) => state = state.copyWith(page: page);
+  void setStatus(String? status) => state =
+      state.copyWith(status: status, clearStatus: status == null, page: 1);
+}
+
+@riverpod
+Future<ViolationListPage> violationLogList(Ref ref) async {
+  final query = ref.watch(violationLogsQueryNotifierProvider);
   final dio = ref.watch(dioProvider);
 
   final params = <String, dynamic>{

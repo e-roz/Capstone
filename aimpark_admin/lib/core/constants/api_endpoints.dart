@@ -32,6 +32,11 @@ class ApiEndpoints {
   // Admin – Audit Logs
   static const auditLogs = '/api/admin/audit-logs';
 
+  // Admin – System Logs
+  static const rfidAccessLogs = '/api/admin/logs/rfid-access';
+  static const userActivityLogs = '/api/admin/logs/user-activity';
+  static const systemErrorLogs = '/api/admin/logs/errors';
+
   // Admin – Parking
   static const parkingSlots = '/api/admin/parking/slots';
   static String slotStatus(String slotId) =>

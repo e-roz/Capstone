@@ -278,6 +278,104 @@ namespace AimPark.API.Services
                 Reason = reason,
                 CreatedAt = DateTime.UtcNow
             }, ct);
+
+            // The same event, recorded from the other direction. The audit log
+            // answers "what did this administrator do"; the activity log answers
+            // "what happened to this account". An auditor asks both, and every
+            // action that reaches this method is one a user would want to see on
+            // their own history.
+            //
+            // Added to the context rather than saved here: the caller's own
+            // SaveAsync flushes it, so the status change and its log line land in
+            // one transaction instead of two.
+            var activity = action switch
+            {
+                "AssignRfid" => UserActivities.RfidAssigned,
+                "RevokeRfid" => UserActivities.RfidRevoked,
+                _ => UserActivities.StatusChanged
+            };
+
+            var email = await _db.Users
+                .Where(u => u.Id == targetUserId)
+                .Select(u => u.Email)
+                .FirstOrDefaultAsync(ct) ?? string.Empty;
+
+            _db.UserActivityLogs.Add(new UserActivityLog
+            {
+                UserId = targetUserId,
+                EmailAtTime = email,
+                Activity = activity,
+                // No IP: this was an administrator acting on someone else's
+                // account, and *which* administrator is already on the audit row.
+                Detail = DescribeAction(action, oldValue, newValue, reason)
+            });
+        }
+
+        /// <summary>
+        /// A plain-English description of an admin action, for the user activity
+        /// log.
+        ///
+        /// The audit table stores machine state — <c>IsDeleted=true</c>,
+        /// <c>RfidTagId=ABC123, RfidStatus=Active</c> — which is correct for a
+        /// record and unreadable in a table someone has to scan. This table is
+        /// read by people, so it stores the sentence.
+        /// </summary>
+        private static string DescribeAction(
+            string action,
+            string? oldValue,
+            string? newValue,
+            string? reason)
+        {
+            var summary = action switch
+            {
+                "Archive" => "Account archived",
+                "Restore" => "Account restored",
+                "AssignRfid" => DescribeCard(oldValue, newValue),
+                "RevokeRfid" => ReadField(oldValue, "RfidTagId") is { Length: > 0 } tag
+                    ? $"RFID card {tag} revoked"
+                    : "RFID card revoked",
+                "Suspend" => "Account suspended",
+                "Unsuspend" => "Account reinstated",
+                "Approve" => "Registration approved",
+                "Reject" => "Registration rejected",
+                _ => oldValue is not null && newValue is not null
+                    ? $"{oldValue} -> {newValue}"
+                    : action
+            };
+
+            return string.IsNullOrWhiteSpace(reason) ? summary : $"{summary} ({reason})";
+        }
+
+        private static string DescribeCard(string? oldValue, string? newValue)
+        {
+            var before = ReadField(oldValue, "RfidTagId");
+            var after = ReadField(newValue, "RfidTagId");
+
+            if (string.IsNullOrEmpty(after)) return "RFID card assigned";
+
+            return string.IsNullOrEmpty(before)
+                ? $"RFID card {after} assigned"
+                : $"RFID card {before} replaced with {after}";
+        }
+
+        /// <summary>
+        /// Pulls one value out of a <c>Key=Value, Key=Value</c> string. Returns
+        /// null for anything not in that shape, which is most actions.
+        /// </summary>
+        private static string? ReadField(string? raw, string key)
+        {
+            if (string.IsNullOrEmpty(raw)) return null;
+
+            foreach (var part in raw.Split(','))
+            {
+                var split = part.IndexOf('=');
+                if (split <= 0) continue;
+
+                if (part[..split].Trim().Equals(key, StringComparison.OrdinalIgnoreCase))
+                    return part[(split + 1)..].Trim();
+            }
+
+            return null;
         }
     }
 }

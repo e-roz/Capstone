@@ -1,69 +1,93 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../core/utils/responsive.dart';
 import '../models/violation.dart';
 import '../providers/violations_provider.dart';
-import '../core/utils/responsive.dart';
-import '../widgets/page_header.dart';
+import '../theme/theme.dart';
+import '../widgets/ui/ui.dart';
+
+/// The categories the API accepts, with the wording an administrator reads.
+/// Mirrors `PolicyCategory` on the server.
+const _categories = <String, String>{
+  'Parking': 'Parking',
+  'Access': 'Access & RFID',
+  'Conduct': 'Conduct',
+  'Documentation': 'Documentation',
+  'Other': 'Other',
+};
+
+String _categoryLabel(String value) => _categories[value] ?? value;
+
+/// Categories are kinds, not severities, so the colours separate them rather
+/// than ranking them.
+StatusIntent _categoryIntent(String value) => switch (value) {
+      'Parking' => StatusIntent.info,
+      'Access' => StatusIntent.accent,
+      'Conduct' => StatusIntent.warning,
+      'Documentation' => StatusIntent.success,
+      _ => StatusIntent.neutral,
+    };
 
 class PolicyRulesScreen extends ConsumerWidget {
   const PolicyRulesScreen({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final async = ref.watch(policyRulesProvider);
-
-    return Scaffold(
-      backgroundColor: const Color(0xFFF5F7FA),
-      body: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            PageHeader(
-              title: 'Policy & Rule Management',
-              actions: [
-                FilledButton.icon(
-                  icon: const Icon(Icons.add, size: 16),
-                  label: const Text('Add Rule'),
-                  onPressed: () => _showRuleDialog(context, ref, null),
-                ),
-                IconButton(
-                  icon: const Icon(Icons.refresh),
-                  tooltip: 'Refresh',
-                  onPressed: () => ref.invalidate(policyRulesProvider),
-                ),
-              ],
-            ),
-            const SizedBox(height: 16),
-            Expanded(
-              child: async.when(
-                loading: () => const Center(child: CircularProgressIndicator()),
-                error: (e, _) => Center(child: Text('Failed to load rules: $e')),
-                data: (rules) => rules.isEmpty
-                    ? const Center(child: Text('No policy rules yet.'))
-                    : ListView.separated(
-                        itemCount: rules.length,
-                        separatorBuilder: (_, _) => const SizedBox(height: 8),
-                        itemBuilder: (context, i) =>
-                            _RuleCard(rule: rules[i], onEdit: () => _showRuleDialog(context, ref, rules[i])),
-                      ),
-              ),
-            ),
-          ],
+    return AppPage(
+      title: 'Policy & Rule Management',
+      subtitle:
+          'The regulations violations are issued against, and what each one costs.',
+      actions: [
+        FilledButton.icon(
+          icon: const Icon(Icons.add, size: AppSizes.iconSm),
+          label: const Text('Add Rule'),
+          onPressed: () => _showRuleDialog(context, ref, null),
+        ),
+        IconButton(
+          icon: const Icon(Icons.refresh),
+          tooltip: 'Refresh',
+          onPressed: () => ref.invalidate(policyRulesProvider),
+        ),
+      ],
+      body: AsyncView(
+        value: ref.watch(policyRulesProvider),
+        onRetry: () => ref.invalidate(policyRulesProvider),
+        isEmpty: (rules) => rules.isEmpty,
+        empty: AppEmptyState(
+          icon: Icons.rule_outlined,
+          title: 'No policy rules yet',
+          message:
+              'A violation can only be issued against a rule, so add the first '
+              'one before enforcement can begin.',
+          action: FilledButton.icon(
+            icon: const Icon(Icons.add, size: AppSizes.iconSm),
+            label: const Text('Add Rule'),
+            onPressed: () => _showRuleDialog(context, ref, null),
+          ),
+        ),
+        data: (rules) => ListView.separated(
+          itemCount: rules.length,
+          separatorBuilder: (_, _) => const SizedBox(height: AppSpacing.gutter),
+          itemBuilder: (context, i) => _RuleCard(
+            rule: rules[i],
+            onEdit: () => _showRuleDialog(context, ref, rules[i]),
+          ),
         ),
       ),
     );
   }
 
-  Future<void> _showRuleDialog(BuildContext context, WidgetRef ref, PolicyRule? existing) async {
+  Future<void> _showRuleDialog(
+      BuildContext context, WidgetRef ref, PolicyRule? existing) async {
     final titleCtrl = TextEditingController(text: existing?.title ?? '');
     final descCtrl = TextEditingController(text: existing?.description ?? '');
-    final penaltyCtrl =
-        TextEditingController(text: existing?.defaultPenaltyAmount.toString() ?? '0');
-    final daysCtrl =
-        TextEditingController(text: existing?.defaultSuspensionDays?.toString() ?? '');
+    final penaltyCtrl = TextEditingController(
+        text: existing?.defaultPenaltyAmount.toString() ?? '0');
+    final daysCtrl = TextEditingController(
+        text: existing?.defaultSuspensionDays?.toString() ?? '');
     String suspensionType = existing?.defaultSuspensionType ?? 'None';
+    String category = existing?.category ?? 'Parking';
     bool isActive = existing?.isActive ?? true;
     final formKey = GlobalKey<FormState>();
 
@@ -80,61 +104,80 @@ class PolicyRulesScreen extends ConsumerWidget {
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
+                    const AppRequiredNote(),
                     TextFormField(
                       controller: titleCtrl,
                       decoration: const InputDecoration(
-                          labelText: 'Title', border: OutlineInputBorder()),
+                          label: AppFieldLabel('Title', isRequired: true)),
                       validator: (v) =>
                           (v == null || v.isEmpty) ? 'Title is required' : null,
                     ),
-                    const SizedBox(height: 12),
+                    const SizedBox(height: AppSpacing.x3),
                     TextFormField(
                       controller: descCtrl,
                       maxLines: 2,
                       decoration: const InputDecoration(
-                          labelText: 'Description', border: OutlineInputBorder()),
+                          label: AppFieldLabel('Description')),
                     ),
-                    const SizedBox(height: 12),
+                    const SizedBox(height: AppSpacing.x3),
+                    DropdownButtonFormField<String>(
+                      initialValue: category,
+                      decoration: const InputDecoration(
+                        labelText: 'Category',
+                        helperText: 'Groups the rule in reports and filters.',
+                      ),
+                      items: [
+                        for (final entry in _categories.entries)
+                          DropdownMenuItem(
+                              value: entry.key, child: Text(entry.value)),
+                      ],
+                      onChanged: (v) => setState(() => category = v!),
+                    ),
+                    const SizedBox(height: AppSpacing.x3),
                     TextFormField(
                       controller: penaltyCtrl,
                       keyboardType: TextInputType.number,
                       decoration: const InputDecoration(
-                          labelText: 'Default Penalty Amount',
-                          border: OutlineInputBorder()),
-                      validator: (v) =>
-                          double.tryParse(v ?? '') == null ? 'Enter a number' : null,
+                          label: AppFieldLabel('Default Penalty Amount',
+                              isRequired: true)),
+                      validator: (v) => double.tryParse(v ?? '') == null
+                          ? 'Enter a number'
+                          : null,
                     ),
-                    const SizedBox(height: 12),
+                    const SizedBox(height: AppSpacing.x3),
                     DropdownButtonFormField<String>(
                       initialValue: suspensionType,
                       decoration: const InputDecoration(
-                          labelText: 'Default Suspension Type',
-                          border: OutlineInputBorder()),
+                          labelText: 'Default Suspension Type'),
                       items: const [
                         DropdownMenuItem(value: 'None', child: Text('None')),
-                        DropdownMenuItem(value: 'Temporary', child: Text('Temporary')),
-                        DropdownMenuItem(value: 'Permanent', child: Text('Permanent')),
+                        DropdownMenuItem(
+                            value: 'Temporary', child: Text('Temporary')),
+                        DropdownMenuItem(
+                            value: 'Permanent', child: Text('Permanent')),
                       ],
                       onChanged: (v) => setState(() => suspensionType = v!),
                     ),
                     if (suspensionType == 'Temporary') ...[
-                      const SizedBox(height: 12),
+                      const SizedBox(height: AppSpacing.x3),
                       TextFormField(
                         controller: daysCtrl,
                         keyboardType: TextInputType.number,
                         decoration: const InputDecoration(
-                            labelText: 'Default Suspension Days',
-                            border: OutlineInputBorder()),
+                            labelText: 'Default Suspension Days'),
                         validator: (v) => suspensionType == 'Temporary' &&
-                                (int.tryParse(v ?? '') == null || int.parse(v!) <= 0)
+                                (int.tryParse(v ?? '') == null ||
+                                    int.parse(v!) <= 0)
                             ? 'Enter a positive number of days'
                             : null,
                       ),
                     ],
-                    const SizedBox(height: 12),
+                    const SizedBox(height: AppSpacing.x3),
                     SwitchListTile(
                       contentPadding: EdgeInsets.zero,
                       title: const Text('Active'),
+                      subtitle: const Text(
+                          'Inactive rules cannot be picked when issuing a violation.'),
                       value: isActive,
                       onChanged: (v) => setState(() => isActive = v),
                     ),
@@ -161,12 +204,14 @@ class PolicyRulesScreen extends ConsumerWidget {
     if (confirmed != true || !context.mounted) return;
 
     final notifier = ref.read(policyRuleActionsProvider.notifier);
-    final days = suspensionType == 'Temporary' ? int.tryParse(daysCtrl.text.trim()) : null;
+    final days =
+        suspensionType == 'Temporary' ? int.tryParse(daysCtrl.text.trim()) : null;
 
     final msg = existing == null
         ? await notifier.create(
             title: titleCtrl.text.trim(),
             description: descCtrl.text.trim(),
+            category: category,
             defaultPenaltyAmount: double.parse(penaltyCtrl.text.trim()),
             defaultSuspensionType: suspensionType,
             defaultSuspensionDays: days,
@@ -176,6 +221,7 @@ class PolicyRulesScreen extends ConsumerWidget {
             ruleId: existing.ruleId,
             title: titleCtrl.text.trim(),
             description: descCtrl.text.trim(),
+            category: category,
             defaultPenaltyAmount: double.parse(penaltyCtrl.text.trim()),
             defaultSuspensionType: suspensionType,
             defaultSuspensionDays: days,
@@ -197,51 +243,89 @@ class _RuleCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Card(
-      elevation: 1,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Text(rule.title, style: const TextStyle(fontWeight: FontWeight.w600)),
-                      const SizedBox(width: 8),
-                      if (!rule.isActive)
-                        const Chip(
-                          label: Text('Inactive', style: TextStyle(fontSize: 11, color: Colors.white)),
-                          backgroundColor: Colors.grey,
-                          padding: EdgeInsets.zero,
-                          materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                        ),
+    final t = context.tokens;
+    final text = Theme.of(context).textTheme;
+
+    // A rule's penalty and its suspension are two separate consequences, so
+    // they read as two pills rather than one run-on sentence the eye has to
+    // parse for the number it came looking for.
+    final suspension = switch (rule.defaultSuspensionType) {
+      'Temporary' when rule.defaultSuspensionDays != null =>
+        'Suspends ${rule.defaultSuspensionDays} days',
+      'Temporary' => 'Suspends temporarily',
+      'Permanent' => 'Suspends permanently',
+      _ => null,
+    };
+
+    return AppCard(
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Flexible(child: Text(rule.title, style: text.titleSmall)),
+                    if (!rule.isActive) ...[
+                      const SizedBox(width: AppSpacing.x2),
+                      const StatusPill.of('Inactive',
+                          intent: StatusIntent.neutral, dense: true),
                     ],
-                  ),
-                  if (rule.description.isNotEmpty)
-                    Padding(
-                      padding: const EdgeInsets.only(top: 4),
-                      child: Text(rule.description, style: const TextStyle(fontSize: 13)),
-                    ),
+                  ],
+                ),
+                if (rule.description.isNotEmpty)
                   Padding(
-                    padding: const EdgeInsets.only(top: 6),
+                    padding: const EdgeInsets.only(top: AppSpacing.labelGap),
                     child: Text(
-                      'Penalty ₱${rule.defaultPenaltyAmount.toStringAsFixed(2)} • '
-                      'Suspension: ${rule.defaultSuspensionType}'
-                      '${rule.defaultSuspensionDays != null ? ' (${rule.defaultSuspensionDays} days)' : ''}',
-                      style: const TextStyle(fontSize: 12, color: Colors.black54),
+                      rule.description,
+                      style: text.bodySmall?.copyWith(color: t.text.secondary),
                     ),
                   ),
-                ],
-              ),
+                const SizedBox(height: AppSpacing.x3),
+                Wrap(
+                  spacing: AppSpacing.controlGap,
+                  runSpacing: AppSpacing.controlGap,
+                  children: [
+                    StatusPill.of(
+                      _categoryLabel(rule.category),
+                      intent: _categoryIntent(rule.category),
+                      dense: true,
+                      showDot: false,
+                      icon: Icons.folder_outlined,
+                    ),
+                    StatusPill.of(
+                      '₱${rule.defaultPenaltyAmount.toStringAsFixed(2)} penalty',
+                      intent: rule.defaultPenaltyAmount > 0
+                          ? StatusIntent.warning
+                          : StatusIntent.neutral,
+                      dense: true,
+                      showDot: false,
+                      icon: Icons.payments_outlined,
+                    ),
+                    if (suspension != null)
+                      StatusPill.of(
+                        suspension,
+                        intent: rule.defaultSuspensionType == 'Permanent'
+                            ? StatusIntent.danger
+                            : StatusIntent.info,
+                        dense: true,
+                        showDot: false,
+                        icon: Icons.block_outlined,
+                      ),
+                  ],
+                ),
+              ],
             ),
-            TextButton(onPressed: onEdit, child: const Text('Edit')),
-          ],
-        ),
+          ),
+          const SizedBox(width: AppSpacing.x3),
+          AppRowAction(
+            label: 'Edit',
+            icon: Icons.edit_outlined,
+            onPressed: onEdit,
+          ),
+        ],
       ),
     );
   }

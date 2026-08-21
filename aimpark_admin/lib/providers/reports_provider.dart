@@ -7,6 +7,23 @@ import '../models/report.dart';
 
 part 'reports_provider.g.dart';
 
+/// How many days back every trend on Reports looks.
+///
+/// One window shared by all the charts, rather than each provider carrying its
+/// own default, so "last 30 days" means the same thing on the sessions chart as
+/// on the revenue chart — and so an exported CSV can name the period it covers.
+@riverpod
+class ReportWindow extends _$ReportWindow {
+  @override
+  int build() => 14;
+
+  void setDays(int days) => state = days;
+}
+
+/// The windows offered in the picker. Kept short: every extra option is another
+/// thing to explain, and nobody has asked for "last 3 days".
+const reportWindowOptions = <int>[7, 14, 30, 90];
+
 @riverpod
 Future<ReportsSummary> reportsSummary(Ref ref) async {
   final dio = ref.watch(dioProvider);

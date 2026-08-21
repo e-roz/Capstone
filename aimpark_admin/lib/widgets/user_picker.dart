@@ -8,6 +8,7 @@ import '../core/constants/api_endpoints.dart';
 import '../core/network/dio_client.dart';
 import '../models/admin_user.dart';
 import '../core/utils/responsive.dart';
+import '../theme/theme.dart';
 
 /// The result of picking a user — the id the API needs, plus the name to show
 /// back to the operator so they can confirm they picked the right person.
@@ -136,17 +137,23 @@ class _UserPickerDialogState extends ConsumerState<_UserPickerDialog> {
       return const Center(child: CircularProgressIndicator());
     }
     if (_error != null) {
-      return Center(child: Text(_error!, style: const TextStyle(color: Colors.red)));
+      return Center(
+        child: Text(_error!,
+            style: TextStyle(color: context.tokens.status.danger.fg)),
+      );
     }
     if (_results.isEmpty) {
-      return const Center(
+      return Center(
         child: Padding(
-          padding: EdgeInsets.symmetric(horizontal: 24),
+          padding: const EdgeInsets.symmetric(horizontal: AppSpacing.x6),
           child: Text(
             'No matching members.\nOnly approved users appear here — '
             'pending, rejected, suspended, and staff accounts are excluded.',
             textAlign: TextAlign.center,
-            style: TextStyle(color: Colors.black54, fontSize: 13),
+            style: Theme.of(context)
+                .textTheme
+                .bodySmall
+                ?.copyWith(color: context.tokens.text.secondary),
           ),
         ),
       );
@@ -202,14 +209,13 @@ class UserPickerField extends StatelessWidget {
       child: InputDecorator(
         decoration: InputDecoration(
           labelText: label,
-          border: const OutlineInputBorder(),
           errorText: errorText,
           suffixIcon: const Icon(Icons.search),
         ),
         child: Text(
           selected == null ? 'Tap to select a user' : selected!.fullName,
           style: TextStyle(
-            color: selected == null ? Colors.black54 : null,
+            color: selected == null ? context.tokens.text.tertiary : null,
           ),
         ),
       ),

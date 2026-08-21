@@ -7,6 +7,13 @@ namespace AimPark.API.DTOs
         public int TotalSlots { get; set; }
         public int OccupiedSlots { get; set; }
         public int AvailableSlots { get; set; }
+
+        /// <summary>
+        /// Bays that exist but cannot be parked in. Reported separately so the
+        /// panel can show real capacity rather than counting a broken bay as
+        /// free space.
+        /// </summary>
+        public int OutOfServiceSlots { get; set; }
         public int SessionsToday { get; set; }
         public decimal RevenueCollected { get; set; }
         public decimal RevenuePending { get; set; }

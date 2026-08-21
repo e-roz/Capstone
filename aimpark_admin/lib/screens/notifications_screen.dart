@@ -2,56 +2,80 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
+import '../core/utils/responsive.dart';
 import '../models/notification.dart';
 import '../providers/notifications_provider.dart';
-import '../core/utils/responsive.dart';
-import '../widgets/page_header.dart';
+import '../theme/theme.dart';
+import '../widgets/ui/ui.dart';
 
 const _types = ['Announcement', 'PolicyUpdate', 'ParkingAvailability', 'System'];
 const _roles = ['Admin', 'Security', 'User'];
+
+/// Human wording for the API's enum names — `ParkingAvailability` is a value,
+/// not a phrase, and it should not be what an administrator reads.
+const _typeLabels = <String, String>{
+  'Announcement': 'Announcement',
+  'PolicyUpdate': 'Policy update',
+  'ParkingAvailability': 'Parking availability',
+  'System': 'System',
+};
 
 class NotificationsScreen extends ConsumerWidget {
   const NotificationsScreen({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final async = ref.watch(notificationListProvider);
-
-    return Scaffold(
-      backgroundColor: const Color(0xFFF5F7FA),
-      body: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+    return AppPage(
+      title: 'Notifications',
+      subtitle: 'Announcements and policy updates sent out to users.',
+      actions: [
+        FilledButton.icon(
+          icon: const Icon(Icons.campaign_outlined, size: AppSizes.iconSm),
+          label: const Text('Broadcast'),
+          onPressed: () => _showBroadcast(context, ref),
+        ),
+        IconButton(
+          icon: const Icon(Icons.refresh),
+          tooltip: 'Refresh',
+          onPressed: () => ref.invalidate(notificationListProvider),
+        ),
+      ],
+      body: AsyncView(
+        value: ref.watch(notificationListProvider),
+        onRetry: () => ref.invalidate(notificationListProvider),
+        isEmpty: (page) => page.notifications.isEmpty,
+        empty: AppEmptyState(
+          icon: Icons.campaign_outlined,
+          title: 'Nothing sent yet',
+          message:
+              'Broadcasts you send to students and security staff are listed '
+              'here, most recent first.',
+          action: FilledButton.icon(
+            icon: const Icon(Icons.campaign_outlined, size: AppSizes.iconSm),
+            label: const Text('Broadcast'),
+            onPressed: () => _showBroadcast(context, ref),
+          ),
+        ),
+        data: (page) => Column(
           children: [
-            PageHeader(
-              title: 'Notifications',
-              actions: [
-                FilledButton.icon(
-                  icon: const Icon(Icons.campaign, size: 16),
-                  label: const Text('Broadcast'),
-                  onPressed: () => _showBroadcast(context, ref),
-                ),
-                IconButton(
-                  icon: const Icon(Icons.refresh),
-                  tooltip: 'Refresh',
-                  onPressed: () => ref.invalidate(notificationListProvider),
-                ),
-              ],
-            ),
-            const SizedBox(height: 16),
             Expanded(
-              child: async.when(
-                loading: () => const Center(child: CircularProgressIndicator()),
-                error: (e, _) => Center(child: Text('Failed to load notifications: $e')),
-                data: (page) => Column(
-                  children: [
-                    Expanded(child: _NotificationList(page: page)),
-                    const SizedBox(height: 12),
-                    _Pagination(page: page),
-                  ],
-                ),
+              child: ListView.separated(
+                itemCount: page.notifications.length,
+                separatorBuilder: (_, _) =>
+                    const SizedBox(height: AppSpacing.gutter),
+                itemBuilder: (context, i) =>
+                    _NotificationCard(item: page.notifications[i]),
               ),
+            ),
+            const SizedBox(height: AppSpacing.gutter),
+            AppPagination(
+              page: page.page,
+              pageSize: page.pageSize,
+              total: page.totalCount,
+              itemLabel: 'notifications',
+              onPage: ref
+                  .read(notificationsQueryNotifierProvider.notifier)
+                  .setPage,
             ),
           ],
         ),
@@ -78,40 +102,42 @@ class NotificationsScreen extends ConsumerWidget {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
+                  const AppRequiredNote(),
                   TextFormField(
                     controller: titleCtrl,
                     decoration: const InputDecoration(
-                        labelText: 'Title', border: OutlineInputBorder()),
+                        label: AppFieldLabel('Title', isRequired: true)),
                     validator: (v) =>
                         (v == null || v.isEmpty) ? 'Title is required' : null,
                   ),
-                  const SizedBox(height: 12),
+                  const SizedBox(height: AppSpacing.x3),
                   TextFormField(
                     controller: messageCtrl,
                     maxLines: 3,
                     decoration: const InputDecoration(
-                        labelText: 'Message', border: OutlineInputBorder()),
+                        label: AppFieldLabel('Message', isRequired: true)),
                     validator: (v) =>
                         (v == null || v.isEmpty) ? 'Message is required' : null,
                   ),
-                  const SizedBox(height: 12),
+                  const SizedBox(height: AppSpacing.x3),
                   DropdownButtonFormField<String>(
                     initialValue: type,
-                    decoration: const InputDecoration(
-                        labelText: 'Type', border: OutlineInputBorder()),
+                    decoration: const InputDecoration(labelText: 'Type'),
                     items: _types
-                        .map((t) => DropdownMenuItem(value: t, child: Text(t)))
+                        .map((t) => DropdownMenuItem(
+                            value: t, child: Text(_typeLabels[t] ?? t)))
                         .toList(),
                     onChanged: (v) => setState(() => type = v!),
                   ),
-                  const SizedBox(height: 12),
+                  const SizedBox(height: AppSpacing.x3),
                   DropdownButtonFormField<String?>(
                     initialValue: targetRole,
-                    decoration: const InputDecoration(
-                        labelText: 'Target Role', border: OutlineInputBorder()),
+                    decoration: const InputDecoration(labelText: 'Target Role'),
                     items: [
-                      const DropdownMenuItem(value: null, child: Text('All Roles')),
-                      ..._roles.map((r) => DropdownMenuItem(value: r, child: Text(r))),
+                      const DropdownMenuItem(
+                          value: null, child: Text('All Roles')),
+                      ..._roles.map(
+                          (r) => DropdownMenuItem(value: r, child: Text(r))),
                     ],
                     onChanged: (v) => setState(() => targetRole = v),
                   ),
@@ -148,25 +174,6 @@ class NotificationsScreen extends ConsumerWidget {
   }
 }
 
-class _NotificationList extends StatelessWidget {
-  const _NotificationList({required this.page});
-
-  final NotificationListPage page;
-
-  @override
-  Widget build(BuildContext context) {
-    if (page.notifications.isEmpty) {
-      return const Center(child: Text('No notifications sent yet.'));
-    }
-
-    return ListView.separated(
-      itemCount: page.notifications.length,
-      separatorBuilder: (_, _) => const SizedBox(height: 8),
-      itemBuilder: (context, i) => _NotificationCard(item: page.notifications[i]),
-    );
-  }
-}
-
 class _NotificationCard extends StatelessWidget {
   const _NotificationCard({required this.item});
 
@@ -174,82 +181,45 @@ class _NotificationCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Card(
-      elevation: 1,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Chip(
-              label: Text(item.type, style: const TextStyle(fontSize: 12, color: Colors.white)),
-              backgroundColor: Colors.blueGrey,
-              padding: EdgeInsets.zero,
-              materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-            ),
-            const SizedBox(width: 16),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(item.title, style: const TextStyle(fontWeight: FontWeight.w600)),
-                  Padding(
-                    padding: const EdgeInsets.only(top: 4),
-                    child: Text(item.message, style: const TextStyle(fontSize: 13)),
+    final t = context.tokens;
+    final text = Theme.of(context).textTheme;
+
+    return AppCard(
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          StatusPill.of(
+            _typeLabels[item.type] ?? item.type,
+            intent: StatusIntents.notificationType(item.type),
+            dense: true,
+          ),
+          const SizedBox(width: AppSpacing.x4),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(item.title, style: text.titleSmall),
+                Padding(
+                  padding: const EdgeInsets.only(top: AppSpacing.labelGap),
+                  child: Text(item.message, style: text.bodySmall),
+                ),
+                Padding(
+                  padding: const EdgeInsets.only(top: AppSpacing.x2),
+                  child: Text(
+                    'Sent to ${item.targetRole ?? 'all roles'}',
+                    style: text.labelSmall?.copyWith(color: t.text.tertiary),
                   ),
-                  Padding(
-                    padding: const EdgeInsets.only(top: 4),
-                    child: Text('Target: ${item.targetRole ?? 'All roles'}',
-                        style: const TextStyle(fontSize: 12, color: Colors.black54)),
-                  ),
-                ],
-              ),
+                ),
+              ],
             ),
-            Text(
-              DateFormat('MMM d, yyyy HH:mm').format(item.createdAt.toLocal()),
-              style: const TextStyle(fontSize: 12, color: Colors.black54),
-            ),
-          ],
-        ),
+          ),
+          const SizedBox(width: AppSpacing.x3),
+          Text(
+            DateFormat('MMM d, yyyy HH:mm').format(item.createdAt.toLocal()),
+            style: text.bodySmall?.copyWith(color: t.text.secondary),
+          ),
+        ],
       ),
-    );
-  }
-}
-
-class _Pagination extends ConsumerWidget {
-  const _Pagination({required this.page});
-
-  final NotificationListPage page;
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final totalPages = (page.totalCount / page.pageSize).ceil().clamp(1, 999999);
-    final currentPage = page.page;
-
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        Text(
-            'Showing ${page.notifications.length} of ${page.totalCount} notifications • Page $currentPage of $totalPages'),
-        const SizedBox(width: 16),
-        IconButton(
-          icon: const Icon(Icons.chevron_left),
-          onPressed: currentPage > 1
-              ? () => ref
-                  .read(notificationsQueryNotifierProvider.notifier)
-                  .setPage(currentPage - 1)
-              : null,
-        ),
-        IconButton(
-          icon: const Icon(Icons.chevron_right),
-          onPressed: currentPage < totalPages
-              ? () => ref
-                  .read(notificationsQueryNotifierProvider.notifier)
-                  .setPage(currentPage + 1)
-              : null,
-        ),
-      ],
     );
   }
 }

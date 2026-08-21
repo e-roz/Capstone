@@ -2,6 +2,10 @@ class PolicyRule {
   final String ruleId;
   final String title;
   final String description;
+
+  /// Parking, Access, Conduct, Documentation or Other.
+  final String category;
+
   final double defaultPenaltyAmount;
   final String defaultSuspensionType;
   final int? defaultSuspensionDays;
@@ -13,6 +17,7 @@ class PolicyRule {
     required this.ruleId,
     required this.title,
     required this.description,
+    required this.category,
     required this.defaultPenaltyAmount,
     required this.defaultSuspensionType,
     required this.defaultSuspensionDays,
@@ -25,6 +30,9 @@ class PolicyRule {
         ruleId: json['ruleId']?.toString() ?? '',
         title: json['title']?.toString() ?? '',
         description: json['description']?.toString() ?? '',
+        // Rules created before categories existed come back as Parking from the
+        // database default; an older API that omits the field lands there too.
+        category: json['category']?.toString() ?? 'Parking',
         defaultPenaltyAmount:
             (json['defaultPenaltyAmount'] as num?)?.toDouble() ?? 0,
         defaultSuspensionType:

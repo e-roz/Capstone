@@ -5,7 +5,11 @@ import 'package:intl/intl.dart';
 
 import '../models/registration_detail.dart';
 import '../providers/registrations_provider.dart';
+import '../theme/theme.dart';
 import '../widgets/document_viewer.dart';
+import '../widgets/ui/ui.dart';
+
+String _fmt(DateTime dt) => DateFormat('MMM d, yyyy HH:mm').format(dt.toLocal());
 
 class RegistrationDetailScreen extends ConsumerWidget {
   const RegistrationDetailScreen({super.key, required this.userId});
@@ -15,17 +19,45 @@ class RegistrationDetailScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final async = ref.watch(registrationDetailProvider(userId));
+    final detail = async.valueOrNull;
 
-    return Scaffold(
-      backgroundColor: const Color(0xFFF5F7FA),
-      body: async.when(
-        loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) => Center(child: Text('Error: $e')),
-        data: (detail) => _DetailView(
-          detail: detail,
-          onApprove: () => _approve(context, ref, detail),
-          onReject: () => _showRejectDialog(context, ref, detail),
+    return AppPage(
+      title: detail?.fullName ?? 'Registration',
+      subtitle: detail == null
+          ? 'Reviewing a submitted registration.'
+          : '${detail.affiliation} · ${detail.email}',
+      scrollable: true,
+      onBack: () => context.go('/pending'),
+      actions: [
+        // Only offered while the application is actually awaiting a decision —
+        // an already-approved record showing a live Approve button invites a
+        // second, meaningless write.
+        if (detail != null && detail.verificationStatus == 'Pending') ...[
+          FilledButton.icon(
+            icon: const Icon(Icons.check, size: AppSizes.iconSm),
+            label: const Text('Approve'),
+            onPressed: () => _approve(context, ref, detail),
+          ),
+          OutlinedButton.icon(
+            icon: const Icon(Icons.close, size: AppSizes.iconSm),
+            label: const Text('Reject'),
+            style: OutlinedButton.styleFrom(
+              foregroundColor: context.tokens.status.danger.fg,
+              side: BorderSide(color: context.tokens.status.danger.border),
+            ),
+            onPressed: () => _showRejectDialog(context, ref, detail),
+          ),
+        ],
+        IconButton(
+          icon: const Icon(Icons.refresh),
+          tooltip: 'Refresh',
+          onPressed: () => ref.invalidate(registrationDetailProvider(userId)),
         ),
+      ],
+      body: AsyncView(
+        value: async,
+        onRetry: () => ref.invalidate(registrationDetailProvider(userId)),
+        data: (detail) => _DetailView(detail: detail),
       ),
     );
   }
@@ -51,18 +83,13 @@ class RegistrationDetailScreen extends ConsumerWidget {
 
     if (confirm != true || !context.mounted) return;
 
-    final msg = await ref
-        .read(registrationActionsProvider.notifier)
-        .approve(userId);
+    final msg =
+        await ref.read(registrationActionsProvider.notifier).approve(userId);
 
     if (!context.mounted) return;
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(msg ?? 'Approved successfully'),
-        backgroundColor: Colors.green,
-      ),
-    );
+    ScaffoldMessenger.of(context)
+        .showSnackBar(SnackBar(content: Text(msg ?? 'Approved successfully')));
     ref.invalidate(registrationDetailProvider(userId));
     ref.invalidate(pendingRegistrationsProvider);
   }
@@ -89,76 +116,79 @@ class RegistrationDetailScreen extends ConsumerWidget {
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setState) => AlertDialog(
-        title: const Text('Reject Registration'),
-        content: Form(
-          key: formKey,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              DropdownButtonFormField<String>(
-                initialValue: selectedPreset,
-                decoration: const InputDecoration(
-                  labelText: 'Reason preset (optional)',
-                  border: OutlineInputBorder(),
-                ),
-                items: [
-                  ..._rejectPresets.keys.map(
-                      (label) => DropdownMenuItem(value: label, child: Text(label))),
-                  const DropdownMenuItem(value: 'Other', child: Text('Other')),
+          title: const Text('Reject Registration'),
+          content: SizedBox(
+            width: 420,
+            child: Form(
+              key: formKey,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  DropdownButtonFormField<String>(
+                    initialValue: selectedPreset,
+                    decoration: const InputDecoration(
+                        labelText: 'Reason preset (optional)'),
+                    items: [
+                      ..._rejectPresets.keys.map((label) =>
+                          DropdownMenuItem(value: label, child: Text(label))),
+                      const DropdownMenuItem(
+                          value: 'Other', child: Text('Other')),
+                    ],
+                    onChanged: (label) {
+                      setState(() => selectedPreset = label);
+                      if (label != null && label != 'Other') {
+                        reasonCtrl.text = _rejectPresets[label]!;
+                      }
+                    },
+                  ),
+                  const SizedBox(height: AppSpacing.x3),
+                  TextFormField(
+                    controller: reasonCtrl,
+                    decoration: const InputDecoration(
+                      labelText: 'Rejection Reason',
+                      helperText:
+                          'Sent to the applicant by email — edit as needed.',
+                    ),
+                    maxLines: 3,
+                    validator: (v) =>
+                        (v == null || v.isEmpty) ? 'Reason is required' : null,
+                  ),
+                  const SizedBox(height: AppSpacing.x3),
+                  TextFormField(
+                    controller: hoursCtrl,
+                    decoration: const InputDecoration(
+                      labelText: 'Cooldown (hours)',
+                      helperText:
+                          'How long before they may submit a new application.',
+                    ),
+                    keyboardType: TextInputType.number,
+                    validator: (v) {
+                      final n = int.tryParse(v ?? '');
+                      if (n == null || n < 0) return 'Enter a valid number';
+                      return null;
+                    },
+                  ),
                 ],
-                onChanged: (label) {
-                  setState(() => selectedPreset = label);
-                  if (label != null && label != 'Other') {
-                    reasonCtrl.text = _rejectPresets[label]!;
-                  }
-                },
               ),
-              const SizedBox(height: 12),
-              TextFormField(
-                controller: reasonCtrl,
-                decoration: const InputDecoration(
-                  labelText: 'Rejection Reason',
-                  helperText: 'Sent to the applicant by email — edit as needed.',
-                  border: OutlineInputBorder(),
-                ),
-                maxLines: 3,
-                validator: (v) =>
-                    (v == null || v.isEmpty) ? 'Reason is required' : null,
-              ),
-              const SizedBox(height: 12),
-              TextFormField(
-                controller: hoursCtrl,
-                decoration: const InputDecoration(
-                  labelText: 'Cooldown (hours)',
-                  border: OutlineInputBorder(),
-                ),
-                keyboardType: TextInputType.number,
-                validator: (v) {
-                  final n = int.tryParse(v ?? '');
-                  if (n == null || n < 0) return 'Enter a valid number';
-                  return null;
-                },
-              ),
-            ],
+            ),
           ),
-        ),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(ctx),
-              child: const Text('Cancel')),
-          FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: Colors.red),
-            onPressed: () {
-              if (formKey.currentState!.validate()) {
-                Navigator.pop(ctx, (
-                  reason: reasonCtrl.text.trim(),
-                  hours: int.parse(hoursCtrl.text.trim()),
-                ));
-              }
-            },
-            child: const Text('Reject'),
-          ),
-        ],
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+            FilledButton(
+              style: FilledButton.styleFrom(
+                  backgroundColor: ctx.tokens.status.danger.solid),
+              onPressed: () {
+                if (formKey.currentState!.validate()) {
+                  Navigator.pop(ctx, (
+                    reason: reasonCtrl.text.trim(),
+                    hours: int.parse(hoursCtrl.text.trim()),
+                  ));
+                }
+              },
+              child: const Text('Reject'),
+            ),
+          ],
         ),
       ),
     );
@@ -171,172 +201,171 @@ class RegistrationDetailScreen extends ConsumerWidget {
 
     if (!context.mounted) return;
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(msg ?? 'Rejected'),
-        backgroundColor: Colors.red,
-      ),
-    );
+    ScaffoldMessenger.of(context)
+        .showSnackBar(SnackBar(content: Text(msg ?? 'Rejected')));
     ref.invalidate(registrationDetailProvider(userId));
     ref.invalidate(pendingRegistrationsProvider);
   }
 }
 
-// ── Detail view widget ───────────────────────────────────────────────────────
+// ── Detail view ──────────────────────────────────────────────────────────────
 
 class _DetailView extends StatelessWidget {
-  const _DetailView({
-    required this.detail,
-    required this.onApprove,
-    required this.onReject,
-  });
+  const _DetailView({required this.detail});
 
   final RegistrationDetail detail;
-  final VoidCallback onApprove;
-  final VoidCallback onReject;
 
   @override
   Widget build(BuildContext context) {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(24),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          _SectionCard(
-            title: 'Personal Information',
-            children: [
-              _Field('Full Name', detail.fullName),
-              _Field('Email', detail.email),
-              _Field('Affiliation', detail.affiliation),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        // A rejection is the one thing on this page that changes what the
+        // reviewer should do next, so it sits above the record rather than
+        // seventh in a list of fields where it previously hid.
+        if (detail.rejectionReason case final reason?) ...[
+          _RejectionBanner(
+            reason: reason,
+            count: detail.rejectionCount,
+            canReapplyAt: detail.canReapplyAt,
+          ),
+          const SizedBox(height: AppSpacing.gutter),
+        ],
+        AppSectionCard(
+          title: 'Status',
+          icon: Icons.verified_outlined,
+          child: AppFieldGrid(
+            fields: [
+              AppField(
+                label: 'Account Status',
+                child: StatusPill.of(detail.accountStatus,
+                    intent: StatusIntents.user(detail.accountStatus)),
+              ),
+              AppField(
+                label: 'Verification Status',
+                child: StatusPill.of(detail.verificationStatus,
+                    intent:
+                        StatusIntents.registration(detail.verificationStatus)),
+              ),
+              AppField(
+                  label: 'Registration Step', value: detail.registrationStep),
+            ],
+          ),
+        ),
+        const SizedBox(height: AppSpacing.gutter),
+        AppSectionCard(
+          title: 'Personal Information',
+          icon: Icons.person_outline,
+          child: AppFieldGrid(
+            fields: [
+              AppField(label: 'Full Name', value: detail.fullName, emphasis: true),
+              AppField(label: 'Email', value: detail.email),
+              AppField(label: 'Affiliation', value: detail.affiliation),
               // Blank for faculty and staff, who have no RAF — the affiliation
               // above is what tells the reviewer which of those this is.
-              if (detail.studentNumber != null)
-                _Field('Student Number', detail.studentNumber!),
-              if (detail.section != null) _Field('Section', detail.section!),
-              if (detail.enrollmentValidUntil != null)
-                _Field('Enrolled Until', _fmt(detail.enrollmentValidUntil!)),
-              _Field('Account Status', detail.accountStatus),
-              _Field('Verification Status', detail.verificationStatus),
-              _Field('Registration Step', detail.registrationStep),
-              if (detail.rejectionReason != null)
-                _Field('Rejection Reason', detail.rejectionReason!,
-                    danger: true),
-              if (detail.rejectionCount > 0)
-                _Field(
-                    'Rejection Count', detail.rejectionCount.toString()),
-              if (detail.canReapplyAt != null)
-                _Field('Can Reapply At',
-                    _fmt(detail.canReapplyAt!)),
+              if (detail.studentNumber case final number?)
+                AppField(label: 'Student Number', value: number),
+              if (detail.section case final section?)
+                AppField(label: 'Section', value: section),
+              if (detail.enrollmentValidUntil case final until?)
+                AppField(label: 'Enrolled Until', value: _fmt(until)),
             ],
           ),
-          // One card per vehicle: a card holder may register several, and a single
-          // card would silently show only the first.
-          for (final (i, vehicle) in detail.vehicles.indexed) ...[
-            const SizedBox(height: 16),
-            _SectionCard(
-              title: detail.vehicles.length > 1
-                  ? 'Vehicle ${i + 1} of ${detail.vehicles.length}'
-                  : 'Vehicle Information',
-              children: [
-                _Field('Brand', vehicle.brand ?? '—'),
-                _Field('Model', vehicle.model ?? '—'),
-                _Field('Vehicle Type', vehicle.vehicleType ?? '—'),
-                _Field('Plate Number', vehicle.plateNumber ?? '—'),
-                _Field('Color', vehicle.color ?? '—'),
+        ),
+        // One card per vehicle: a card holder may register several, and a single
+        // card would silently show only the first.
+        for (final (i, vehicle) in detail.vehicles.indexed) ...[
+          const SizedBox(height: AppSpacing.gutter),
+          AppSectionCard(
+            title: detail.vehicles.length > 1
+                ? 'Vehicle ${i + 1} of ${detail.vehicles.length}'
+                : 'Vehicle Information',
+            icon: Icons.directions_car_outlined,
+            child: AppFieldGrid(
+              fields: [
+                AppField(
+                  label: 'Plate Number',
+                  value: vehicle.plateNumber ?? '—',
+                  emphasis: true,
+                ),
+                AppField(label: 'Brand', value: vehicle.brand ?? '—'),
+                AppField(label: 'Model', value: vehicle.model ?? '—'),
+                AppField(
+                    label: 'Vehicle Type', value: vehicle.vehicleType ?? '—'),
+                AppField(label: 'Color', value: vehicle.color ?? '—'),
               ],
             ),
-          ],
-          if (detail.documents.isNotEmpty) ...[
-            const SizedBox(height: 16),
-            _SectionCard(
-              title: 'Uploaded Documents',
-              children: detail.documents
-                  .map((doc) => _DocumentTile(doc: doc))
-                  .toList(),
-            ),
-          ],
-          const SizedBox(height: 24),
-          Row(
-            children: [
-              FilledButton.icon(
-                icon: const Icon(Icons.check),
-                label: const Text('Approve'),
-                style:
-                    FilledButton.styleFrom(backgroundColor: Colors.green),
-                onPressed: onApprove,
-              ),
-              const SizedBox(width: 12),
-              FilledButton.icon(
-                icon: const Icon(Icons.close),
-                label: const Text('Reject'),
-                style: FilledButton.styleFrom(backgroundColor: Colors.red),
-                onPressed: onReject,
-              ),
-            ],
           ),
         ],
-      ),
-    );
-  }
-
-  String _fmt(DateTime dt) =>
-      DateFormat('MMM d, yyyy HH:mm').format(dt.toLocal());
-}
-
-class _SectionCard extends StatelessWidget {
-  const _SectionCard({required this.title, required this.children});
-
-  final String title;
-  final List<Widget> children;
-
-  @override
-  Widget build(BuildContext context) {
-    return Card(
-      elevation: 1,
-      shape:
-          RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      child: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(title,
-                style: const TextStyle(
-                    fontSize: 16, fontWeight: FontWeight.bold)),
-            const Divider(height: 20),
-            ...children,
-          ],
-        ),
-      ),
+        if (detail.documents.isNotEmpty) ...[
+          const SizedBox(height: AppSpacing.gutter),
+          AppSectionCard(
+            title: 'Uploaded Documents',
+            subtitle: 'Open each one to check it against the details above.',
+            icon: Icons.folder_outlined,
+            padding: EdgeInsets.zero,
+            child: Column(
+              children: [
+                for (final doc in detail.documents) _DocumentTile(doc: doc),
+              ],
+            ),
+          ),
+        ],
+      ],
     );
   }
 }
 
-class _Field extends StatelessWidget {
-  const _Field(this.label, this.value, {this.danger = false});
+class _RejectionBanner extends StatelessWidget {
+  const _RejectionBanner({
+    required this.reason,
+    required this.count,
+    required this.canReapplyAt,
+  });
 
-  final String label;
-  final String value;
-  final bool danger;
+  final String reason;
+  final int count;
+  final DateTime? canReapplyAt;
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
+    final t = context.tokens;
+    final text = Theme.of(context).textTheme;
+    final c = t.status.danger;
+
+    return Container(
+      padding: const EdgeInsets.all(AppSpacing.cardPadding),
+      decoration: BoxDecoration(
+        color: c.bg,
+        borderRadius: AppRadii.lgAll,
+        border: Border.all(color: c.border),
+      ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          SizedBox(
-            width: 180,
-            child: Text(label,
-                style: const TextStyle(
-                    fontWeight: FontWeight.w600, color: Colors.black54)),
-          ),
+          Icon(Icons.gpp_bad_outlined, size: AppSizes.iconMd, color: c.fg),
+          const SizedBox(width: AppSpacing.x3),
           Expanded(
-            child: Text(
-              value,
-              style: TextStyle(
-                  color: danger ? Colors.red.shade700 : null),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  count > 1
+                      ? 'Previously rejected $count times'
+                      : 'Previously rejected',
+                  style: text.titleSmall?.copyWith(color: c.fg),
+                ),
+                const SizedBox(height: AppSpacing.labelGap),
+                Text(reason, style: text.bodySmall?.copyWith(color: c.fg)),
+                if (canReapplyAt case final at?)
+                  Padding(
+                    padding: const EdgeInsets.only(top: AppSpacing.x2),
+                    child: Text(
+                      'Can reapply from ${_fmt(at)}',
+                      style: text.labelSmall?.copyWith(color: c.fg),
+                    ),
+                  ),
+              ],
             ),
           ),
         ],
@@ -352,19 +381,25 @@ class _DocumentTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final t = context.tokens;
+    final text = Theme.of(context).textTheme;
+
     return ListTile(
-      contentPadding: EdgeInsets.zero,
-      leading: const Icon(Icons.insert_drive_file_outlined),
-      title: Text(doc.type),
-      subtitle: Text(doc.fileName),
-      trailing: TextButton(
+      leading: Icon(Icons.insert_drive_file_outlined, color: t.text.secondary),
+      title: Text(doc.type, style: text.titleSmall),
+      subtitle: Text(
+        doc.fileName,
+        style: text.bodySmall?.copyWith(color: t.text.secondary),
+      ),
+      trailing: AppRowAction(
+        label: 'View',
+        icon: Icons.visibility_outlined,
         onPressed: () => viewDocument(
           context,
           title: doc.type,
           fileName: doc.fileName,
           url: doc.filePath,
         ),
-        child: const Text('View'),
       ),
     );
   }

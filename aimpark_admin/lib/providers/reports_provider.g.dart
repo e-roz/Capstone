@@ -424,5 +424,27 @@ class _RevenueTrendProviderElement
   int get days => (origin as RevenueTrendProvider).days;
 }
 
+String _$reportWindowHash() => r'e31e113c116dc60f026f81073343bd0d40e56465';
+
+/// How many days back every trend on Reports looks.
+///
+/// One window shared by all the charts, rather than each provider carrying its
+/// own default, so "last 30 days" means the same thing on the sessions chart as
+/// on the revenue chart — and so an exported CSV can name the period it covers.
+///
+/// Copied from [ReportWindow].
+@ProviderFor(ReportWindow)
+final reportWindowProvider =
+    AutoDisposeNotifierProvider<ReportWindow, int>.internal(
+      ReportWindow.new,
+      name: r'reportWindowProvider',
+      debugGetCreateSourceHash: const bool.fromEnvironment('dart.vm.product')
+          ? null
+          : _$reportWindowHash,
+      dependencies: null,
+      allTransitiveDependencies: null,
+    );
+
+typedef _$ReportWindow = AutoDisposeNotifier<int>;
 // ignore_for_file: type=lint
 // ignore_for_file: subtype_of_sealed_class, invalid_use_of_internal_member, invalid_use_of_visible_for_testing_member, deprecated_member_use_from_same_package

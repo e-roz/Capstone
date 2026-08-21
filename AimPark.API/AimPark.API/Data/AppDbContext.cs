@@ -28,6 +28,8 @@ namespace AimPark.API.Data
         public DbSet<Violation> Violations { get; set; }
         public DbSet<ViolationAppeal> ViolationAppeals { get; set; }
         public DbSet<DeviceToken> DeviceTokens { get; set; }
+        public DbSet<UserActivityLog> UserActivityLogs { get; set; }
+        public DbSet<SystemErrorLog> SystemErrorLogs { get; set; }
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -91,6 +93,38 @@ namespace AimPark.API.Data
                       .HasConversion<string>();
 
                 entity.Property(s => s.CreatedAt)
+                      .HasDefaultValueSql("NOW()");
+            });
+
+            modelBuilder.Entity<UserActivityLog>(entity =>
+            {
+                entity.HasKey(a => a.Id);
+
+                // The two questions this table is asked: "everything that
+                // happened to this account" and "everything that happened this
+                // week". Both get an index; nothing else is queried.
+                entity.HasIndex(a => a.UserId);
+                entity.HasIndex(a => a.CreatedAt);
+
+                entity.Property(a => a.EmailAtTime).HasMaxLength(256);
+                entity.Property(a => a.Activity).HasMaxLength(64);
+                entity.Property(a => a.IpAddress).HasMaxLength(64);
+
+                entity.Property(a => a.CreatedAt)
+                      .HasDefaultValueSql("NOW()");
+            });
+
+            modelBuilder.Entity<SystemErrorLog>(entity =>
+            {
+                entity.HasKey(e => e.Id);
+
+                entity.HasIndex(e => e.CreatedAt);
+
+                entity.Property(e => e.ErrorType).HasMaxLength(256);
+                entity.Property(e => e.Path).HasMaxLength(512);
+                entity.Property(e => e.TraceId).HasMaxLength(128);
+
+                entity.Property(e => e.CreatedAt)
                       .HasDefaultValueSql("NOW()");
             });
 
@@ -378,6 +412,10 @@ namespace AimPark.API.Data
 
                 entity.Property(r => r.DefaultSuspensionType)
                       .HasConversion<string>();
+
+                entity.Property(r => r.Category)
+                      .HasConversion<string>()
+                      .HasDefaultValue(Enums.PolicyCategory.Parking);
 
                 entity.Property(r => r.DefaultPenaltyAmount)
                       .HasColumnType("decimal(10,2)");

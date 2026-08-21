@@ -9,6 +9,11 @@ namespace AimPark.API.Entities
         public string Title { get; set; } = string.Empty;
         public string Description { get; set; } = string.Empty;
 
+        // Existing rules predate this field, so the migration defaults them to
+        // Parking rather than Other: every rule written so far is a parking rule,
+        // and defaulting to Other would mislabel all of them.
+        public PolicyCategory Category { get; set; } = PolicyCategory.Parking;
+
         public decimal DefaultPenaltyAmount { get; set; }
         public SuspensionType DefaultSuspensionType { get; set; } = SuspensionType.None;
         // Only used when DefaultSuspensionType == Temporary
