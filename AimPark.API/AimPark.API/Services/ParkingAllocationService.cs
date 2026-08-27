@@ -72,9 +72,20 @@ namespace AimPark.API.Services
             if (vehicleType is null)
                 return NoVehicle();
 
-            foreach (var tier in TiersFor(vehicleType.Value))
+            return await ClaimForVehicleTypeAsync(vehicleType.Value, userId, atGate, ct);
+        }
+
+        public async Task<SlotRecommendationResponse> ClaimForVehicleTypeAsync(
+            VehicleType vehicleType, Guid? userId, int? atGate, CancellationToken ct)
+        {
+            foreach (var tier in TiersFor(vehicleType))
             {
-                var ranked = await RankCandidatesAsync(userId, tier, atGate, ct);
+                // Guid.Empty matches no parking log, so a visitor simply has no
+                // "gate you used last" and falls through to spare capacity —
+                // which is the right answer for somebody who has never been
+                // here before.
+                var ranked = await RankCandidatesAsync(
+                    userId ?? Guid.Empty, tier, atGate, ct);
 
                 foreach (var candidate in ranked.Take(MaxClaimAttempts))
                 {
@@ -82,11 +93,11 @@ namespace AimPark.API.Services
                         continue; // Another vehicle took it between the read and the write.
 
                     return Assigned(candidate, Alternatives(ranked, candidate.Id),
-                        BuildReason(candidate, ranked, vehicleType.Value, tier, atGate));
+                        BuildReason(candidate, ranked, vehicleType, tier, atGate));
                 }
             }
 
-            return LotFull(vehicleType.Value);
+            return LotFull(vehicleType);
         }
 
         /// <summary>

@@ -295,9 +295,14 @@ namespace AimPark.API.Services
         /// plates are commonly stacked across two rows, which comes back as "130"
         /// and "301" rather than one line.
         ///
-        /// One character of difference is allowed. These photos are taken outdoors,
-        /// at an angle, in whatever light there is, and strict comparison fails on
-        /// perfectly good-faith submissions.
+        /// One character of difference is allowed, but it is reported as its own
+        /// outcome rather than as agreement. These photos are taken outdoors, at an
+        /// angle, in whatever light there is, so strict comparison fails on
+        /// perfectly good-faith submissions — yet the plate is shown read-only and
+        /// written straight to the vehicle record, so the same slack was quietly
+        /// absorbing a one-character misreading of the receipt. The applicant is
+        /// holding both the paper and the vehicle; they are the one who can settle
+        /// it.
         ///
         /// A plate that is readable but different is reported as such rather than as
         /// nothing. The applicant types no plate anywhere, so this comparison is what
@@ -339,9 +344,12 @@ namespace AimPark.API.Services
 
             var closest = plausible[0];
 
-            return closest.Distance <= 1
-                ? (closest.Value, PlateAgreement.Agreed)
-                : (closest.Value, PlateAgreement.Differs);
+            return closest.Distance switch
+            {
+                0 => (closest.Value, PlateAgreement.Agreed),
+                1 => (closest.Value, PlateAgreement.NearMatch),
+                _ => (closest.Value, PlateAgreement.Differs)
+            };
         }
 
         /// <summary>

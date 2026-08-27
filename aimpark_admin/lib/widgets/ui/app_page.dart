@@ -89,7 +89,10 @@ class AppPage extends StatelessWidget {
       body: Padding(
         padding: EdgeInsets.all(pad),
         child: Align(
-          alignment: Alignment.topLeft,
+          // Centred, not left-aligned: the cap is there to stop a line of text
+          // running the width of a monitor, and pinning it left spends the
+          // whole remainder as one dead strip against the right edge.
+          alignment: Alignment.topCenter,
           child: ConstrainedBox(
             constraints: BoxConstraints(maxWidth: maxWidth),
             child: content,

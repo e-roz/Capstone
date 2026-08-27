@@ -55,9 +55,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
         return;
       }
 
-      if (!JwtUtils.isAdmin(token)) {
-        setState(() =>
-            _error = 'Access denied. This panel is for Admins only.');
+      if (JwtUtils.staffRole(token) == null) {
+        setState(() => _error =
+            'Access denied. This panel is for staff accounts only.');
         return;
       }
 
@@ -439,7 +439,7 @@ class _LoginForm extends StatelessWidget {
           Text('Sign in', style: text.headlineSmall),
           const SizedBox(height: AppSpacing.x1),
           Text(
-            'Administrator access to the AimPark panel.',
+            'Administrator and security access to the AimPark panel.',
             style: text.bodyMedium?.copyWith(color: t.text.secondary),
           ),
           const SizedBox(height: AppSpacing.x8),

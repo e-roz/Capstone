@@ -1,11 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../../../core/theme/app_colors.dart';
-import '../../../../core/theme/app_spacing.dart';
-import '../../../../core/theme/app_text_styles.dart';
-import '../../../../core/widgets/app_button.dart';
-import '../../../../core/widgets/app_card.dart';
+import '../../../../core/theme/theme.dart';
+import '../../../../core/widgets/widgets.dart';
 
 /// Explains why a login was refused.
 ///
@@ -29,12 +26,17 @@ class AccountStatusScreen extends StatelessWidget {
 
   bool get _isPending => accountStatus == 'PendingReview';
   bool get _isRejected => accountStatus == 'Rejected';
+  bool get _isSuspended => accountStatus == 'Suspended';
 
-  ({IconData icon, Color color, String title, String body}) get _presentation {
+  /// Carries a [StatusIntent] rather than a `Color`: waiting for approval is
+  /// *informational*, not orange, and stating the intent means dark mode
+  /// follows without this screen knowing about it.
+  ({IconData icon, StatusIntent intent, String title, String body})
+      get _presentation {
     if (_isPending) {
       return (
         icon: Icons.hourglass_top_rounded,
-        color: AppColors.brandPressed,
+        intent: StatusIntent.info,
         title: 'Waiting for approval',
         body: 'An administrator is reviewing your registration and documents. '
             "You'll be notified once a decision is made — there's nothing you "
@@ -45,18 +47,38 @@ class AccountStatusScreen extends StatelessWidget {
     if (_isRejected) {
       return (
         icon: Icons.cancel_rounded,
-        color: AppColors.errorPressed,
+        intent: StatusIntent.danger,
         title: 'Registration not approved',
         body: 'Your registration was reviewed and could not be approved.',
       );
     }
 
+    if (_isSuspended) {
+      return (
+        icon: Icons.gpp_bad_rounded,
+        intent: StatusIntent.danger,
+        title: 'Account suspended',
+        body: message ??
+            'Your account has been suspended. Please contact the administrator.',
+      );
+    }
+
+    // A status this build does not recognise. Suspension used to be the
+    // fallback, which made it the thing an unrecognised value said — and it
+    // said it to people whose accounts were merely waiting for approval, after
+    // the API sent `0` where the name was expected. An accusation is the worst
+    // possible default: it names a punishment nobody has issued, and the user
+    // cannot tell it apart from a real one.
+    //
+    // The server's own sentence is shown instead, which is right whatever the
+    // status turns out to be.
     return (
-      icon: Icons.gpp_bad_rounded,
-      color: AppColors.errorPressed,
-      title: 'Account suspended',
+      icon: Icons.info_outline_rounded,
+      intent: StatusIntent.info,
+      title: "You can't sign in yet",
       body: message ??
-          'Your account has been suspended. Please contact the administrator.',
+          'Your account is not ready to be used yet. Please contact the '
+              'administrator.',
     );
   }
 
@@ -77,77 +99,73 @@ class AccountStatusScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final t = context.tokens;
     final p = _presentation;
+    final c = t.status.of(p.intent);
     final reapply = _reapplyText;
 
-    return Scaffold(
-      backgroundColor: AppColors.bgPage,
-      body: SafeArea(
-        child: Center(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.all(AppSpacing.lg),
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 420),
+    return AppScreen.tab(
+      body: AppFormBody(
+        maxWidth: 420,
+        children: [
+          Container(
+            width: 96,
+            height: 96,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(color: c.bg, shape: BoxShape.circle),
+            child: Icon(p.icon, size: 52, color: c.fg),
+          ),
+          const SizedBox(height: AppSpacing.md),
+          Text(
+            p.title,
+            textAlign: TextAlign.center,
+            style: context.text.headlineMedium,
+          ),
+          const SizedBox(height: AppSpacing.sm),
+          Text(
+            p.body,
+            textAlign: TextAlign.center,
+            style: context.text.bodyMedium?.copyWith(color: t.text.secondary),
+          ),
+          if (_isRejected && rejectionReason != null) ...[
+            const SizedBox(height: AppSpacing.lg),
+            AppCard(
+              color: c.bg,
+              borderColor: c.border,
               child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Icon(p.icon, size: 64, color: p.color),
-                  const SizedBox(height: AppSpacing.md),
-                  Text(p.title,
-                      textAlign: TextAlign.center, style: AppTextStyles.h2),
-                  const SizedBox(height: AppSpacing.sm),
                   Text(
-                    p.body,
-                    textAlign: TextAlign.center,
-                    style: AppTextStyles.bodyMedium
-                        .copyWith(color: AppColors.textSecondary),
+                    'Reason given',
+                    style: context.text.labelLarge?.copyWith(color: c.fg),
                   ),
-                  if (_isRejected && rejectionReason != null) ...[
-                    const SizedBox(height: AppSpacing.lg),
-                    AppCard(
-                      color: AppColors.errorSubtle,
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text('Reason given',
-                              style: AppTextStyles.labelBold
-                                  .copyWith(color: AppColors.errorPressed)),
-                          const SizedBox(height: 4),
-                          Text(rejectionReason!,
-                              style: AppTextStyles.bodyMedium),
-                        ],
-                      ),
-                    ),
-                  ],
-                  if (reapply != null) ...[
-                    const SizedBox(height: AppSpacing.md),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        const Icon(Icons.schedule_rounded,
-                            size: 16, color: AppColors.textSecondary),
-                        const SizedBox(width: 6),
-                        Flexible(
-                          child: Text(
-                            reapply,
-                            style: AppTextStyles.bodySmall
-                                .copyWith(color: AppColors.textSecondary),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                  const SizedBox(height: AppSpacing.xl),
-                  AppButton(
-                    label: 'Back to login',
-                    onPressed: () => context.go('/login'),
-                  ),
+                  const SizedBox(height: 4),
+                  Text(rejectionReason!, style: context.text.bodyMedium),
                 ],
               ),
             ),
+          ],
+          if (reapply != null) ...[
+            const SizedBox(height: AppSpacing.md),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(
+                  Icons.schedule_rounded,
+                  size: AppSizes.iconSm,
+                  color: t.text.secondary,
+                ),
+                const SizedBox(width: 6),
+                Flexible(child: Text(reapply, style: context.text.bodySmall)),
+              ],
+            ),
+          ],
+          const SizedBox(height: AppSpacing.xl),
+          AppButton(
+            label: 'Back to login',
+            onPressed: () => context.go('/login'),
           ),
-        ),
+        ],
       ),
     );
   }

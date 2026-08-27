@@ -283,6 +283,127 @@ class _PeakHoursProviderElement
   int get days => (origin as PeakHoursProvider).days;
 }
 
+String _$entryExitReportHash() => r'41d8914d8118f30673cc40d4d129a82bbc62419d';
+
+/// See also [entryExitReport].
+@ProviderFor(entryExitReport)
+const entryExitReportProvider = EntryExitReportFamily();
+
+/// See also [entryExitReport].
+class EntryExitReportFamily extends Family<AsyncValue<EntryExitReport>> {
+  /// See also [entryExitReport].
+  const EntryExitReportFamily();
+
+  /// See also [entryExitReport].
+  EntryExitReportProvider call({int days = 14}) {
+    return EntryExitReportProvider(days: days);
+  }
+
+  @override
+  EntryExitReportProvider getProviderOverride(
+    covariant EntryExitReportProvider provider,
+  ) {
+    return call(days: provider.days);
+  }
+
+  static const Iterable<ProviderOrFamily>? _dependencies = null;
+
+  @override
+  Iterable<ProviderOrFamily>? get dependencies => _dependencies;
+
+  static const Iterable<ProviderOrFamily>? _allTransitiveDependencies = null;
+
+  @override
+  Iterable<ProviderOrFamily>? get allTransitiveDependencies =>
+      _allTransitiveDependencies;
+
+  @override
+  String? get name => r'entryExitReportProvider';
+}
+
+/// See also [entryExitReport].
+class EntryExitReportProvider
+    extends AutoDisposeFutureProvider<EntryExitReport> {
+  /// See also [entryExitReport].
+  EntryExitReportProvider({int days = 14})
+    : this._internal(
+        (ref) => entryExitReport(ref as EntryExitReportRef, days: days),
+        from: entryExitReportProvider,
+        name: r'entryExitReportProvider',
+        debugGetCreateSourceHash: const bool.fromEnvironment('dart.vm.product')
+            ? null
+            : _$entryExitReportHash,
+        dependencies: EntryExitReportFamily._dependencies,
+        allTransitiveDependencies:
+            EntryExitReportFamily._allTransitiveDependencies,
+        days: days,
+      );
+
+  EntryExitReportProvider._internal(
+    super._createNotifier, {
+    required super.name,
+    required super.dependencies,
+    required super.allTransitiveDependencies,
+    required super.debugGetCreateSourceHash,
+    required super.from,
+    required this.days,
+  }) : super.internal();
+
+  final int days;
+
+  @override
+  Override overrideWith(
+    FutureOr<EntryExitReport> Function(EntryExitReportRef provider) create,
+  ) {
+    return ProviderOverride(
+      origin: this,
+      override: EntryExitReportProvider._internal(
+        (ref) => create(ref as EntryExitReportRef),
+        from: from,
+        name: null,
+        dependencies: null,
+        allTransitiveDependencies: null,
+        debugGetCreateSourceHash: null,
+        days: days,
+      ),
+    );
+  }
+
+  @override
+  AutoDisposeFutureProviderElement<EntryExitReport> createElement() {
+    return _EntryExitReportProviderElement(this);
+  }
+
+  @override
+  bool operator ==(Object other) {
+    return other is EntryExitReportProvider && other.days == days;
+  }
+
+  @override
+  int get hashCode {
+    var hash = _SystemHash.combine(0, runtimeType.hashCode);
+    hash = _SystemHash.combine(hash, days.hashCode);
+
+    return _SystemHash.finish(hash);
+  }
+}
+
+@Deprecated('Will be removed in 3.0. Use Ref instead')
+// ignore: unused_element
+mixin EntryExitReportRef on AutoDisposeFutureProviderRef<EntryExitReport> {
+  /// The parameter `days` of this provider.
+  int get days;
+}
+
+class _EntryExitReportProviderElement
+    extends AutoDisposeFutureProviderElement<EntryExitReport>
+    with EntryExitReportRef {
+  _EntryExitReportProviderElement(super.provider);
+
+  @override
+  int get days => (origin as EntryExitReportProvider).days;
+}
+
 String _$violationsBreakdownHash() =>
     r'fef23d61891f045609b132b22832c17cbfedaffc';
 

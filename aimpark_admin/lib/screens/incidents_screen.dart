@@ -4,12 +4,29 @@ import 'package:intl/intl.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../core/utils/responsive.dart';
+import '../providers/auth_provider.dart';
 import '../providers/incidents_provider.dart';
+import '../providers/violations_provider.dart';
+import '../router/destinations.dart';
 import '../theme/theme.dart';
 import '../widgets/appeals_panel.dart';
 import '../widgets/ui/ui.dart';
 
 const _incidentStatuses = ['Submitted', 'UnderReview', 'Resolved', 'Dismissed'];
+
+/// The API's `IncidentCategory` names, mapped to what a person reads.
+///
+/// The key is what gets sent. Sending the label instead is what made every
+/// category except "Other" fail validation when the mobile app first shipped -
+/// so this panel uses the same keys rather than inventing a second list.
+const _reportCategories = <String, String>{
+  'Vandalism': 'Vandalism',
+  'Theft': 'Theft',
+  'Accident': 'Accident',
+  'BlockedSlot': 'Blocked slot',
+  'SuspiciousActivity': 'Suspicious activity',
+  'Other': 'Other',
+};
 
 /// `UnderReview` is an enum name, not something a person should have to read.
 const _statusLabels = <String, String>{
@@ -21,12 +38,22 @@ const _statusLabels = <String, String>{
 
 String _statusLabel(String status) => _statusLabels[status] ?? status;
 
-class IncidentsScreen extends StatelessWidget {
+class IncidentsScreen extends ConsumerWidget {
   const IncidentsScreen({super.key});
 
   @override
-  Widget build(BuildContext context) {
-    return const DefaultTabController(length: 2, child: _IncidentsPage());
+  Widget build(BuildContext context, WidgetRef ref) {
+    // Security reports what they see on the ground and follows their own
+    // reports up. Deciding an appeal against a violation is an administrator's
+    // call, and the API refuses them the endpoint anyway - so the tab is not
+    // shown rather than shown and then failing.
+    final canDecideAppeals =
+        ref.watch(staffRoleProvider) != StaffRole.security;
+
+    return DefaultTabController(
+      length: canDecideAppeals ? 2 : 1,
+      child: _IncidentsPage(showAppeals: canDecideAppeals),
+    );
   }
 }
 
@@ -35,25 +62,96 @@ class IncidentsScreen extends StatelessWidget {
 /// so they are two tabs of one page rather than two entries in the sidebar.
 /// The appeals half lives in [AppealsPanel] because its data hangs off a
 /// violation, not off an incident.
-class _IncidentsPage extends StatelessWidget {
-  const _IncidentsPage();
+class _IncidentsPage extends ConsumerWidget {
+  const _IncidentsPage({required this.showAppeals});
+
+  final bool showAppeals;
 
   @override
-  Widget build(BuildContext context) {
-    return const AppPage(
-      title: 'Incidents & Appeals',
-      subtitle: 'Reports raised by users and security staff, and appeals '
-          'against issued violations.',
+  Widget build(BuildContext context, WidgetRef ref) {
+    // Counts on the tabs, because a queue with three untouched reports in it
+    // looked exactly like an empty one until you clicked. The admin had no way
+    // to know anything had arrived without going and looking at both halves.
+    final openIncidents = ref.watch(openIncidentCountProvider).valueOrNull;
+    // Only asked for when the tab that shows it is on screen. The endpoint is
+    // Admin-only, so watching it unconditionally 403s for a guard.
+    final pendingAppeals = showAppeals
+        ? ref.watch(pendingAppealCountProvider).valueOrNull
+        : null;
+
+    return AppPage(
+      title: showAppeals ? 'Incidents & Appeals' : 'Incident Reports',
+      subtitle: showAppeals
+          ? 'Reports raised by users and security staff, and appeals against '
+              'issued violations.'
+          : 'Reports raised by users and security staff.',
       toolbar: Align(
         alignment: Alignment.centerLeft,
         child: TabBar(
           isScrollable: true,
           tabAlignment: TabAlignment.start,
-          tabs: [Tab(text: 'Incident Reports'), Tab(text: 'Appeals')],
+          tabs: [
+            _CountedTab(label: 'Incident Reports', count: openIncidents),
+            if (showAppeals)
+              _CountedTab(label: 'Appeals', count: pendingAppeals),
+          ],
         ),
       ),
       body: TabBarView(
-        children: [_IncidentsTab(), AppealsPanel()],
+        children: [
+          const _IncidentsTab(),
+          if (showAppeals) const AppealsPanel(),
+        ],
+      ),
+    );
+  }
+}
+
+/// A tab whose label carries how much work is waiting behind it.
+///
+/// The badge is hidden at zero rather than shown as "0": a queue that is
+/// genuinely clear should look calm, and a row of noughts trains the eye to
+/// stop reading the numbers at all.
+class _CountedTab extends StatelessWidget implements PreferredSizeWidget {
+  const _CountedTab({required this.label, required this.count});
+
+  final String label;
+
+  /// Null while the count is still loading, or if it failed — either way the
+  /// tab renders as a plain label rather than guessing.
+  final int? count;
+
+  @override
+  Size get preferredSize => const Size.fromHeight(46);
+
+  @override
+  Widget build(BuildContext context) {
+    final t = context.tokens;
+    final waiting = count != null && count! > 0;
+
+    return Tab(
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(label),
+          if (waiting) ...[
+            const SizedBox(width: AppSpacing.x2),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+              decoration: BoxDecoration(
+                color: t.status.danger.solid,
+                borderRadius: AppRadii.fullAll,
+              ),
+              child: Text(
+                '$count',
+                style: Theme.of(context)
+                    .textTheme
+                    .labelSmall
+                    ?.copyWith(color: t.text.onDark),
+              ),
+            ),
+          ],
+        ],
       ),
     );
   }
@@ -84,6 +182,16 @@ class _IncidentsTab extends ConsumerWidget {
             ),
           ],
           trailing: [
+            // Security witness things on the ground - "Incident Reporting" is
+            // their module in the spec, and until this button existed a guard
+            // could read the queue but had no way to add to it. An
+            // administrator can file one too; both are staff at the same lot.
+            FilledButton.icon(
+              icon: const Icon(Icons.add, size: AppSizes.iconSm),
+              label: const Text('Report an incident'),
+              onPressed: () => _showReportDialog(context, ref),
+            ),
+            const SizedBox(width: AppSpacing.x2),
             IconButton(
               icon: const Icon(Icons.refresh),
               tooltip: 'Refresh',
@@ -139,7 +247,9 @@ class _IncidentsTab extends ConsumerWidget {
                       // no visual cue nobody discovered it — testers reported
                       // the review screen as missing entirely.
                       DataCell(AppRowAction(
-                        label: 'Review',
+                        label: ref.watch(staffRoleProvider) == StaffRole.security
+                            ? 'Open'
+                            : 'Review',
                         icon: Icons.visibility_outlined,
                         onPressed: () => _showDetail(context, ref, i.incidentId),
                       )),
@@ -160,10 +270,113 @@ class _IncidentsTab extends ConsumerWidget {
     );
   }
 
+  Future<void> _showReportDialog(BuildContext context, WidgetRef ref) async {
+    final descCtrl = TextEditingController();
+    final locationCtrl = TextEditingController();
+    // Nothing preselected. The first chip is "Vandalism", and a form that
+    // accuses somebody of it on the reporter's behalf is a form that will
+    // eventually be submitted unread.
+    String? category;
+    final formKey = GlobalKey<FormState>();
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setState) => AlertDialog(
+          title: const Text('Report an Incident'),
+          content: SizedBox(
+            width: context.dialogWidth(440),
+            child: Form(
+              key: formKey,
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const AppRequiredNote(),
+                    DropdownButtonFormField<String>(
+                      initialValue: category,
+                      decoration: const InputDecoration(
+                        label: AppFieldLabel('Category', isRequired: true),
+                      ),
+                      hint: const Text('What kind of incident?'),
+                      items: [
+                        for (final entry in _reportCategories.entries)
+                          DropdownMenuItem(
+                              value: entry.key, child: Text(entry.value)),
+                      ],
+                      onChanged: (v) => setState(() => category = v),
+                      validator: (v) =>
+                          v == null ? 'Pick a category' : null,
+                    ),
+                    const SizedBox(height: AppSpacing.x3),
+                    TextFormField(
+                      controller: descCtrl,
+                      maxLines: 4,
+                      textCapitalization: TextCapitalization.sentences,
+                      decoration: const InputDecoration(
+                        label: AppFieldLabel('What happened?', isRequired: true),
+                        helperText:
+                            'Plates, times and names are worth writing down '
+                            'now - they are hard to recover later.',
+                      ),
+                      validator: (v) => (v == null || v.trim().isEmpty)
+                          ? 'Describe what happened'
+                          : null,
+                    ),
+                    const SizedBox(height: AppSpacing.x3),
+                    TextFormField(
+                      controller: locationCtrl,
+                      textCapitalization: TextCapitalization.sentences,
+                      decoration: const InputDecoration(
+                        label: AppFieldLabel('Location'),
+                        helperText: 'A slot code or a landmark.',
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () {
+                if (formKey.currentState!.validate()) Navigator.pop(ctx, true);
+              },
+              child: const Text('File report'),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    if (confirmed != true || !context.mounted) return;
+
+    final msg = await ref.read(incidentActionsProvider.notifier).report(
+          category: category!,
+          description: descCtrl.text.trim(),
+          location: locationCtrl.text.trim(),
+        );
+
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context)
+        .showSnackBar(SnackBar(content: Text(msg ?? 'Report filed.')));
+    ref.invalidate(incidentListProvider);
+    ref.invalidate(openIncidentCountProvider);
+  }
+
   Future<void> _showDetail(
       BuildContext context, WidgetRef ref, String incidentId) async {
     final detail = await ref.read(incidentDetailProvider(incidentId).future);
     if (!context.mounted) return;
+
+    // A guard reads the queue; an administrator decides on it. Shown read-only
+    // rather than hidden, because knowing what has already been reported is
+    // exactly what stops the same broken barrier being reported twice.
+    final canReview = ref.read(staffRoleProvider) != StaffRole.security;
 
     String status = detail.status;
     final notesCtrl = TextEditingController(text: detail.adminNotes ?? '');
@@ -255,16 +468,19 @@ class _IncidentsTab extends ConsumerWidget {
                           .map((s) => DropdownMenuItem(
                               value: s, child: Text(_statusLabel(s))))
                           .toList(),
-                      onChanged: (v) => setState(() => status = v!),
+                      onChanged:
+                          canReview ? (v) => setState(() => status = v!) : null,
                     ),
                     const SizedBox(height: AppSpacing.x3),
                     TextField(
                       controller: notesCtrl,
                       maxLines: 3,
-                      decoration: const InputDecoration(
+                      enabled: canReview,
+                      decoration: InputDecoration(
                         labelText: 'Admin Notes',
-                        helperText:
-                            'Recorded with the decision so it can be justified later.',
+                        helperText: canReview
+                            ? 'Recorded with the decision so it can be justified later.'
+                            : 'Only an administrator can decide on a report.',
                       ),
                     ),
                   ],
@@ -275,10 +491,11 @@ class _IncidentsTab extends ConsumerWidget {
               TextButton(
                   onPressed: () => Navigator.pop(ctx, false),
                   child: const Text('Close')),
-              FilledButton(
-                onPressed: () => Navigator.pop(ctx, true),
-                child: const Text('Save Review'),
-              ),
+              if (canReview)
+                FilledButton(
+                  onPressed: () => Navigator.pop(ctx, true),
+                  child: const Text('Save Review'),
+                ),
             ],
           );
         },

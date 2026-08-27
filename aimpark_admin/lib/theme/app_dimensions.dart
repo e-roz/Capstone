@@ -195,6 +195,15 @@ class AppSizes {
   /// Width of a metric tile in the reports grid.
   static const double metricCardWidth = 210;
 
+  /// Label column in a check row on the registration review screen. Fixed so
+  /// every check's evidence starts on the same line down the card — a ragged
+  /// left edge there makes six rows read as six unrelated statements.
+  static const double checkLabelWidth = 158;
+
+  /// The tinted square holding a banner's icon. Larger than [iconLg] because it
+  /// is the first thing on the page and has to hold its own against a headline.
+  static const double bannerIcon = 34;
+
   /// Icon sizes.
   static const double iconSm = 16;
   static const double iconMd = 20;

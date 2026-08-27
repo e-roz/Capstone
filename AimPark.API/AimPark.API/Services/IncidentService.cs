@@ -17,17 +17,20 @@ namespace AimPark.API.Services
         private readonly IRepository<Incident> _incidents;
         private readonly IRepository<IncidentEvidence> _evidence;
         private readonly IFileStorageService _fileStorage;
+        private readonly INotificationService _notificationService;
         private readonly AppDbContext _db;
 
         public IncidentService(
             IRepository<Incident> incidents,
             IRepository<IncidentEvidence> evidence,
             IFileStorageService fileStorage,
+            INotificationService notificationService,
             AppDbContext db)
         {
             _incidents = incidents;
             _evidence = evidence;
             _fileStorage = fileStorage;
+            _notificationService = notificationService;
             _db = db;
         }
 
@@ -183,6 +186,8 @@ namespace AimPark.API.Services
             if (incident is null)
                 return new NotFoundObjectResult(new { message = "Incident not found." });
 
+            var previousStatus = incident.Status;
+
             incident.Status = status;
             incident.AdminNotes = dto.AdminNotes;
             incident.ReviewedByUserId = adminUserId;
@@ -190,6 +195,44 @@ namespace AimPark.API.Services
 
             _incidents.Update(incident);
             await _incidents.SaveAsync(ct);
+
+            // Somebody took the trouble to report something and then heard
+            // nothing back — the reporter had to keep opening the list to find
+            // out whether anyone had looked. Violations and appeals both notify;
+            // this was the one decision in the system that stayed silent.
+            //
+            // Only on a real change of state. Re-saving notes on an already
+            // resolved report is housekeeping, not news.
+            if (status != previousStatus)
+            {
+                var notes = string.IsNullOrWhiteSpace(dto.AdminNotes)
+                    ? string.Empty
+                    : $" Note: {dto.AdminNotes}";
+
+                var (title, message) = status switch
+                {
+                    IncidentStatus.UnderReview => (
+                        "Your report is being reviewed",
+                        $"Someone is looking into the {incident.Category} you reported.{notes}"),
+                    IncidentStatus.Resolved => (
+                        "Your report was resolved",
+                        $"The {incident.Category} you reported has been dealt with. Thank you for flagging it.{notes}"),
+                    IncidentStatus.Dismissed => (
+                        "Your report was closed",
+                        $"The {incident.Category} you reported was reviewed and closed without further action.{notes}"),
+                    _ => (
+                        "Your report was updated",
+                        $"The status of your report is now {status}.{notes}")
+                };
+
+                await _notificationService.NotifyUserAsync(
+                    incident.ReportedByUserId,
+                    NotificationType.Incident,
+                    title,
+                    message,
+                    new Dictionary<string, string> { ["incidentId"] = incident.Id.ToString() },
+                    ct);
+            }
 
             return new OkObjectResult(new { message = "Incident reviewed." });
         }

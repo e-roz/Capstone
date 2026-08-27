@@ -1,8 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../theme/app_colors.dart';
-import '../theme/app_spacing.dart';
-import '../theme/app_text_styles.dart';
+import '../theme/theme.dart';
 import 'app_button.dart';
 
 /// The "nothing here yet" view. Five screens each declared their own private
@@ -17,7 +15,7 @@ class AppEmptyState extends StatelessWidget {
     required this.icon,
     required this.title,
     required this.message,
-    this.iconColor = AppColors.textDisabled,
+    this.intent,
     this.actionLabel,
     this.onAction,
   });
@@ -26,9 +24,11 @@ class AppEmptyState extends StatelessWidget {
   final String title;
   final String message;
 
-  /// Defaults to the muted grey of an absence. Pass a status colour when the
-  /// emptiness is itself good news — no violations, for instance.
-  final Color iconColor;
+  /// Colours the icon by meaning. Left null the icon is muted, which is right
+  /// for an ordinary absence. Pass [StatusIntent.success] when the emptiness is
+  /// itself good news — a clean violation record is an achievement, not a void,
+  /// and it should not be greeted with the same grey inbox as an empty list.
+  final StatusIntent? intent;
 
   /// Optional call to action. Shown only when [onAction] is also given.
   final String? actionLabel;
@@ -36,20 +36,39 @@ class AppEmptyState extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final t = context.tokens;
+    final c = intent == null ? null : t.status.of(intent!);
+
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(AppSpacing.lg),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(icon, size: 48, color: iconColor),
+            Container(
+              width: 88,
+              height: 88,
+              decoration: BoxDecoration(
+                color: c?.bg ?? t.surface.muted,
+                shape: BoxShape.circle,
+              ),
+              child: Icon(
+                icon,
+                size: AppSizes.iconHero,
+                color: c?.fg ?? t.text.disabled,
+              ),
+            ),
             const SizedBox(height: AppSpacing.md),
-            Text(title, style: AppTextStyles.h2, textAlign: TextAlign.center),
+            Text(
+              title,
+              style: context.text.headlineMedium,
+              textAlign: TextAlign.center,
+            ),
             const SizedBox(height: AppSpacing.xs),
             Text(
               message,
               textAlign: TextAlign.center,
-              style: AppTextStyles.bodyMedium.copyWith(color: AppColors.textSecondary),
+              style: context.text.bodyMedium?.copyWith(color: t.text.secondary),
             ),
             if (actionLabel != null && onAction != null) ...[
               const SizedBox(height: AppSpacing.lg),
@@ -72,45 +91,64 @@ class AppErrorState extends StatelessWidget {
   const AppErrorState({
     super.key,
     required this.title,
-    required this.onRetry,
+    this.onRetry,
     this.message = 'Check your connection and try again.',
   });
 
   /// What could not be loaded, e.g. "Couldn't load your payments".
   final String title;
   final String message;
-  final VoidCallback onRetry;
+
+  /// Omitted only where there is genuinely nothing to retry.
+  final VoidCallback? onRetry;
 
   @override
   Widget build(BuildContext context) {
+    final t = context.tokens;
+
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(AppSpacing.lg),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(
-              Icons.cloud_off_rounded,
-              size: 48,
-              color: AppColors.errorDefault,
+            Container(
+              width: 88,
+              height: 88,
+              decoration: BoxDecoration(
+                color: t.status.danger.bg,
+                shape: BoxShape.circle,
+              ),
+              child: Icon(
+                Icons.cloud_off_rounded,
+                size: AppSizes.iconHero,
+                color: t.status.danger.fg,
+              ),
             ),
             const SizedBox(height: AppSpacing.md),
-            Text(title, style: AppTextStyles.h2, textAlign: TextAlign.center),
+            Text(
+              title,
+              style: context.text.headlineMedium,
+              textAlign: TextAlign.center,
+            ),
             const SizedBox(height: AppSpacing.xs),
             Text(
               message,
               textAlign: TextAlign.center,
-              style: AppTextStyles.bodyMedium.copyWith(color: AppColors.textSecondary),
+              style: context.text.bodyMedium?.copyWith(color: t.text.secondary),
             ),
-            const SizedBox(height: AppSpacing.lg),
-            SizedBox(
-              width: 160,
-              child: AppButton(
-                label: 'Try Again',
-                style: AppButtonStyle.ghost,
-                onPressed: onRetry,
+            if (onRetry != null) ...[
+              const SizedBox(height: AppSpacing.lg),
+              SizedBox(
+                width: 180,
+                child: AppButton(
+                  label: 'Try Again',
+                  icon: const Icon(Icons.refresh_rounded),
+                  style: AppButtonStyle.ghost,
+                  onPressed: onRetry,
+                ),
               ),
-            ),
+            ],
           ],
         ),
       ),

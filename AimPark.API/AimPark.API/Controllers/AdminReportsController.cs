@@ -26,6 +26,14 @@ namespace AimPark.API.Controllers
             [FromQuery] int days = 14, CancellationToken ct = default)
             => _reportService.GetOccupancyTrendAsync(days, ct);
 
+        /// <summary>
+        /// Vehicles in and out per day. "Entry/Exit Reports" in the spec.
+        /// </summary>
+        [HttpGet("entry-exit")]
+        public Task<ActionResult<EntryExitReportResponse>> GetEntryExit(
+            [FromQuery] int days = 30, CancellationToken ct = default)
+            => _reportService.GetEntryExitReportAsync(days, ct);
+
         [HttpGet("peak-hours")]
         public Task<ActionResult<PeakHoursResponse>> GetPeakHours(
             [FromQuery] int days = 30, CancellationToken ct = default)

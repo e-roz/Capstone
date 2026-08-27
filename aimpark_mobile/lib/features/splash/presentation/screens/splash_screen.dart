@@ -5,12 +5,11 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:go_router/go_router.dart';
-import 'package:google_fonts/google_fonts.dart';
 
 import '../../../../core/network/dio_client.dart';
-import '../../../../core/theme/app_colors.dart';
+import '../../../../core/theme/theme.dart';
 import '../../../../core/utils/jwt_utils.dart';
-import '../../../../core/widgets/app_loading_bar.dart';
+import '../../../../core/widgets/widgets.dart';
 import '../../../notifications/presentation/providers/push_registration_provider.dart';
 
 class SplashScreen extends ConsumerStatefulWidget {
@@ -83,9 +82,16 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
 
     final token = await _storage.read(key: authTokenKey);
     final hasValidToken = token != null && JwtUtils.isValid(token);
-    final destination = hasValidToken
-        ? JwtUtils.homeRouteForRole(JwtUtils.getRole(token)) ?? '/login'
-        : '/login';
+
+    // `routeAfterLogin`, not `homeRouteForRole`: a token issued part-way
+    // through registration carries the role the account will have but is not a
+    // session, and routing on the role alone put someone whose app was killed
+    // during the document step onto a dashboard where every request 401s and no
+    // route led back to the step they had left. The camera is the most likely
+    // place for Android to kill the process, which made that the most likely
+    // place to be stranded.
+    final destination =
+        hasValidToken ? JwtUtils.routeAfterLogin(token) : '/login';
 
     final remaining = _minDisplayDuration - stopwatch.elapsed;
     if (remaining > Duration.zero) {
@@ -123,10 +129,10 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
       // Light status/nav icons over the full-bleed orange canvas.
       value: SystemUiOverlayStyle.light.copyWith(
         statusBarColor: Colors.transparent,
-        systemNavigationBarColor: AppColors.splashBackground,
+        systemNavigationBarColor: AppFixedColors.splashBackground,
       ),
       child: Scaffold(
-        backgroundColor: AppColors.splashBackground,
+        backgroundColor: AppFixedColors.splashBackground,
         body: SafeArea(
           child: Column(
             children: [
@@ -155,11 +161,14 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
                   position: _wordmarkSlide,
                   child: Text(
                     'aimpark',
-                    style: GoogleFonts.baloo2(
+                    // Baloo 2, bundled under assets/fonts/. The wordmark is
+                    // the one place in the app that uses it.
+                    style: const TextStyle(
+                      fontFamily: 'Baloo2',
                       fontSize: 42,
                       fontWeight: FontWeight.w800,
                       letterSpacing: -0.5,
-                      color: AppColors.textOnBrand,
+                      color: Colors.white,
                     ),
                   ),
                 ),

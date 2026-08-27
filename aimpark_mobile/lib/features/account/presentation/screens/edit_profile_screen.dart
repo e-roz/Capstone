@@ -1,13 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../../../core/theme/app_colors.dart';
-import '../../../../core/theme/app_spacing.dart';
-import '../../../../core/theme/app_text_styles.dart';
-import '../../../../core/utils/api_error_message.dart';
+import '../../../../core/theme/theme.dart';
 import '../../../../core/utils/app_flushbar.dart';
-import '../../../../core/widgets/app_button.dart';
-import '../../../../core/widgets/app_text_field.dart';
+import '../../../../core/widgets/widgets.dart';
+import '../../data/models/my_profile.dart';
 import '../providers/account_provider.dart';
 
 class EditProfileScreen extends ConsumerStatefulWidget {
@@ -18,20 +15,31 @@ class EditProfileScreen extends ConsumerStatefulWidget {
 }
 
 class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
-  final _fullNameController = TextEditingController();
-  final _phoneController = TextEditingController();
+  final _fullName = TextEditingController();
+  final _phone = TextEditingController();
   bool _isLoading = false;
-  bool _initialized = false;
+
+  /// The form is seeded once, from whichever frame the profile first arrives
+  /// in. Seeding on every build would overwrite what the user is typing the
+  /// moment anything else invalidated the provider.
+  bool _seeded = false;
 
   @override
   void dispose() {
-    _fullNameController.dispose();
-    _phoneController.dispose();
+    _fullName.dispose();
+    _phone.dispose();
     super.dispose();
   }
 
+  void _seed(MyProfile profile) {
+    if (_seeded) return;
+    _seeded = true;
+    _fullName.text = profile.fullName;
+    _phone.text = profile.phoneNumber ?? '';
+  }
+
   Future<void> _save() async {
-    final fullName = _fullNameController.text.trim();
+    final fullName = _fullName.text.trim();
     if (fullName.isEmpty) {
       showAppMessage(context, 'Full name cannot be empty.', isError: true);
       return;
@@ -39,11 +47,10 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
 
     setState(() => _isLoading = true);
     try {
+      final phone = _phone.text.trim();
       await ref.read(accountRepositoryProvider).updateProfile(
             fullName: fullName,
-            phoneNumber: _phoneController.text.trim().isEmpty
-                ? null
-                : _phoneController.text.trim(),
+            phoneNumber: phone.isEmpty ? null : phone,
           );
       await ref.read(profileNotifierProvider.notifier).refresh();
       if (mounted) {
@@ -51,7 +58,7 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
         Navigator.of(context).pop();
       }
     } catch (e) {
-      if (mounted) showAppMessage(context, apiErrorMessage(e), isError: true);
+      if (mounted) showApiError(context, e);
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
@@ -59,60 +66,50 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final profileAsync = ref.watch(profileNotifierProvider);
+    return AppScreen(
+      title: 'Edit Profile',
+      body: AsyncView(
+        value: ref.watch(profileNotifierProvider),
+        onRefresh: () => ref.read(profileNotifierProvider.notifier).refresh(),
+        // Previously a bare centred `Text('Failed to load profile.')` with no
+        // way to try again — the one screen in the app whose failure was a
+        // dead end.
+        errorTitle: "Couldn't load your profile",
+        data: (profile) {
+          _seed(profile);
 
-    ref.listen(profileNotifierProvider, (previous, next) {
-      if (!_initialized && next.hasValue) {
-        _initialized = true;
-        _fullNameController.text = next.value!.fullName;
-        _phoneController.text = next.value!.phoneNumber ?? '';
-      }
-    });
-
-    if (!_initialized && profileAsync.hasValue) {
-      _initialized = true;
-      _fullNameController.text = profileAsync.value!.fullName;
-      _phoneController.text = profileAsync.value!.phoneNumber ?? '';
-    }
-
-    return Scaffold(
-      backgroundColor: AppColors.bgPage,
-      appBar: AppBar(
-        backgroundColor: AppColors.bgPage,
-        elevation: 0,
-        title: Text('Edit Profile', style: AppTextStyles.h3),
-      ),
-      body: SafeArea(
-        child: profileAsync.when(
-          loading: () => const Center(child: CircularProgressIndicator()),
-          error: (error, _) => const Center(child: Text('Failed to load profile.')),
-          data: (_) => Padding(
-            padding: const EdgeInsets.all(AppSpacing.md),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                AppTextField(
-                  label: 'Full Name',
-                  controller: _fullNameController,
-                  textInputAction: TextInputAction.next,
-                ),
-                const SizedBox(height: AppSpacing.md),
-                AppTextField(
-                  label: 'Phone Number',
-                  controller: _phoneController,
-                  keyboardType: TextInputType.phone,
-                  textInputAction: TextInputAction.done,
-                ),
-                const SizedBox(height: AppSpacing.lg),
-                AppButton(
-                  label: 'Save Changes',
-                  isLoading: _isLoading,
-                  onPressed: _isLoading ? null : _save,
-                ),
-              ],
-            ),
-          ),
-        ),
+          return ListView(
+            padding: kScreenListPadding,
+            children: [
+              AppTextField(
+                label: 'Full Name',
+                controller: _fullName,
+                enabled: !_isLoading,
+                textCapitalization: TextCapitalization.words,
+                textInputAction: TextInputAction.next,
+                autofillHints: const [AutofillHints.name],
+              ),
+              const SizedBox(height: AppSpacing.md),
+              AppTextField(
+                label: 'Phone Number',
+                controller: _phone,
+                enabled: !_isLoading,
+                keyboardType: TextInputType.phone,
+                textInputAction: TextInputAction.done,
+                autofillHints: const [AutofillHints.telephoneNumber],
+                helperText: 'Optional. Used only if we need to reach you about '
+                    'your vehicle.',
+                onSubmitted: (_) => _isLoading ? null : _save(),
+              ),
+              const SizedBox(height: AppSpacing.lg),
+              AppButton(
+                label: 'Save Changes',
+                isLoading: _isLoading,
+                onPressed: _isLoading ? null : _save,
+              ),
+            ],
+          );
+        },
       ),
     );
   }

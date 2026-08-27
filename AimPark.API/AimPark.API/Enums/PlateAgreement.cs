@@ -22,8 +22,26 @@ namespace AimPark.API.Enums
         /// </summary>
         NotChecked,
 
-        /// <summary>The photo shows the plate the receipt names.</summary>
+        /// <summary>The photo shows exactly the plate the receipt names.</summary>
         Agreed,
+
+        /// <summary>
+        /// The photo shows a plate one character away from the receipt's.
+        /// </summary>
+        /// <remarks>
+        /// Split out from <see cref="Agreed"/> because the plate is shown read-only
+        /// and goes straight onto the vehicle record: one character of slack was
+        /// absorbing the exact error that matters most. A receipt misread as
+        /// "A8C 1234" against metal reading "ABC 1234" is one edit apart, so it used
+        /// to pass, and the wrong plate then sat in the database until someone was
+        /// turned away at the gate holding a valid card with nothing to explain why.
+        ///
+        /// The slack itself is still right — these are outdoor photographs at an
+        /// angle — so this is not a failure. It is the one case where the applicant
+        /// is asked to look at the two readings and say which is correct, because
+        /// they are holding both the receipt and the vehicle.
+        /// </remarks>
+        NearMatch,
 
         /// <summary>The photo shows a readable plate, and it is a different one.</summary>
         Differs

@@ -68,6 +68,37 @@ class RegistrationActions extends _$RegistrationActions {
     }
   }
 
+  /// Asks the applicant to retake specific documents.
+  ///
+  /// [documents] maps a `DocumentType` name to the reason that one is being
+  /// sent back. The reason is not optional at either end — a document returned
+  /// without one gets photographed exactly the same way again.
+  Future<String?> requestRetake(
+    String userId,
+    Map<String, String> documents, {
+    String? note,
+  }) async {
+    state = const AsyncLoading();
+    try {
+      final dio = ref.read(dioProvider);
+      final res = await dio.post(
+        ApiEndpoints.requestRetake(userId),
+        data: {
+          'documents': [
+            for (final entry in documents.entries)
+              {'type': entry.key, 'reason': entry.value},
+          ],
+          if (note != null && note.trim().isNotEmpty) 'note': note.trim(),
+        },
+      );
+      state = const AsyncData(null);
+      return (res.data as Map<String, dynamic>)['message']?.toString();
+    } on DioException catch (e) {
+      state = const AsyncData(null);
+      return _errorMessage(e);
+    }
+  }
+
   String _errorMessage(DioException e) {
     final data = e.response?.data;
     if (data is Map) return data['message']?.toString() ?? e.message ?? 'Error';

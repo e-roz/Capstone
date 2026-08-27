@@ -28,6 +28,7 @@ class ReportsScreen extends ConsumerWidget {
     final peaks = ref.watch(peakHoursProvider(days: days));
     final revenue = ref.watch(revenueTrendProvider(days: days));
     final breakdown = ref.watch(violationsBreakdownProvider);
+    final entryExit = ref.watch(entryExitReportProvider(days: days));
 
     final ready = summary.hasValue &&
         occupancy.hasValue &&
@@ -65,6 +66,7 @@ class ReportsScreen extends ConsumerWidget {
             ref.invalidate(reportsSummaryProvider);
             ref.invalidate(occupancyTrendProvider);
             ref.invalidate(peakHoursProvider);
+            ref.invalidate(entryExitReportProvider);
             ref.invalidate(revenueTrendProvider);
             ref.invalidate(violationsBreakdownProvider);
           },
@@ -113,6 +115,16 @@ class ReportsScreen extends ConsumerWidget {
                     ),
                 ],
               ),
+            ),
+          ),
+          const SizedBox(height: AppSpacing.gutter),
+          _ChartPanel(
+            title: 'Entries and exits',
+            caption: caption,
+            child: AsyncView(
+              value: entryExit,
+              onRetry: () => ref.invalidate(entryExitReportProvider),
+              data: (report) => _EntryExitPanel(report: report),
             ),
           ),
           const SizedBox(height: AppSpacing.gutter),
@@ -484,6 +496,140 @@ class _ChartPanel extends StatelessWidget {
           child,
         ],
       ),
+    );
+  }
+}
+
+/// Vehicles in against vehicles out, with the counts that put the chart in
+/// context.
+///
+/// Two bars a day rather than one net figure, because the gap between them is
+/// the point: entries far ahead of exits means cars are going in and never
+/// being logged out, which is the failure mode a manual gate actually has.
+class _EntryExitPanel extends StatelessWidget {
+  const _EntryExitPanel({required this.report});
+
+  final EntryExitReport report;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = context.tokens;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Wrap(
+          spacing: AppSpacing.x6,
+          runSpacing: AppSpacing.x3,
+          children: [
+            _Figure(label: 'Entries', value: '${report.totalEntries}'),
+            _Figure(label: 'Exits', value: '${report.totalExits}'),
+            _Figure(
+              label: 'Visitor entries',
+              value: '${report.totalVisitorEntries}',
+            ),
+            _Figure(
+              label: 'Still inside',
+              value: '${report.stillOpen}',
+              // Cars in the lot right now are expected. A big number here means
+              // exits are not being logged, so it is worth a colour.
+              intent: report.stillOpen > report.totalEntries * 0.2
+                  ? StatusIntent.warning
+                  : null,
+            ),
+          ],
+        ),
+        const SizedBox(height: AppSpacing.x5),
+        Row(
+          children: [
+            _Key(color: t.chart.series(0), label: 'In'),
+            const SizedBox(width: AppSpacing.x4),
+            _Key(color: t.chart.series(1), label: 'Out'),
+          ],
+        ),
+        const SizedBox(height: AppSpacing.x3),
+        AppBarChart(
+          height: 130,
+          data: [
+            for (final p in report.points)
+              AppChartDatum(
+                label: _dayLabel.format(p.date.toLocal()),
+                value: p.entries.toDouble(),
+                tooltip:
+                    '${_dayLabel.format(p.date.toLocal())} · ${p.entries} in',
+              ),
+          ],
+        ),
+        const SizedBox(height: AppSpacing.x2),
+        AppBarChart(
+          height: 130,
+          seriesIndex: 1,
+          data: [
+            for (final p in report.points)
+              AppChartDatum(
+                label: _dayLabel.format(p.date.toLocal()),
+                value: p.exits.toDouble(),
+                tooltip:
+                    '${_dayLabel.format(p.date.toLocal())} · ${p.exits} out',
+              ),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
+class _Figure extends StatelessWidget {
+  const _Figure({required this.label, required this.value, this.intent});
+
+  final String label;
+  final String value;
+  final StatusIntent? intent;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = context.tokens;
+    final text = Theme.of(context).textTheme;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(
+          label.toUpperCase(),
+          style: text.labelSmall
+              ?.copyWith(color: t.text.tertiary, letterSpacing: .6),
+        ),
+        Text(
+          value,
+          style: text.headlineSmall?.copyWith(
+            color: intent == null ? t.text.primary : t.status.of(intent!).solid,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _Key extends StatelessWidget {
+  const _Key({required this.color, required this.label});
+
+  final Color color;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          width: 10,
+          height: 10,
+          decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+        ),
+        const SizedBox(width: AppSpacing.x2),
+        Text(label, style: Theme.of(context).textTheme.bodySmall),
+      ],
     );
   }
 }

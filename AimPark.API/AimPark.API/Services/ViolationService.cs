@@ -2,6 +2,7 @@ using AimPark.API.Data;
 using AimPark.API.DTOs;
 using AimPark.API.Entities;
 using AimPark.API.Enums;
+using AimPark.API.Helpers;
 using AimPark.API.Interfaces;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -72,6 +73,7 @@ namespace AimPark.API.Services
                 DefaultPenaltyAmount = dto.DefaultPenaltyAmount,
                 DefaultSuspensionType = suspensionType,
                 DefaultSuspensionDays = dto.DefaultSuspensionDays,
+                AppealWindowDays = Math.Max(0, dto.AppealWindowDays),
                 IsActive = dto.IsActive,
                 CreatedAt = now,
                 UpdatedAt = now
@@ -100,6 +102,7 @@ namespace AimPark.API.Services
             rule.DefaultPenaltyAmount = dto.DefaultPenaltyAmount;
             rule.DefaultSuspensionType = suspensionType;
             rule.DefaultSuspensionDays = dto.DefaultSuspensionDays;
+            rule.AppealWindowDays = Math.Max(0, dto.AppealWindowDays);
             rule.IsActive = dto.IsActive;
             rule.UpdatedAt = DateTime.UtcNow;
 
@@ -167,8 +170,15 @@ namespace AimPark.API.Services
             await _violations.AddAsync(violation, ct);
             await _violations.SaveAsync(ct);
 
+            // Per rule, not per system: a rule an admin marked as immediate
+            // starts biting now, and everything else gets its window.
+            var windowDays = Math.Max(0, dto.AppealWindowDaysOverride ?? rule.AppealWindowDays);
+            var isImmediate = windowDays == 0;
+            var suspensionStartsAt =
+                isImmediate ? (DateTime?)null : DateTime.UtcNow.AddDays(windowDays);
+
             if (suspensionType != SuspensionType.None)
-                ApplySuspension(user, suspensionType, suspensionDays);
+                ApplySuspension(user, suspensionType, suspensionDays, suspensionStartsAt);
 
             _users.Update(user);
             await _users.SaveAsync(ct);
@@ -178,11 +188,25 @@ namespace AimPark.API.Services
             // Without this the user never learns they were penalised, which also
             // makes the appeal window meaningless — they cannot contest something
             // they have not been told about.
-            var suspensionNote = suspensionType switch
+            // Says when the card stops working and that appealing holds it off,
+            // because a message that only announces a penalty gives the reader
+            // no reason to open the app before it lands on them.
+            var suspensionNote = (suspensionType, isImmediate) switch
             {
-                SuspensionType.Permanent => " Your RFID access has been suspended.",
-                SuspensionType.Temporary => $" Your RFID access is suspended for {suspensionDays} day(s).",
-                _ => string.Empty
+                (SuspensionType.None, _) => string.Empty,
+
+                // Immediate: say so plainly, and say the appeal is still open.
+                // Somebody whose card has already stopped working will assume
+                // otherwise, and that assumption is what stops them appealing.
+                (SuspensionType.Permanent, true) =>
+                    " Your RFID access has been suspended, effective now. You can still appeal this.",
+                (SuspensionType.Temporary, true) =>
+                    $" Your RFID access has been suspended for {suspensionDays} day(s), effective now. You can still appeal this.",
+
+                (SuspensionType.Permanent, false) =>
+                    $" Your RFID access will be suspended on {suspensionStartsAt:MMM d}. Appeal before then and it is put on hold until a decision is made.",
+                (SuspensionType.Temporary, false) =>
+                    $" Your RFID access will be suspended for {suspensionDays} day(s) starting {suspensionStartsAt:MMM d}. Appeal before then and it is put on hold until a decision is made.",
             };
 
             await _notificationService.NotifyUserAsync(
@@ -377,6 +401,26 @@ namespace AimPark.API.Services
 
             await _appeals.SaveAsync(ct);
 
+            // The point of the appeal window: appeal inside it and the card
+            // keeps working until somebody has actually read the objection.
+            //
+            // Only while it has not started. Appeal after the suspension has
+            // bitten and it stays in force — otherwise a late appeal would be a
+            // way to switch the penalty off on demand.
+            var now = DateTime.UtcNow;
+            if (violation.SuspensionType != SuspensionType.None)
+            {
+                var user = await _users.FindAsync(u => u.Id == userId, ct);
+                if (user is not null
+                    && RfidAccess.IsSuspensionPending(user, now)
+                    && !await HasOtherSuspendingViolationAsync(userId, violationId, ct))
+                {
+                    RfidAccess.Reactivate(user, now);
+                    _users.Update(user);
+                    await _users.SaveAsync(ct);
+                }
+            }
+
             // Uploaded after the appeal is persisted, so a storage outage costs
             // the attachments rather than the appeal itself.
             foreach (var file in files)
@@ -429,6 +473,30 @@ namespace AimPark.API.Services
                 })
                 .ToListAsync(ct);
 
+            // One query for the whole page rather than one per appeal, then the
+            // signed URLs. Storage is asked for a URL per file, which is why
+            // this cannot be part of the projection above.
+            var appealIds = appeals.Select(a => a.AppealId).ToList();
+            var evidence = await _db.Set<AppealEvidence>().AsNoTracking()
+                .Where(e => appealIds.Contains(e.AppealId))
+                .OrderBy(e => e.UploadedAt)
+                .ToListAsync(ct);
+
+            var urlsByAppeal = new Dictionary<Guid, List<string>>();
+            foreach (var item in evidence)
+            {
+                if (!urlsByAppeal.TryGetValue(item.AppealId, out var urls))
+                    urlsByAppeal[item.AppealId] = urls = [];
+
+                urls.Add(await _fileStorage.GetFileUrlAsync(item.StoragePath, ct));
+            }
+
+            foreach (var appeal in appeals)
+            {
+                if (urlsByAppeal.TryGetValue(appeal.AppealId, out var urls))
+                    appeal.EvidenceUrls = urls;
+            }
+
             return new OkObjectResult(new ViolationAppealListResponse
             {
                 Appeals = appeals,
@@ -464,21 +532,37 @@ namespace AimPark.API.Services
 
             await _appeals.SaveAsync(ct);
 
-            if (dto.Approve)
+            if (violation.SuspensionType != SuspensionType.None)
             {
-                if (violation.SuspensionType != SuspensionType.None)
+                var user = await _users.FindAsync(u => u.Id == violation.UserId, ct);
+                if (user is not null)
                 {
-                    var user = await _users.FindAsync(u => u.Id == violation.UserId, ct);
-                    if (user is not null)
+                    if (dto.Approve)
                     {
-                        ReverseSuspension(user);
+                        // Only if nothing else is holding them suspended — see
+                        // HasOtherSuspendingViolationAsync.
+                        if (!await HasOtherSuspendingViolationAsync(violation.UserId, violation.Id, ct))
+                        {
+                            ReverseSuspension(user);
+                            _users.Update(user);
+                            await _users.SaveAsync(ct);
+                        }
+                    }
+                    else
+                    {
+                        // Submitting the appeal lifted the pending suspension.
+                        // Losing it puts it back, and it starts now rather than
+                        // on the original date, which by the time an appeal has
+                        // been read is usually in the past.
+                        ApplySuspension(user, violation.SuspensionType, violation.SuspensionDays);
                         _users.Update(user);
                         await _users.SaveAsync(ct);
                     }
                 }
-
-                await _paymentService.WaiveForViolationAsync(violation.Id, ct);
             }
+
+            if (dto.Approve)
+                await _paymentService.WaiveForViolationAsync(violation.Id, ct);
 
             // An appeal the user never hears back on is worse than no appeal.
             var notes = string.IsNullOrWhiteSpace(dto.AdminNotes) ? "" : $" Note: {dto.AdminNotes}";
@@ -489,7 +573,9 @@ namespace AimPark.API.Services
                 dto.Approve ? "Appeal approved" : "Appeal denied",
                 dto.Approve
                     ? $"Your appeal was approved. The violation has been overturned and the penalty waived.{notes}"
-                    : $"Your appeal was reviewed and the violation stands.{notes}",
+                    : violation.SuspensionType != SuspensionType.None
+                        ? $"Your appeal was reviewed and the violation stands. Your RFID access is now suspended.{notes}"
+                        : $"Your appeal was reviewed and the violation stands.{notes}",
                 new Dictionary<string, string> { ["violationId"] = violation.Id.ToString() },
                 ct);
 
@@ -498,21 +584,59 @@ namespace AimPark.API.Services
 
         // ---------- Helpers ----------
 
-        private static void ApplySuspension(User user, SuspensionType suspensionType, int? suspensionDays)
+        /// <summary>
+        /// The appeal window a rule gets when nobody has chosen one — see
+        /// <see cref="PolicyRule.AppealWindowDays"/>, which is where the real
+        /// value lives and where an admin can set it to zero for a rule that
+        /// has to stop somebody today.
+        /// </summary>
+        /// <remarks>
+        /// Only violations schedule ahead. An admin suspending an account by
+        /// hand is a deliberate act about that account, not an automatic penalty
+        /// attached to a rule, and takes effect at once.
+        /// </remarks>
+        public const int DefaultAppealWindowDays = 3;
+
+        /// <param name="startsAt">
+        /// When the suspension begins. Null means immediately.
+        /// </param>
+        private static void ApplySuspension(
+            User user, SuspensionType suspensionType, int? suspensionDays, DateTime? startsAt = null)
         {
+            var now = DateTime.UtcNow;
+            var effectiveFrom = startsAt ?? now;
+
             user.RfidStatus = RfidStatus.Suspended;
+            user.RfidSuspendedFrom = startsAt;
+            // Counted from the day it starts, not the day it was issued —
+            // otherwise the appeal window would eat the suspension it precedes,
+            // and a 3-day penalty inside a 3-day window would never be served.
             user.RfidSuspendedUntil = suspensionType == SuspensionType.Temporary
-                ? DateTime.UtcNow.AddDays(suspensionDays!.Value)
+                ? effectiveFrom.AddDays(suspensionDays!.Value)
                 : null;
-            user.UpdatedAt = DateTime.UtcNow;
+            user.UpdatedAt = now;
         }
 
         private static void ReverseSuspension(User user)
-        {
-            user.RfidStatus = RfidStatus.Active;
-            user.RfidSuspendedUntil = null;
-            user.UpdatedAt = DateTime.UtcNow;
-        }
+            => RfidAccess.Reactivate(user, DateTime.UtcNow);
+
+        /// <summary>
+        /// Whether any other violation still justifies keeping this user
+        /// suspended.
+        /// </summary>
+        /// <remarks>
+        /// Guards the two places that lift a suspension. Without it, appealing
+        /// the second of two suspending violations would unlock the card that
+        /// the first one legitimately locked.
+        /// </remarks>
+        private Task<bool> HasOtherSuspendingViolationAsync(
+            Guid userId, Guid exceptViolationId, CancellationToken ct)
+            => _db.Set<Violation>().AnyAsync(
+                v => v.UserId == userId
+                     && v.Id != exceptViolationId
+                     && v.SuspensionType != SuspensionType.None
+                     && (v.Status == ViolationStatus.Issued || v.Status == ViolationStatus.Upheld),
+                ct);
 
         private static BadRequestObjectResult? ValidateRuleDto(
             UpsertPolicyRuleDto dto,
@@ -625,6 +749,7 @@ namespace AimPark.API.Services
             DefaultPenaltyAmount = r.DefaultPenaltyAmount,
             DefaultSuspensionType = r.DefaultSuspensionType.ToString(),
             DefaultSuspensionDays = r.DefaultSuspensionDays,
+            AppealWindowDays = r.AppealWindowDays,
             IsActive = r.IsActive,
             CreatedAt = r.CreatedAt,
             UpdatedAt = r.UpdatedAt

@@ -27,11 +27,21 @@ class ParkingSlot {
 /// A vehicle currently inside — an entry with no exit recorded yet.
 class ActiveParkingSession {
   final String logId;
+
+  /// Empty for a visitor, who has no account.
   final String userId;
+
+  /// The account holder, or the visitor's name.
   final String userName;
+
   final String? plateNumber;
   final String? slotCode;
   final DateTime entryTime;
+
+  /// Whether this car got in on a card lent to a guest. The guard needs it:
+  /// a visitor pays cash on the way out and hands the card back, and neither
+  /// is true of anybody else in the list.
+  final bool isVisitor;
 
   const ActiveParkingSession({
     required this.logId,
@@ -40,6 +50,7 @@ class ActiveParkingSession {
     required this.plateNumber,
     required this.slotCode,
     required this.entryTime,
+    this.isVisitor = false,
   });
 
   factory ActiveParkingSession.fromJson(Map<String, dynamic> json) =>
@@ -50,6 +61,7 @@ class ActiveParkingSession {
         plateNumber: json['plateNumber']?.toString(),
         slotCode: json['slotCode']?.toString(),
         entryTime: DateTime.parse(json['entryTime'].toString()),
+        isVisitor: json['isVisitor'] as bool? ?? false,
       );
 }
 

@@ -78,16 +78,40 @@ class ParkingActions extends _$ParkingActions {
     });
   }
 
+  /// Closes the session belonging to a card, rather than to a picked log row.
+  ///
+  /// The gate screen only ever knows the card it just looked up - the same
+  /// thing a reader knows - so it cannot supply a log id. The server resolves
+  /// the open session from the tag, for an account or a visitor pass alike.
+  Future<String?> logExitByTag(String rfidTagId) async {
+    return _run(() async {
+      final dio = ref.read(dioProvider);
+      final res = await dio
+          .post(ApiEndpoints.logParkingExit, data: {'rfidTagId': rfidTagId});
+      return _exitMessage(res.data as Map<String, dynamic>);
+    });
+  }
+
   Future<String?> logExit(String logId) async {
     return _run(() async {
       final dio = ref.read(dioProvider);
       final res = await dio
           .post(ApiEndpoints.logParkingExit, data: {'logId': logId});
-      final data = res.data as Map<String, dynamic>;
-      final amount = data['amountDue'];
-      final msg = data['message']?.toString() ?? 'Exit logged.';
-      return amount != null ? '$msg Amount due: $amount' : msg;
+      return _exitMessage(res.data as Map<String, dynamic>);
     });
+  }
+
+  /// A visitor pays at the barrier, so the guard is told to collect it rather
+  /// than being shown a bill that was never raised against anybody.
+  String _exitMessage(Map<String, dynamic> data) {
+    final amount = data['amountDue'];
+    final msg = data['message']?.toString() ?? 'Exit logged.';
+    if (amount == null) return msg;
+
+    final cash = data['collectInCash'] == true;
+    return cash
+        ? '$msg Collect ₱$amount in cash.'
+        : '$msg Amount due: ₱$amount';
   }
 
   Future<String?> _run(Future<String?> Function() fn) async {

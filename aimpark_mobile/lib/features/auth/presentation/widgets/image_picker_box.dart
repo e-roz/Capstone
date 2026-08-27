@@ -3,9 +3,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 
-import '../../../../core/theme/app_colors.dart';
-import '../../../../core/theme/app_spacing.dart';
-import '../../../../core/theme/app_text_styles.dart';
+import '../../../../core/theme/theme.dart';
 
 class ImagePickerBox extends StatelessWidget {
   const ImagePickerBox({
@@ -13,11 +11,17 @@ class ImagePickerBox extends StatelessWidget {
     required this.label,
     required this.imagePath,
     required this.onImageSelected,
+    this.height = 140,
   });
 
   final String label;
   final String? imagePath;
   final ValueChanged<String> onImageSelected;
+
+  /// Shorter when three of these sit in one row: at the full height a row of
+  /// three reads as three tall slots rather than one control, and the prompt
+  /// underneath the icon has no width left to sit in.
+  final double height;
 
   Future<void> _pickImage(BuildContext context, ImageSource source) async {
     final picker = ImagePicker();
@@ -61,24 +65,28 @@ class ImagePickerBox extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final t = context.tokens;
+    final success = t.status.success;
     final hasImage = imagePath != null;
+    final compact = height < 120;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(label, style: AppTextStyles.labelSmall),
+        Text(label, style: context.text.labelSmall),
         const SizedBox(height: 6),
         InkWell(
           onTap: () => _showSourcePicker(context),
-          borderRadius: BorderRadius.circular(AppRadius.md),
+          borderRadius: AppRadius.mdAll,
           child: Container(
-            height: 140,
+            height: height,
             decoration: BoxDecoration(
-              color: AppColors.bgSurface,
+              color: t.surface.card,
               border: Border.all(
-                color: hasImage ? AppColors.successDefault : AppColors.borderDefault,
+                color: hasImage ? success.solid : t.border.normal,
                 width: hasImage ? 2 : 1.5,
               ),
-              borderRadius: BorderRadius.circular(AppRadius.md),
+              borderRadius: AppRadius.mdAll,
             ),
             clipBehavior: Clip.antiAlias,
             child: hasImage
@@ -93,15 +101,15 @@ class ImagePickerBox extends StatelessWidget {
                         top: 8,
                         right: 8,
                         child: Container(
-                          decoration: const BoxDecoration(
-                            color: AppColors.successDefault,
+                          decoration: BoxDecoration(
+                            color: success.solid,
                             shape: BoxShape.circle,
                           ),
                           padding: const EdgeInsets.all(4),
-                          child: const Icon(
+                          child: Icon(
                             Icons.check_rounded,
-                            size: 16,
-                            color: AppColors.textOnBrand,
+                            size: AppSizes.iconSm,
+                            color: t.text.onDark,
                           ),
                         ),
                       ),
@@ -115,11 +123,13 @@ class ImagePickerBox extends StatelessWidget {
                             color: Colors.black.withValues(alpha: 0.55),
                             padding: const EdgeInsets.symmetric(vertical: 6),
                             alignment: Alignment.center,
+                            // Sits on a scrim that is dark whatever the app
+                            // theme is doing, so this reads onDark rather than
+                            // the ordinary text tokens.
                             child: Text(
                               'Retake',
-                              style: AppTextStyles.labelSmall.copyWith(
-                                color: AppColors.textOnBrand,
-                              ),
+                              style: context.text.labelSmall
+                                  ?.copyWith(color: t.text.onDark),
                             ),
                           ),
                         ),
@@ -129,13 +139,20 @@ class ImagePickerBox extends StatelessWidget {
                 : Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      const Icon(
+                      Icon(
                         Icons.add_photo_alternate_outlined,
-                        size: 36,
-                        color: AppColors.brandDefault,
+                        size: compact ? AppSizes.iconLg : 36,
+                        color: t.brand.primary,
                       ),
                       const SizedBox(height: AppSpacing.xs),
-                      Text('Tap to add photo', style: AppTextStyles.bodySmall),
+                      // "Tap to add photo" ran the full width of a narrow box
+                      // and touched both borders. In a row of three there is no
+                      // room for the sentence, and the icon already says it.
+                      if (!compact)
+                        Text(
+                          'Tap to add photo',
+                          style: context.text.bodySmall,
+                        ),
                     ],
                   ),
           ),

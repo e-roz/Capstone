@@ -86,6 +86,8 @@ class PolicyRulesScreen extends ConsumerWidget {
         text: existing?.defaultPenaltyAmount.toString() ?? '0');
     final daysCtrl = TextEditingController(
         text: existing?.defaultSuspensionDays?.toString() ?? '');
+    final windowCtrl = TextEditingController(
+        text: (existing?.appealWindowDays ?? 3).toString());
     String suspensionType = existing?.defaultSuspensionType ?? 'None';
     String category = existing?.category ?? 'Parking';
     bool isActive = existing?.isActive ?? true;
@@ -172,6 +174,29 @@ class PolicyRulesScreen extends ConsumerWidget {
                             : null,
                       ),
                     ],
+                    // Only where there is a suspension to hold off. On a
+                    // fee-only rule the field would be asking about something
+                    // that never happens.
+                    if (suspensionType != 'None') ...[
+                      const SizedBox(height: AppSpacing.x3),
+                      TextFormField(
+                        controller: windowCtrl,
+                        keyboardType: TextInputType.number,
+                        decoration: const InputDecoration(
+                          labelText: 'Appeal window (days)',
+                          helperText:
+                              'The card keeps working this long so the user can '
+                              'appeal first. Enter 0 to suspend immediately — '
+                              'for rules where waiting is the unfair option.',
+                        ),
+                        validator: (v) {
+                          final n = int.tryParse(v?.trim() ?? '');
+                          if (n == null || n < 0) return 'Enter 0 or more days';
+                          if (n > 30) return '30 days at most';
+                          return null;
+                        },
+                      ),
+                    ],
                     const SizedBox(height: AppSpacing.x3),
                     SwitchListTile(
                       contentPadding: EdgeInsets.zero,
@@ -206,6 +231,9 @@ class PolicyRulesScreen extends ConsumerWidget {
     final notifier = ref.read(policyRuleActionsProvider.notifier);
     final days =
         suspensionType == 'Temporary' ? int.tryParse(daysCtrl.text.trim()) : null;
+    final window = suspensionType == 'None'
+        ? 3
+        : int.tryParse(windowCtrl.text.trim()) ?? 3;
 
     final msg = existing == null
         ? await notifier.create(
@@ -215,6 +243,7 @@ class PolicyRulesScreen extends ConsumerWidget {
             defaultPenaltyAmount: double.parse(penaltyCtrl.text.trim()),
             defaultSuspensionType: suspensionType,
             defaultSuspensionDays: days,
+            appealWindowDays: window,
             isActive: isActive,
           )
         : await notifier.update(
@@ -225,6 +254,7 @@ class PolicyRulesScreen extends ConsumerWidget {
             defaultPenaltyAmount: double.parse(penaltyCtrl.text.trim()),
             defaultSuspensionType: suspensionType,
             defaultSuspensionDays: days,
+            appealWindowDays: window,
             isActive: isActive,
           );
 
@@ -256,6 +286,12 @@ class _RuleCard extends StatelessWidget {
       'Permanent' => 'Suspends permanently',
       _ => null,
     };
+
+    // Worth its own pill, and a red one. A rule that suspends on the spot is
+    // the harshest thing an admin can write here, and it should not be
+    // discoverable only by opening the edit dialog.
+    final immediate =
+        suspension != null && rule.appealWindowDays == 0 ? 'Immediate' : null;
 
     return AppCard(
       child: Row(
@@ -313,6 +349,14 @@ class _RuleCard extends StatelessWidget {
                         dense: true,
                         showDot: false,
                         icon: Icons.block_outlined,
+                      ),
+                    if (immediate != null)
+                      StatusPill.of(
+                        immediate,
+                        intent: StatusIntent.danger,
+                        dense: true,
+                        showDot: false,
+                        icon: Icons.bolt_outlined,
                       ),
                   ],
                 ),

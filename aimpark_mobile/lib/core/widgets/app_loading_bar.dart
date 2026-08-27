@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../theme/app_spacing.dart';
+import '../theme/theme.dart';
 
 /// Indeterminate "sliding pill" loader from the AimPark splash design: a short
 /// bright thumb sweeps across a translucent track, easing in and out at either

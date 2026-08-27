@@ -26,14 +26,25 @@ enum PlateAgreement {
   /// One of the two readings is missing, so there was nothing to compare.
   notChecked,
 
-  /// The photo shows the plate the receipt names.
+  /// The photo shows exactly the plate the receipt names.
   agreed,
+
+  /// The photo shows a plate one character away from the receipt's.
+  ///
+  /// Not folded into [agreed], because the plate is the one value nobody types
+  /// and it goes straight onto the vehicle the gate matches against. The
+  /// tolerance is there for outdoor photographs taken at an angle, but it is
+  /// exactly wide enough to hide a one-character misreading of the receipt — so
+  /// this is the case where the person holding both the paper and the vehicle is
+  /// asked which reading is right.
+  nearMatch,
 
   /// The photo shows a readable plate, and it is a different one.
   differs;
 
   static PlateAgreement fromWire(String? value) => switch (value) {
     'Agreed' => PlateAgreement.agreed,
+    'NearMatch' => PlateAgreement.nearMatch,
     'Differs' => PlateAgreement.differs,
     _ => PlateAgreement.notChecked,
   };

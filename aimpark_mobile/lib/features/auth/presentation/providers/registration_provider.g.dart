@@ -29,8 +29,35 @@ final documentScannerProvider = Provider<DocumentScanner>.internal(
 @Deprecated('Will be removed in 3.0. Use Ref instead')
 // ignore: unused_element
 typedef DocumentScannerRef = ProviderRef<DocumentScanner>;
+String _$documentAgendaHash() => r'a192f740daaf3c10e6b00b167228288fc3209efe';
+
+/// Which documents to ask for: all four, or only the ones sent back.
+///
+/// Asked of the server rather than inferred, because only the server knows a
+/// reviewer has been through the submission. Falling back to the full set on any
+/// failure is deliberate — a network error must not silently turn a first
+/// registration into a one-document one, and asking for a document already on
+/// file costs a photograph while asking for too few costs a rejected
+/// application.
+///
+/// Copied from [documentAgenda].
+@ProviderFor(documentAgenda)
+final documentAgendaProvider =
+    AutoDisposeFutureProvider<DocumentAgenda>.internal(
+      documentAgenda,
+      name: r'documentAgendaProvider',
+      debugGetCreateSourceHash: const bool.fromEnvironment('dart.vm.product')
+          ? null
+          : _$documentAgendaHash,
+      dependencies: null,
+      allTransitiveDependencies: null,
+    );
+
+@Deprecated('Will be removed in 3.0. Use Ref instead')
+// ignore: unused_element
+typedef DocumentAgendaRef = AutoDisposeFutureProviderRef<DocumentAgenda>;
 String _$registrationNotifierHash() =>
-    r'eb84e81942ab1558a2ad602e833acf76cc6ae606';
+    r'351cabd372c6390edf12888ff3224177b1911f6f';
 
 /// See also [RegistrationNotifier].
 @ProviderFor(RegistrationNotifier)

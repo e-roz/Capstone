@@ -3,19 +3,31 @@ import 'dart:ui' as ui;
 
 import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
 
+import 'document_check.dart';
 import 'ocr_payload.dart';
 
-/// A photo together with what text recognition read from it.
+/// A photo, what text recognition read from it, and whether that is good enough.
 class CapturedDocument {
-  const CapturedDocument({required this.file, required this.payload});
+  const CapturedDocument({
+    required this.file,
+    required this.payload,
+    required this.issue,
+  });
 
   final File file;
 
-  /// Null when recognition failed outright. The photo is still submitted — the
-  /// server treats a missing payload as "nothing was read" and the user types
-  /// the values on the confirmation screen, rather than being blocked over a
-  /// detail they cannot influence.
+  /// Null when recognition failed outright.
   final OcrPayload? payload;
+
+  /// What is wrong with this photo, or null when nothing is.
+  ///
+  /// Decided at capture rather than at upload. The photo used to be accepted on
+  /// the sole basis that a file existed, so a black frame or a page of any text
+  /// at all continued happily through the remaining steps and only came back —
+  /// if at all — after four photographs had been uploaded together.
+  final DocumentIssue? issue;
+
+  bool get isUsable => issue == null;
 }
 
 /// Runs on-device text recognition over a captured document photo.
@@ -28,10 +40,11 @@ class DocumentScanner {
     script: TextRecognitionScript.latin,
   );
 
-  /// Reads [file] and returns the lines and boxes for [type].
+  /// Reads [file] and returns the lines, boxes and verdict for [type].
   ///
   /// Never throws for an unreadable photo: recognition failure comes back as a
-  /// null payload on the result, because the flow must stay submittable.
+  /// null payload carrying [DocumentIssue.noText], because the caller decides
+  /// what to do about it and this layer only reports.
   Future<CapturedDocument> scan(File file, ScanDocumentType type) async {
     try {
       final size = await _decodedSize(file);
@@ -62,17 +75,26 @@ class DocumentScanner {
         }
       }
 
+      final payload = OcrPayload(
+        documentType: type,
+        imageWidth: size.width.round(),
+        imageHeight: size.height.round(),
+        lines: lines,
+      );
+
       return CapturedDocument(
         file: file,
-        payload: OcrPayload(
-          documentType: type,
-          imageWidth: size.width.round(),
-          imageHeight: size.height.round(),
-          lines: lines,
-        ),
+        payload: payload,
+        issue: checkDocument(payload, type),
       );
     } catch (_) {
-      return CapturedDocument(file: file, payload: null);
+      // Recognition itself failing is indistinguishable, from here, from a photo
+      // with nothing on it — and calls for the same response.
+      return CapturedDocument(
+        file: file,
+        payload: null,
+        issue: DocumentIssue.noText,
+      );
     }
   }
 

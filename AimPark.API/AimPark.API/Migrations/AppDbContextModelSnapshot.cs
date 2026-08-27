@@ -140,6 +140,9 @@ namespace AimPark.API.Migrations
                         .IsRequired()
                         .HasColumnType("text");
 
+                    b.Property<string>("Sha256")
+                        .HasColumnType("text");
+
                     b.Property<string>("Type")
                         .IsRequired()
                         .HasColumnType("text");
@@ -151,6 +154,8 @@ namespace AimPark.API.Migrations
                         .HasColumnType("uuid");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("Sha256");
 
                     b.HasIndex("UserId");
 
@@ -246,6 +251,9 @@ namespace AimPark.API.Migrations
 
                     b.Property<string>("PlatePhotoMatch")
                         .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("RawPayloads")
                         .HasColumnType("text");
 
                     b.Property<string>("RegistrationValidity")
@@ -488,7 +496,10 @@ namespace AimPark.API.Migrations
                     b.Property<Guid?>("SlotId")
                         .HasColumnType("uuid");
 
-                    b.Property<Guid>("UserId")
+                    b.Property<Guid?>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("VisitorPassId")
                         .HasColumnType("uuid");
 
                     b.HasKey("Id");
@@ -498,6 +509,8 @@ namespace AimPark.API.Migrations
                     b.HasIndex("SlotId");
 
                     b.HasIndex("UserId");
+
+                    b.HasIndex("VisitorPassId");
 
                     b.ToTable("ParkingLogs");
                 });
@@ -842,6 +855,9 @@ namespace AimPark.API.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
+                    b.Property<int>("AppealWindowDays")
+                        .HasColumnType("integer");
+
                     b.Property<string>("Category")
                         .IsRequired()
                         .ValueGeneratedOnAdd()
@@ -1008,6 +1024,9 @@ namespace AimPark.API.Migrations
                     b.Property<DateTime?>("DeletedAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<string>("DocumentRetakeJson")
+                        .HasColumnType("text");
+
                     b.Property<string>("Email")
                         .IsRequired()
                         .HasColumnType("text");
@@ -1059,6 +1078,9 @@ namespace AimPark.API.Migrations
                     b.Property<string>("RfidStatus")
                         .IsRequired()
                         .HasColumnType("text");
+
+                    b.Property<DateTime?>("RfidSuspendedFrom")
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<DateTime?>("RfidSuspendedUntil")
                         .HasColumnType("timestamp with time zone");
@@ -1290,6 +1312,74 @@ namespace AimPark.API.Migrations
                     b.ToTable("ViolationAppeals");
                 });
 
+            modelBuilder.Entity("AimPark.API.Entities.VisitorPass", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("ContactNumber")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime>("ExpiresAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime>("IssuedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("IssuedByUserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("PlateNumber")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<string>("Purpose")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<DateTime?>("ReturnedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("RfidTagId")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("VehicleType")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<string>("VisitorName")
+                        .IsRequired()
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("IssuedAt");
+
+                    b.HasIndex("RfidTagId")
+                        .IsUnique()
+                        .HasFilter("\"Status\" = 'Active'");
+
+                    b.ToTable("VisitorPasses");
+                });
+
             modelBuilder.Entity("AimPark.API.Entities.AppealEvidence", b =>
                 {
                     b.HasOne("AimPark.API.Entities.ViolationAppeal", "Appeal")
@@ -1392,12 +1482,18 @@ namespace AimPark.API.Migrations
                     b.HasOne("AimPark.API.Entities.User", "User")
                         .WithMany()
                         .HasForeignKey("UserId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
+                        .OnDelete(DeleteBehavior.Cascade);
+
+                    b.HasOne("AimPark.API.Entities.VisitorPass", "VisitorPass")
+                        .WithMany()
+                        .HasForeignKey("VisitorPassId")
+                        .OnDelete(DeleteBehavior.Restrict);
 
                     b.Navigation("Slot");
 
                     b.Navigation("User");
+
+                    b.Navigation("VisitorPass");
                 });
 
             modelBuilder.Entity("AimPark.API.Entities.PaymentTransaction", b =>

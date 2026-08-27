@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 import '../models/violation.dart';
 import '../providers/violations_provider.dart';
 import '../theme/theme.dart';
+import 'document_viewer.dart';
 import 'ui/ui.dart';
 
 const _appealStatuses = ['Pending', 'Approved', 'Denied'];
@@ -141,6 +142,15 @@ class _AppealCard extends ConsumerWidget {
             ),
             child: Text(appeal.reasonText, style: text.bodyMedium),
           ),
+          if (appeal.evidenceUrls.isNotEmpty) ...[
+            const SizedBox(height: AppSpacing.x3),
+            Text(
+              'Evidence (${appeal.evidenceUrls.length})',
+              style: text.labelSmall?.copyWith(color: t.text.secondary),
+            ),
+            const SizedBox(height: AppSpacing.x2),
+            _EvidenceStrip(urls: appeal.evidenceUrls),
+          ],
           if (appeal.adminNotes case final notes? when notes.isNotEmpty)
             Padding(
               padding: const EdgeInsets.only(top: AppSpacing.x3),
@@ -248,5 +258,73 @@ class _AppealCard extends ConsumerWidget {
         .showSnackBar(SnackBar(content: Text(msg ?? 'Appeal decided.')));
     ref.invalidate(appealListProvider);
     ref.invalidate(violationListProvider);
+  }
+}
+
+/// The appeal's photographs, as a row of thumbnails that open full size.
+///
+/// Thumbnails rather than a list of links: an admin deciding an appeal is
+/// looking for whether the photo shows what the text claims, and a filename
+/// tells them nothing about that. Clicking one opens the existing viewer, so
+/// this behaves like the registration documents do.
+class _EvidenceStrip extends StatelessWidget {
+  const _EvidenceStrip({required this.urls});
+
+  final List<String> urls;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = context.tokens;
+
+    return Wrap(
+      spacing: AppSpacing.x2,
+      runSpacing: AppSpacing.x2,
+      children: [
+        for (final (i, url) in urls.indexed)
+          Tooltip(
+            message: 'Open photo ${i + 1}',
+            child: InkWell(
+              onTap: () => viewDocument(
+                context,
+                title: 'Appeal evidence ${i + 1}',
+                // The signed URL carries a query string, so the extension has
+                // to be read off the path rather than the whole thing —
+                // otherwise every image is mistaken for a PDF and opens in a
+                // new tab instead of the viewer.
+                fileName: Uri.parse(url).path,
+                url: url,
+              ),
+              borderRadius: AppRadii.smAll,
+              child: Container(
+                width: 92,
+                height: 92,
+                clipBehavior: Clip.antiAlias,
+                decoration: BoxDecoration(
+                  color: t.surface.muted,
+                  borderRadius: AppRadii.smAll,
+                  border: Border.all(color: t.border.normal),
+                ),
+                child: Image.network(
+                  url,
+                  fit: BoxFit.cover,
+                  errorBuilder: (_, _, _) => Icon(
+                    Icons.broken_image_outlined,
+                    color: t.text.tertiary,
+                  ),
+                  loadingBuilder: (_, child, progress) => progress == null
+                      ? child
+                      : const Center(
+                          child: SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          ),
+                        ),
+                ),
+              ),
+            ),
+          ),
+      ],
+    );
   }
 }

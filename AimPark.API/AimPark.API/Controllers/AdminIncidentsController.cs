@@ -8,7 +8,11 @@ namespace AimPark.API.Controllers
 {
     [ApiController]
     [Route("api/admin/incidents")]
-    [Authorize(Roles = "Admin")]
+    // Security reads the queue and files reports of their own - "Incident
+    // Reporting" is their module in the spec, and a guard who cannot see what
+    // has already been reported will report the same broken barrier twice.
+    // Deciding one is still an administrator's call; see Review below.
+    [Authorize(Roles = "Admin,Security")]
     public class AdminIncidentsController : ControllerBase
     {
         private readonly IIncidentService _incidentService;
@@ -30,6 +34,10 @@ namespace AimPark.API.Controllers
         public Task<ActionResult<IncidentDetailResponse>> GetDetail(Guid incidentId, CancellationToken ct)
             => _incidentService.GetDetailForAdminAsync(incidentId, ct);
 
+        // Reviewing is a decision with a consequence - it closes somebody's
+        // report and notifies them - so it stays with the administrator, and
+        // the panel hides the control rather than letting it 403.
+        [Authorize(Roles = "Admin")]
         [HttpPut("{incidentId:guid}/review")]
         public Task<ActionResult<object>> Review(Guid incidentId, [FromBody] ReviewIncidentDto dto, CancellationToken ct)
             => _incidentService.ReviewAsync(incidentId, GetAdminUserId(), dto, ct);

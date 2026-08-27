@@ -50,8 +50,17 @@ namespace AimPark.API.Services
                     l.CreatedAt,
                     l.LoggedByDeviceId,
                     l.LoggedByUserId,
-                    UserName = l.User.FullName,
-                    l.User.RfidTagId,
+                    l.VisitorPassId,
+                    UserName = l.User != null
+                        ? l.User.FullName
+                        : l.VisitorPass != null
+                            ? l.VisitorPass.VisitorName
+                            : "Unknown",
+                    RfidTagId = l.User != null
+                        ? l.User.RfidTagId
+                        : l.VisitorPass != null
+                            ? l.VisitorPass.RfidTagId
+                            : null,
                     SlotCode = l.Slot != null ? l.Slot.SlotCode : null,
                     Gate = l.Slot != null ? (int?)l.Slot.Gate : null
                 })
@@ -84,6 +93,7 @@ namespace AimPark.API.Services
                     Id = l.Id,
                     UserId = l.UserId,
                     UserName = l.UserName,
+                    IsVisitor = l.VisitorPassId != null,
                     RfidTagId = l.RfidTagId,
                     SlotCode = l.SlotCode,
                     Gate = l.Gate,

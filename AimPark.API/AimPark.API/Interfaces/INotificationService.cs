@@ -24,6 +24,27 @@ namespace AimPark.API.Interfaces
             string message,
             IDictionary<string, string>? data,
             CancellationToken ct);
+        /// <summary>
+        /// Raises a notification for everyone holding a role, with no
+        /// administrator behind it, and pushes it to their devices.
+        /// </summary>
+        /// <remarks>
+        /// Distinct from <c>BroadcastAsync</c>, which records the administrator
+        /// who chose to send it. This is the system noticing something - the lot
+        /// filling up, a bay coming free - where there is no author to record
+        /// and nobody pressed anything.
+        ///
+        /// Best-effort and never throws, for the same reason as
+        /// <see cref="NotifyUserAsync"/>: logging an entry must not fail because
+        /// messaging did.
+        /// </remarks>
+        Task NotifyRoleAsync(
+            UserRole role,
+            NotificationType type,
+            string title,
+            string message,
+            CancellationToken ct);
+
         Task<ActionResult<NotificationListResponse>> ListAllAsync(int page, int pageSize, CancellationToken ct);
         Task<ActionResult<NotificationListResponse>> ListForUserAsync(Guid userId, UserRole role, int page, int pageSize, CancellationToken ct);
         Task<ActionResult<object>> MarkReadAsync(Guid userId, Guid notificationId, CancellationToken ct);

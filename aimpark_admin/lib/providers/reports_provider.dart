@@ -54,6 +54,14 @@ Future<List<PeakHourPoint>> peakHours(Ref ref, {int days = 30}) async {
 }
 
 @riverpod
+Future<EntryExitReport> entryExitReport(Ref ref, {int days = 14}) async {
+  final dio = ref.watch(dioProvider);
+  final response = await dio
+      .get(ApiEndpoints.reportsEntryExit, queryParameters: {'days': days});
+  return EntryExitReport.fromJson(response.data as Map<String, dynamic>);
+}
+
+@riverpod
 Future<ViolationBreakdown> violationsBreakdown(Ref ref) async {
   final dio = ref.watch(dioProvider);
   final response = await dio.get(ApiEndpoints.reportsViolationsBreakdown);

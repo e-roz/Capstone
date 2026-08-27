@@ -1,8 +1,7 @@
 import 'package:flutter/material.dart';
 
-import '../../../../core/theme/app_colors.dart';
-import '../../../../core/theme/app_spacing.dart';
-import '../../../../core/theme/app_text_styles.dart';
+import '../../../../core/theme/theme.dart';
+import '../../../../core/widgets/widgets.dart';
 
 /// The terms a user agrees to at registration.
 ///
@@ -81,37 +80,23 @@ class TermsScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: AppColors.bgPage,
-      appBar: AppBar(
-        backgroundColor: AppColors.bgPage,
-        elevation: 0,
-        title: Text('Terms & Conditions', style: AppTextStyles.h3),
-      ),
-      body: SafeArea(
-        child: ListView(
-          padding: const EdgeInsets.all(AppSpacing.md),
-          children: [
-            Text('AimPark Parking Terms', style: AppTextStyles.h2),
-            const SizedBox(height: AppSpacing.xs),
-            Text(
-              'Please read these before completing your registration.',
-              style: AppTextStyles.bodyMedium
-                  .copyWith(color: AppColors.textSecondary),
-            ),
-            const SizedBox(height: AppSpacing.lg),
-            for (final (heading, body) in _sections) ...[
-              Text(
-                heading,
-                style: AppTextStyles.bodyMedium
-                    .copyWith(fontWeight: FontWeight.w700),
-              ),
-              const SizedBox(height: 4),
-              Text(body, style: AppTextStyles.bodySmall),
-              const SizedBox(height: AppSpacing.md),
-            ],
+    return AppScreen(
+      title: 'Terms & Conditions',
+      body: ListView(
+        padding: kScreenListPadding,
+        children: [
+          AppSectionHeader(
+            title: 'AimPark Parking Terms',
+            subtitle: 'Please read these before completing your registration.',
+            padding: const EdgeInsets.only(bottom: AppSpacing.lg),
+          ),
+          for (final (heading, body) in _sections) ...[
+            Text(heading, style: context.text.labelLarge),
+            const SizedBox(height: 4),
+            Text(body, style: context.text.bodySmall),
+            const SizedBox(height: AppSpacing.md),
           ],
-        ),
+        ],
       ),
     );
   }

@@ -9,6 +9,17 @@ namespace AimPark.API.Interfaces
         // Internal — called by ParkingHistoryService right after a session's ExitTime is recorded.
         Task<PaymentTransaction> CreateForCompletedLogAsync(ParkingLog log, CancellationToken ct);
 
+        /// <summary>
+        /// What a finished session costs, without recording anything.
+        /// </summary>
+        /// <remarks>
+        /// For visitors. They have no account to bill, so there is no
+        /// <c>PaymentTransaction</c> to raise and nowhere to send a "you owe
+        /// this" notification — but the guard at the barrier still has to be
+        /// told what to collect in cash.
+        /// </remarks>
+        Task<ParkingFeeQuote> QuoteForCompletedLogAsync(ParkingLog log, CancellationToken ct);
+
         // Internal — called by ViolationService when a violation carrying a penalty is issued.
         Task<PaymentTransaction> CreateForViolationAsync(Violation violation, CancellationToken ct);
 
@@ -30,4 +41,8 @@ namespace AimPark.API.Interfaces
         Task<ActionResult<List<ParkingRateResponse>>> ListRatesAsync(CancellationToken ct);
         Task<ActionResult<object>> UpsertRateAsync(UpsertParkingRateDto dto, CancellationToken ct);
     }
+
+    /// <summary>The fee for one finished session.</summary>
+    public record ParkingFeeQuote(int DurationMinutes, decimal RatePerHour, decimal AmountDue);
 }
+

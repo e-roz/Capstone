@@ -1,4 +1,5 @@
 using AimPark.API.DTOs;
+using AimPark.API.Enums;
 
 namespace AimPark.API.Interfaces
 {
@@ -23,5 +24,20 @@ namespace AimPark.API.Interfaces
         /// </param>
         Task<SlotRecommendationResponse> ClaimForEntryAsync(
             Guid userId, int? atGate, CancellationToken ct);
+
+        /// <summary>
+        /// Claims a slot for a vehicle whose type is already known, rather than
+        /// one looked up from a registered vehicle.
+        /// </summary>
+        /// <remarks>
+        /// For visitors. They hold a lent card and no account, so there is no
+        /// <c>Vehicle</c> row to read a type from — the pass carries it instead.
+        ///
+        /// <paramref name="userId"/> is used only for the tie-break that prefers
+        /// the gate somebody used last; pass null for a visitor, who by
+        /// definition has no last gate.
+        /// </remarks>
+        Task<SlotRecommendationResponse> ClaimForVehicleTypeAsync(
+            VehicleType vehicleType, Guid? userId, int? atGate, CancellationToken ct);
     }
 }

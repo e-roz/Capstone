@@ -29,10 +29,22 @@ namespace AimPark.API.DTOs
     public class ActiveParkingSessionResponse
     {
         public Guid LogId { get; set; }
-        public Guid UserId { get; set; }
+
+        /// <summary>Null when the session belongs to a visitor.</summary>
+        public Guid? UserId { get; set; }
+
+        /// <summary>The account holder, or the visitor's name.</summary>
         public string UserName { get; set; } = string.Empty;
+
         public string? PlateNumber { get; set; }
         public string? SlotCode { get; set; }
         public DateTime EntryTime { get; set; }
+
+        /// <summary>
+        /// Whether this car got in on a lent card. The guard needs it: a visitor
+        /// pays cash on the way out and hands the card back, and neither is true
+        /// of anybody else in the list.
+        /// </summary>
+        public bool IsVisitor { get; set; }
     }
 }

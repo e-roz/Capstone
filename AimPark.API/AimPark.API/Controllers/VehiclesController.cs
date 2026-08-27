@@ -26,6 +26,22 @@ namespace AimPark.API.Controllers
         public Task<ActionResult<object>> AddVehicle([FromBody] VehicleDTO dto, CancellationToken ct)
             => _vehicleService.AddVehicleAsync(dto, GetUserId(), ct);
 
+        /// <summary>
+        /// Reads the receipt and plate photo for a vehicle being added.
+        /// </summary>
+        [HttpPost("documents/scan")]
+        [RequestSizeLimit(25 * 1024 * 1024)]
+        [RequestFormLimits(MultipartBodyLengthLimit = 25 * 1024 * 1024)]
+        public Task<ActionResult<ScanResultResponse>> ScanVehicleDocuments([FromForm] VehicleDocumentUploadDto dto, CancellationToken ct)
+            => _vehicleService.ScanVehicleDocumentsAsync(dto, GetUserId(), ct);
+
+        /// <summary>
+        /// Commits the vehicle from a scan the user has checked.
+        /// </summary>
+        [HttpPost("documents/confirm")]
+        public Task<ActionResult<object>> ConfirmVehicle([FromBody] ConfirmVehicleDto dto, CancellationToken ct)
+            => _vehicleService.ConfirmVehicleAsync(dto, GetUserId(), ct);
+
         private Guid GetUserId()
             => Guid.Parse(User.FindFirst(ClaimTypes.NameIdentifier)!.Value);
     }

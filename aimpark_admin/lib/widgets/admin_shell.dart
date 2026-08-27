@@ -6,7 +6,12 @@ import '../core/utils/jwt_utils.dart';
 import '../core/utils/responsive.dart';
 import '../router/destinations.dart';
 import '../providers/auth_provider.dart';
+import '../providers/incidents_provider.dart';
+import '../providers/notifications_provider.dart';
+import '../providers/registrations_provider.dart';
+import '../providers/security_provider.dart';
 import '../providers/theme_provider.dart';
+import '../providers/violations_provider.dart';
 import '../theme/theme.dart';
 
 class AdminShell extends ConsumerStatefulWidget {
@@ -27,9 +32,18 @@ class _AdminShellState extends ConsumerState<AdminShell> {
   Widget build(BuildContext context) {
     final t = context.tokens;
     final location = GoRouterState.of(context).matchedLocation;
-    final selected = _selectedIndex(location);
     final token = ref.watch(authNotifierProvider).valueOrNull;
     final email = token == null ? null : JwtUtils.getEmail(token);
+
+    // Admin while the token is still loading. The router refuses every route
+    // in that state anyway, so this only decides what the frame draws for the
+    // one frame before it resolves.
+    final role = token == null
+        ? StaffRole.admin
+        : JwtUtils.staffRole(token) ?? StaffRole.admin;
+    final groups = navGroupsFor(role);
+    final items = [for (final g in groups) ...g.items];
+    final selected = _selectedIndex(location, items);
 
     // On a phone a sidebar would leave almost nothing for content, so
     // navigation moves behind a hamburger instead.
@@ -40,7 +54,7 @@ class _AdminShellState extends ConsumerState<AdminShell> {
           foregroundColor: t.text.onDark,
           elevation: 0,
           title: Text(
-            navItems[selected].label,
+            items[selected].label,
             style: Theme.of(context)
                 .textTheme
                 .titleMedium
@@ -54,6 +68,7 @@ class _AdminShellState extends ConsumerState<AdminShell> {
               collapsed: false,
               selected: selected,
               email: email,
+              groups: groups,
               onSelect: (route) {
                 Navigator.pop(context);
                 context.go(route);
@@ -85,6 +100,7 @@ class _AdminShellState extends ConsumerState<AdminShell> {
               collapsed: collapsed,
               selected: selected,
               email: email,
+              groups: groups,
               onSelect: context.go,
               onLogout: _logout,
               // Forced collapse isn't the admin's choice, so don't offer a
@@ -138,12 +154,12 @@ class _AdminShellState extends ConsumerState<AdminShell> {
     if (mounted) context.go('/login');
   }
 
-  int _selectedIndex(String location) {
+  int _selectedIndex(String location, List<NavItem> items) {
     // Longest-prefix first would matter if routes nested; they don't here.
-    for (var i = 0; i < navItems.length; i++) {
-      if (location.startsWith(navItems[i].route)) return i;
+    for (var i = 0; i < items.length; i++) {
+      if (location.startsWith(items[i].route)) return i;
     }
-    return 0; // default to pending
+    return 0; // default to the first destination this role has
   }
 }
 
@@ -155,6 +171,7 @@ class _SidebarBody extends StatelessWidget {
     required this.collapsed,
     required this.selected,
     required this.email,
+    required this.groups,
     required this.onSelect,
     required this.onLogout,
     required this.onToggleCollapse,
@@ -163,6 +180,9 @@ class _SidebarBody extends StatelessWidget {
   final bool collapsed;
   final int selected;
   final String? email;
+
+  /// Already filtered to what this account may open — see `navGroupsFor`.
+  final List<NavGroup> groups;
   final ValueChanged<String> onSelect;
   final Future<void> Function() onLogout;
 
@@ -187,7 +207,7 @@ class _SidebarBody extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                for (final group in navGroups) ...[
+                for (final group in groups) ...[
                   if (group.label case final label?)
                     _GroupLabel(label: label, collapsed: collapsed)
                   else
@@ -334,7 +354,7 @@ class _GroupLabel extends StatelessWidget {
 /// A destination. The selected state is an *inset* rounded block, not a
 /// full-bleed bar: the 8px of sidebar left showing on either side is what makes
 /// it read as a chip sitting in the rail rather than a highlighted table row.
-class _NavTile extends StatefulWidget {
+class _NavTile extends ConsumerStatefulWidget {
   const _NavTile({
     required this.item,
     required this.selected,
@@ -348,16 +368,42 @@ class _NavTile extends StatefulWidget {
   final VoidCallback onTap;
 
   @override
-  State<_NavTile> createState() => _NavTileState();
+  ConsumerState<_NavTile> createState() => _NavTileState();
 }
 
-class _NavTileState extends State<_NavTile> {
+class _NavTileState extends ConsumerState<_NavTile> {
   bool _hovered = false;
+
+  /// Work waiting behind this destination, or null if it does not track any.
+  ///
+  /// Looked up by route inside the tile rather than passed in, so the sidebar's
+  /// builder stays a plain loop over [navGroups] and adding a badge to another
+  /// destination is one case here.
+  int? get _badge => switch (widget.item.route) {
+        // Appeals are only counted for somebody who may open them. Watching
+        // that provider as Security fired a request the API answers with 403,
+        // on every screen, because the sidebar is always mounted.
+        '/incidents' when ref.watch(staffRoleProvider) == StaffRole.security =>
+          ref.watch(openIncidentCountProvider).valueOrNull,
+        '/incidents' => switch ((
+            ref.watch(openIncidentCountProvider).valueOrNull,
+            ref.watch(pendingAppealCountProvider).valueOrNull,
+          )) {
+            (null, null) => null,
+            (final a, final b) => (a ?? 0) + (b ?? 0),
+          },
+        '/pending' => ref.watch(pendingRegistrationsProvider).valueOrNull?.length,
+        '/visitors' => ref.watch(visitorsOnSiteCountProvider).valueOrNull,
+        '/notifications' => ref.watch(unreadInboxCountProvider).valueOrNull,
+        _ => null,
+      };
 
   @override
   Widget build(BuildContext context) {
     final t = context.tokens;
     final text = Theme.of(context).textTheme;
+    final badge = _badge;
+    final hasWork = badge != null && badge > 0;
 
     final background = widget.selected
         ? t.surface.sidebarSelected
@@ -389,11 +435,26 @@ class _NavTileState extends State<_NavTile> {
             ? MainAxisAlignment.center
             : MainAxisAlignment.start,
         children: [
-          Icon(
-            widget.selected ? widget.item.selectedIcon : widget.item.icon,
-            size: AppSizes.iconMd,
-            color: foreground,
-          ),
+          // Collapsed there is no room for a count, so the icon carries a dot
+          // instead — enough to say "something is here", which is the whole job
+          // of the rail in that state.
+          hasWork && widget.collapsed
+              ? Badge(
+                  smallSize: 8,
+                  backgroundColor: t.status.danger.solid,
+                  child: Icon(
+                    widget.selected
+                        ? widget.item.selectedIcon
+                        : widget.item.icon,
+                    size: AppSizes.iconMd,
+                    color: foreground,
+                  ),
+                )
+              : Icon(
+                  widget.selected ? widget.item.selectedIcon : widget.item.icon,
+                  size: AppSizes.iconMd,
+                  color: foreground,
+                ),
           if (!widget.collapsed) ...[
             const SizedBox(width: AppSpacing.x3),
             Expanded(
@@ -407,6 +468,21 @@ class _NavTileState extends State<_NavTile> {
                 ),
               ),
             ),
+            // The count, so the rail says where the work is without the admin
+            // opening each module to find out.
+            if (hasWork)
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+                decoration: BoxDecoration(
+                  color: t.status.danger.solid,
+                  borderRadius: AppRadii.fullAll,
+                ),
+                child: Text(
+                  badge > 99 ? '99+' : '$badge',
+                  style: text.labelSmall?.copyWith(color: t.text.onDark),
+                ),
+              ),
           ],
         ],
       ),

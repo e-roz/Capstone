@@ -17,5 +17,17 @@ namespace AimPark.API.DTOs
         public string? AdminNotes { get; set; }
         public DateTime CreatedAt { get; set; }
         public DateTime? DecidedAt { get; set; }
+
+        /// <summary>
+        /// The photos the user attached to the appeal.
+        /// </summary>
+        /// <remarks>
+        /// The mobile app has shown these on the user's own violation detail
+        /// since appeals were built, but the admin list they are decided from
+        /// never carried them — so the one person whose job is to look at the
+        /// evidence was the one person who could not. Signed URLs, generated
+        /// per request like every other stored file.
+        /// </remarks>
+        public List<string> EvidenceUrls { get; set; } = [];
     }
 }

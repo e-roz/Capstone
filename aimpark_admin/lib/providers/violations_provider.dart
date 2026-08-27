@@ -31,6 +31,7 @@ class PolicyRuleActions extends _$PolicyRuleActions {
     required double defaultPenaltyAmount,
     required String defaultSuspensionType,
     int? defaultSuspensionDays,
+    required int appealWindowDays,
     required bool isActive,
   }) =>
       _run(() async {
@@ -42,6 +43,7 @@ class PolicyRuleActions extends _$PolicyRuleActions {
           'defaultPenaltyAmount': defaultPenaltyAmount,
           'defaultSuspensionType': defaultSuspensionType,
           'defaultSuspensionDays': defaultSuspensionDays,
+          'appealWindowDays': appealWindowDays,
           'isActive': isActive,
         });
         return (res.data as Map<String, dynamic>)['message']?.toString();
@@ -55,6 +57,7 @@ class PolicyRuleActions extends _$PolicyRuleActions {
     required double defaultPenaltyAmount,
     required String defaultSuspensionType,
     int? defaultSuspensionDays,
+    required int appealWindowDays,
     required bool isActive,
   }) =>
       _run(() async {
@@ -66,6 +69,7 @@ class PolicyRuleActions extends _$PolicyRuleActions {
           'defaultPenaltyAmount': defaultPenaltyAmount,
           'defaultSuspensionType': defaultSuspensionType,
           'defaultSuspensionDays': defaultSuspensionDays,
+          'appealWindowDays': appealWindowDays,
           'isActive': isActive,
         });
         return (res.data as Map<String, dynamic>)['message']?.toString();
@@ -206,6 +210,19 @@ Future<ViolationAppealListPage> appealList(Ref ref) async {
   final response =
       await dio.get(ApiEndpoints.violationAppeals, queryParameters: params);
   return ViolationAppealListPage.fromJson(response.data as Map<String, dynamic>);
+}
+
+/// How many appeals are still waiting on a decision. See [openIncidentCount]
+/// for why this is a request of its own rather than a count off the list.
+@riverpod
+Future<int> pendingAppealCount(Ref ref) async {
+  final dio = ref.watch(dioProvider);
+  final response = await dio.get(
+    ApiEndpoints.violationAppeals,
+    queryParameters: {'page': 1, 'pageSize': 1, 'status': 'Pending'},
+  );
+  return ViolationAppealListPage.fromJson(response.data as Map<String, dynamic>)
+      .totalCount;
 }
 
 // ── Actions ───────────────────────────────────────────────────────────────

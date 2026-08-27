@@ -30,6 +30,7 @@ namespace AimPark.API.Data
         public DbSet<DeviceToken> DeviceTokens { get; set; }
         public DbSet<UserActivityLog> UserActivityLogs { get; set; }
         public DbSet<SystemErrorLog> SystemErrorLogs { get; set; }
+        public DbSet<VisitorPass> VisitorPasses { get; set; }
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -164,6 +165,10 @@ namespace AimPark.API.Data
                 entity.HasKey(d => d.Id);
                 entity.HasIndex(d => d.UserId);
 
+                // Looked up across accounts to spot the same photograph submitted
+                // twice, which is a scan of the whole table without this.
+                entity.HasIndex(d => d.Sha256);
+
                 entity.Property(d => d.Type)
                       .HasConversion<string>();
 
@@ -239,6 +244,29 @@ namespace AimPark.API.Data
                       .HasDefaultValueSql("NOW()");
             });
 
+            modelBuilder.Entity<VisitorPass>(entity =>
+            {
+                entity.HasKey(v => v.Id);
+
+                entity.Property(v => v.RfidTagId).IsRequired().HasMaxLength(64);
+                entity.Property(v => v.VisitorName).IsRequired().HasMaxLength(120);
+                entity.Property(v => v.PlateNumber).IsRequired().HasMaxLength(20);
+                entity.Property(v => v.Purpose).HasMaxLength(200);
+                entity.Property(v => v.ContactNumber).HasMaxLength(32);
+
+                entity.Property(v => v.VehicleType).HasConversion<string>().HasMaxLength(20);
+                entity.Property(v => v.Status).HasConversion<string>().HasMaxLength(20);
+
+                // One card, one open pass. The filter is what allows the same
+                // physical card to be lent out again after it comes back —
+                // a plain unique index would retire every card after one use.
+                entity.HasIndex(v => v.RfidTagId)
+                      .IsUnique()
+                      .HasFilter("\"Status\" = 'Active'");
+
+                entity.HasIndex(v => v.IssuedAt);
+            });
+
             modelBuilder.Entity<ParkingLog>(entity =>
             {
                 entity.HasKey(l => l.Id);
@@ -253,6 +281,16 @@ namespace AimPark.API.Data
                       .WithMany()
                       .HasForeignKey(l => l.UserId)
                       .OnDelete(DeleteBehavior.Cascade);
+
+                entity.HasOne(l => l.VisitorPass)
+                      .WithMany()
+                      .HasForeignKey(l => l.VisitorPassId)
+                      // Restrict, not Cascade: a visitor pass is the record of
+                      // who was let in, and deleting one must never take the
+                      // parking history with it.
+                      .OnDelete(DeleteBehavior.Restrict);
+
+                entity.HasIndex(l => l.VisitorPassId);
 
                 entity.HasOne(l => l.Slot)
                       .WithMany()

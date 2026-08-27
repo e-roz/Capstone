@@ -1,6 +1,7 @@
 using AimPark.API.DTOs;
 using AimPark.API.Entities;
 using AimPark.API.Enums;
+using AimPark.API.Helpers;
 using AimPark.API.Interfaces;
 using Microsoft.AspNetCore.Mvc;
 
@@ -88,14 +89,12 @@ namespace AimPark.API.Services
             if (user is null)
                 return new NotFoundObjectResult(new { message = "User not found." });
 
-            if (user.RfidStatus == RfidStatus.Suspended
-                && user.RfidSuspendedUntil is not null
-                && user.RfidSuspendedUntil <= DateTime.UtcNow)
+            var nowUtc = DateTime.UtcNow;
+
+            if (RfidAccess.HasExpired(user, nowUtc))
             {
                 // Temporary suspension has expired — lazily reactivate.
-                user.RfidStatus = RfidStatus.Active;
-                user.RfidSuspendedUntil = null;
-                user.UpdatedAt = DateTime.UtcNow;
+                RfidAccess.Reactivate(user, nowUtc);
 
                 _users.Update(user);
                 await _users.SaveAsync(ct);
@@ -105,7 +104,15 @@ namespace AimPark.API.Services
             {
                 RfidTagId = user.RfidTagId,
                 RfidStatus = user.RfidStatus.ToString(),
-                AccountStatus = user.AccountStatus.ToString()
+                AccountStatus = user.AccountStatus.ToString(),
+                // The app has to be able to tell "your card is dead" from "your
+                // card stops working on Friday unless you appeal", and the
+                // status alone says Suspended for both.
+                IsSuspendedNow = RfidAccess.IsSuspendedNow(user, nowUtc),
+                SuspensionStartsAt = RfidAccess.IsSuspensionPending(user, nowUtc)
+                    ? user.RfidSuspendedFrom
+                    : null,
+                SuspensionEndsAt = user.RfidSuspendedUntil
             });
         }
     }

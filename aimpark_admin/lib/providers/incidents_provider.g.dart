@@ -24,6 +24,30 @@ final incidentListProvider =
 @Deprecated('Will be removed in 3.0. Use Ref instead')
 // ignore: unused_element
 typedef IncidentListRef = AutoDisposeFutureProviderRef<IncidentListPage>;
+String _$openIncidentCountHash() => r'14283fa6f342521698379da3335d9874a0b50230';
+
+/// How many reports nobody has picked up yet.
+///
+/// Its own request rather than a count off [incidentList], because that list is
+/// filtered and paged by whatever the admin last chose — a page showing only
+/// resolved reports would report zero waiting, which is the opposite of the
+/// truth. `pageSize: 1` because only `totalCount` is read.
+///
+/// Copied from [openIncidentCount].
+@ProviderFor(openIncidentCount)
+final openIncidentCountProvider = AutoDisposeFutureProvider<int>.internal(
+  openIncidentCount,
+  name: r'openIncidentCountProvider',
+  debugGetCreateSourceHash: const bool.fromEnvironment('dart.vm.product')
+      ? null
+      : _$openIncidentCountHash,
+  dependencies: null,
+  allTransitiveDependencies: null,
+);
+
+@Deprecated('Will be removed in 3.0. Use Ref instead')
+// ignore: unused_element
+typedef OpenIncidentCountRef = AutoDisposeFutureProviderRef<int>;
 String _$incidentDetailHash() => r'210831150617f514a8aab01fc41fbcfc2026e44e';
 
 /// Copied from Dart SDK
@@ -185,7 +209,7 @@ final incidentsQueryNotifierProvider =
     );
 
 typedef _$IncidentsQueryNotifier = AutoDisposeNotifier<IncidentsQuery>;
-String _$incidentActionsHash() => r'dca4be70f79612546198487d493004cbc909eea1';
+String _$incidentActionsHash() => r'1d145cca6f49426ce19a5023ef4f002c93a253e3';
 
 /// See also [IncidentActions].
 @ProviderFor(IncidentActions)

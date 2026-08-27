@@ -9,6 +9,10 @@ class PolicyRule {
   final double defaultPenaltyAmount;
   final String defaultSuspensionType;
   final int? defaultSuspensionDays;
+
+  /// Days the offender's card keeps working so they can appeal before the
+  /// suspension starts. 0 means it starts immediately.
+  final int appealWindowDays;
   final bool isActive;
   final DateTime createdAt;
   final DateTime updatedAt;
@@ -21,6 +25,7 @@ class PolicyRule {
     required this.defaultPenaltyAmount,
     required this.defaultSuspensionType,
     required this.defaultSuspensionDays,
+    this.appealWindowDays = 3,
     required this.isActive,
     required this.createdAt,
     required this.updatedAt,
@@ -38,6 +43,7 @@ class PolicyRule {
         defaultSuspensionType:
             json['defaultSuspensionType']?.toString() ?? 'None',
         defaultSuspensionDays: (json['defaultSuspensionDays'] as num?)?.toInt(),
+        appealWindowDays: (json['appealWindowDays'] as num?)?.toInt() ?? 3,
         isActive: (json['isActive'] as bool?) ?? true,
         createdAt: DateTime.parse(json['createdAt'].toString()),
         updatedAt: DateTime.parse(json['updatedAt'].toString()),
@@ -156,6 +162,11 @@ class ViolationAppeal {
   final DateTime createdAt;
   final DateTime? decidedAt;
 
+  /// Photos the user attached to the appeal. The whole point of an appeal is
+  /// often the photograph, and this list arrived empty until the API was taught
+  /// to send it — so the queue was being decided on the text alone.
+  final List<String> evidenceUrls;
+
   const ViolationAppeal({
     required this.appealId,
     required this.violationId,
@@ -164,6 +175,7 @@ class ViolationAppeal {
     required this.adminNotes,
     required this.createdAt,
     required this.decidedAt,
+    this.evidenceUrls = const [],
   });
 
   factory ViolationAppeal.fromJson(Map<String, dynamic> json) =>
@@ -177,6 +189,9 @@ class ViolationAppeal {
         decidedAt: json['decidedAt'] == null
             ? null
             : DateTime.parse(json['decidedAt'].toString()),
+        evidenceUrls: (json['evidenceUrls'] as List<dynamic>? ?? const [])
+            .map((e) => e.toString())
+            .toList(),
       );
 }
 

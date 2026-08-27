@@ -68,6 +68,33 @@ namespace AimPark.API.Helpers
         }
 
         /// <summary>
+        /// Decides whether a document was readable, and whether it is the document
+        /// it was submitted as.
+        /// </summary>
+        /// <remarks>
+        /// The two questions are asked in this order on purpose. An unreadable page
+        /// cannot be identified either, so reporting "this is not a receipt" for a
+        /// photograph that is simply too dark would send the user hunting for a
+        /// document they are already holding.
+        ///
+        /// The landmark check runs on prepared lines rather than raw ones: the CR is
+        /// printed sideways on the same sheet as the OR, and its rotated text would
+        /// otherwise be searched for receipt landmarks it does not carry.
+        /// </remarks>
+        public static ScanFailureReason Diagnose(
+            IReadOnlyCollection<OcrLineDto> rawLines,
+            DocumentType type)
+        {
+            var readability = Diagnose(rawLines);
+            if (readability != ScanFailureReason.None)
+                return readability;
+
+            return DocumentLandmarks.LooksGenuine(Prepare(rawLines), type)
+                ? ScanFailureReason.None
+                : ScanFailureReason.WrongDocument;
+        }
+
+        /// <summary>
         /// Decides whether a document was readable at all.
         /// </summary>
         /// <remarks>
@@ -108,6 +135,8 @@ namespace AimPark.API.Helpers
                 $"Turn your phone so the {documentLabel} reads upright, then take the photo again.",
             ScanFailureReason.Blurry =>
                 $"The {documentLabel} is too blurry to read. Hold steady, get closer, and try again.",
+            ScanFailureReason.WrongDocument =>
+                $"This does not look like the {documentLabel}. Check you photographed the right document, and that all of it is inside the frame.",
             _ => string.Empty
         };
     }

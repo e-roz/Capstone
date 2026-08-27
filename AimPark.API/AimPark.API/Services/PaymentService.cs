@@ -40,7 +40,7 @@ namespace AimPark.API.Services
         }
 
         // Called by ParkingHistoryService.LogExitAsync right after ExitTime is recorded.
-        public async Task<PaymentTransaction> CreateForCompletedLogAsync(ParkingLog log, CancellationToken ct)
+        public async Task<ParkingFeeQuote> QuoteForCompletedLogAsync(ParkingLog log, CancellationToken ct)
         {
             VehicleType? vehicleType = null;
             if (log.SlotId is not null)
@@ -65,12 +65,24 @@ namespace AimPark.API.Services
             var durationMinutes = Math.Max(0, (int)Math.Round((log.ExitTime!.Value - log.EntryTime).TotalMinutes));
             var amountDue = Math.Round(ratePerHour / 60m * durationMinutes, 2);
 
+            return new ParkingFeeQuote(durationMinutes, ratePerHour, amountDue);
+        }
+
+        public async Task<PaymentTransaction> CreateForCompletedLogAsync(ParkingLog log, CancellationToken ct)
+        {
+            if (log.UserId is null)
+                throw new InvalidOperationException(
+                    "A visitor session has no account to bill. Use QuoteForCompletedLogAsync.");
+
+            var (durationMinutes, ratePerHour, amountDue) =
+                await QuoteForCompletedLogAsync(log, ct);
+
             var transaction = new PaymentTransaction
             {
                 Id = Guid.NewGuid(),
                 Source = PaymentSource.ParkingFee,
                 ParkingLogId = log.Id,
-                UserId = log.UserId,
+                UserId = log.UserId.Value,
                 DurationMinutes = durationMinutes,
                 RatePerHourApplied = ratePerHour,
                 AmountDue = amountDue,
@@ -89,7 +101,7 @@ namespace AimPark.API.Services
             var duration = hours > 0 ? $"{hours}h {minutes}m" : $"{minutes}m";
 
             await _notificationService.NotifyUserAsync(
-                log.UserId,
+                log.UserId.Value,
                 NotificationType.Payment,
                 "Parking fee",
                 $"You parked for {duration}. Amount due: ₱{amountDue:0.00}.",

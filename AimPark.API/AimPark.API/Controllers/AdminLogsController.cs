@@ -7,7 +7,11 @@ namespace AimPark.API.Controllers
 {
     [ApiController]
     [Route("api/admin/logs")]
-    [Authorize(Roles = "Admin")]
+    // RFID access is the guard's own module - "Access Monitoring" in the spec -
+    // so Security reads it here rather than through a second endpoint returning
+    // the same rows. The other two logs stay Admin-only: user activity and
+    // system errors are administration, not gate work.
+    [Authorize(Roles = "Admin,Security")]
     public class AdminLogsController : ControllerBase
     {
         private readonly IAdminLogService _logService;
@@ -34,6 +38,7 @@ namespace AimPark.API.Controllers
         /// Account activity — logins, failed logins, registrations and status
         /// changes — most recent first. Optional `activity` filters to one kind.
         /// </summary>
+        [Authorize(Roles = "Admin")]
         [HttpGet("user-activity")]
         public Task<ActionResult<UserActivityLogListResponse>> ListUserActivity(
             [FromQuery] int page = 1,
@@ -46,6 +51,7 @@ namespace AimPark.API.Controllers
         /// Unhandled server errors, most recent first, as captured by the global
         /// exception handler.
         /// </summary>
+        [Authorize(Roles = "Admin")]
         [HttpGet("errors")]
         public Task<ActionResult<SystemErrorLogListResponse>> ListErrors(
             [FromQuery] int page = 1,

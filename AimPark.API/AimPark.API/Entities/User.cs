@@ -42,6 +42,33 @@ namespace AimPark.API.Entities
         public int RejectionCount { get; set; }
         public DateTime? CanReapplyAt { get; set; }
 
+        /// <summary>
+        /// Documents a reviewer has sent back, as JSON: an array of
+        /// <c>{ "type": "OfficialReceipt", "reason": "..." }</c>. Null when
+        /// nothing is outstanding.
+        /// </summary>
+        /// <remarks>
+        /// This is the difference between "your application was refused" and
+        /// "one photograph was unreadable". Rejection was the only tool a
+        /// reviewer had, and it cost the applicant all four documents plus a
+        /// cooldown to fix a single blurry receipt — and cost the reviewer a
+        /// second full read of three documents they had already approved.
+        ///
+        /// JSON in one column rather than a table, matching
+        /// <c>DocumentVerification.RawPayloads</c>. What is stored is a short
+        /// list that is written once, read once and then cleared; nothing joins
+        /// or aggregates it, so a table would buy nothing but a migration.
+        ///
+        /// The account stays <see cref="Enums.AccountStatus.PendingReview"/>
+        /// while this is set — the applicant has not been refused, they are
+        /// being asked for something. Moving them back to
+        /// <see cref="Enums.RegistrationStep.DocumentUpload"/> is what routes
+        /// them into the capture flow on their next sign-in, using the same
+        /// registration-only token path an unfinished registration already
+        /// takes.
+        /// </remarks>
+        public string? DocumentRetakeJson { get; set; }
+
         public bool IsFirstLogin { get; set; } = true;
 
         // When this user accepted the terms and conditions. Recorded rather than
@@ -67,5 +94,24 @@ namespace AimPark.API.Entities
         // Meaningful only when RfidStatus == Suspended: null = permanent/indefinite,
         // a date = temporary suspension, lazily checked/cleared on read.
         public DateTime? RfidSuspendedUntil { get; set; }
+
+        /// <summary>
+        /// When a scheduled suspension starts biting. Null means "already in
+        /// force", which is how every suspension behaved before appeal windows
+        /// existed and how an admin-imposed one still behaves.
+        /// </summary>
+        /// <remarks>
+        /// A violation with a suspension no longer locks the card the instant
+        /// it is issued. The card keeps working until this moment, which gives
+        /// the user time to read the notification and appeal — appealing a
+        /// penalty you are already serving was the complaint that put this
+        /// here. Meaningful only when <see cref="RfidStatus"/> is
+        /// <c>Suspended</c>, exactly like <see cref="RfidSuspendedUntil"/>.
+        ///
+        /// Read it through <c>RfidAccess.IsSuspendedNow</c> rather than
+        /// directly: a status of Suspended is no longer the same thing as being
+        /// refused at the gate.
+        /// </remarks>
+        public DateTime? RfidSuspendedFrom { get; set; }
     }
 }

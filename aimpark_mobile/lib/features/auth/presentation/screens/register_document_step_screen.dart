@@ -1,35 +1,22 @@
-import 'dart:io';
-
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../../core/camera/camera_capture_screen.dart';
+import '../../../../core/ocr/document_recognizer.dart';
 import '../../../../core/ocr/document_scanner.dart';
 import '../../../../core/ocr/ocr_payload.dart';
-import '../../../../core/theme/app_colors.dart';
-import '../../../../core/theme/app_spacing.dart';
-import '../../../../core/theme/app_text_styles.dart';
-import '../../../../core/utils/api_error_message.dart';
+import '../../../../core/theme/theme.dart';
 import '../../../../core/utils/app_flushbar.dart';
-import '../../../../core/widgets/app_button.dart';
+import '../../../../core/widgets/widgets.dart';
+import '../../data/models/document_spec.dart';
 import '../../data/models/scan_result.dart';
 import '../providers/auth_provider.dart';
 import '../providers/registration_provider.dart';
+import '../widgets/document_photo_panel.dart';
 import '../widgets/registration_step_scaffold.dart';
-import 'document_capture_screen.dart';
 import 'register_confirm_screen.dart';
-
-/// The documents registration asks for, in the order they are asked for.
-///
-/// Students prove enrolment with a registration form; everyone else brings a
-/// school ID, which is filed but not read.
-List<DocumentSpec> documentSpecsFor(Affiliation affiliation) => [
-  affiliation == Affiliation.student ? DocumentSpec.raf : DocumentSpec.schoolId,
-  DocumentSpec.license,
-  DocumentSpec.officialReceipt,
-  DocumentSpec.platePhoto,
-];
 
 /// One document, one screen.
 ///
@@ -48,7 +35,7 @@ class RegisterDocumentStepScreen extends ConsumerStatefulWidget {
     this.retakeMessage,
   });
 
-  /// Position in [documentSpecsFor], 0-3.
+  /// Position in [DocumentSpec.forAffiliation], 0-3.
   final int index;
 
   /// The server's own wording for why this document came back, when the flow
@@ -62,6 +49,15 @@ class RegisterDocumentStepScreen extends ConsumerStatefulWidget {
 
 class _RegisterDocumentStepScreenState
     extends ConsumerState<RegisterDocumentStepScreen> {
+  /// Photographs of one document before the flow stops asking for another.
+  ///
+  /// Mirrors the server's own limit, and exists for the same reason: the checks
+  /// are derived from the documents that were on hand when they were written, so
+  /// a form printed to a template nobody has seen must not be able to lock a
+  /// real applicant out. After this many tries the photo is sent as it is and
+  /// the reviewer is told the system could not recognise it.
+  static const int _maxCaptureAttempts = 3;
+
   bool _isSubmitting = false;
 
   /// Set when the server sends this document back for a retake.
@@ -74,30 +70,39 @@ class _RegisterDocumentStepScreenState
   }
 
   Future<void> _capture(DocumentSpec spec) async {
-    final result = await Navigator.of(context).push<CapturedDocument>(
+    final result =
+        await Navigator.of(context).push<CapturedDocument>(
       MaterialPageRoute(
-        builder: (_) => DocumentCaptureScreen(
+        builder: (_) => CameraCaptureScreen<CapturedDocument>(
           spec: spec,
-          scanner: ref.read(documentScannerProvider),
+          // The scanner is shared across all four captures by the provider;
+          // this only binds it to the document being photographed now.
+          recognizer: DocumentRecognizer(
+            ref.read(documentScannerProvider),
+            spec.type,
+          ),
         ),
       ),
     );
     if (result == null || !mounted) return;
 
-    ref.read(registrationNotifierProvider.notifier).setCaptured(spec.type, result);
+    ref.read(registrationNotifierProvider.notifier).setCaptured(
+          spec.type,
+          result,
+        );
 
-    // The verdict described the previous photo. Leaving it up would tell someone
-    // their retake is still blurry before anyone has looked at it.
+    // The verdict described the previous photo. Leaving it up would tell
+    // someone their retake is still blurry before anyone has looked at it.
     setState(() => _retakeMessage = null);
   }
 
   /// Names each photo the way the server's multipart form expects.
   String _fieldFor(ScanDocumentType type) => switch (type) {
-    ScanDocumentType.raf || ScanDocumentType.schoolId => 'IdentityDocument',
-    ScanDocumentType.license => 'License',
-    ScanDocumentType.officialReceipt => 'OfficialReceipt',
-    ScanDocumentType.platePhoto => 'PlatePhoto',
-  };
+        ScanDocumentType.raf || ScanDocumentType.schoolId => 'IdentityDocument',
+        ScanDocumentType.license => 'License',
+        ScanDocumentType.officialReceipt => 'OfficialReceipt',
+        ScanDocumentType.platePhoto => 'PlatePhoto',
+      };
 
   Future<String?> _oversizedPhoto(
     List<DocumentSpec> specs,
@@ -167,10 +172,12 @@ class _RegisterDocumentStepScreenState
       }
 
       await Navigator.of(context).push(
-        MaterialPageRoute(builder: (_) => RegisterConfirmScreen(result: result)),
+        MaterialPageRoute(
+          builder: (_) => RegisterConfirmScreen(result: result),
+        ),
       );
     } catch (e) {
-      if (mounted) showAppMessage(context, apiErrorMessage(e), isError: true);
+      if (mounted) showApiError(context, e);
     } finally {
       if (mounted) setState(() => _isSubmitting = false);
     }
@@ -190,24 +197,24 @@ class _RegisterDocumentStepScreenState
       // The server reports the identity slot under whichever kind the account
       // files under, decided from the affiliation on record rather than the one
       // this flow guessed — so accept either name there.
-      final isIdentity =
-          spec.type == ScanDocumentType.raf ||
+      final isIdentity = spec.type == ScanDocumentType.raf ||
           spec.type == ScanDocumentType.schoolId;
 
       final diagnosis = isIdentity
           ? byType[ScanDocumentType.raf.wireName] ??
-                byType[ScanDocumentType.schoolId.wireName]
+              byType[ScanDocumentType.schoolId.wireName]
           : byType[spec.type.wireName];
 
       if (diagnosis == null) continue;
 
       final tries =
           '${result.triesLeft} ${result.triesLeft == 1 ? 'try' : 'tries'} left';
+      final message = '${diagnosis.message} ($tries)';
 
       if (i == widget.index) {
-        setState(() => _retakeMessage = '${diagnosis.message} ($tries)');
+        setState(() => _retakeMessage = message);
       } else {
-        context.go('/register/documents/$i', extra: '${diagnosis.message} ($tries)');
+        context.go('/register/documents/$i', extra: message);
       }
       return;
     }
@@ -215,51 +222,104 @@ class _RegisterDocumentStepScreenState
 
   @override
   Widget build(BuildContext context) {
-    final affiliation = ref.watch(
-      registrationNotifierProvider.select((s) => s.affiliation),
-    );
     final captured = ref.watch(
       registrationNotifierProvider.select((s) => s.captured),
     );
 
-    final specs = documentSpecsFor(affiliation);
+    final attempts = ref.watch(
+      registrationNotifierProvider.select((s) => s.captureAttempts),
+    );
+
+    final hydrated = ref.watch(
+      registrationNotifierProvider.select((s) => s.hydrated),
+    );
+
+    final agenda = ref.watch(documentAgendaProvider);
+
+    // Photos taken before the app was killed are still being read back off
+    // disk, and the server has not yet said whether a reviewer asked for
+    // anything specific. Rendering the empty prompt first would invite someone
+    // to re-photograph a document they had already done, or to photograph four
+    // when only one was wanted.
+    if (!hydrated || agenda.isLoading) return const _DocumentStepLoading();
+
+    final specs = agenda.valueOrNull?.specs ??
+        DocumentSpec.forAffiliation(
+          ref.read(registrationNotifierProvider).affiliation,
+        );
+
+    // A retake list is shorter than the full set, and the route's index survives
+    // from whatever the user was doing before. Clamped rather than trusted.
+    if (widget.index >= specs.length) {
+      return _DocumentStepOutOfRange(lastIndex: specs.length - 1);
+    }
+
     final spec = specs[widget.index];
+    final reviewerNote = agenda.valueOrNull?.reasons[spec.type];
     final photo = captured[spec.type];
     final isLast = widget.index == specs.length - 1;
+
+    final retakesSpent = (attempts[spec.type] ?? 0) >= _maxCaptureAttempts;
+
+    // The photo has to be readable and the right document before the flow moves
+    // on. Once the retakes are spent it goes up regardless — a check derived
+    // from a handful of sample forms is not grounds for refusing to register
+    // someone, only for telling a reviewer it could not be confirmed.
+    final canProceed = photo != null && (photo.isUsable || retakesSpent);
 
     return RegistrationStepScaffold(
       step: 4,
       title: 'Documents',
       subStep: '${widget.index + 1} of ${specs.length}',
+      // Back walks the sequence, so a document can be looked at or retaken
+      // after moving past it. From the first document it goes to the profile
+      // step, which reopens as an edit of the account that step created rather
+      // than as a second submission of it.
+      //
+      // That step is where affiliation is chosen, and affiliation is what
+      // decides which documents this screen asks for — so without a way back to
+      // it, someone who picked the wrong one was being asked for a document
+      // they do not have, on a screen with no way out.
+      busy: _isSubmitting,
+      onBack: widget.index == 0
+          ? () => context.go('/register/profile')
+          : () => context.go('/register/documents/${widget.index - 1}'),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text(spec.label, style: AppTextStyles.h2),
-          const SizedBox(height: AppSpacing.xs),
-          Text(
-            spec.purpose,
-            style: AppTextStyles.bodyMedium.copyWith(
-              color: AppColors.textSecondary,
-            ),
+          RegistrationStepHeading(
+            title: spec.label,
+            subtitle: spec.purpose,
           ),
-          const SizedBox(height: AppSpacing.lg),
-
-          _PhotoPanel(
+          // The reviewer's own words, above the frame rather than below it: this
+          // is the instruction for the photograph about to be taken, not a
+          // verdict on one already taken.
+          if (reviewerNote != null && reviewerNote.isNotEmpty) ...[
+            AppNotice(
+              title: 'The reviewer asked for this again',
+              message: reviewerNote,
+              intent: StatusIntent.warning,
+            ),
+            const SizedBox(height: AppSpacing.md),
+          ],
+          DocumentPhotoPanel(
             spec: spec,
             photo: photo,
+            retakesSpent: retakesSpent,
             onCapture: _isSubmitting ? null : () => _capture(spec),
           ),
-
           if (_retakeMessage != null) ...[
             const SizedBox(height: AppSpacing.md),
-            _RetakeNotice(message: _retakeMessage!),
+            AppNotice(
+              message: _retakeMessage!,
+              intent: StatusIntent.danger,
+            ),
           ],
-
           const SizedBox(height: AppSpacing.xl),
           AppButton(
             label: isLast ? 'Read my documents' : 'Continue',
             isLoading: _isSubmitting,
-            onPressed: photo == null || _isSubmitting
+            onPressed: !canProceed || _isSubmitting
                 ? null
                 : () {
                     if (isLast) {
@@ -269,15 +329,15 @@ class _RegisterDocumentStepScreenState
                     }
                   },
           ),
-          if (photo == null)
+          if (!canProceed)
             Padding(
               padding: const EdgeInsets.only(top: AppSpacing.sm),
               child: Text(
-                'Take the photo to continue.',
+                photo == null
+                    ? 'Take the photo to continue.'
+                    : 'Retake this one to continue.',
                 textAlign: TextAlign.center,
-                style: AppTextStyles.bodySmall.copyWith(
-                  color: AppColors.textSecondary,
-                ),
+                style: context.text.bodySmall,
               ),
             ),
           const SizedBox(height: AppSpacing.lg),
@@ -287,136 +347,58 @@ class _RegisterDocumentStepScreenState
   }
 }
 
-/// The capture target: an empty prompt before, the photograph after.
-class _PhotoPanel extends StatelessWidget {
-  const _PhotoPanel({
-    required this.spec,
-    required this.photo,
-    required this.onCapture,
-  });
+/// Held while the saved draft is read back.
+///
+/// Deliberately the step's own frame rather than a bare spinner: this is what a
+/// returning user sees first, and dropping them onto an unrecognisable loading
+/// screen would make a resumed registration feel like a restarted one. The
+/// substep is unknown until the affiliation is back, so the frame shows the
+/// step alone.
+/// Shown when the route asks for a document this pass does not want.
+///
+/// Reachable in one real way: a reviewer asks for one document, and the app is
+/// resumed on a route that still names the third of four. Better to offer the
+/// way back than to crash on the index or silently rewrite the URL under them.
+class _DocumentStepOutOfRange extends StatelessWidget {
+  const _DocumentStepOutOfRange({required this.lastIndex});
 
-  final DocumentSpec spec;
-  final CapturedDocument? photo;
-  final VoidCallback? onCapture;
+  final int lastIndex;
 
   @override
   Widget build(BuildContext context) {
-    if (photo == null) {
-      return InkWell(
-        onTap: onCapture,
-        borderRadius: BorderRadius.circular(12),
-        child: Container(
-          height: 220,
-          decoration: BoxDecoration(
-            color: AppColors.bgSurface,
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: AppColors.borderDefault),
+    return RegistrationStepScaffold(
+      step: 4,
+      title: 'Documents',
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const AppNotice(
+            message: 'There are fewer documents to take than there were last '
+                'time — a reviewer only asked for some of them.',
+            intent: StatusIntent.info,
           ),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              const Icon(
-                Icons.photo_camera_outlined,
-                size: 40,
-                color: AppColors.textSecondary,
-              ),
-              const SizedBox(height: AppSpacing.sm),
-              Text('Take a photo', style: AppTextStyles.labelBold),
-              const SizedBox(height: AppSpacing.xs),
-              Padding(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: AppSpacing.lg,
-                ),
-                child: Text(
-                  spec.instruction,
-                  textAlign: TextAlign.center,
-                  style: AppTextStyles.bodySmall.copyWith(
-                    color: AppColors.textSecondary,
-                  ),
-                ),
-              ),
-            ],
+          const SizedBox(height: AppSpacing.lg),
+          AppButton(
+            label: 'Go to what is needed',
+            onPressed: () => context.go('/register/documents/$lastIndex'),
           ),
-        ),
-      );
-    }
-
-    final lineCount = photo!.payload?.lines.length ?? 0;
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        ClipRRect(
-          borderRadius: BorderRadius.circular(12),
-          child: Image.file(
-            File(photo!.file.path),
-            height: 220,
-            fit: BoxFit.cover,
-          ),
-        ),
-        const SizedBox(height: AppSpacing.sm),
-        Row(
-          children: [
-            Icon(
-              lineCount > 0 ? Icons.check_circle : Icons.info_outline,
-              size: 18,
-              color: lineCount > 0
-                  ? AppColors.successDefault
-                  : AppColors.textSecondary,
-            ),
-            const SizedBox(width: AppSpacing.xs),
-            Expanded(
-              child: Text(
-                // Deliberately not a verdict. Whether the document is good
-                // enough is the server's call, made when all four go up; this
-                // only says the phone saw writing on it.
-                lineCount > 0
-                    ? 'Photo taken — text found on it.'
-                    : 'Photo taken, but no text was picked up. A retake may help.',
-                style: AppTextStyles.bodySmall.copyWith(
-                  color: AppColors.textSecondary,
-                ),
-              ),
-            ),
-            TextButton(onPressed: onCapture, child: const Text('Retake')),
-          ],
-        ),
-      ],
+        ],
+      ),
     );
   }
 }
 
-class _RetakeNotice extends StatelessWidget {
-  const _RetakeNotice({required this.message});
-
-  final String message;
+class _DocumentStepLoading extends StatelessWidget {
+  const _DocumentStepLoading();
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(AppSpacing.md),
-      decoration: BoxDecoration(
-        color: AppColors.errorSubtle,
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Icon(
-            Icons.error_outline,
-            size: 20,
-            color: AppColors.errorDefault,
-          ),
-          const SizedBox(width: AppSpacing.sm),
-          Expanded(
-            child: Text(
-              message,
-              style: AppTextStyles.bodySmall.copyWith(
-                color: AppColors.errorDefault,
-              ),
-            ),
-          ),
-        ],
+    return const RegistrationStepScaffold(
+      step: 4,
+      title: 'Documents',
+      child: Padding(
+        padding: EdgeInsets.symmetric(vertical: AppSpacing.xl),
+        child: Center(child: CircularProgressIndicator()),
       ),
     );
   }

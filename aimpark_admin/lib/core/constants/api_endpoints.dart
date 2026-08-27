@@ -15,6 +15,12 @@ class ApiEndpoints {
   static String rejectRegistration(String userId) =>
       '/api/admin/registrations/$userId/reject';
 
+  /// Sends named documents back for another photograph. Not a rejection: the
+  /// applicant keeps their place in the queue and their other documents, and
+  /// there is no cooldown to sit out before they can answer.
+  static String requestRetake(String userId) =>
+      '/api/admin/registrations/$userId/request-retake';
+
   // Admin – Users
   static const users = '/api/admin/users';
   static String suspendUser(String userId) =>
@@ -44,6 +50,15 @@ class ApiEndpoints {
   static const logParkingEntry = '/api/admin/parking/log-entry';
   static const logParkingExit = '/api/admin/parking/log-exit';
   static const activeParkingSessions = '/api/admin/parking/active-sessions';
+
+  // Security: the guard's own endpoints. Entry and exit deliberately stay on
+  // the parking routes above - the gate hardware posts to those too, and two
+  // paths into one table is how they drift.
+  static String securityTagLookup(String rfidTagId) =>
+      '/api/security/tags/$rfidTagId';
+  static const visitorPasses = '/api/security/visitor-passes';
+  static String returnVisitorPass(String passId) =>
+      '/api/security/visitor-passes/$passId/return';
 
   // Admin – Gate Devices (RFID reader hardware)
   static const gateDevices = '/api/admin/gate-devices';
@@ -78,10 +93,23 @@ class ApiEndpoints {
   // Admin – Notifications
   static const notifications = '/api/admin/notifications';
 
+  // The staff member's own inbox, not the broadcast log above. Same endpoint
+  // the mobile app reads, because a notification addressed to a Security
+  // account is the same row as one addressed to a driver.
+  static const myNotifications = '/api/notifications';
+  static String markNotificationRead(String notificationId) =>
+      '/api/notifications/$notificationId/read';
+
+  // Filing a report as a member of staff. The user-facing route, deliberately:
+  // an incident reported by a guard is the same kind of thing as one reported
+  // from a phone, and the admin route only lists and reviews.
+  static const reportIncident = '/api/incidents';
+
   // Admin – Reports
   static const reportsSummary = '/api/admin/reports/summary';
   static const reportsOccupancyTrend = '/api/admin/reports/occupancy-trend';
   static const reportsPeakHours = '/api/admin/reports/peak-hours';
+  static const reportsEntryExit = '/api/admin/reports/entry-exit';
   static const reportsViolationsBreakdown = '/api/admin/reports/violations-breakdown';
   static const reportsRevenueTrend = '/api/admin/reports/revenue-trend';
 }

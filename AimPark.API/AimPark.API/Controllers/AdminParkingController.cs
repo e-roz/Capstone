@@ -21,7 +21,10 @@ namespace AimPark.API.Controllers
             _parkingHistoryService = parkingHistoryService;
         }
 
-        [Authorize(Roles = "Admin")]
+        // "Current Occupancy" is a Security module. Reading the bays is what
+        // the gate screen and the guard's overview are built on; creating and
+        // editing them below stays Admin.
+        [Authorize(Roles = "Admin,Security")]
         [HttpGet("slots")]
         public Task<ActionResult<ParkingAvailabilityResponse>> ListSlots(CancellationToken ct)
             => _parkingSlotService.ListAllAsync(ct);

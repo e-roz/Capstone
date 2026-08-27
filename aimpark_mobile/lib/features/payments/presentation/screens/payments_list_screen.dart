@@ -2,13 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../../../core/theme/app_colors.dart';
-import '../../../../core/theme/app_spacing.dart';
-import '../../../../core/theme/app_text_styles.dart';
+import '../../../../core/theme/theme.dart';
 import '../../../../core/utils/formatters.dart';
-import '../../../../core/widgets/app_badge.dart';
-import '../../../../core/widgets/app_card.dart';
-import '../../../../core/widgets/app_state_views.dart';
+import '../../../../core/widgets/widgets.dart';
 import '../../data/models/payment.dart';
 import '../providers/payments_provider.dart';
 
@@ -17,125 +13,82 @@ class PaymentsListScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final paymentsAsync = ref.watch(paymentsNotifierProvider);
+    Future<void> refresh() =>
+        ref.read(paymentsNotifierProvider.notifier).refresh();
 
-    return Scaffold(
-      backgroundColor: AppColors.bgPage,
-      appBar: AppBar(
-        backgroundColor: AppColors.bgPage,
-        elevation: 0,
-        title: Text('My Payments', style: AppTextStyles.h3),
-      ),
-      body: SafeArea(
-        child: paymentsAsync.when(
-          loading: () => const Center(child: CircularProgressIndicator()),
-          error: (error, _) => AppErrorState(
-            title: "Couldn't load your payments",
-            onRetry: () => ref.read(paymentsNotifierProvider.notifier).refresh(),
-          ),
-          data: (result) {
-            if (result.payments.isEmpty) {
-              return const AppEmptyState(
-                icon: Icons.payments_rounded,
-                title: 'No payments yet',
-                message: 'Parking fees and penalties will show up here.',
-              );
-            }
-            return RefreshIndicator(
-              onRefresh: () => ref.read(paymentsNotifierProvider.notifier).refresh(),
-              child: ListView(
-                padding: const EdgeInsets.all(AppSpacing.md),
-                children: [
-                  for (final p in result.payments) ...[
-                    _PaymentTile(
-                      payment: p,
-                      onTap: () => context.push('/home/user/payments/${p.paymentId}'),
-                    ),
-                    const SizedBox(height: AppSpacing.sm),
-                  ],
-                ],
-              ),
-            );
-          },
+    return AppScreen(
+      title: 'My Payments',
+      body: AsyncView(
+        value: ref.watch(paymentsNotifierProvider),
+        onRefresh: refresh,
+        errorTitle: "Couldn't load your payments",
+        loading: const Padding(
+          padding: kScreenListPadding,
+          child: AppRowSkeleton(),
+        ),
+        isEmpty: (result) => result.payments.isEmpty,
+        empty: const AppEmptyState(
+          icon: Icons.payments_rounded,
+          title: 'No payments yet',
+          message: 'Parking fees and penalties will show up here.',
+        ),
+        data: (result) => ListView(
+          padding: kScreenListPadding,
+          children: [
+            for (final p in result.payments) ...[
+              _PaymentRow(payment: p),
+              if (p != result.payments.last) const AppRowGap(),
+            ],
+          ],
         ),
       ),
     );
   }
 }
 
-class _PaymentTile extends StatelessWidget {
-  const _PaymentTile({required this.payment, required this.onTap});
+class _PaymentRow extends StatelessWidget {
+  const _PaymentRow({required this.payment});
+
   final Payment payment;
-  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    return AppCard(
-      onTap: onTap,
-      child: Row(
+    final t = context.tokens;
+    final isViolation = payment.source.toLowerCase() == 'violation';
+
+    return AppListRow(
+      icon: isViolation ? Icons.gavel_rounded : Icons.local_parking_rounded,
+      title: payment.slotCode ?? payment.source,
+      subtitle: Formatters.date(payment.createdAt),
+      note: payment.dueLabel == null
+          ? null
+          : Text(
+              payment.dueLabel!,
+              // Overdue is the one thing in this row worth alarming about; a
+              // future deadline stays informational.
+              style: context.text.labelSmall?.copyWith(
+                color: payment.isOverdue ? t.status.danger.fg : null,
+                fontWeight: payment.isOverdue ? FontWeight.w700 : null,
+              ),
+            ),
+      // Stacked rather than sat side by side: a four-figure penalty next to an
+      // "Unpaid" pill used to squeeze the slot code off a 360dp screen.
+      trailing: Column(
+        crossAxisAlignment: CrossAxisAlignment.end,
+        mainAxisSize: MainAxisSize.min,
         children: [
-          Container(
-            width: 40,
-            height: 40,
-            decoration: BoxDecoration(
-              color: AppColors.bgSurfaceAlt,
-              borderRadius: BorderRadius.circular(AppRadius.sm),
-            ),
-            child: Icon(
-              payment.source.toLowerCase() == 'violation'
-                  ? Icons.gavel_rounded
-                  : Icons.local_parking_rounded,
-              color: AppColors.textSecondary,
-              size: 20,
-            ),
+          Text(
+            Formatters.peso(payment.amountDue),
+            style: AppTypography.tabular(context.text.labelLarge!),
           ),
-          const SizedBox(width: AppSpacing.sm),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  payment.slotCode ?? payment.source,
-                  style: AppTextStyles.bodyMedium.copyWith(fontWeight: FontWeight.w700),
-                ),
-                const SizedBox(height: 2),
-                Text(Formatters.date(payment.createdAt), style: AppTextStyles.bodySmall),
-                if (payment.dueLabel != null) ...[
-                  const SizedBox(height: 2),
-                  Text(
-                    payment.dueLabel!,
-                    // Overdue is the one thing in this row worth alarming
-                    // about; a future deadline stays informational.
-                    style: AppTextStyles.labelSmall.copyWith(
-                      color: payment.isOverdue
-                          ? AppColors.errorPressed
-                          : AppColors.textSecondary,
-                      fontWeight: payment.isOverdue ? FontWeight.w700 : FontWeight.w500,
-                    ),
-                  ),
-                ],
-              ],
-            ),
-          ),
-          const SizedBox(width: AppSpacing.sm),
-          // Stacked rather than sat side by side: a four-figure penalty next to
-          // an "Unpaid" pill used to squeeze the slot code off a 360dp screen.
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              Text(
-                Formatters.peso(payment.amountDue),
-                style: AppTextStyles.bodyMedium.copyWith(fontWeight: FontWeight.w700),
-              ),
-              const SizedBox(height: 4),
-              AppBadge(
-                label: payment.status,
-                tone: payment.isPaid ? AppBadgeTone.success : AppBadgeTone.error,
-              ),
-            ],
+          const SizedBox(height: 4),
+          AppStatusBadge(
+            label: payment.status,
+            intent: StatusIntents.payment(payment.status),
           ),
         ],
       ),
+      onTap: () => context.push('/home/user/payments/${payment.paymentId}'),
     );
   }
 }

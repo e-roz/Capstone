@@ -5,12 +5,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:pin_code_fields/pin_code_fields.dart';
 
-import '../../../../core/theme/app_colors.dart';
-import '../../../../core/theme/app_spacing.dart';
-import '../../../../core/theme/app_text_styles.dart';
-import '../../../../core/utils/api_error_message.dart';
+import '../../../../core/theme/theme.dart';
 import '../../../../core/utils/app_flushbar.dart';
-import '../../../../core/widgets/app_button.dart';
+import '../../../../core/widgets/widgets.dart';
 import '../providers/auth_provider.dart';
 import '../providers/registration_provider.dart';
 import '../widgets/registration_step_scaffold.dart';
@@ -30,6 +27,7 @@ class _RegisterOtpScreenState extends ConsumerState<RegisterOtpScreen> {
   bool _isResending = false;
   int _resendCooldown = 0;
   Timer? _cooldownTimer;
+  String? _otpError;
 
   @override
   void initState() {
@@ -70,11 +68,14 @@ class _RegisterOtpScreenState extends ConsumerState<RegisterOtpScreen> {
   Future<void> _verify() async {
     final otp = _otpController.text.trim();
     if (otp.length != 6) {
-      showAppMessage(context, 'Please enter the 6-digit OTP.', isError: true);
+      setState(() => _otpError = 'Enter all six digits.');
       return;
     }
 
-    setState(() => _isVerifying = true);
+    setState(() {
+      _otpError = null;
+      _isVerifying = true;
+    });
 
     try {
       final repo = ref.read(authRepositoryProvider);
@@ -96,7 +97,7 @@ class _RegisterOtpScreenState extends ConsumerState<RegisterOtpScreen> {
       }
     } catch (e) {
       if (mounted) {
-        showAppMessage(context, apiErrorMessage(e), isError: true);
+        showApiError(context, e);
         _clearOtp();
       }
     } finally {
@@ -130,7 +131,7 @@ class _RegisterOtpScreenState extends ConsumerState<RegisterOtpScreen> {
       }
     } catch (e) {
       if (mounted) {
-        showAppMessage(context, apiErrorMessage(e), isError: true);
+        showApiError(context, e);
       }
     } finally {
       if (mounted) {
@@ -142,43 +143,63 @@ class _RegisterOtpScreenState extends ConsumerState<RegisterOtpScreen> {
   @override
   Widget build(BuildContext context) {
     final email = _email;
+    final t = context.tokens;
+
+    final busy = _isVerifying || _isResending;
 
     return RegistrationStepScaffold(
       step: 2,
       title: 'Verify Email',
+      // A mistyped address is only discoverable here — the code never arrives —
+      // so this is exactly the screen that has to be able to go back and fix
+      // it. Re-entering the email step issues a fresh session and a fresh code.
+      busy: busy,
+      onBack: () => context.go('/register/email'),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text('Enter OTP', style: AppTextStyles.h2),
-          const SizedBox(height: AppSpacing.xs),
-          if (email.isNotEmpty)
-            Text(
-              'OTP sent to $email',
-              style: AppTextStyles.bodyMedium.copyWith(color: AppColors.textSecondary),
-            ),
-          const SizedBox(height: AppSpacing.lg),
+          RegistrationStepHeading(
+            title: 'Enter OTP',
+            subtitle: email.isEmpty ? null : 'OTP sent to $email',
+          ),
           PinCodeTextField(
             appContext: context,
             length: 6,
             controller: _otpController,
             keyboardType: TextInputType.number,
             animationType: AnimationType.fade,
+            enabled: !_isVerifying,
+            textStyle: context.text.bodyLarge,
             pinTheme: PinTheme(
               shape: PinCodeFieldShape.box,
-              borderRadius: BorderRadius.circular(AppRadius.md),
+              borderRadius: AppRadius.mdAll,
               fieldHeight: 48,
               fieldWidth: 44,
-              activeFillColor: AppColors.bgSurface,
-              selectedFillColor: AppColors.bgSurface,
-              inactiveFillColor: AppColors.bgSurface,
-              activeColor: AppColors.brandDefault,
-              selectedColor: AppColors.brandDefault,
-              inactiveColor: AppColors.borderDefault,
+              activeFillColor: t.surface.card,
+              selectedFillColor: t.surface.card,
+              inactiveFillColor: t.surface.card,
+              activeColor: t.brand.primary,
+              selectedColor: t.border.focus,
+              inactiveColor: t.border.normal,
               borderWidth: 1.5,
             ),
             enableActiveFill: true,
-            onChanged: (_) {},
+            // Submits as soon as the sixth digit lands. Making someone type six
+            // digits and then reach for a button is a step the screen can take
+            // for them.
+            onCompleted: (_) => _isVerifying ? null : _verify(),
+            onChanged: (_) {
+              if (_otpError != null) setState(() => _otpError = null);
+            },
           ),
+          if (_otpError != null) ...[
+            const SizedBox(height: AppSpacing.xs),
+            Text(
+              _otpError!,
+              style: context.text.labelSmall
+                  ?.copyWith(color: t.status.danger.fg),
+            ),
+          ],
           const SizedBox(height: AppSpacing.lg),
           AppButton(
             label: 'Verify',
@@ -201,10 +222,6 @@ class _RegisterOtpScreenState extends ConsumerState<RegisterOtpScreen> {
                       _resendCooldown > 0
                           ? 'Resend OTP (${_resendCooldown}s)'
                           : 'Resend OTP',
-                      style: AppTextStyles.labelBold.copyWith(
-                        fontSize: 14,
-                        color: AppColors.brandPressed,
-                      ),
                     ),
             ),
           ),

@@ -173,8 +173,12 @@ class _ModuleShortcuts extends StatelessWidget {
         LayoutBuilder(
           builder: (context, constraints) {
             // Tiles carry a sentence each, so they need real width — four
-            // across only once there is room for ~280px apiece.
+            // across only once there is room for ~280px apiece. At the full
+            // 1440 a fifth still clears that bar (278px), and with ten modules
+            // it is the difference between two full rows and a half-empty one
+            // stranded under the widest part of the page.
             final columns = switch (constraints.maxWidth) {
+              > 1380 => 5,
               > 1200 => 4,
               > 860 => 3,
               > 520 => 2,
@@ -667,13 +671,18 @@ class _TwoUp extends StatelessWidget {
             ],
           );
         }
-        return Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Expanded(child: left),
-            const SizedBox(width: AppSpacing.gutter),
-            Expanded(child: right),
-          ],
+        // Both cards take the height of the taller one. Letting each size to
+        // its own content leaves a notch beside the shorter card, which reads
+        // as a hole in the layout rather than as breathing room inside a card.
+        return IntrinsicHeight(
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Expanded(child: left),
+              const SizedBox(width: AppSpacing.gutter),
+              Expanded(child: right),
+            ],
+          ),
         );
       },
     );

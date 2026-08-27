@@ -96,6 +96,26 @@ namespace AimPark.API.Entities
         /// <summary>Plain-language summary of what failed, shown to the reviewer and the user.</summary>
         public string? Notes { get; set; }
 
+        /// <summary>
+        /// The raw OCR readings this submission was built from, as JSON keyed by
+        /// <see cref="DocumentType"/> name.
+        /// </summary>
+        /// <remarks>
+        /// Kept because the extraction rules are the part of this system most likely
+        /// to keep changing, and without the readings there is nothing to change them
+        /// against. Every threshold tuned, landmark added or anchor corrected
+        /// otherwise costs a trip out to photograph documents again, so rules get
+        /// adjusted against a handful of samples and guessed at everywhere else.
+        ///
+        /// With this column a rule change can be replayed over every submission ever
+        /// received, and "why did this one fail" stays answerable months later.
+        ///
+        /// A few kilobytes per submission. Text and boxes only — the photographs
+        /// themselves are files on disk, and nothing here identifies a person beyond
+        /// what the extracted columns already hold.
+        /// </remarks>
+        public string? RawPayloads { get; set; }
+
         // Set when an admin's approve/reject contradicts Result — the override,
         // recorded so "the machine said no but we let them in" is answerable later.
         public bool WasOverridden { get; set; }

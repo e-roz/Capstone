@@ -25,6 +25,19 @@ namespace AimPark.API.Enums
         Sideways,
 
         /// <summary>Plenty of lines, but confidence across them is low.</summary>
-        Blurry
+        Blurry,
+
+        /// <summary>
+        /// Readable, but none of the landmarks this kind of document always
+        /// carries were found — so it is not that kind of document.
+        /// </summary>
+        /// <remarks>
+        /// Belongs here rather than among the check results because the fix is the
+        /// same one the others ask for: photograph it again, this time the right
+        /// piece of paper. It is the only reason in this enum that a retake is
+        /// guaranteed to help, since the applicant does have the document
+        /// somewhere.
+        /// </remarks>
+        WrongDocument
     }
 }

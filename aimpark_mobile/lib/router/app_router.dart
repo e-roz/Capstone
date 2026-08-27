@@ -5,13 +5,14 @@ import 'package:riverpod_annotation/riverpod_annotation.dart';
 
 import '../core/network/dio_client.dart';
 import '../core/utils/jwt_utils.dart';
-import '../features/auth/presentation/screens/admin_placeholder_screen.dart';
+import '../features/auth/presentation/screens/admin_on_web_screen.dart';
+import '../features/auth/presentation/screens/forgot_password_screen.dart';
 import '../features/auth/presentation/screens/login_screen.dart';
-import '../features/auth/presentation/screens/ocr_debug_screen.dart';
 import '../features/auth/presentation/screens/register_document_step_screen.dart';
 import '../features/auth/presentation/screens/register_email_screen.dart';
 import '../features/auth/presentation/screens/register_otp_screen.dart';
 import '../features/auth/presentation/screens/register_profile_screen.dart';
+import '../features/auth/presentation/screens/reset_password_screen.dart';
 import '../features/account/presentation/screens/change_password_screen.dart';
 import '../features/account/presentation/screens/edit_profile_screen.dart';
 import '../features/auth/presentation/screens/security_placeholder_screen.dart';
@@ -24,6 +25,8 @@ import '../features/incidents/presentation/screens/report_incident_screen.dart';
 import '../features/parking/presentation/screens/parking_slots_screen.dart';
 import '../features/payments/presentation/screens/payment_detail_screen.dart';
 import '../features/payments/presentation/screens/payments_list_screen.dart';
+import '../features/vehicles/presentation/screens/add_vehicle_screen.dart';
+import '../features/vehicles/presentation/screens/vehicles_screen.dart';
 import '../features/violations/presentation/screens/violation_detail_screen.dart';
 import '../features/violations/presentation/screens/violations_list_screen.dart';
 
@@ -50,6 +53,19 @@ GoRouter appRouter(Ref ref) {
       final hasValidToken = token != null && JwtUtils.isValid(token);
 
       if (hasValidToken) {
+        // A registration-only token is not a session. It carries the role the
+        // account will have once it is approved, so routing on the role alone
+        // let it through to the dashboard — where every request fails and
+        // nothing leads back to the unfinished step. It may go one place only:
+        // the registration flow.
+        if (JwtUtils.isRegistrationOnly(token)) {
+          // Already inside the flow, and moving between its steps. Sending them
+          // to the step the token names would undo every forward move, since
+          // that claim only advances when the server issues a new token.
+          if (location.startsWith('/register/')) return null;
+          return JwtUtils.routeAfterLogin(token);
+        }
+
         final homeRoute = JwtUtils.homeRouteForRole(JwtUtils.getRole(token));
 
         // Covers both the welcome screen and the sign-in form under it — an
@@ -86,11 +102,37 @@ GoRouter appRouter(Ref ref) {
       ),
       GoRoute(
         path: '/login/sign-in',
-        builder: (context, state) => const LoginScreen(),
+        // `extra` is a line to show above the form — sent here by a finished
+        // password reset, which has to explain why the password the user just
+        // set is the one to type.
+        builder: (context, state) => LoginScreen(notice: state.extra as String?),
+      ),
+      GoRoute(
+        path: '/login/forgot-password',
+        // Whatever was already typed on the sign-in form, so the address is not
+        // entered twice.
+        builder: (context, state) =>
+            ForgotPasswordScreen(email: state.extra as String?),
+      ),
+      GoRoute(
+        path: '/login/reset-password',
+        // The address is the only thing tying the code to an account, and it is
+        // carried in `extra` rather than the path so it stays out of logs and
+        // out of the back stack. Reached any other way there is nothing to
+        // reset, so the flow starts where it should.
+        redirect: (context, state) =>
+            state.extra is String ? null : '/login/forgot-password',
+        builder: (context, state) =>
+            ResetPasswordScreen(email: state.extra! as String),
       ),
       GoRoute(
         path: '/register/email',
-        builder: (context, state) => const RegisterEmailScreen(),
+        // `extra` carries the reason the flow was sent back here — an expired
+        // registration session, most often. Shown on the screen rather than
+        // flashed, because the user has to start the step again and deserves to
+        // know why the OTP they were about to type stopped working.
+        builder: (context, state) =>
+            RegisterEmailScreen(notice: state.extra as String?),
       ),
       GoRoute(
         path: '/register/otp',
@@ -122,15 +164,12 @@ GoRouter appRouter(Ref ref) {
         path: '/register/documents',
         redirect: (context, state) => '/register/documents/0',
       ),
-      // Not linked from anywhere. Reached by typing the route, to photograph
-      // documents and copy the recognition payload out for rule calibration.
-      GoRoute(
-        path: '/dev/ocr',
-        builder: (context, state) => const OcrDebugScreen(),
-      ),
+      // Administration is the web panel's job. An Admin can still sign in
+      // here, so the route exists to tell them where to go rather than to
+      // leave them on a dead end.
       GoRoute(
         path: '/home/admin',
-        builder: (context, state) => const AdminPlaceholderScreen(),
+        builder: (context, state) => const AdminOnWebScreen(),
       ),
       GoRoute(
         path: '/home/security',
@@ -147,6 +186,16 @@ GoRouter appRouter(Ref ref) {
       GoRoute(
         path: '/home/user/profile/change-password',
         builder: (context, state) => const ChangePasswordScreen(),
+      ),
+      GoRoute(
+        path: '/home/user/vehicles',
+        builder: (context, state) => const VehiclesScreen(),
+      ),
+      // Pushed rather than gone to, so finishing pops back to the list and the
+      // newly added vehicle is the first thing seen.
+      GoRoute(
+        path: '/home/user/vehicles/add',
+        builder: (context, state) => const AddVehicleScreen(),
       ),
       GoRoute(
         path: '/home/user/violations',

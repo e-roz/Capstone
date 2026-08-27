@@ -115,11 +115,15 @@ class StatusIntents {
         _ => StatusIntent.info,
       };
 
-  /// Registration review state.
+  /// Registration review state — the `VerificationStatus` enum on the API.
+  ///
+  /// `Approved`/`Rejected` are kept as aliases for the wording the queue used
+  /// before it moved onto the enum; the rest are the values the API actually
+  /// sends, which previously all fell through to a grey `neutral` pill.
   static StatusIntent registration(String status) => switch (status) {
-        'Approved' => StatusIntent.success,
-        'Rejected' => StatusIntent.danger,
-        'Pending' => StatusIntent.warning,
+        'Passed' || 'Approved' => StatusIntent.success,
+        'Failed' || 'Rejected' => StatusIntent.danger,
+        'ManualReview' || 'Pending' => StatusIntent.warning,
         _ => StatusIntent.neutral,
       };
 

@@ -32,6 +32,40 @@ namespace AimPark.API.DTOs
         public List<DailyCountPoint> Points { get; set; } = [];
     }
 
+    /// <summary>
+    /// Vehicles in and out on one day, and how many visitors were among them.
+    /// </summary>
+    /// <remarks>
+    /// Entries and exits are counted separately rather than netted off. A day
+    /// where 40 cars came in and 40 left is not the same day as one where 5 came
+    /// in and 5 left, and a single "movements" number cannot tell them apart.
+    /// </remarks>
+    public class EntryExitPoint
+    {
+        public DateTime Date { get; set; }
+        public int Entries { get; set; }
+        public int Exits { get; set; }
+
+        /// <summary>Entries made on a lent visitor card, of the total above.</summary>
+        public int VisitorEntries { get; set; }
+    }
+
+    public class EntryExitReportResponse
+    {
+        public List<EntryExitPoint> Points { get; set; } = [];
+
+        public int TotalEntries { get; set; }
+        public int TotalExits { get; set; }
+        public int TotalVisitorEntries { get; set; }
+
+        /// <summary>
+        /// Sessions opened in the window that have no exit recorded. A handful
+        /// is normal - cars still parked. A large number means the exit half of
+        /// the gate is not being used.
+        /// </summary>
+        public int StillOpen { get; set; }
+    }
+
     public class PeakHourPoint
     {
         public int Hour { get; set; }

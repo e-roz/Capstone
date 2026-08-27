@@ -69,6 +69,62 @@ class DailyCountPoint {
       );
 }
 
+/// Vehicles in and out on one day.
+///
+/// In and out are separate series, not a net figure: 40 in and 40 out is a busy
+/// day, 5 in and 5 out is a quiet one, and a single number cannot tell them
+/// apart.
+class EntryExitPoint {
+  final DateTime date;
+  final int entries;
+  final int exits;
+  final int visitorEntries;
+
+  const EntryExitPoint({
+    required this.date,
+    required this.entries,
+    required this.exits,
+    required this.visitorEntries,
+  });
+
+  factory EntryExitPoint.fromJson(Map<String, dynamic> json) => EntryExitPoint(
+        date: DateTime.parse(json['date'].toString()),
+        entries: (json['entries'] as num?)?.toInt() ?? 0,
+        exits: (json['exits'] as num?)?.toInt() ?? 0,
+        visitorEntries: (json['visitorEntries'] as num?)?.toInt() ?? 0,
+      );
+}
+
+class EntryExitReport {
+  final List<EntryExitPoint> points;
+  final int totalEntries;
+  final int totalExits;
+  final int totalVisitorEntries;
+
+  /// Sessions opened in the window with no exit recorded. A few is normal —
+  /// cars still parked. A lot means the exit side of the gate is not being used.
+  final int stillOpen;
+
+  const EntryExitReport({
+    required this.points,
+    required this.totalEntries,
+    required this.totalExits,
+    required this.totalVisitorEntries,
+    required this.stillOpen,
+  });
+
+  factory EntryExitReport.fromJson(Map<String, dynamic> json) =>
+      EntryExitReport(
+        points: (json['points'] as List<dynamic>? ?? [])
+            .map((p) => EntryExitPoint.fromJson(p as Map<String, dynamic>))
+            .toList(),
+        totalEntries: (json['totalEntries'] as num?)?.toInt() ?? 0,
+        totalExits: (json['totalExits'] as num?)?.toInt() ?? 0,
+        totalVisitorEntries: (json['totalVisitorEntries'] as num?)?.toInt() ?? 0,
+        stillOpen: (json['stillOpen'] as num?)?.toInt() ?? 0,
+      );
+}
+
 class PeakHourPoint {
   final int hour;
   final int count;

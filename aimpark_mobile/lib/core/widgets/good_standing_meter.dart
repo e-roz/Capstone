@@ -1,8 +1,7 @@
 import 'package:flutter/material.dart';
 
-import '../theme/app_colors.dart';
-import '../theme/app_spacing.dart';
-import '../theme/app_text_styles.dart';
+import '../theme/theme.dart';
+import 'app_progress_bar.dart';
 
 /// Replaces Duolingo's "hearts" mechanic with an opposite-psychology meter:
 /// it builds up with compliant parking rather than draining on mistakes, and
@@ -22,31 +21,27 @@ class GoodStandingMeter extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final c = context.tokens.status.success;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Text('Good Standing', style: AppTextStyles.labelSmall),
+            Text('Good Standing', style: context.text.labelSmall),
             Text(
               tierLabel,
-              style: AppTextStyles.labelBold.copyWith(
-                color: AppColors.successPressed,
-                fontSize: 13,
-              ),
+              style: context.text.labelMedium?.copyWith(color: c.fg),
             ),
           ],
         ),
         const SizedBox(height: AppSpacing.xs),
-        ClipRRect(
-          borderRadius: BorderRadius.circular(AppRadius.full),
-          child: LinearProgressIndicator(
-            value: level.clamp(0.0, 1.0),
-            minHeight: 10,
-            backgroundColor: AppColors.successSubtle,
-            valueColor: const AlwaysStoppedAnimation(AppColors.successDefault),
-          ),
+        AppProgressBar(
+          value: level,
+          height: 10,
+          color: c.solid,
+          trackColor: c.bg,
         ),
       ],
     );

@@ -11,6 +11,11 @@ namespace AimPark.API.Enums
         // so appending here is safe for existing rows.
         Violation,
         Payment,
-        Account
+        Account,
+
+        // The outcome of an incident the user reported. Appended for the same
+        // reason as the three above: the column stores the name, not the
+        // ordinal, so adding to the end moves nothing.
+        Incident
     }
 }

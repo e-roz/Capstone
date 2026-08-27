@@ -10,6 +10,7 @@ class NavItem {
     required this.route,
     required this.description,
     this.moduleLabel,
+    this.roles = const {StaffRole.admin},
   });
 
   final IconData icon;
@@ -29,9 +30,55 @@ class NavItem {
   /// are holding, while the sidebar keeps the shorter working name.
   final String? moduleLabel;
 
+  /// Who may see this destination.
+  ///
+  /// Admin-only by default, because that is what every entry was before
+  /// Security could sign in — a destination that forgets to say who it is for
+  /// should stay hidden rather than leak.
+  final Set<StaffRole> roles;
+
   /// The name to show on a dashboard shortcut.
   String get displayLabel => moduleLabel ?? label;
 }
+
+/// The two kinds of account that can sign in to this panel.
+///
+/// Mapped from the JWT role claim. `User` never reaches here — the login screen
+/// turns those away, since the whole panel is staff tooling.
+enum StaffRole {
+  admin,
+  security;
+
+  static StaffRole? fromClaim(String? role) => switch (role) {
+        'Admin' => StaffRole.admin,
+        'Security' => StaffRole.security,
+        _ => null,
+      };
+
+  String get label => this == StaffRole.admin ? 'Administrator' : 'Security';
+}
+
+/// The groups this role may see, with the destinations it may not stripped out.
+///
+/// Filtered here rather than in the sidebar so the rail, the mobile drawer and
+/// the dashboard's shortcut grid cannot disagree about what a Security account
+/// is allowed to open — which is exactly the drift [navGroups] exists to stop.
+List<NavGroup> navGroupsFor(StaffRole role) {
+  final groups = <NavGroup>[];
+
+  for (final group in navGroups) {
+    final items = group.items.where((i) => i.roles.contains(role)).toList();
+    if (items.isNotEmpty) groups.add(NavGroup(group.label, items));
+  }
+
+  return groups;
+}
+
+/// Flat list of the routes a role may open, for the router's guard.
+List<String> routesFor(StaffRole role) => [
+      for (final group in navGroupsFor(role))
+        for (final item in group.items) item.route,
+    ];
 
 /// Destinations grouped by *what the admin is doing*, not by what the API calls
 /// them. Eleven flat entries force a re-read of the whole list every time;
@@ -54,6 +101,28 @@ const navGroups = <NavGroup>[
       label: 'Overview',
       route: '/dashboard',
       description: 'System status at a glance.',
+      roles: {StaffRole.admin, StaffRole.security},
+    ),
+  ]),
+  NavGroup('Gate', [
+    NavItem(
+      icon: Icons.badge_outlined,
+      selectedIcon: Icons.badge,
+      label: 'Gate Check',
+      route: '/gate',
+      moduleLabel: 'Entry/Exit Verification',
+      description:
+          'Look up a card, check the vehicle matches, and log entry or exit.',
+      roles: {StaffRole.admin, StaffRole.security},
+    ),
+    NavItem(
+      icon: Icons.person_add_alt_outlined,
+      selectedIcon: Icons.person_add_alt_1,
+      label: 'Visitor Passes',
+      route: '/visitors',
+      moduleLabel: 'Visitor RFID Access',
+      description: 'Lend spare RFID cards to guests and take them back.',
+      roles: {StaffRole.admin, StaffRole.security},
     ),
   ]),
   NavGroup('Operations', [
@@ -70,6 +139,10 @@ const navGroups = <NavGroup>[
       label: 'Parking',
       route: '/parking',
       description: 'Live bay occupancy, and manual entry and exit logging.',
+      // Admin only, deliberately. Most of this screen is creating bays and
+      // changing their status, which a guard may not do — and the two things
+      // they need from it, occupancy and manual entry/exit, they get on their
+      // own Overview and Gate Check without a screen of disabled buttons.
     ),
     NavItem(
       icon: Icons.payments_outlined,
@@ -104,6 +177,10 @@ const navGroups = <NavGroup>[
       route: '/incidents',
       moduleLabel: 'Incidents & Appeals',
       description: 'Review reported incidents and decide violation appeals.',
+      // Security reports what they see on the ground and follows it up. The
+      // appeals half of the module is admin work, and the screen hides that tab
+      // for them rather than the whole destination being withheld.
+      roles: {StaffRole.admin, StaffRole.security},
     ),
   ]),
   NavGroup('System', [
@@ -122,6 +199,9 @@ const navGroups = <NavGroup>[
       route: '/notifications',
       moduleLabel: 'Notifications Management',
       description: 'Broadcast parking announcements and policy updates.',
+      // Security sees the inbox half only - "Receive Notifications" in the
+      // spec. The screen hides the Sent tab and the Broadcast button for them.
+      roles: {StaffRole.admin, StaffRole.security},
     ),
     NavItem(
       icon: Icons.bar_chart_outlined,
@@ -138,6 +218,9 @@ const navGroups = <NavGroup>[
       route: '/system-logs',
       description:
           'Administrative actions, RFID access and violations, with export.',
+      // "Access Monitoring" in the spec. Security sees the RFID access tab only
+      // — the API refuses them the other two, and the screen hides them.
+      roles: {StaffRole.admin, StaffRole.security},
     ),
   ]),
 ];

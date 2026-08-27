@@ -73,6 +73,50 @@ namespace AimPark.API.Services
             }
         }
 
+        public async Task NotifyRoleAsync(
+            UserRole role,
+            NotificationType type,
+            string title,
+            string message,
+            CancellationToken ct)
+        {
+            try
+            {
+                var notification = new Notification
+                {
+                    Id = Guid.NewGuid(),
+                    Title = title,
+                    Message = message,
+                    Type = type,
+                    TargetUserId = null,
+                    TargetRole = role,
+                    // Guid.Empty means "the system", matching NotifyUserAsync.
+                    // Attributing it to an administrator would put their name on
+                    // something they did not send.
+                    CreatedByUserId = Guid.Empty,
+                    CreatedAt = DateTime.UtcNow
+                };
+
+                await _notifications.AddAsync(notification, ct);
+                await _notifications.SaveAsync(ct);
+
+                await _pushSender.SendToRoleAsync(
+                    role,
+                    title,
+                    message,
+                    new Dictionary<string, string>
+                    {
+                        ["type"] = "notification",
+                        ["notificationId"] = notification.Id.ToString()
+                    },
+                    ct);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to notify role {Role}.", role);
+            }
+        }
+
         // POST /api/admin/notifications
         public async Task<ActionResult<object>> BroadcastAsync(BroadcastNotificationDto dto, Guid adminUserId, CancellationToken ct)
         {

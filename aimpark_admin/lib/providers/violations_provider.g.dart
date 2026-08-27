@@ -78,7 +78,28 @@ final appealListProvider =
 @Deprecated('Will be removed in 3.0. Use Ref instead')
 // ignore: unused_element
 typedef AppealListRef = AutoDisposeFutureProviderRef<ViolationAppealListPage>;
-String _$policyRuleActionsHash() => r'93b1e4b7c1bdcacf9ad29c9c38f9ad92d452e893';
+String _$pendingAppealCountHash() =>
+    r'f7be473b027a09979f4d1cca0f60623929e42b41';
+
+/// How many appeals are still waiting on a decision. See [openIncidentCount]
+/// for why this is a request of its own rather than a count off the list.
+///
+/// Copied from [pendingAppealCount].
+@ProviderFor(pendingAppealCount)
+final pendingAppealCountProvider = AutoDisposeFutureProvider<int>.internal(
+  pendingAppealCount,
+  name: r'pendingAppealCountProvider',
+  debugGetCreateSourceHash: const bool.fromEnvironment('dart.vm.product')
+      ? null
+      : _$pendingAppealCountHash,
+  dependencies: null,
+  allTransitiveDependencies: null,
+);
+
+@Deprecated('Will be removed in 3.0. Use Ref instead')
+// ignore: unused_element
+typedef PendingAppealCountRef = AutoDisposeFutureProviderRef<int>;
+String _$policyRuleActionsHash() => r'e7b356ef827e971a45434ce81edee597d4caa75c';
 
 /// See also [PolicyRuleActions].
 @ProviderFor(PolicyRuleActions)

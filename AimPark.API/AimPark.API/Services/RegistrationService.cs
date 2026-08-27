@@ -4,6 +4,8 @@ using AimPark.API.Enums;
 using AimPark.API.Helpers;
 using AimPark.API.Interfaces;
 using Microsoft.AspNetCore.Mvc;
+using System.Security.Cryptography;
+using System.Text.Json;
 
 namespace AimPark.API.Services
 {
@@ -263,16 +265,38 @@ namespace AimPark.API.Services
             if (user is null)
                 return new NotFoundObjectResult(new { message = "User not found." });
 
-            if (user.RegistrationStep != RegistrationStep.ProfileSetup)
+            // DocumentUpload is allowed as well as ProfileSetup, and that is what
+            // makes the first document screen's back arrow lead somewhere. The
+            // affiliation set here decides which documents get asked for, so an
+            // applicant who picked the wrong one was previously trapped: the
+            // form asking for a student registration form could not be left, and
+            // this call was the only way to change the answer that produced it.
+            //
+            // Nothing later than DocumentUpload, though. Once the documents are
+            // in, a reviewer is reading a name and an affiliation the submitted
+            // papers were checked against, and editing either underneath them
+            // would silently invalidate that review.
+            if (user.RegistrationStep is not (RegistrationStep.ProfileSetup or RegistrationStep.DocumentUpload))
                 return new BadRequestObjectResult(new { message = "Profile setup is not available at the current step." });
 
             if (!TryParseAffiliation(dto.Affiliation, out var affiliation))
                 return new BadRequestObjectResult(new { message = "Invalid affiliation." });
 
+            var affiliationChanged = user.Affiliation != affiliation;
+
             user.FullName = dto.FullName.Trim();
             user.Affiliation = affiliation;
             user.RegistrationStep = RegistrationStep.DocumentUpload;
             user.TermsAcceptedAt ??= DateTime.UtcNow;
+
+            // A reviewer's retake list names document *kinds*, and which kind
+            // proves affiliation is exactly what just changed. Left in place, it
+            // would ask for a registration form from someone who is now staff.
+            // Clearing it puts them back on a full set, which is the honest
+            // answer once the basis for the request no longer holds.
+            if (affiliationChanged)
+                user.DocumentRetakeJson = null;
+
             user.UpdatedAt = DateTime.UtcNow;
 
             _users.Update(user);
@@ -334,45 +358,72 @@ namespace AimPark.API.Services
                 ? DocumentType.Raf
                 : DocumentType.SchoolId;
 
-            var files = new[]
+            var slots = new[]
             {
-                (dto.IdentityDocument, identityType, dto.IdentityDocumentOcr),
-                (dto.License, DocumentType.License, dto.LicenseOcr),
-                (dto.OfficialReceipt, DocumentType.OfficialReceipt, dto.OfficialReceiptOcr),
-                (dto.PlatePhoto, DocumentType.PlatePhoto, dto.PlatePhotoOcr)
+                (File: dto.IdentityDocument, Type: identityType, Ocr: dto.IdentityDocumentOcr),
+                (File: dto.License, Type: DocumentType.License, Ocr: dto.LicenseOcr),
+                (File: dto.OfficialReceipt, Type: DocumentType.OfficialReceipt, Ocr: dto.OfficialReceiptOcr),
+                (File: dto.PlatePhoto, Type: DocumentType.PlatePhoto, Ocr: dto.PlatePhotoOcr)
             };
 
+            // What this submission has to contain. A reviewer who asked for one
+            // document gets one document; everyone else sends the full set.
+            var outstanding = OutstandingRetakeTypes(user, identityType);
+            var isRetake = outstanding.Count > 0;
+            var required = isRetake ? outstanding : slots.Select(s => s.Type).ToHashSet();
+
             var allowedExtensions = new[] { ".jpg", ".jpeg", ".png", ".pdf" };
-            foreach (var (file, type, _) in files)
+            foreach (var (file, type, _) in slots)
             {
                 if (file is null || file.Length == 0)
-                    return new BadRequestObjectResult(new { message = $"{type} document is required." });
+                {
+                    if (required.Contains(type))
+                        return new BadRequestObjectResult(new { message = $"{LabelFor(type)} is required." });
+
+                    // Not asked for and not sent. The copy already on file stands.
+                    continue;
+                }
 
                 var ext = Path.GetExtension(file.FileName).ToLowerInvariant();
                 if (!allowedExtensions.Contains(ext))
-                    return new BadRequestObjectResult(new { message = $"{type} must be JPG, PNG or PDF." });
+                    return new BadRequestObjectResult(new { message = $"{LabelFor(type)} must be JPG, PNG or PDF." });
 
                 if (file.Length > 8 * 1024 * 1024)
-                    return new BadRequestObjectResult(new { message = $"{type} must not exceed 8MB." });
+                    return new BadRequestObjectResult(new { message = $"{LabelFor(type)} must not exceed 8MB." });
             }
+
+            // Anything actually sent is processed, including a document the reviewer
+            // did not ask for — an applicant who decides to retake a second photo
+            // while they have the paperwork out should not be told not to.
+            var files = slots.Where(s => s.File is { Length: > 0 }).ToList();
 
             // Attempts are counted by counting drafts rather than with a column, so
             // the reviewer can see every try and what each one read.
-            var previousAttempts = (await _verifications.GetAllAsync(v => v.UserId == userId, ct)).Count;
+            //
+            // A reviewer-requested retake starts the allowance over. The earlier
+            // attempts answered a different question and were already accepted;
+            // spending someone's last try on a photograph an admin asked for would
+            // hand them a document they cannot resubmit.
+            var previousAttempts = isRetake
+                ? 0
+                : (await _verifications.GetAllAsync(v => v.UserId == userId, ct)).Count;
             var triesLeft = Math.Max(0, MaxScanAttempts - previousAttempts - 1);
 
             var payloads = files.ToDictionary(
-                f => f.Item2,
-                f => OcrPayloadParser.Parse(f.Item3));
+                f => f.Type,
+                f => OcrPayloadParser.Parse(f.Ocr));
 
             var diagnostics = new List<DocumentDiagnosisDto>();
             foreach (var (_, type, _) in files)
             {
+                // Only what was sent this time. Reporting a stored document as
+                // unreadable would send the applicant to retake a photograph this
+                // submission never touched.
                 var payload = payloads[type];
                 if (payload is null)
                     continue;
 
-                var reason = OcrCleanup.Diagnose(payload.Lines);
+                var reason = OcrCleanup.Diagnose(payload.Lines, type);
                 if (reason == ScanFailureReason.None)
                     continue;
 
@@ -386,30 +437,56 @@ namespace AimPark.API.Services
 
             // Each scan replaces the stored images, so the reviewer sees the attempt
             // the user actually settled on rather than three sets of photos.
+            //
+            // Only the types being resubmitted, though. Clearing the lot would mean
+            // a reviewer asking for one blurry receipt destroyed the licence and
+            // registration form they had already read and accepted.
+            var replacing = files.Select(f => f.Type).ToHashSet();
             var existing = await _documents.GetAllAsync(d => d.UserId == userId, ct);
-            foreach (var old in existing)
+            foreach (var old in existing.Where(d => replacing.Contains(d.Type)))
                 _documents.Delete(old);
 
             var documents = new List<Document>();
             foreach (var (file, type, _) in files)
             {
+                // Hashed from the upload itself, before storage rewrites anything, so
+                // the value describes what the applicant actually sent.
+                var hash = await ComputeSha256Async(file!, ct);
                 var filePath = await _fileStorage.SaveFileAsync(userId, type.ToString(), file!, ct);
                 documents.Add(new Document
                 {
                     Type = type,
                     FileName = Path.GetFileName(filePath),
                     FilePath = filePath,
+                    Sha256 = hash,
                     UserId = userId
                 });
             }
 
             await _documents.AddRangeAsync(documents, ct);
 
+            OcrPayloadDto? PayloadFor(DocumentType type)
+                => payloads.TryGetValue(type, out var payload) ? payload : null;
+
             var extracted = _extraction.Extract(
-                payloads[identityType],
-                payloads[DocumentType.License],
-                payloads[DocumentType.OfficialReceipt],
-                payloads[DocumentType.PlatePhoto]);
+                PayloadFor(identityType),
+                PayloadFor(DocumentType.License),
+                PayloadFor(DocumentType.OfficialReceipt),
+                PayloadFor(DocumentType.PlatePhoto));
+
+            // A partial submission read only the documents it carried, so every
+            // other value came back null. Those are not missing — they were read
+            // from documents still on file — and leaving them null would empty the
+            // applicant's licence name and expiry because their receipt was blurry.
+            if (isRetake)
+            {
+                var previous = (await _verifications.GetAllAsync(v => v.UserId == userId, ct))
+                    .OrderByDescending(v => v.CreatedAt)
+                    .FirstOrDefault();
+
+                if (previous is not null)
+                    CarryForwardUnreadValues(extracted, previous);
+            }
 
             var verification = new DocumentVerification
             {
@@ -424,6 +501,7 @@ namespace AimPark.API.Services
                 ExtractedPlateNumber = extracted.PlateNumber,
                 ExtractedRegistrationExpiry = extracted.RegistrationExpiry,
                 ExtractedPlatePhotoNumber = extracted.PlatePhotoNumber,
+                RawPayloads = SerializePayloads(payloads),
                 Result = VerificationStatus.NotStarted
             };
 
@@ -482,22 +560,31 @@ namespace AimPark.API.Services
             var (vehicle, vehicleNote) = await UpsertVehicleFromReceiptAsync(verification, dto, vehicleType, userId, ct);
             verification.VehicleId = vehicle?.Id;
 
-            // Evaluate rewrites Notes wholesale, so anything the upsert has to say is
-            // added after it rather than before.
+            // Evaluate rewrites Notes wholesale, so everything else with something to
+            // say is added after it rather than before.
             _preScreening.Evaluate(verification, user, vehicle);
 
-            if (vehicleNote is not null)
-            {
-                verification.Notes = string.IsNullOrWhiteSpace(verification.Notes)
-                    ? vehicleNote
-                    : $"{verification.Notes}\n{vehicleNote}";
-            }
+            AppendNote(verification, vehicleNote);
+
+            // Re-derived here rather than carried over from the scan. These are the
+            // submissions that reached a reviewer without the system ever confirming
+            // what it was looking at, and that must not have to be inferred from an
+            // absence of notes.
+            AppendNote(verification, UnconfirmedDocumentsNote(verification));
+            AppendNote(verification, await DuplicateDocumentsNoteAsync(userId, ct));
 
             _verifications.Update(verification);
 
             user.RegistrationStep = RegistrationStep.Completed;
             user.AccountStatus = AccountStatus.PendingReview;
             user.VerificationStatus = VerificationStatus.ManualReview;
+
+            // Whatever the reviewer asked for has now been supplied. Leaving the
+            // request set would send the applicant straight back into the capture
+            // flow on their next sign-in, being asked for a photograph they had
+            // just taken.
+            user.DocumentRetakeJson = null;
+
             user.UpdatedAt = DateTime.UtcNow;
             _users.Update(user);
             await _users.SaveAsync(ct);
@@ -564,6 +651,151 @@ namespace AimPark.API.Services
                 _vehicles.Update(vehicle);
 
             return (vehicle, null);
+        }
+
+        /// <summary>
+        /// SHA-256 of an uploaded file, as lowercase hex.
+        /// </summary>
+        private static async Task<string> ComputeSha256Async(IFormFile file, CancellationToken ct)
+        {
+            await using var stream = file.OpenReadStream();
+            var hash = await SHA256.HashDataAsync(stream, ct);
+            return Convert.ToHexString(hash).ToLowerInvariant();
+        }
+
+        /// <summary>
+        /// The readings this submission was built from, keyed by document type, for
+        /// storage alongside the values they produced.
+        /// </summary>
+        /// <remarks>
+        /// Documents whose phone sent no payload are left out rather than stored as
+        /// null, so the presence of a key means "this was read" without a second
+        /// column having to say so.
+        /// </remarks>
+        private static string? SerializePayloads(Dictionary<DocumentType, OcrPayloadDto?> payloads)
+        {
+            var present = payloads
+                .Where(entry => entry.Value is not null)
+                .ToDictionary(entry => entry.Key.ToString(), entry => entry.Value);
+
+            return present.Count == 0 ? null : JsonSerializer.Serialize(present);
+        }
+
+        private static Dictionary<DocumentType, OcrPayloadDto> DeserializePayloads(string? json)
+        {
+            var result = new Dictionary<DocumentType, OcrPayloadDto>();
+
+            if (string.IsNullOrWhiteSpace(json))
+                return result;
+
+            try
+            {
+                var stored = JsonSerializer.Deserialize<Dictionary<string, OcrPayloadDto>>(json);
+                if (stored is null)
+                    return result;
+
+                foreach (var (key, payload) in stored)
+                {
+                    if (Enum.TryParse<DocumentType>(key, out var type) && payload is not null)
+                        result[type] = payload;
+                }
+            }
+            catch (JsonException)
+            {
+                // Storage this service wrote itself, so a parse failure means the row
+                // predates the column or was hand-edited. Neither is worth failing a
+                // registration over; the note simply is not produced.
+            }
+
+            return result;
+        }
+
+        /// <summary>
+        /// Names the documents that never showed the printing they should carry.
+        /// </summary>
+        /// <remarks>
+        /// A submission only reaches this point with such a document when the retake
+        /// attempts ran out, which is deliberate — nobody is locked out of registering
+        /// because a campus prints its form differently. What must not happen is that
+        /// it arrives looking like every other submission, so the reviewer is told
+        /// plainly, with the count, that the system never recognised the paperwork.
+        /// </remarks>
+        private static string? UnconfirmedDocumentsNote(DocumentVerification verification)
+        {
+            var payloads = DeserializePayloads(verification.RawPayloads);
+            if (payloads.Count == 0)
+                return null;
+
+            var unconfirmed = new List<string>();
+
+            foreach (var (type, payload) in payloads)
+            {
+                if (!DocumentLandmarks.AppliesTo(type))
+                    continue;
+
+                var lines = OcrCleanup.Prepare(payload.Lines);
+                if (DocumentLandmarks.LooksGenuine(lines, type))
+                    continue;
+
+                unconfirmed.Add($"{LabelFor(type)} ({DocumentLandmarks.CountHits(lines, type)} expected markings found)");
+            }
+
+            return unconfirmed.Count == 0
+                ? null
+                : "Could not confirm these are the documents they were submitted as: "
+                  + string.Join("; ", unconfirmed)
+                  + ". Check the images by eye before approving.";
+        }
+
+        /// <summary>
+        /// Reports files here that another account has already submitted.
+        /// </summary>
+        /// <remarks>
+        /// The one check in this system that looks outside a single submission. Every
+        /// other comparison asks whether a set of documents agrees with itself, which
+        /// a borrowed set does perfectly — so the same photograph turning up under two
+        /// accounts is the only automatic signal that documents are being shared.
+        ///
+        /// Byte equality only. A re-photographed or resaved file will not match, and
+        /// that is the accepted limit: this catches forwarding a picture, not someone
+        /// who set out to defeat it.
+        /// </remarks>
+        private async Task<string?> DuplicateDocumentsNoteAsync(Guid userId, CancellationToken ct)
+        {
+            var mine = await _documents.GetAllAsync(d => d.UserId == userId, ct);
+
+            var hashes = mine
+                .Where(d => !string.IsNullOrEmpty(d.Sha256))
+                .Select(d => d.Sha256!)
+                .Distinct()
+                .ToList();
+
+            if (hashes.Count == 0)
+                return null;
+
+            var shared = await _documents.GetAllAsync(
+                d => d.UserId != userId && d.Sha256 != null && hashes.Contains(d.Sha256), ct);
+
+            if (shared.Count == 0)
+                return null;
+
+            var kinds = shared.Select(d => LabelFor(d.Type)).Distinct().ToList();
+
+            return $"Duplicate upload — the {string.Join(" and ", kinds)} here is byte-identical to a file "
+                   + "already submitted by a different account.";
+        }
+
+        /// <summary>
+        /// Adds a line to the reviewer's notes, keeping whatever is already there.
+        /// </summary>
+        private static void AppendNote(DocumentVerification verification, string? note)
+        {
+            if (string.IsNullOrWhiteSpace(note))
+                return;
+
+            verification.Notes = string.IsNullOrWhiteSpace(verification.Notes)
+                ? note
+                : verification.Notes + "\n" + note;
         }
 
         private static string LabelFor(DocumentType type) => type switch
@@ -788,13 +1020,64 @@ namespace AimPark.API.Services
             return (session, null);
         }
 
+        /// <summary>
+        /// The document types a reviewer is waiting on, resolved against the slots
+        /// this applicant actually uses. Empty for an ordinary first submission.
+        /// </summary>
+        /// <remarks>
+        /// The identity slot holds a RAF for a student and a school ID for everyone
+        /// else, and a reviewer picking from a list may well name the other one.
+        /// Both are folded to whichever this account files under, so a request for
+        /// "the registration form" on a staff account asks for their school ID
+        /// rather than for a document they will never have.
+        /// </remarks>
+        private static HashSet<DocumentType> OutstandingRetakeTypes(User user, DocumentType identityType)
+        {
+            var types = new HashSet<DocumentType>();
+
+            foreach (var item in DocumentRetakes.Read(user.DocumentRetakeJson))
+            {
+                if (!Enum.TryParse<DocumentType>(item.Type, ignoreCase: true, out var type))
+                    continue;
+
+                types.Add(type is DocumentType.Raf or DocumentType.SchoolId ? identityType : type);
+            }
+
+            return types;
+        }
+
+        /// <summary>
+        /// Fills the values this submission could not read from the last one that
+        /// could.
+        /// </summary>
+        /// <remarks>
+        /// Only ever fills nulls. A value the new documents did read always wins —
+        /// that is the whole reason they were retaken — so this can never quietly
+        /// restore the reading the reviewer rejected.
+        /// </remarks>
+        private static void CarryForwardUnreadValues(ExtractedValuesDto extracted, DocumentVerification previous)
+        {
+            extracted.StudentNumber ??= previous.ExtractedStudentNumber;
+            extracted.StudentName ??= previous.ExtractedStudentName;
+            extracted.Section ??= previous.ExtractedSection;
+            extracted.Semester ??= previous.ExtractedSemester;
+            extracted.LicenseName ??= previous.ExtractedLicenseName;
+            extracted.LicenseExpiry ??= previous.ExtractedLicenseExpiry;
+            extracted.PlateNumber ??= previous.ExtractedPlateNumber;
+            extracted.RegistrationExpiry ??= previous.ExtractedRegistrationExpiry;
+            extracted.PlatePhotoNumber ??= previous.ExtractedPlatePhotoNumber;
+        }
+
         private static RegistrationStatusResponse MapStatus(User user) => new()
         {
-            RegistrationStep = user.RegistrationStep,
-            AccountStatus = user.AccountStatus,
-            VerificationStatus = user.VerificationStatus,
+            RegistrationStep = user.RegistrationStep.ToString(),
+            AccountStatus = user.AccountStatus.ToString(),
+            VerificationStatus = user.VerificationStatus.ToString(),
             RejectionReason = user.RejectionReason,
-            CanReapplyAt = user.CanReapplyAt
+            CanReapplyAt = user.CanReapplyAt,
+            FullName = user.FullName,
+            Affiliation = user.Affiliation.ToString(),
+            DocumentsToRetake = DocumentRetakes.Read(user.DocumentRetakeJson)
         };
 
         private static ActionResult<T> RejectedAccountResult<T>(User user)

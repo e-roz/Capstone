@@ -38,6 +38,14 @@ namespace AimPark.API.Controllers
         public Task<ActionResult<object>> ResetReapply(Guid userId, CancellationToken ct)
             => _adminRegistrationService.ResetReapplyAsync(userId, GetAdminUserId(), ct);
 
+        /// <summary>
+        /// Sends named documents back for another photograph, without refusing
+        /// the application or starting a cooldown.
+        /// </summary>
+        [HttpPost("{userId:guid}/request-retake")]
+        public Task<ActionResult<object>> RequestRetake(Guid userId, [FromBody] RequestDocumentRetakeDto dto, CancellationToken ct)
+            => _adminRegistrationService.RequestDocumentRetakeAsync(userId, GetAdminUserId(), dto, ct);
+
         [HttpPost("{userId:guid}/reset-step")]
         public Task<ActionResult<object>> ResetStep(Guid userId, [FromBody] ResetRegistrationStepDto dto, CancellationToken ct)
             => _adminRegistrationService.ResetStepAsync(userId, GetAdminUserId(), dto, ct);

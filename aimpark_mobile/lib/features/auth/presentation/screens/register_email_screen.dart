@@ -2,19 +2,25 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../../../core/theme/app_colors.dart';
-import '../../../../core/theme/app_spacing.dart';
-import '../../../../core/theme/app_text_styles.dart';
-import '../../../../core/utils/api_error_message.dart';
+import '../../../../core/theme/theme.dart';
 import '../../../../core/utils/app_flushbar.dart';
-import '../../../../core/widgets/app_button.dart';
-import '../../../../core/widgets/app_text_field.dart';
+import '../../../../core/utils/validators.dart';
+import '../../../../core/widgets/widgets.dart';
 import '../providers/auth_provider.dart';
 import '../providers/registration_provider.dart';
+import '../widgets/google_auth_button.dart';
 import '../widgets/registration_step_scaffold.dart';
 
 class RegisterEmailScreen extends ConsumerStatefulWidget {
-  const RegisterEmailScreen({super.key});
+  const RegisterEmailScreen({super.key, this.notice});
+
+  /// Why the flow is starting here rather than because the user chose to.
+  ///
+  /// Set when an expired registration session sent them back. Shown inline and
+  /// left up: a transient bar would be gone before someone who put their phone
+  /// down mid-OTP picked it up again, and this is the only thing on the screen
+  /// that explains why they lost their place.
+  final String? notice;
 
   @override
   ConsumerState<RegisterEmailScreen> createState() =>
@@ -24,6 +30,8 @@ class RegisterEmailScreen extends ConsumerStatefulWidget {
 class _RegisterEmailScreenState extends ConsumerState<RegisterEmailScreen> {
   final _emailController = TextEditingController();
   bool _isLoading = false;
+  bool _isGoogleLoading = false;
+  String? _emailError;
 
   @override
   void dispose() {
@@ -31,13 +39,28 @@ class _RegisterEmailScreenState extends ConsumerState<RegisterEmailScreen> {
     super.dispose();
   }
 
-  Future<void> _sendOtp() async {
+  /// Puts the reason under the field rather than in a bar over it.
+  ///
+  /// A flushbar names a field the user then has to go and find, and it is gone
+  /// by the time they have found it. An error attached to the input says which
+  /// one and stays until it is answered.
+  bool _validate() {
     final email = _emailController.text.trim();
-    if (email.isEmpty) {
-      showAppMessage(context, 'Please enter your email.', isError: true);
-      return;
-    }
 
+    final error = email.isEmpty
+        ? 'Enter the email address to register with.'
+        : !isValidEmail(email)
+            ? "That doesn't look like an email address."
+            : null;
+
+    setState(() => _emailError = error);
+    return error == null;
+  }
+
+  Future<void> _sendOtp() async {
+    if (!_validate()) return;
+
+    final email = _emailController.text.trim();
     setState(() => _isLoading = true);
 
     try {
@@ -51,17 +74,20 @@ class _RegisterEmailScreenState extends ConsumerState<RegisterEmailScreen> {
       }
 
       await repo.saveSessionToken(sessionToken);
-      ref.read(registrationNotifierProvider.notifier).setEmail(email);
-      ref
-          .read(registrationNotifierProvider.notifier)
-          .setRegistrationSessionId(sessionToken);
+
+      final registration = ref.read(registrationNotifierProvider.notifier);
+      // Anything still saved belongs to a registration that was abandoned, not
+      // to this one.
+      registration.startFresh();
+      registration.setEmail(email);
+      registration.setRegistrationSessionId(sessionToken);
 
       if (mounted) {
         context.go('/register/otp', extra: email);
       }
     } catch (e) {
       if (mounted) {
-        showAppMessage(context, apiErrorMessage(e), isError: true);
+        showApiError(context, e);
       }
     } finally {
       if (mounted) {
@@ -75,49 +101,91 @@ class _RegisterEmailScreenState extends ConsumerState<RegisterEmailScreen> {
     return RegistrationStepScaffold(
       step: 1,
       title: 'Register',
-      showBackButton: false,
+      busy: _isLoading || _isGoogleLoading,
+      onBack: () => context.go('/login'),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text('Enter your email', style: AppTextStyles.h2),
-          const SizedBox(height: AppSpacing.xs),
-          Text(
-            'We will send a one-time password to verify your email address.',
-            style: AppTextStyles.bodyMedium.copyWith(
-              color: AppColors.textSecondary,
-            ),
+          const RegistrationStepHeading(
+            title: 'Enter your email',
+            subtitle:
+                'We will send a one-time password to verify your email address.',
           ),
-          const SizedBox(height: AppSpacing.lg),
+          if (widget.notice != null) ...[
+            AppNotice(message: widget.notice!, intent: StatusIntent.warning),
+            const SizedBox(height: AppSpacing.md),
+          ],
           AppTextField(
             label: 'Email',
             controller: _emailController,
+            enabled: !_isLoading && !_isGoogleLoading,
             keyboardType: TextInputType.emailAddress,
             textInputAction: TextInputAction.done,
             autofillHints: const [AutofillHints.email],
             prefixIcon: Icons.email_outlined,
+            errorText: _emailError,
+            // Clears the moment they start fixing it. Leaving the error up
+            // while someone corrects the address makes the screen look like it
+            // has stopped listening.
+            onChanged: (_) {
+              if (_emailError != null) setState(() => _emailError = null);
+            },
             onSubmitted: (_) => _isLoading ? null : _sendOtp(),
           ),
           const SizedBox(height: AppSpacing.lg),
           AppButton(
             label: 'Send OTP',
             isLoading: _isLoading,
-            onPressed: _isLoading ? null : _sendOtp,
+            onPressed: _isLoading || _isGoogleLoading ? null : _sendOtp,
+          ),
+          const SizedBox(height: AppSpacing.md),
+          // The other way to start. Google has already verified the address, so
+          // this skips the OTP entirely and lands on the profile step — which is
+          // why it belongs here, level with the email field it replaces, rather
+          // than on the welcome screen a step earlier.
+          const _OrDivider(),
+          const SizedBox(height: AppSpacing.md),
+          GoogleAuthButton(
+            intent: GoogleAuthIntent.signup,
+            enabled: !_isLoading,
+            onBusyChanged: (busy) => setState(() => _isGoogleLoading = busy),
           ),
           const SizedBox(height: AppSpacing.sm),
           Center(
             child: TextButton(
-              onPressed: _isLoading ? null : () => context.go('/login/sign-in'),
-              child: Text(
-                'Already have an account? Log in',
-                style: AppTextStyles.labelBold.copyWith(
-                  fontSize: 14,
-                  color: AppColors.brandPressed,
-                ),
-              ),
+              onPressed: _isLoading || _isGoogleLoading
+                  ? null
+                  : () => context.go('/login/sign-in'),
+              child: const Text('Already have an account? Log in'),
             ),
           ),
         ],
       ),
+    );
+  }
+}
+
+/// A rule with "or" set into it, separating two ways of doing the same thing.
+///
+/// Without it the Google button reads as the next step after sending the OTP
+/// rather than as an alternative to it.
+class _OrDivider extends StatelessWidget {
+  const _OrDivider();
+
+  @override
+  Widget build(BuildContext context) {
+    final t = context.tokens;
+    final line = Expanded(child: Divider(color: t.border.normal, height: 1));
+
+    return Row(
+      children: [
+        line,
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md),
+          child: Text('or', style: context.text.labelSmall),
+        ),
+        line,
+      ],
     );
   }
 }

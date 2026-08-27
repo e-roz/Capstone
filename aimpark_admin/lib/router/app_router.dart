@@ -4,8 +4,8 @@ import 'package:go_router/go_router.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 
 import '../core/utils/jwt_utils.dart';
+import 'destinations.dart';
 import '../screens/system_logs_screen.dart';
-import '../screens/dashboard_screen.dart';
 import '../screens/incidents_screen.dart';
 import '../screens/login_screen.dart';
 import '../screens/notifications_screen.dart';
@@ -17,7 +17,10 @@ import '../screens/registration_detail_screen.dart';
 import '../screens/reports_screen.dart';
 import '../screens/user_detail_screen.dart';
 import '../screens/user_management_screen.dart';
+import '../screens/security_gate_screen.dart';
+import '../screens/security_overview_screen.dart';
 import '../screens/violations_screen.dart';
+import '../screens/visitor_passes_screen.dart';
 import '../widgets/admin_shell.dart';
 
 part 'app_router.g.dart';
@@ -32,15 +35,20 @@ GoRouter appRouter(Ref ref) {
       final token = await _storage.read(key: 'admin_auth_token');
       final location = state.matchedLocation;
       final isLoggedIn = token != null && JwtUtils.isValid(token);
-      final isAdmin = isLoggedIn && JwtUtils.isAdmin(token);
+      final role = isLoggedIn ? JwtUtils.staffRole(token) : null;
 
       if (location == '/login') {
-        // If already a valid admin, skip login screen
-        return isAdmin ? '/dashboard' : null;
+        return role == null ? null : '/dashboard';
       }
 
-      // All other routes require admin
-      if (!isAdmin) return '/login';
+      // Anything but a staff account belongs on the login screen.
+      if (role == null) return '/login';
+
+      // A Security account typing an admin route into the address bar lands on
+      // its own home rather than on a screen whose every request the API will
+      // refuse. The rule comes from `destinations.dart`, so the sidebar and the
+      // guard cannot disagree about what the role may open.
+      if (!routesFor(role).any(location.startsWith)) return '/dashboard';
 
       return null;
     },
@@ -55,7 +63,18 @@ GoRouter appRouter(Ref ref) {
         routes: [
           GoRoute(
             path: '/dashboard',
-            builder: (context, state) => const DashboardScreen(),
+            // One route, two front doors. The administrator's overview is built
+            // on the Reports endpoints, which a Security account is refused -
+            // so they get their own rather than a screen of permission errors.
+            builder: (context, state) => const RoleOverview(),
+          ),
+          GoRoute(
+            path: '/gate',
+            builder: (context, state) => const SecurityGateScreen(),
+          ),
+          GoRoute(
+            path: '/visitors',
+            builder: (context, state) => const VisitorPassesScreen(),
           ),
           GoRoute(
             path: '/pending',

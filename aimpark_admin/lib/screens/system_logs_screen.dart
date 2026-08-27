@@ -11,6 +11,8 @@ import '../providers/audit_logs_provider.dart';
 import '../providers/rfid_access_logs_provider.dart';
 import '../providers/system_logs_provider.dart';
 import '../providers/violations_provider.dart';
+import '../providers/auth_provider.dart';
+import '../router/destinations.dart';
 import '../theme/theme.dart';
 import '../widgets/ui/ui.dart';
 
@@ -31,44 +33,61 @@ String _fileStamp() => DateFormat('yyyyMMdd-HHmm').format(DateTime.now());
 /// Tab order follows how often a tab is opened, not the order the document
 /// lists them in: user activity and gate access are the daily questions, and
 /// system errors are the one you hope never to need.
-class SystemLogsScreen extends StatelessWidget {
+class SystemLogsScreen extends ConsumerWidget {
   const SystemLogsScreen({super.key});
 
   @override
-  Widget build(BuildContext context) {
-    return const DefaultTabController(length: 5, child: _SystemLogsPage());
+  Widget build(BuildContext context, WidgetRef ref) {
+    // "Access Monitoring" is the guard's module: RFID access, and nothing
+    // else. The API refuses them user activity and system errors, and
+    // violations and admin actions are not theirs to read either - so Security
+    // gets the one tab it is entitled to rather than four that would error.
+    final isSecurity = ref.watch(staffRoleProvider) == StaffRole.security;
+
+    return DefaultTabController(
+      length: isSecurity ? 1 : 5,
+      child: _SystemLogsPage(isSecurity: isSecurity),
+    );
   }
 }
 
 class _SystemLogsPage extends StatelessWidget {
-  const _SystemLogsPage();
+  const _SystemLogsPage({required this.isSecurity});
+
+  final bool isSecurity;
 
   @override
   Widget build(BuildContext context) {
-    return const AppPage(
-      title: 'System Logs',
-      subtitle: 'Monitor operations and verify the system is behaving.',
+    return AppPage(
+      title: isSecurity ? 'Access Monitoring' : 'System Logs',
+      subtitle: isSecurity
+          ? 'Every card scanned at the barrier, by reader and by hand.'
+          : 'Monitor operations and verify the system is behaving.',
       toolbar: Align(
         alignment: Alignment.centerLeft,
         child: TabBar(
           isScrollable: true,
           tabAlignment: TabAlignment.start,
           tabs: [
-            Tab(text: 'User Activity'),
-            Tab(text: 'RFID Access'),
-            Tab(text: 'Violations'),
-            Tab(text: 'Administrative Actions'),
-            Tab(text: 'System Errors'),
+            if (!isSecurity) const Tab(text: 'User Activity'),
+            const Tab(text: 'RFID Access'),
+            if (!isSecurity) ...[
+              const Tab(text: 'Violations'),
+              const Tab(text: 'Administrative Actions'),
+              const Tab(text: 'System Errors'),
+            ],
           ],
         ),
       ),
       body: TabBarView(
         children: [
-          _UserActivityTab(),
-          _RfidAccessTab(),
-          _ViolationLogsTab(),
-          _AdminActionsTab(),
-          _SystemErrorsTab(),
+          if (!isSecurity) const _UserActivityTab(),
+          const _RfidAccessTab(),
+          if (!isSecurity) ...[
+            const _ViolationLogsTab(),
+            const _AdminActionsTab(),
+            const _SystemErrorsTab(),
+          ],
         ],
       ),
     );

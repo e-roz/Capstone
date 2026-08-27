@@ -2,30 +2,29 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/constants/api_constants.dart';
-import '../../../../core/theme/app_colors.dart';
-import '../../../../core/theme/app_spacing.dart';
-import '../../../../core/theme/app_text_styles.dart';
-import '../../../../core/utils/api_error_message.dart';
+import '../../../../core/theme/theme.dart';
 import '../../../../core/utils/app_flushbar.dart';
 import '../../../../core/utils/formatters.dart';
-import '../../../../core/widgets/app_badge.dart';
-import '../../../../core/widgets/app_button.dart';
-import '../../../../core/widgets/app_card.dart';
-import '../../../../core/widgets/app_state_views.dart';
+import '../../../../core/widgets/widgets.dart';
 import '../../data/models/incident.dart';
 import '../providers/incidents_provider.dart';
 import 'edit_incident_screen.dart';
 
 class IncidentDetailScreen extends ConsumerWidget {
   const IncidentDetailScreen({super.key, required this.incidentId});
+
   final String incidentId;
 
-  String _resolveUrl(String url) {
-    return url.startsWith('http') ? url : '${ApiConstants.baseUrl}$url';
-  }
+  /// Evidence comes back as a server-relative path on some endpoints and an
+  /// absolute URL on others.
+  String _resolveUrl(String url) =>
+      url.startsWith('http') ? url : '${ApiConstants.baseUrl}$url';
 
   Future<void> _edit(
-      BuildContext context, WidgetRef ref, IncidentDetail incident) async {
+    BuildContext context,
+    WidgetRef ref,
+    IncidentDetail incident,
+  ) async {
     final saved = await Navigator.of(context).push<bool>(
       MaterialPageRoute(builder: (_) => EditIncidentScreen(incident: incident)),
     );
@@ -37,30 +36,15 @@ class IncidentDetailScreen extends ConsumerWidget {
   }
 
   Future<void> _withdraw(BuildContext context, WidgetRef ref) async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text('Withdraw report?', style: AppTextStyles.h3),
-        content: Text(
-          'This report will be marked as withdrawn and will no longer be '
+    final confirmed = await confirmAction(
+      context,
+      title: 'Withdraw report?',
+      message: 'This report will be marked as withdrawn and will no longer be '
           'reviewed. This cannot be undone.',
-          style: AppTextStyles.bodyMedium,
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(false),
-            child: const Text('Keep it'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(true),
-            style: TextButton.styleFrom(foregroundColor: AppColors.errorDefault),
-            child: const Text('Withdraw'),
-          ),
-        ],
-      ),
+      confirmLabel: 'Withdraw',
+      cancelLabel: 'Keep it',
     );
-
-    if (confirmed != true || !context.mounted) return;
+    if (!confirmed || !context.mounted) return;
 
     try {
       await ref.read(incidentsRepositoryProvider).withdraw(incidentId);
@@ -69,120 +53,155 @@ class IncidentDetailScreen extends ConsumerWidget {
       if (context.mounted) showAppMessage(context, 'Report withdrawn.');
     } catch (e) {
       if (context.mounted) {
-        showAppMessage(context, apiErrorMessage(e), isError: true);
+        showApiError(context, e);
       }
     }
   }
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final detailAsync = ref.watch(incidentDetailProvider(incidentId));
-
-    return Scaffold(
-      backgroundColor: AppColors.bgPage,
-      appBar: AppBar(
-        backgroundColor: AppColors.bgPage,
-        elevation: 0,
-        title: Text('Incident Report', style: AppTextStyles.h3),
-      ),
-      body: SafeArea(
-        child: detailAsync.when(
-          loading: () => const Center(child: CircularProgressIndicator()),
-          error: (error, _) => AppErrorState(
-            title: "Couldn't load this report",
-            onRetry: () => ref.invalidate(incidentDetailProvider(incidentId)),
-          ),
-          data: (incident) {
-            return ListView(
-              padding: const EdgeInsets.all(AppSpacing.md),
-              children: [
-                AppCard(
-                  child: Column(
+    return AppScreen(
+      title: 'Incident Report',
+      body: AsyncView(
+        value: ref.watch(incidentDetailProvider(incidentId)),
+        // Invalidate *and* await the rebuilt future. Without the await the
+        // pull-to-refresh spinner snaps back the instant it is released,
+        // which reads as the gesture having been ignored.
+        onRefresh: () {
+          ref.invalidate(incidentDetailProvider(incidentId));
+          return ref.read(incidentDetailProvider(incidentId).future);
+        },
+        errorTitle: "Couldn't load this report",
+        data: (incident) => ListView(
+          padding: kScreenListPadding,
+          children: [
+            AppCard(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Expanded(child: Text(incident.category, style: AppTextStyles.h3)),
-                          AppBadge(label: incident.status),
-                        ],
-                      ),
-                      const SizedBox(height: AppSpacing.sm),
-                      Text(incident.description, style: AppTextStyles.bodyMedium),
-                      if (incident.location != null) ...[
-                        const SizedBox(height: AppSpacing.sm),
-                        Row(
-                          children: [
-                            const Icon(Icons.location_on_rounded,
-                                size: 16, color: AppColors.textSecondary),
-                            const SizedBox(width: 4),
-                            Text(incident.location!, style: AppTextStyles.bodySmall),
-                          ],
+                      Expanded(
+                        child: Text(
+                          incident.category,
+                          style: context.text.headlineSmall,
                         ),
-                      ],
-                      const SizedBox(height: 4),
-                      Text(
-                        'Reported ${Formatters.date(incident.createdAt)}',
-                        style: AppTextStyles.labelSmall.copyWith(color: AppColors.textSecondary),
+                      ),
+                      const SizedBox(width: AppSpacing.sm),
+                      AppStatusBadge(
+                        label: incident.status,
+                        intent: StatusIntents.incident(incident.status),
                       ),
                     ],
                   ),
-                ),
-                if (incident.evidenceUrls.isNotEmpty) ...[
-                  const SizedBox(height: AppSpacing.lg),
-                  Text('Evidence', style: AppTextStyles.h3),
                   const SizedBox(height: AppSpacing.sm),
-                  GridView.builder(
-                    shrinkWrap: true,
-                    physics: const NeverScrollableScrollPhysics(),
-                    itemCount: incident.evidenceUrls.length,
-                    gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                      crossAxisCount: 2,
-                      crossAxisSpacing: AppSpacing.sm,
-                      mainAxisSpacing: AppSpacing.sm,
-                    ),
-                    itemBuilder: (context, index) {
-                      return ClipRRect(
-                        borderRadius: BorderRadius.circular(AppRadius.sm),
-                        child: Image.network(
-                          _resolveUrl(incident.evidenceUrls[index]),
-                          fit: BoxFit.cover,
+                  Text(incident.description, style: context.text.bodyMedium),
+                  if (incident.location != null) ...[
+                    const SizedBox(height: AppSpacing.sm),
+                    Row(
+                      children: [
+                        Icon(
+                          Icons.location_on_rounded,
+                          size: AppSizes.iconSm,
+                          color: context.tokens.text.secondary,
                         ),
-                      );
-                    },
-                  ),
-                ],
-                if (incident.adminNotes != null) ...[
-                  const SizedBox(height: AppSpacing.lg),
-                  Text('Admin Notes', style: AppTextStyles.h3),
-                  const SizedBox(height: AppSpacing.sm),
-                  AppCard(child: Text(incident.adminNotes!, style: AppTextStyles.bodyMedium)),
-                ],
-                if (incident.canModify) ...[
-                  const SizedBox(height: AppSpacing.lg),
-                  AppButton(
-                    label: 'Edit Report',
-                    style: AppButtonStyle.secondary,
-                    onPressed: () => _edit(context, ref, incident),
-                  ),
-                  const SizedBox(height: AppSpacing.sm),
-                  AppButton(
-                    label: 'Withdraw Report',
-                    style: AppButtonStyle.ghost,
-                    onPressed: () => _withdraw(context, ref),
-                  ),
-                ] else ...[
-                  const SizedBox(height: AppSpacing.lg),
+                        const SizedBox(width: 4),
+                        Text(
+                          incident.location!,
+                          style: context.text.bodySmall,
+                        ),
+                      ],
+                    ),
+                  ],
+                  const SizedBox(height: 4),
                   Text(
-                    'This report is being reviewed and can no longer be changed.',
-                    textAlign: TextAlign.center,
-                    style: AppTextStyles.bodySmall
-                        .copyWith(color: AppColors.textSecondary),
+                    'Reported ${Formatters.date(incident.createdAt)}',
+                    style: context.text.labelSmall,
                   ),
                 ],
-              ],
-            );
-          },
+              ),
+            ),
+            if (incident.evidenceUrls.isNotEmpty) ...[
+              const SizedBox(height: AppSpacing.lg),
+              const AppSectionHeader(title: 'Evidence'),
+              GridView.builder(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                itemCount: incident.evidenceUrls.length,
+                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: 2,
+                  crossAxisSpacing: AppSpacing.sm,
+                  mainAxisSpacing: AppSpacing.sm,
+                ),
+                itemBuilder: (context, index) => _EvidenceThumb(
+                  url: _resolveUrl(incident.evidenceUrls[index]),
+                ),
+              ),
+            ],
+            if (incident.adminNotes != null) ...[
+              const SizedBox(height: AppSpacing.lg),
+              const AppSectionHeader(title: 'Admin Notes'),
+              AppCard(
+                child: Text(
+                  incident.adminNotes!,
+                  style: context.text.bodyMedium,
+                ),
+              ),
+            ],
+            const SizedBox(height: AppSpacing.lg),
+            if (incident.canModify) ...[
+              AppButton(
+                label: 'Edit Report',
+                style: AppButtonStyle.secondary,
+                onPressed: () => _edit(context, ref, incident),
+              ),
+              const SizedBox(height: AppSpacing.sm),
+              AppButton(
+                label: 'Withdraw Report',
+                style: AppButtonStyle.ghost,
+                onPressed: () => _withdraw(context, ref),
+              ),
+            ] else
+              Text(
+                'This report is being reviewed and can no longer be changed.',
+                textAlign: TextAlign.center,
+                style: context.text.bodySmall,
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// One evidence photo.
+///
+/// The grid used to hand the URL straight to [Image.network] with no error
+/// branch, so a deleted or unreachable file rendered as Flutter's grey
+/// exception box inside the card.
+class _EvidenceThumb extends StatelessWidget {
+  const _EvidenceThumb({required this.url});
+
+  final String url;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = context.tokens;
+
+    return ClipRRect(
+      borderRadius: AppRadius.smAll,
+      child: Image.network(
+        url,
+        fit: BoxFit.cover,
+        loadingBuilder: (context, child, progress) =>
+            progress == null ? child : const AppSkeleton.block(height: 120),
+        errorBuilder: (_, _, _) => ColoredBox(
+          color: t.surface.muted,
+          child: Icon(
+            Icons.broken_image_rounded,
+            color: t.text.secondary,
+          ),
         ),
       ),
     );

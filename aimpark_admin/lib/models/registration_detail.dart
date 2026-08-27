@@ -1,3 +1,5 @@
+import 'registration_checks.dart';
+
 class RegistrationDetail {
   final String userId;
   final String fullName;
@@ -22,6 +24,10 @@ class RegistrationDetail {
   final List<VehicleInfo> vehicles;
   final List<DocumentInfo> documents;
 
+  /// Null when the applicant has not submitted documents yet. The screen then
+  /// shows the record alone, exactly as it did before the panel existed.
+  final RegistrationChecks? checks;
+
   const RegistrationDetail({
     required this.userId,
     required this.fullName,
@@ -44,6 +50,7 @@ class RegistrationDetail {
     this.rfidSuspendedUntil,
     required this.vehicles,
     required this.documents,
+    this.checks,
   });
 
   factory RegistrationDetail.fromJson(Map<String, dynamic> json) =>
@@ -81,6 +88,9 @@ class RegistrationDetail {
         documents: (json['documents'] as List<dynamic>? ?? [])
             .map((d) => DocumentInfo.fromJson(d as Map<String, dynamic>))
             .toList(),
+        checks: json['checks'] == null
+            ? null
+            : RegistrationChecks.fromJson(json['checks'] as Map<String, dynamic>),
       );
 }
 

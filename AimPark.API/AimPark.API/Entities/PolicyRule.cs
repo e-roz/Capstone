@@ -19,6 +19,25 @@ namespace AimPark.API.Entities
         // Only used when DefaultSuspensionType == Temporary
         public int? DefaultSuspensionDays { get; set; }
 
+        /// <summary>
+        /// Days the user's card keeps working after this rule is broken, so
+        /// they can appeal before the suspension starts. Zero means the
+        /// suspension bites immediately.
+        /// </summary>
+        /// <remarks>
+        /// Three days is the right default — a penalty served before anyone has
+        /// read the objection makes the appeal pointless. But not every rule
+        /// deserves it: blocking a fire lane or a repeated forced entry has to
+        /// stop today, and waiting three days to act on one is its own kind of
+        /// unfair. So the window belongs to the rule, where an admin writing
+        /// the rule can weigh exactly that, rather than being one constant for
+        /// the whole system.
+        ///
+        /// Only meaningful when <see cref="DefaultSuspensionType"/> is not
+        /// None. Rules written before this field default to three days.
+        /// </remarks>
+        public int AppealWindowDays { get; set; } = 3;
+
         // Rules are deactivated, never deleted, so past violations keep a valid reference.
         public bool IsActive { get; set; } = true;
 

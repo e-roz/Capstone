@@ -3,7 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:rive/rive.dart';
 
 import 'core/services/push_service.dart';
-import 'core/theme/app_theme.dart';
+import 'core/theme/theme.dart';
 import 'router/app_router.dart';
 
 void main() async {
@@ -29,7 +29,12 @@ class AimParkApp extends ConsumerWidget {
 
     return MaterialApp.router(
       title: 'AimPark',
-      theme: AppTheme.light,
+      // Both themes are always built and handed to Flutter, which picks between
+      // them on [themeMode] and animates the tokens across when it changes —
+      // AppTokens implements lerp for exactly that transition.
+      theme: AppTheme.light(),
+      darkTheme: AppTheme.dark(),
+      themeMode: ref.watch(appThemeModeProvider),
       routerConfig: router,
     );
   }

@@ -6,6 +6,7 @@ import 'package:intl/intl.dart';
 import '../models/pending_registration.dart';
 import '../providers/registrations_provider.dart';
 import '../theme/theme.dart';
+import '../widgets/checks_panel.dart';
 import '../widgets/ui/ui.dart';
 
 /// Search and sort run in the widget, not the provider, because this endpoint
@@ -21,10 +22,19 @@ class PendingRegistrationsScreen extends ConsumerStatefulWidget {
 
 class _PendingRegistrationsScreenState
     extends ConsumerState<PendingRegistrationsScreen> {
-  static const _submittedColumn = 2;
+  // Named because the sort switch below reads them back, and a bare `3` there
+  // silently means the wrong column the moment a column is inserted.
+  static const _nameColumn = 0;
+  static const _checksColumn = 1;
+  static const _emailColumn = 2;
+  static const _waitingColumn = 4;
 
   String _search = '';
-  int _sortColumn = _submittedColumn;
+
+  /// Opens on what the checks found rather than on the date. An admin working a
+  /// queue wants the applications that need a person first; the date is how you
+  /// break the tie, not how you choose.
+  int _sortColumn = _checksColumn;
 
   /// Newest first: the queue is worked from the top, and an admin opening this
   /// screen wants what just arrived, not what arrived in September.
@@ -75,9 +85,10 @@ class _PendingRegistrationsScreenState
             sortAscending: _sortAscending,
             columns: [
               DataColumn(label: const Text('Full Name'), onSort: _sort),
+              DataColumn(label: const Text('Checks'), onSort: _sort),
               DataColumn(label: const Text('Email'), onSort: _sort),
               DataColumn(label: const Text('Submitted'), onSort: _sort),
-              DataColumn(label: const Text('Last Updated'), onSort: _sort),
+              DataColumn(label: const Text('Waiting'), onSort: _sort),
               const DataColumn(label: Text('')),
             ],
             rows: [for (final reg in rows) _row(context, reg)],
@@ -104,11 +115,23 @@ class _PendingRegistrationsScreenState
       onSelectChanged: (_) => context.go('/pending/${reg.userId}'),
       cells: [
         DataCell(Text(reg.fullName, style: text.titleSmall)),
+        // Counts only. The evidence is one click away and would not survive
+        // being squeezed into a table cell anyway.
+        DataCell(ChecksPill(
+          verdict: reg.checksVerdict,
+          summary: reg.checksSummary,
+        )),
         DataCell(Text(reg.email)),
         DataCell(Text(_fmt(reg.createdAt),
             style: text.bodyMedium?.copyWith(color: t.text.secondary))),
-        DataCell(Text(_fmt(reg.updatedAt),
-            style: text.bodyMedium?.copyWith(color: t.text.secondary))),
+        DataCell(Text(
+          _waited(reg.waitingDays),
+          style: text.bodyMedium?.copyWith(
+            // An application nobody has touched in a fortnight is a problem
+            // with the queue, not with the applicant.
+            color: reg.waitingDays >= 7 ? t.status.warning.fg : t.text.secondary,
+          ),
+        )),
         // Row click alone gave no hint the review screen existed — same
         // discoverability gap as Incidents.
         DataCell(AppRowAction(
@@ -136,9 +159,13 @@ class _PendingRegistrationsScreenState
 
     filtered.sort((a, b) {
       final order = switch (_sortColumn) {
-        0 => a.fullName.toLowerCase().compareTo(b.fullName.toLowerCase()),
-        1 => a.email.toLowerCase().compareTo(b.email.toLowerCase()),
-        3 => a.updatedAt.compareTo(b.updatedAt),
+        _nameColumn =>
+          a.fullName.toLowerCase().compareTo(b.fullName.toLowerCase()),
+        // Ranked, not alphabetical: sorting "2 need attention" against "All 6
+        // passed" as text puts them in an order that means nothing.
+        _checksColumn => a.concernRank.compareTo(b.concernRank),
+        _emailColumn => a.email.toLowerCase().compareTo(b.email.toLowerCase()),
+        _waitingColumn => a.waitingDays.compareTo(b.waitingDays),
         _ => a.createdAt.compareTo(b.createdAt),
       };
       return _sortAscending ? order : -order;
@@ -149,4 +176,10 @@ class _PendingRegistrationsScreenState
 
   String _fmt(DateTime dt) =>
       DateFormat('MMM d, yyyy HH:mm').format(dt.toLocal());
+
+  String _waited(int days) => switch (days) {
+        0 => 'Today',
+        1 => '1 day',
+        _ => '$days days',
+      };
 }

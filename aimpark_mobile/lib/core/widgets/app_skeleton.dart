@@ -1,9 +1,8 @@
 import 'package:flutter/material.dart';
 
-import '../theme/app_colors.dart';
-import '../theme/app_spacing.dart';
+import '../theme/theme.dart';
 
-/// A pulsing grey placeholder standing in for content that hasn't arrived.
+/// A pulsing placeholder standing in for content that hasn't arrived.
 ///
 /// Used where showing a *shape* is more honest than showing a value. Home used
 /// to read its three providers with `.valueOrNull` and no loading branch, so
@@ -26,7 +25,12 @@ class AppSkeleton extends StatefulWidget {
 
   /// A whole card's worth of placeholder.
   const AppSkeleton.block({Key? key, double height = 96})
-      : this(key: key, width: double.infinity, height: height, radius: AppRadius.md);
+      : this(
+          key: key,
+          width: double.infinity,
+          height: height,
+          radius: AppRadius.md,
+        );
 
   final double width;
   final double height;
@@ -40,7 +44,7 @@ class _AppSkeletonState extends State<AppSkeleton>
     with SingleTickerProviderStateMixin {
   late final AnimationController _controller = AnimationController(
     vsync: this,
-    duration: const Duration(milliseconds: 900),
+    duration: AppMotion.slow,
   )..repeat(reverse: true);
 
   @override
@@ -61,10 +65,33 @@ class _AppSkeletonState extends State<AppSkeleton>
         width: widget.width,
         height: widget.height,
         decoration: BoxDecoration(
-          color: AppColors.bgSurfaceAlt,
+          color: context.tokens.surface.muted,
           borderRadius: BorderRadius.circular(widget.radius),
         ),
       ),
+    );
+  }
+}
+
+/// A skeleton shaped like an [AppListRow], for lists whose row height is known
+/// before the data is.
+///
+/// Every list screen was showing a bare centred spinner while it loaded, which
+/// tells the user nothing about what is coming. This tells them a list is.
+class AppRowSkeleton extends StatelessWidget {
+  const AppRowSkeleton({super.key, this.count = 4});
+
+  final int count;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        for (var i = 0; i < count; i++) ...[
+          const AppSkeleton.block(height: 72),
+          if (i != count - 1) const SizedBox(height: AppSpacing.gutter),
+        ],
+      ],
     );
   }
 }

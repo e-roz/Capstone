@@ -44,7 +44,20 @@ android {
         release {
             // TODO: Add your own signing config for the release build.
             // Signing with the debug keys for now, so `flutter run --release` works.
+            //
+            // Keeping the debug key has one useful side effect worth knowing
+            // before it changes: Google Sign-In authorises by the signing
+            // certificate's SHA-1, and the debug key's fingerprint is the one
+            // registered in Firebase. A real release key will break sign-in
+            // until its fingerprint is registered too.
             signingConfig = signingConfigs.getByName("debug")
+
+            // Release is minified by R8, which hard-fails on references it
+            // cannot resolve — see proguard-rules.pro for what that hits here.
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro",
+            )
         }
     }
 }

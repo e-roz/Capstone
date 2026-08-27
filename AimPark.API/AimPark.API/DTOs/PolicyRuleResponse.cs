@@ -9,6 +9,7 @@ namespace AimPark.API.DTOs
         public decimal DefaultPenaltyAmount { get; set; }
         public string DefaultSuspensionType { get; set; } = string.Empty;
         public int? DefaultSuspensionDays { get; set; }
+        public int AppealWindowDays { get; set; }
         public bool IsActive { get; set; }
         public DateTime CreatedAt { get; set; }
         public DateTime UpdatedAt { get; set; }

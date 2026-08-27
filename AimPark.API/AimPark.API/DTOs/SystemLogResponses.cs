@@ -11,8 +11,16 @@ namespace AimPark.API.DTOs
     public class RfidAccessLogEntryResponse
     {
         public Guid Id { get; set; }
-        public Guid UserId { get; set; }
+
+        /// <summary>Null for a visitor, who has no account.</summary>
+        public Guid? UserId { get; set; }
+
+        /// <summary>The account holder, or the visitor's name.</summary>
         public string UserName { get; set; } = string.Empty;
+
+        /// <summary>True when the card was one lent to a visitor.</summary>
+        public bool IsVisitor { get; set; }
+
         public string? RfidTagId { get; set; }
         public string? SlotCode { get; set; }
         public int? Gate { get; set; }

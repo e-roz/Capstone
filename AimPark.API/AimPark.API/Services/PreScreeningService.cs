@@ -29,34 +29,66 @@ namespace AimPark.API.Services
         }
 
         /// <summary>
-        /// The name on the school document against the name on the licence.
+        /// The names on the documents against each other, and against the account
+        /// they were submitted under.
         /// </summary>
         /// <remarks>
-        /// Both belong to the applicant, which is what makes this comparison
-        /// meaningful. The Official Receipt's owner is never compared: students
+        /// The account name is the leg that makes this worth running. Comparing the
+        /// school document to the licence alone establishes only that the two papers
+        /// describe one person — so a set of documents belonging entirely to someone
+        /// else agrees with itself perfectly and passes. The applicant's own name
+        /// reached the account through an email they had to receive a code at, which
+        /// is the closest thing to an identity this registration has.
+        ///
+        /// The Official Receipt's owner is still never compared: campus users
         /// commonly drive vehicles registered to a parent, so a mismatch there is
         /// expected and proves nothing.
+        ///
+        /// Faculty and staff used to be skipped entirely, because a school ID is
+        /// filed rather than read. Their licence is read, so the account comparison
+        /// covers them now — they simply have one pairing available instead of three.
         /// </remarks>
         private static CheckResult CheckName(DocumentVerification v, User user, List<string> notes)
         {
-            // Faculty and staff submit a school ID, which these rules do not read.
-            if (user.Affiliation != Affiliation.Student)
-                return CheckResult.NotChecked;
-
-            var schoolName = v.ConfirmedStudentName ?? v.ExtractedStudentName;
+            var accountName = user.FullName;
             var licenseName = v.ConfirmedLicenseName ?? v.ExtractedLicenseName;
 
-            if (string.IsNullOrWhiteSpace(schoolName) || string.IsNullOrWhiteSpace(licenseName))
+            // Only students submit a document these rules can take a name off.
+            var schoolName = user.Affiliation == Affiliation.Student
+                ? v.ConfirmedStudentName ?? v.ExtractedStudentName
+                : null;
+
+            var compared = 0;
+            var mismatches = 0;
+
+            void Compare(string? left, string leftLabel, string? right, string rightLabel)
             {
-                notes.Add("Could not compare names — one of the documents did not give a readable name.");
+                if (string.IsNullOrWhiteSpace(left) || string.IsNullOrWhiteSpace(right))
+                    return;
+
+                compared++;
+
+                if (NameMatching.IsProbableMatch(left, right))
+                    return;
+
+                mismatches++;
+                notes.Add($"Name mismatch — {leftLabel} reads \"{left.Trim()}\", {rightLabel} reads \"{right.Trim()}\".");
+            }
+
+            Compare(schoolName, "the school document", licenseName, "the licence");
+            Compare(accountName, "the account", licenseName, "the licence");
+            Compare(accountName, "the account", schoolName, "the school document");
+
+            if (mismatches > 0)
+                return CheckResult.Failed;
+
+            if (compared == 0)
+            {
+                notes.Add("Could not compare names — no readable name came off the documents.");
                 return CheckResult.NotChecked;
             }
 
-            if (NameMatching.IsProbableMatch(schoolName, licenseName))
-                return CheckResult.Passed;
-
-            notes.Add($"Name mismatch — school document reads \"{schoolName}\", licence reads \"{licenseName}\".");
-            return CheckResult.Failed;
+            return CheckResult.Passed;
         }
 
         /// <summary>
@@ -117,10 +149,24 @@ namespace AimPark.API.Services
                 return CheckResult.NotChecked;
             }
 
-            // One character of slack: these are outdoor photos at an angle, and the
-            // reading has already been matched against a known expected value.
-            if (FuzzyText.EditDistance(seen, expected) <= 1)
+            var distance = FuzzyText.EditDistance(seen, expected);
+
+            if (distance == 0)
                 return CheckResult.Passed;
+
+            // One character apart is not agreement, and must never be recorded as
+            // one. The slack is there because these are outdoor photos at an angle,
+            // but it is exactly wide enough to swallow a one-character misreading of
+            // the receipt — and the plate is shown read-only, then written to the
+            // vehicle the gate matches on. Passing this silently is how a valid card
+            // stops working with nothing to point at.
+            if (distance == 1)
+            {
+                notes.Add(
+                    $"Plate needs a second look — the receipt reads {expected}, the photo of the vehicle reads {seen}. " +
+                    "One character apart; confirm which is correct against the images before approving.");
+                return CheckResult.NotChecked;
+            }
 
             notes.Add($"The plate in the photo reads {seen}, but the receipt says {expected}.");
             return CheckResult.Failed;

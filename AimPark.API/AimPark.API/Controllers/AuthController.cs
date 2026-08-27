@@ -162,16 +162,32 @@ namespace AimPark.API.Controllers
             var externalId = payload.Subject;
             var fullName = payload.Name;
 
+            // Only a verified address proves anything. Google will mint a token
+            // for an unverified one, and treating that as proof of the mailbox
+            // would let someone claim an address they do not hold — which, on an
+            // endpoint that creates accounts keyed by email, is the whole farm.
+            if (!payload.EmailVerified)
+                return Unauthorized(new LoginResponse
+                {
+                    Message = "This Google account's email address is not verified."
+                });
+
+            var isLogin = string.Equals(dto.Intent, "login", StringComparison.OrdinalIgnoreCase);
+
             var user = await _users.FindAsync(u => u.Email == email, ct);
 
             if (user is not null)
             {
-                // Conflict: existing local account, do NOT auto-link
-                if (user.AuthProvider == AuthProvider.Local && user.PasswordHash is not null)
+                // A Google account that is not the one already attached to this
+                // address. Two Google accounts cannot hold one address at the
+                // same time, so this is either a recreated account or somebody
+                // else's — and neither is something to resolve silently.
+                if (user.ExternalProviderId is not null &&
+                    user.ExternalProviderId != externalId)
                 {
                     return Conflict(new LoginResponse
                     {
-                        Message = "This email is already registered. Please log in with your password instead."
+                        Message = "A different Google account is already connected to this email."
                     });
                 }
 
@@ -210,6 +226,29 @@ namespace AimPark.API.Controllers
                         });
                 }
 
+                // First Google sign-in on an account that was created with a
+                // password: attach the Google identity so this works next time.
+                //
+                // The two are the same person by the only test that exists here.
+                // The password account proved control of this mailbox by
+                // answering an OTP sent to it; Google is asserting control of
+                // the same mailbox now, and `EmailVerified` above is what makes
+                // that assertion worth anything. Refusing instead left the owner
+                // of the account being told their own account already existed,
+                // with no way in.
+                //
+                // `PasswordHash` is kept, so both doors keep working — `Login`
+                // verifies the hash and never looks at `AuthProvider`, which is
+                // left alone because it records how the account was *created*
+                // and that has not changed.
+                if (user.ExternalProviderId is null)
+                {
+                    user.ExternalProviderId = externalId;
+                    user.UpdatedAt = DateTime.UtcNow;
+                    _users.Update(user);
+                    await _users.SaveAsync(ct);
+                }
+
                 // Registration incomplete — send back a registration-only JWT so the app
                 // can route to the correct step without re-entering credentials.
                 if (user.RegistrationStep != RegistrationStep.Completed)
@@ -234,6 +273,16 @@ namespace AimPark.API.Controllers
                     RegistrationStatus = MapStatus(user)
                 });
             }
+
+            // No account for this address. The single point where the two
+            // buttons part company: signing up creates one, logging in says
+            // there is nothing to log in to. Creating an account here was what
+            // made the sign-in button a sign-up button.
+            if (isLogin)
+                return NotFound(new LoginResponse
+                {
+                    Message = "No AimPark account uses this Google address. Sign up first."
+                });
 
             // New Google user — create the account, skip email OTP, enter at ProfileSetup
             var now = DateTime.UtcNow;
@@ -382,11 +431,14 @@ namespace AimPark.API.Controllers
 
         private static RegistrationStatusResponse MapStatus(User user) => new()
         {
-            RegistrationStep = user.RegistrationStep,
-            AccountStatus = user.AccountStatus,
-            VerificationStatus = user.VerificationStatus,
+            RegistrationStep = user.RegistrationStep.ToString(),
+            AccountStatus = user.AccountStatus.ToString(),
+            VerificationStatus = user.VerificationStatus.ToString(),
             RejectionReason = user.RejectionReason,
-            CanReapplyAt = user.CanReapplyAt
+            CanReapplyAt = user.CanReapplyAt,
+            FullName = user.FullName,
+            Affiliation = user.Affiliation.ToString(),
+            DocumentsToRetake = DocumentRetakes.Read(user.DocumentRetakeJson)
         };
     }
 }

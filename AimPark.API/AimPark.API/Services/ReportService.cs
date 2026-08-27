@@ -97,6 +97,49 @@ namespace AimPark.API.Services
             return new OkObjectResult(new OccupancyTrendResponse { Points = points });
         }
 
+        // GET /api/admin/reports/entry-exit?days=30
+        public async Task<ActionResult<EntryExitReportResponse>> GetEntryExitReportAsync(
+            int days, CancellationToken ct)
+        {
+            days = Math.Clamp(days, 1, 90);
+            var since = DateTime.UtcNow.Date.AddDays(-(days - 1));
+
+            // One pass over the window. Exits are counted by the day they
+            // happened, which is not always the day of the entry - an overnight
+            // session belongs to both days, once on each side.
+            var sessions = await _db.Set<ParkingLog>().AsNoTracking()
+                .Where(l => l.EntryTime >= since || (l.ExitTime != null && l.ExitTime >= since))
+                .Select(l => new
+                {
+                    l.EntryTime,
+                    l.ExitTime,
+                    IsVisitor = l.VisitorPassId != null
+                })
+                .ToListAsync(ct);
+
+            var points = new List<EntryExitPoint>();
+            for (var i = 0; i < days; i++)
+            {
+                var day = since.AddDays(i);
+                points.Add(new EntryExitPoint
+                {
+                    Date = day,
+                    Entries = sessions.Count(s => s.EntryTime.Date == day),
+                    Exits = sessions.Count(s => s.ExitTime is DateTime x && x.Date == day),
+                    VisitorEntries = sessions.Count(s => s.IsVisitor && s.EntryTime.Date == day)
+                });
+            }
+
+            return new OkObjectResult(new EntryExitReportResponse
+            {
+                Points = points,
+                TotalEntries = points.Sum(p => p.Entries),
+                TotalExits = points.Sum(p => p.Exits),
+                TotalVisitorEntries = points.Sum(p => p.VisitorEntries),
+                StillOpen = sessions.Count(s => s.EntryTime >= since && s.ExitTime is null)
+            });
+        }
+
         // GET /api/admin/reports/peak-hours?days=30
         public async Task<ActionResult<PeakHoursResponse>> GetPeakHoursAsync(int days, CancellationToken ct)
         {

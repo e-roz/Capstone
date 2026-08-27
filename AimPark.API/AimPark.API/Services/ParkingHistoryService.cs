@@ -2,6 +2,7 @@ using AimPark.API.Data;
 using AimPark.API.DTOs;
 using AimPark.API.Entities;
 using AimPark.API.Enums;
+using AimPark.API.Helpers;
 using AimPark.API.Interfaces;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -14,6 +15,7 @@ namespace AimPark.API.Services
         private readonly IRepository<ParkingSlot> _slots;
         private readonly IPaymentService _paymentService;
         private readonly IParkingAllocationService _allocationService;
+        private readonly INotificationService _notificationService;
         private readonly AppDbContext _db;
 
         public ParkingHistoryService(
@@ -21,12 +23,14 @@ namespace AimPark.API.Services
             IRepository<ParkingSlot> slots,
             IPaymentService paymentService,
             IParkingAllocationService allocationService,
+            INotificationService notificationService,
             AppDbContext db)
         {
             _logs = logs;
             _slots = slots;
             _paymentService = paymentService;
             _allocationService = allocationService;
+            _notificationService = notificationService;
             _db = db;
         }
 
@@ -76,13 +80,24 @@ namespace AimPark.API.Services
                 {
                     LogId = l.Id,
                     UserId = l.UserId,
-                    UserName = l.User.FullName,
-                    PlateNumber = _db.Set<Vehicle>()
-                        .Where(v => v.UserId == l.UserId)
-                        .Select(v => v.PlateNumber)
-                        .FirstOrDefault(),
+                    // Whichever of the two this session belongs to. A visitor is
+                    // as much "inside the lot" as a member of staff, and leaving
+                    // them out would make the occupancy count disagree with the
+                    // cars actually parked.
+                    UserName = l.User != null
+                        ? l.User.FullName
+                        : l.VisitorPass != null
+                            ? l.VisitorPass.VisitorName
+                            : "Unknown",
+                    PlateNumber = l.VisitorPass != null
+                        ? l.VisitorPass.PlateNumber
+                        : _db.Set<Vehicle>()
+                            .Where(v => v.UserId == l.UserId)
+                            .Select(v => v.PlateNumber)
+                            .FirstOrDefault(),
                     SlotCode = l.Slot != null ? l.Slot.SlotCode : null,
-                    EntryTime = l.EntryTime
+                    EntryTime = l.EntryTime,
+                    IsVisitor = l.VisitorPassId != null
                 })
                 .ToListAsync(ct);
 
@@ -100,6 +115,12 @@ namespace AimPark.API.Services
             else if (!string.IsNullOrWhiteSpace(dto.RfidTagId))
                 user = await _db.Set<User>().FirstOrDefaultAsync(u => u.RfidTagId == dto.RfidTagId, ct);
 
+            // No account for this card — it may be one lent to a visitor. The
+            // reader cannot tell the two apart and should not have to: a card is
+            // a card, and the barrier opens for whoever is holding a valid one.
+            if (user is null && !string.IsNullOrWhiteSpace(dto.RfidTagId))
+                return await LogVisitorEntryAsync(dto, loggedByUserId, loggedByDeviceId, ct);
+
             if (user is null)
                 return new NotFoundObjectResult(new
                 {
@@ -107,23 +128,22 @@ namespace AimPark.API.Services
                     message = "User not found. Provide a valid userId or rfidTagId."
                 });
 
-            if (user.RfidStatus == RfidStatus.Suspended)
+            var nowUtc = DateTime.UtcNow;
+
+            // Temporary suspension has expired — lazily reactivate.
+            if (RfidAccess.HasExpired(user, nowUtc))
+                RfidAccess.Reactivate(user, nowUtc);
+
+            // Not `RfidStatus == Suspended`: a suspension issued with a
+            // violation sits scheduled for a few days first, and during that
+            // window the tag still opens the barrier. See RfidAccess.
+            if (RfidAccess.IsSuspendedNow(user, nowUtc))
             {
-                if (user.RfidSuspendedUntil is not null && user.RfidSuspendedUntil <= DateTime.UtcNow)
+                return new BadRequestObjectResult(new
                 {
-                    // Temporary suspension has expired — lazily reactivate.
-                    user.RfidStatus = RfidStatus.Active;
-                    user.RfidSuspendedUntil = null;
-                    user.UpdatedAt = DateTime.UtcNow;
-                }
-                else
-                {
-                    return new BadRequestObjectResult(new
-                    {
-                        result = AllocationResult.RfidSuspended,
-                        message = "RFID access is suspended."
-                    });
-                }
+                    result = AllocationResult.RfidSuspended,
+                    message = "RFID access is suspended."
+                });
             }
 
             // A vehicle already inside must not open the barrier again — without
@@ -197,6 +217,8 @@ namespace AimPark.API.Services
 
             await _logs.SaveAsync(ct);
 
+            await AnnounceAvailabilityAsync(afterEntry: true, ct);
+
             return new OkObjectResult(new
             {
                 result = AllocationResult.Assigned,
@@ -205,6 +227,183 @@ namespace AimPark.API.Services
                 slotId = slot?.Id,
                 slotCode = slot?.SlotCode,
                 gate = slot?.Gate
+            });
+        }
+
+        /// <summary>
+        /// Tells drivers when the lot fills up, and when it opens again.
+        /// </summary>
+        /// <remarks>
+        /// Fired on the transition only, never on the state. Announcing "the lot
+        /// is full" on every arrival while it stays full would be a notification
+        /// per car, which is how people learn to swipe the app's notifications
+        /// away without reading them.
+        ///
+        /// The transition is read off the count itself rather than from stored
+        /// state: the bay was taken a moment ago, so zero free means *this*
+        /// vehicle took the last one, and one free after an exit means *this*
+        /// vehicle freed the only one. No extra column, and nothing to get out
+        /// of step with the slots table.
+        /// </remarks>
+        private async Task AnnounceAvailabilityAsync(bool afterEntry, CancellationToken ct)
+        {
+            var free = await _db.Set<ParkingSlot>().AsNoTracking()
+                .CountAsync(sl => sl.Status == ParkingSlotStatus.Available, ct);
+
+            if (afterEntry && free == 0)
+            {
+                await _notificationService.NotifyRoleAsync(
+                    UserRole.User,
+                    NotificationType.ParkingAvailability,
+                    "The lot is full",
+                    "Every bay is taken right now. The app will let you know when one frees up.",
+                    ct);
+            }
+            else if (!afterEntry && free == 1)
+            {
+                await _notificationService.NotifyRoleAsync(
+                    UserRole.User,
+                    NotificationType.ParkingAvailability,
+                    "A slot just opened",
+                    "The lot was full and a bay has come free. Open the app to see where.",
+                    ct);
+            }
+        }
+
+        /// <summary>
+        /// Entry for a card that belongs to no account - a pass lent to a
+        /// visitor.
+        /// </summary>
+        /// <remarks>
+        /// Deliberately a separate path rather than more branches inside
+        /// <c>LogEntryAsync</c>. The two share the shape but almost none of the
+        /// checks: a visitor has no account status, no suspension, no registered
+        /// vehicle to read a type from, and their pass can expire - which
+        /// nothing about a registered user ever does.
+        /// </remarks>
+        private async Task<ActionResult<object>> LogVisitorEntryAsync(
+            LogParkingEntryDto dto, Guid? loggedByUserId, Guid? loggedByDeviceId, CancellationToken ct)
+        {
+            var nowUtc = DateTime.UtcNow;
+
+            var pass = await _db.Set<VisitorPass>()
+                .Where(p => p.RfidTagId == dto.RfidTagId)
+                .OrderByDescending(p => p.IssuedAt)
+                .FirstOrDefaultAsync(ct);
+
+            if (pass is null)
+                return new NotFoundObjectResult(new
+                {
+                    result = AllocationResult.UnknownTag,
+                    message = "This card is not registered to an account or a visitor."
+                });
+
+            if (pass.Status == VisitorPassStatus.Returned)
+                return new BadRequestObjectResult(new
+                {
+                    result = AllocationResult.RfidSuspended,
+                    message = "This card was handed back and is no longer in use."
+                });
+
+            if (pass.ExpiresAt <= nowUtc)
+            {
+                // Recorded, not just refused: the card is out past its day and
+                // the guard needs to see that in the pass list.
+                if (pass.Status == VisitorPassStatus.Active)
+                {
+                    pass.Status = VisitorPassStatus.Expired;
+                    pass.UpdatedAt = nowUtc;
+                    await _db.SaveChangesAsync(ct);
+                }
+
+                return new BadRequestObjectResult(new
+                {
+                    result = AllocationResult.RfidSuspended,
+                    message = "This visitor pass has expired. Issue a new one."
+                });
+            }
+
+            var openSession = await _db.Set<ParkingLog>().AsNoTracking()
+                .AnyAsync(l => l.VisitorPassId == pass.Id && l.ExitTime == null, ct);
+
+            if (openSession)
+                return new BadRequestObjectResult(new
+                {
+                    result = AllocationResult.AlreadyInside,
+                    message = "This vehicle is already inside the lot."
+                });
+
+            ParkingSlot? slot = null;
+            if (dto.SlotId is not null)
+            {
+                slot = await _slots.FindAsync(s => s.Id == dto.SlotId, ct);
+                if (slot is null)
+                    return new NotFoundObjectResult(new
+                    {
+                        result = AllocationResult.SlotUnavailable,
+                        message = "Slot not found."
+                    });
+
+                if (slot.Status != ParkingSlotStatus.Available)
+                    return new BadRequestObjectResult(new
+                    {
+                        result = AllocationResult.SlotUnavailable,
+                        message = "Slot is not available."
+                    });
+            }
+            else
+            {
+                // The pass carries the vehicle type, since there is no
+                // registered vehicle to read it from.
+                var assignment = await _allocationService.ClaimForVehicleTypeAsync(
+                    pass.VehicleType, userId: null, dto.Gate, ct);
+
+                if (assignment.Result != AllocationResult.Assigned)
+                    return new BadRequestObjectResult(new
+                    {
+                        result = assignment.Result,
+                        message = assignment.Reason ?? "No slot could be assigned."
+                    });
+
+                slot = await _slots.FindAsync(s => s.Id == assignment.SlotId, ct);
+            }
+
+            var log = new ParkingLog
+            {
+                Id = Guid.NewGuid(),
+                UserId = null,
+                VisitorPassId = pass.Id,
+                SlotId = slot?.Id,
+                EntryTime = nowUtc,
+                ExitTime = null,
+                LoggedByUserId = loggedByUserId,
+                LoggedByDeviceId = loggedByDeviceId,
+                CreatedAt = nowUtc
+            };
+
+            await _logs.AddAsync(log, ct);
+
+            if (slot is not null)
+            {
+                slot.Status = ParkingSlotStatus.Occupied;
+                slot.UpdatedAt = nowUtc;
+                _slots.Update(slot);
+            }
+
+            await _logs.SaveAsync(ct);
+
+            await AnnounceAvailabilityAsync(afterEntry: true, ct);
+
+            return new OkObjectResult(new
+            {
+                result = AllocationResult.Assigned,
+                message = "Entry logged for visitor " + pass.VisitorName + ".",
+                logId = log.Id,
+                slotId = slot?.Id,
+                slotCode = slot?.SlotCode,
+                gate = slot?.Gate,
+                visitorName = pass.VisitorName,
+                plateNumber = pass.PlateNumber
             });
         }
 
@@ -227,14 +426,32 @@ namespace AimPark.API.Services
                     .Select(u => (Guid?)u.Id)
                     .FirstOrDefaultAsync(ct);
 
-                if (userId is null)
-                    return new NotFoundObjectResult(new
-                    {
-                        result = AllocationResult.UnknownTag,
-                        message = "No account is registered to this tag."
-                    });
+                if (userId is not null)
+                {
+                    log = await _logs.FindAsync(l => l.UserId == userId && l.ExitTime == null, ct);
+                }
+                else
+                {
+                    // A visitor leaving. Resolved through the pass rather than an
+                    // account, and by the pass's *open session* rather than its
+                    // status — a card that expired while the car was inside must
+                    // still be able to get the car out.
+                    var passId = await _db.Set<VisitorPass>().AsNoTracking()
+                        .Where(p => p.RfidTagId == dto.RfidTagId)
+                        .OrderByDescending(p => p.IssuedAt)
+                        .Select(p => (Guid?)p.Id)
+                        .FirstOrDefaultAsync(ct);
 
-                log = await _logs.FindAsync(l => l.UserId == userId && l.ExitTime == null, ct);
+                    if (passId is null)
+                        return new NotFoundObjectResult(new
+                        {
+                            result = AllocationResult.UnknownTag,
+                            message = "No account or visitor pass is registered to this tag."
+                        });
+
+                    log = await _logs.FindAsync(
+                        l => l.VisitorPassId == passId && l.ExitTime == null, ct);
+                }
             }
 
             if (log is null)
@@ -267,14 +484,37 @@ namespace AimPark.API.Services
 
             await _logs.SaveAsync(ct);
 
+            await AnnounceAvailabilityAsync(afterEntry: false, ct);
+
+            // A visitor has no account to bill and no app to be told in, so
+            // nothing is raised against them - the fee is quoted for the guard
+            // to collect at the barrier, which is the only place it can be
+            // collected from somebody who is about to drive away.
+            if (log.UserId is null)
+            {
+                var quote = await _paymentService.QuoteForCompletedLogAsync(log, ct);
+
+                return new OkObjectResult(new
+                {
+                    result = AllocationResult.ExitLogged,
+                    message = "Exit logged. Collect the fee at the barrier.",
+                    paymentId = (Guid?)null,
+                    amountDue = quote.AmountDue,
+                    durationMinutes = quote.DurationMinutes,
+                    collectInCash = true
+                });
+            }
+
             var transaction = await _paymentService.CreateForCompletedLogAsync(log, ct);
 
             return new OkObjectResult(new
             {
                 result = AllocationResult.ExitLogged,
                 message = "Exit logged.",
-                paymentId = transaction.Id,
-                amountDue = transaction.AmountDue
+                paymentId = (Guid?)transaction.Id,
+                amountDue = transaction.AmountDue,
+                durationMinutes = transaction.DurationMinutes,
+                collectInCash = false
             });
         }
     }

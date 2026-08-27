@@ -1,5 +1,7 @@
 import 'dart:convert';
 
+import '../../router/destinations.dart';
+
 class JwtUtils {
   JwtUtils._();
 
@@ -40,6 +42,11 @@ class JwtUtils {
   }
 
   static bool isAdmin(String token) => getRole(token) == 'Admin';
+
+  /// Which kind of staff account this token belongs to, or null for anything
+  /// that has no business in this panel.
+  static StaffRole? staffRole(String token) =>
+      StaffRole.fromClaim(getRole(token));
 
   /// Returns the email claim, or null if not present. The sidebar's user chip
   /// shows this: the token carries no display name, and an email is at least

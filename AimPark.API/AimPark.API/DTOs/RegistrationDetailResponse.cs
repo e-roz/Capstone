@@ -26,6 +26,13 @@ namespace AimPark.API.DTOs
         // has to see all of them — a single slot would silently hide the rest.
         public List<VehicleDTO> Vehicles { get; set; } = [];
         public List<DocumentDetailResponse> Documents { get; set; } = [];
+
+        /// <summary>
+        /// What the automated checks found. Null when the applicant has not
+        /// submitted documents yet — the panel then shows the record alone,
+        /// exactly as it did before this existed.
+        /// </summary>
+        public RegistrationChecksResponse? Checks { get; set; }
     }
 
     public class DocumentDetailResponse

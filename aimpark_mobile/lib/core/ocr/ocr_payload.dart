@@ -19,6 +19,15 @@ enum ScanDocumentType {
   const ScanDocumentType(this.wireName);
 
   final String wireName;
+
+  /// The inverse of [wireName]. Null for anything unrecognised, which is what a
+  /// draft written by an older build looks like after the enum has moved on.
+  static ScanDocumentType? fromWire(String? value) {
+    for (final type in values) {
+      if (type.wireName == value) return type;
+    }
+    return null;
+  }
 }
 
 /// One recognised line of text and the box it occupied on the page.
@@ -54,6 +63,21 @@ class OcrLine {
     'h': height,
     'confidence': confidence,
   };
+
+  /// Reads back what [toJson] wrote.
+  ///
+  /// Only the saved-draft restore uses this — the server never sends a payload
+  /// back. It exists so a registration interrupted by the OS can resume with the
+  /// reading intact instead of re-running recognition over a photo that has
+  /// already been read once.
+  factory OcrLine.fromJson(Map<String, dynamic> json) => OcrLine(
+    text: json['text'] as String? ?? '',
+    x: (json['x'] as num?)?.round() ?? 0,
+    y: (json['y'] as num?)?.round() ?? 0,
+    width: (json['w'] as num?)?.round() ?? 0,
+    height: (json['h'] as num?)?.round() ?? 0,
+    confidence: (json['confidence'] as num?)?.toDouble() ?? 1.0,
+  );
 }
 
 /// What text recognition returned for one document.
@@ -86,6 +110,23 @@ class OcrPayload {
   };
 
   String toJsonString() => jsonEncode(toJson());
+
+  /// Reads back what [toJson] wrote. Null when the document type no longer
+  /// exists, since a payload that cannot say what it describes is unusable.
+  static OcrPayload? fromJson(Map<String, dynamic> json) {
+    final type = ScanDocumentType.fromWire(json['documentType'] as String?);
+    if (type == null) return null;
+
+    return OcrPayload(
+      documentType: type,
+      imageWidth: (json['imageWidth'] as num?)?.round() ?? 0,
+      imageHeight: (json['imageHeight'] as num?)?.round() ?? 0,
+      lines: [
+        for (final line in (json['lines'] as List<dynamic>? ?? []))
+          OcrLine.fromJson(line as Map<String, dynamic>),
+      ],
+    );
+  }
 
   /// True when every box sits inside the image bounds.
   ///
