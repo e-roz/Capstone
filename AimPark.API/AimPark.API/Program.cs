@@ -73,6 +73,10 @@ builder.Services.AddCors(options =>
         policy.WithOrigins(allowedOrigins)
               .AllowAnyMethod()
               .AllowAnyHeader()
+              // Without this the browser hides Content-Disposition from the
+              // admin app, and a downloaded backup arrives with a guessed file
+              // name instead of the one the server actually stored it under.
+              .WithExposedHeaders("Content-Disposition")
               .AllowCredentials();
     });
 });
@@ -143,6 +147,7 @@ builder.Services.AddScoped<IPaymentService, PaymentService>();
 builder.Services.AddScoped<IViolationService, ViolationService>();
 builder.Services.AddScoped<IVisitorPassService, VisitorPassService>();
 builder.Services.AddScoped<IReportService, ReportService>();
+builder.Services.AddScoped<IBackupService, BackupService>();
 builder.Services.AddScoped<IDeviceTokenService, DeviceTokenService>();
 builder.Services.AddScoped<IPushSender, FcmPushSender>();
 builder.Services.AddScoped(typeof(IRepository<>), typeof(Repository<>));

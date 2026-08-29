@@ -174,9 +174,15 @@ class StatusIntents {
       };
 
   /// Audit-log actions, coloured by whether they granted or removed access.
+  ///
+  /// `RestoreBackup` is the database-level restore and is deliberately red
+  /// while the account-level `Restore` is green: one gives an account back, the
+  /// other replaces every row in the system.
   static StatusIntent auditAction(String action) => switch (action) {
         'Approve' || 'Unsuspend' || 'Restore' => StatusIntent.success,
         'Reject' || 'Suspend' || 'Archive' || 'Delete' => StatusIntent.danger,
+        'RestoreBackup' => StatusIntent.danger,
+        'Backup' => StatusIntent.info,
         _ => StatusIntent.info,
       };
 }

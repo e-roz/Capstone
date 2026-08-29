@@ -222,6 +222,16 @@ const navGroups = <NavGroup>[
       // — the API refuses them the other two, and the screen hides them.
       roles: {StaffRole.admin, StaffRole.security},
     ),
+    NavItem(
+      icon: Icons.backup_outlined,
+      selectedIcon: Icons.backup,
+      label: 'Backup & Restore',
+      route: '/backup',
+      moduleLabel: 'Data Backup & Restore',
+      description: 'Save a copy of the database, or put a saved copy back.',
+      // Admin only, and deliberately not shared with Security: a restore
+      // replaces every row in the database.
+    ),
   ]),
 ];
 

@@ -6,6 +6,7 @@ import 'package:riverpod_annotation/riverpod_annotation.dart';
 import '../core/utils/jwt_utils.dart';
 import 'destinations.dart';
 import '../screens/system_logs_screen.dart';
+import '../screens/backup_screen.dart';
 import '../screens/incidents_screen.dart';
 import '../screens/login_screen.dart';
 import '../screens/notifications_screen.dart';
@@ -128,6 +129,10 @@ GoRouter appRouter(Ref ref) {
           GoRoute(
             path: '/reports',
             builder: (context, state) => const ReportsScreen(),
+          ),
+          GoRoute(
+            path: '/backup',
+            builder: (context, state) => const BackupScreen(),
           ),
         ],
       ),

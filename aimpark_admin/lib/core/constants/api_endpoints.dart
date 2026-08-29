@@ -105,6 +105,12 @@ class ApiEndpoints {
   // from a phone, and the admin route only lists and reviews.
   static const reportIncident = '/api/incidents';
 
+  // Admin – Backup & Restore
+  static const backups = '/api/admin/backup';
+  static String backupFile(String fileName) => '/api/admin/backup/$fileName';
+  static const backupPreview = '/api/admin/backup/preview';
+  static const backupRestore = '/api/admin/backup/restore';
+
   // Admin – Reports
   static const reportsSummary = '/api/admin/reports/summary';
   static const reportsOccupancyTrend = '/api/admin/reports/occupancy-trend';

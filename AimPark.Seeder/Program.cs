@@ -100,7 +100,12 @@ async Task SeedStaff(
     ClearScreen();
     try
     {
-        using var context = sp.GetRequiredService<AppDbContext>();
+        // A scope per operation. Resolving the scoped DbContext straight off the
+        // root provider hands back one cached instance, and disposing it left the
+        // menu holding a dead context — seeding an admin and then a security
+        // account in the same run threw ObjectDisposedException on the second.
+        using var scope = sp.CreateScope();
+        var context = scope.ServiceProvider.GetRequiredService<AppDbContext>();
 
         var existing = await context.Users
             .FirstOrDefaultAsync(u => u.Email == email);
@@ -213,12 +218,16 @@ void Pause()
 {
     if (Console.IsInputRedirected) return;
 
-    Pause();
+    // Console.ReadKey, not Pause() — calling itself recursed until the stack ran
+    // out, so every menu action ended in a crash *after* it had already written
+    // to the database. The seed worked; the report of it never arrived.
+    Console.WriteLine("Press any key to continue...");
+    Console.ReadKey(intercept: true);
 }
 
 async Task DeleteAllData(IServiceProvider sp)
 {
-    Console.Clear();
+    ClearScreen();
     Console.WriteLine("⚠️  WARNING: This will delete ALL data from the database!");
     Console.WriteLine();
     Console.Write("Type 'DELETE' to confirm: ");
@@ -234,7 +243,8 @@ async Task DeleteAllData(IServiceProvider sp)
 
     try
     {
-        using var context = sp.GetRequiredService<AppDbContext>();
+        using var scope = sp.CreateScope();
+        var context = scope.ServiceProvider.GetRequiredService<AppDbContext>();
 
         // Delete in correct order (respect foreign keys)
         await context.Database.ExecuteSqlRawAsync("TRUNCATE TABLE \"AdminAuditLogs\" CASCADE");

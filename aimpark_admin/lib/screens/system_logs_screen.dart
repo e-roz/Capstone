@@ -112,6 +112,18 @@ Map<String, String> _parseFields(String? raw) {
   return fields;
 }
 
+/// The name to put on an action's pill.
+///
+/// The API stores one word per action, which reads fine for all of them except
+/// the two written by the Backup module — those have to say "backup" somewhere
+/// or `RestoreBackup` sits next to the account-level `Restore` looking like a
+/// typo of it.
+String _actionLabel(String action) => switch (action) {
+      'Backup' => 'Backup',
+      'RestoreBackup' => 'Restore backup',
+      _ => action,
+    };
+
 /// Turns an audit row into a sentence instead of a field dump.
 ///
 /// The API records changes as machine state — `IsDeleted=true`,
@@ -132,6 +144,20 @@ String? _changeSummary(AuditLogEntry entry) {
   }
 
   switch (entry.action) {
+    case 'Backup':
+      final file = after['File'];
+      final rows = after['Rows'];
+      if (file == null) return 'Database backed up';
+      return rows == null ? 'Backed up to $file' : 'Backed up $rows rows to $file';
+
+    case 'RestoreBackup':
+      // The safety copy is the useful half of this row: it is the only way back
+      // from a restore, and it is recorded nowhere else.
+      final file = after['File'];
+      final safety = before['SafetyBackup'];
+      final from = file == null ? 'Database restored' : 'Database restored from $file';
+      return safety == null ? from : '$from (previous state saved as $safety)';
+
     case 'Archive':
       return 'Account archived';
 
@@ -174,6 +200,8 @@ const _actions = [
   AppFilterOption('Reject', 'Reject'),
   AppFilterOption('ResetReapply', 'Reset reapply'),
   AppFilterOption('ResetStep', 'Reset step'),
+  AppFilterOption('Backup', 'Backup'),
+  AppFilterOption('RestoreBackup', 'Restore backup'),
 ];
 
 class _AdminActionsTab extends ConsumerWidget {
@@ -243,8 +271,8 @@ class _AdminActionsTab extends ConsumerWidget {
     final hasReason = entry.reason != null && entry.reason!.isNotEmpty;
 
     return DataRow(cells: [
-      DataCell(StatusPill.of(
-        entry.action,
+      DataCell(StatusPill(
+        label: _actionLabel(entry.action),
         intent: StatusIntents.auditAction(entry.action),
         dense: true,
       )),
