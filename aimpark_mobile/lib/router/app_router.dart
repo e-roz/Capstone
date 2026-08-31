@@ -5,6 +5,7 @@ import 'package:riverpod_annotation/riverpod_annotation.dart';
 
 import '../core/network/dio_client.dart';
 import '../core/utils/jwt_utils.dart';
+import '../core/widgets/widgets.dart';
 import '../features/auth/presentation/screens/admin_on_web_screen.dart';
 import '../features/auth/presentation/screens/forgot_password_screen.dart';
 import '../features/auth/presentation/screens/login_screen.dart';
@@ -56,13 +57,23 @@ GoRouter appRouter(Ref ref) {
         // A registration-only token is not a session. It carries the role the
         // account will have once it is approved, so routing on the role alone
         // let it through to the dashboard — where every request fails and
-        // nothing leads back to the unfinished step. It may go one place only:
-        // the registration flow.
+        // nothing leads back to the unfinished step. It is good for the
+        // registration flow and for the way out of it, and nowhere else.
         if (JwtUtils.isRegistrationOnly(token)) {
           // Already inside the flow, and moving between its steps. Sending them
           // to the step the token names would undo every forward move, since
           // that claim only advances when the server issues a new token.
           if (location.startsWith('/register/')) return null;
+
+          // Leaving the flow on purpose: back out of its first step, or go and
+          // sign in as somebody else. Bouncing these straight back to the step
+          // the token names is what made the back arrow look broken — the
+          // screen simply never changed. Nothing is lost by allowing it, since
+          // the token still names the step and signing in again returns to it.
+          if (location == '/login' || location.startsWith('/login/')) {
+            return null;
+          }
+
           return JwtUtils.routeAfterLogin(token);
         }
 
@@ -98,14 +109,20 @@ GoRouter appRouter(Ref ref) {
       ),
       GoRoute(
         path: '/login',
-        builder: (context, state) => const WelcomeScreen(),
+        // `extra` is why the app is back here rather than where the user left
+        // it — an account archived out from under a signed-in session, most of
+        // all. The first screen of the app has to account for itself when it is
+        // not the first thing the user did.
+        builder: (context, state) =>
+            WelcomeScreen(notice: ScreenNotice.from(state.extra)),
       ),
       GoRoute(
         path: '/login/sign-in',
-        // `extra` is a line to show above the form — sent here by a finished
-        // password reset, which has to explain why the password the user just
-        // set is the one to type.
-        builder: (context, state) => LoginScreen(notice: state.extra as String?),
+        // `extra` is a line to show above the form — a finished password reset
+        // explaining that the password just set is the one to type, or an
+        // expired session explaining why the app is asking again.
+        builder: (context, state) =>
+            LoginScreen(notice: ScreenNotice.from(state.extra)),
       ),
       GoRoute(
         path: '/login/forgot-password',

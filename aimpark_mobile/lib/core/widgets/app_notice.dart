@@ -2,6 +2,26 @@ import 'package:flutter/material.dart';
 
 import '../theme/theme.dart';
 
+/// A notice one screen hands to another through the router's `extra`.
+///
+/// The message alone was not enough once more than one thing sent a line to the
+/// sign-in form: a finished password reset is good news and a session that
+/// ended underneath the user is not, and both arrived as a bare string that the
+/// screen drew in green. The intent travels with the words.
+class ScreenNotice {
+  const ScreenNotice(this.message, {this.intent = StatusIntent.info});
+
+  final String message;
+  final StatusIntent intent;
+
+  /// Reads whatever a route was given, ignoring anything that is not a notice.
+  static ScreenNotice? from(Object? extra) => switch (extra) {
+        ScreenNotice notice => notice,
+        String message when message.isNotEmpty => ScreenNotice(message),
+        _ => null,
+      };
+}
+
 /// An inline message attached to the thing it is about.
 ///
 /// Distinct from `showAppMessage`, which is transient and floats over the whole

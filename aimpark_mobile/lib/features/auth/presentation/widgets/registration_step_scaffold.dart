@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../../../core/theme/theme.dart';
 import '../../../../core/widgets/widgets.dart';
+import '../../../../router/registration_back_stack.dart';
 
 /// The frame every registration step sits in: the mascot, where you are in the
 /// five steps, and the step's own content beneath.
@@ -27,34 +28,28 @@ class RegistrationStepScaffold extends StatelessWidget {
   /// leave someone on their third document with no idea how many are left.
   final String? subStep;
 
-  /// Where this step's back arrow goes, or null for a step there is no going
-  /// back from.
+  /// Where this step's back arrow goes, when it is somewhere other than the
+  /// screen the user came from.
   ///
-  /// A callback rather than a flag, and this is the whole fix: every step is
-  /// reached with `go`, so the Navigator stack is one page deep,
-  /// `automaticallyImplyLeading` found nothing to pop and drew no arrow at all.
-  /// The flow had no way back from any screen — a mistyped email could not be
-  /// corrected from the OTP step, and the third document could not be revisited
-  /// from the fourth.
-  ///
-  /// Steps that pass null are the ones where back would undo something already
-  /// committed on the server: the first document screen sits behind a profile
-  /// that has been submitted and an account that now exists.
+  /// Left null by every step, and that is the point: back walks the flow's own
+  /// history, so a step no longer has to work out how it was arrived at. The
+  /// document step used to subtract one from its index and the profile step
+  /// used to ask whether this was a revisit, and between them they made a loop
+  /// no amount of pressing back could get out of.
   final VoidCallback? onBack;
 
   /// True while a request this step started is still running.
   ///
-  /// Distinct from having no [onBack]: a step with nowhere to go back to lets
-  /// the gesture leave the app, but a step waiting on an upload must swallow it
-  /// — leaving mid-request would abandon photographs the server is part way
-  /// through receiving, and the user would come back to no record of either.
+  /// Back is refused outright for the length of it — leaving mid-request would
+  /// abandon photographs the server is part way through receiving, and the user
+  /// would come back to no record of either.
   final bool busy;
 
   static const _totalSteps = 5;
 
   @override
   Widget build(BuildContext context) {
-    final back = busy ? null : onBack;
+    final back = busy ? null : (onBack ?? () => context.registrationBack());
 
     final screen = AppScreen(
       title: title,
@@ -85,17 +80,18 @@ class RegistrationStepScaffold extends StatelessWidget {
       ),
     );
 
-    // The hardware and gesture back had the same problem the arrow did: with
-    // nothing on the stack to pop, Android's back closed the app from the
-    // middle of registration. Where there is a step behind, it now goes there.
+    // The hardware and gesture back is answered here rather than by the
+    // Navigator, which has nothing to pop: every step is reached with `go`, so
+    // the stack is one page deep however far into registration someone is.
+    // Left to the platform, back closed the app from the middle of the flow.
     //
-    // Where there is not, the platform default stands and back still leaves the
-    // app. Swallowing it would be the more protective choice and the wrong one
-    // — a back that does nothing at all reads as a frozen screen, and leaving
-    // now costs nothing: the draft is on disk and the token names the step, so
-    // the next launch comes back here.
+    // Never allowed to pop, then — the arrow, the gesture and the hardware
+    // button all take the same recorded path back, and from the first step that
+    // path leads out to the welcome screen. While a request is in flight there
+    // is no path and the gesture does nothing, which is the one case where
+    // swallowing it is right.
     return PopScope(
-      canPop: back == null && !busy,
+      canPop: false,
       onPopInvokedWithResult: (didPop, _) {
         if (!didPop) back?.call();
       },

@@ -2,12 +2,12 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
 
 import '../../../../core/theme/theme.dart';
 import '../../../../core/utils/app_flushbar.dart';
 import '../../../../core/utils/jwt_utils.dart';
 import '../../../../core/widgets/widgets.dart';
+import '../../../../router/registration_back_stack.dart';
 import '../providers/auth_provider.dart';
 import '../providers/registration_provider.dart';
 import '../widgets/registration_step_scaffold.dart';
@@ -109,7 +109,7 @@ class _RegisterProfileScreenState extends ConsumerState<RegisterProfileScreen> {
     } catch (e) {
       if (!mounted) return;
       showApiError(context, e);
-      context.go('/register/documents/0');
+      context.jumpRegistrationStep('/register/documents/0');
     }
   }
 
@@ -215,7 +215,7 @@ class _RegisterProfileScreenState extends ConsumerState<RegisterProfileScreen> {
       ref.read(registrationNotifierProvider.notifier).clearSession();
 
       if (mounted) {
-        context.go('/register/documents/0');
+        context.goRegistrationStep('/register/documents/0');
       }
     } catch (e) {
       if (mounted) {
@@ -256,20 +256,11 @@ class _RegisterProfileScreenState extends ConsumerState<RegisterProfileScreen> {
     return RegistrationStepScaffold(
       step: 3,
       title: 'Your Profile',
-      // Two different ways back, because there are two ways in.
-      //
-      // On the way through, nothing is committed until this form is submitted,
-      // so back re-enters the email step — which issues a fresh session and a
-      // fresh code, and is the way out for someone who got this far before
-      // noticing the address was wrong.
-      //
-      // On a revisit the account already exists, and the email step would start
-      // a second registration for an address that is now taken. Back returns to
-      // the document step it came from.
+      // Back is left to the flow's history, which knows which of the two ways
+      // in was taken. Naming a destination here is what broke it: a revisit was
+      // sent back to the documents it had just come from, so back moved
+      // forwards and the steps before this one became unreachable.
       busy: _isLoading,
-      onBack: _isRevisit
-          ? () => context.go('/register/documents/0')
-          : () => context.go('/register/email'),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [

@@ -8,6 +8,7 @@ import '../../../../core/utils/api_error_message.dart';
 import '../../../../core/utils/app_flushbar.dart';
 import '../../../../core/utils/jwt_utils.dart';
 import '../../../../core/widgets/widgets.dart';
+import '../../../../router/registration_back_stack.dart';
 import '../../../notifications/presentation/providers/push_registration_provider.dart';
 import '../providers/auth_provider.dart';
 import '../providers/registration_provider.dart';
@@ -137,7 +138,18 @@ class _GoogleAuthButtonState extends ConsumerState<GoogleAuthButton> {
         await ref.read(pushRegistrationProvider.notifier).registerAfterLogin();
       }
 
-      if (mounted) context.go(JwtUtils.routeAfterLogin(token));
+      if (mounted) {
+        final destination = JwtUtils.routeAfterLogin(token);
+        // A Google account whose registration is unfinished lands mid-flow.
+        // Recorded as the start of it, so the step it opens on can be backed
+        // out of to here rather than to whichever steps a previous attempt in
+        // this session happened to walk.
+        if (destination.startsWith('/register/')) {
+          context.startRegistration(destination);
+        } else {
+          context.go(destination);
+        }
+      }
     } catch (e) {
       if (mounted) await _explain(e);
     } finally {
@@ -168,7 +180,7 @@ class _GoogleAuthButtonState extends ConsumerState<GoogleAuthButton> {
         title: 'No account yet',
         body: message,
         actionLabel: 'Sign up',
-        onAction: () => context.go('/register/email'),
+        onAction: () => context.startRegistration('/register/email'),
       );
       return;
     }
