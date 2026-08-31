@@ -26,5 +26,16 @@ namespace AimPark.API.Interfaces
 
         /// <summary>Newest first. An absent bucket lists as empty, not an error.</summary>
         Task<IReadOnlyList<StoredObject>> ListAsync(string bucket, string prefix = "", CancellationToken ct = default);
+
+        /// <summary>
+        /// Removes objects from <paramref name="bucket"/> and returns how many
+        /// were actually there to remove.
+        /// </summary>
+        /// <remarks>
+        /// An object that is already gone is not an error: the point of calling
+        /// this is that it should not exist afterwards, so a delete that half
+        /// succeeded has to be retryable rather than stuck.
+        /// </remarks>
+        Task<int> DeleteAsync(string bucket, IReadOnlyCollection<string> objectPaths, CancellationToken ct = default);
     }
 }

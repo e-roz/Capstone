@@ -63,6 +63,19 @@ namespace AimPark.API.Controllers
             => _adminUserService.ArchiveAsync(userId, GetAdminUserId(), dto, ct);
 
         /// <summary>
+        /// Permanently deletes a user's uploaded identity documents — the image
+        /// files and the raw OCR readings taken from them. The account, and every
+        /// violation, payment and parking record on it, is left alone.
+        /// Requires the acting admin's password, and cannot be undone.
+        /// </summary>
+        [HttpDelete("{userId:guid}/documents")]
+        public Task<ActionResult<object>> DeleteDocuments(
+            Guid userId,
+            [FromBody] DeleteDocumentsDto dto,
+            CancellationToken ct)
+            => _adminUserService.DeleteDocumentsAsync(userId, GetAdminUserId(), dto, ct);
+
+        /// <summary>
         /// Restores a soft-deleted user account, clearing IsDeleted and DeletedAt.
         /// </summary>
         [HttpPost("{userId:guid}/restore")]

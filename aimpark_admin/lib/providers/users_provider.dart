@@ -103,6 +103,22 @@ class UserActions extends _$UserActions {
     });
   }
 
+  /// Deletes the user's uploaded ID images. The account itself stays.
+  Future<String?> deleteDocuments(
+    String userId,
+    String adminPassword, {
+    String? reason,
+  }) async {
+    return _run(() async {
+      final dio = ref.read(dioProvider);
+      final res = await dio.delete(
+        ApiEndpoints.deleteUserDocuments(userId),
+        data: {'password': adminPassword, 'reason': reason},
+      );
+      return (res.data as Map<String, dynamic>)['message']?.toString();
+    });
+  }
+
   Future<String?> restore(String userId) async {
     return _run(() async {
       final dio = ref.read(dioProvider);

@@ -230,6 +230,18 @@ class _UserDetailView extends ConsumerWidget {
             title: 'Uploaded Documents',
             icon: Icons.folder_outlined,
             padding: EdgeInsets.zero,
+            // Sits with the documents rather than up with the account controls:
+            // it deletes these files and nothing else, and putting it beside
+            // Archive would read as another way of removing the user.
+            actions: [
+              TextButton.icon(
+                icon: const Icon(Icons.delete_outline, size: AppSizes.iconSm),
+                label: const Text('Delete images'),
+                style: TextButton.styleFrom(
+                    foregroundColor: context.tokens.status.danger.fg),
+                onPressed: () => actions.deleteDocuments(context),
+              ),
+            ],
             child: Column(
               children: [
                 for (final doc in detail.documents)
@@ -367,6 +379,86 @@ class _UserActions {
     final msg = await ref.read(userActionsProvider.notifier).restore(userId);
     if (!context.mounted) return;
     _done(context, msg ?? 'User restored.');
+  }
+
+  /// Deletes the identity photographs and nothing else.
+  ///
+  /// Archiving retains everything, which is right for the parking records and
+  /// wrong for these: an RAF, a licence and an OR carry a home address, a
+  /// licence number and a signature, and the reason to hold them ends with the
+  /// review they were uploaded for. Kept apart from Archive rather than folded
+  /// into it, because archiving is undoable and this is not.
+  Future<void> deleteDocuments(BuildContext context) async {
+    final passwordCtrl = TextEditingController();
+    final reasonCtrl = TextEditingController();
+    final formKey = GlobalKey<FormState>();
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Delete ID Documents'),
+        content: SizedBox(
+          width: 420,
+          child: Form(
+            key: formKey,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                    'Permanently delete the uploaded ID photos for '
+                    '${detail.fullName}, and the text read from them.'),
+                const SizedBox(height: AppSpacing.x3),
+                const Text(
+                    'The account stays, and so do its violations, payments and '
+                    'parking history. This cannot be undone — the images are '
+                    'gone from storage.'),
+                const SizedBox(height: AppSpacing.x4),
+                TextFormField(
+                  controller: reasonCtrl,
+                  decoration: const InputDecoration(
+                    labelText: 'Reason (kept in the audit log)',
+                    hintText: 'Requested by the user, retention period ended…',
+                  ),
+                ),
+                const SizedBox(height: AppSpacing.x3),
+                TextFormField(
+                  controller: passwordCtrl,
+                  obscureText: true,
+                  decoration: const InputDecoration(
+                      labelText: 'Confirm your admin password'),
+                  validator: (v) =>
+                      (v == null || v.isEmpty) ? 'Password is required' : null,
+                ),
+              ],
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancel')),
+          FilledButton(
+            style: FilledButton.styleFrom(
+                backgroundColor: ctx.tokens.status.danger.solid),
+            onPressed: () {
+              if (formKey.currentState!.validate()) Navigator.pop(ctx, true);
+            },
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !context.mounted) return;
+
+    final reason = reasonCtrl.text.trim();
+    final msg = await ref.read(userActionsProvider.notifier).deleteDocuments(
+          userId,
+          passwordCtrl.text,
+          reason: reason.isEmpty ? null : reason,
+        );
+    if (!context.mounted) return;
+    _done(context, msg ?? 'Documents deleted.');
   }
 
   Future<void> archive(BuildContext context) async {

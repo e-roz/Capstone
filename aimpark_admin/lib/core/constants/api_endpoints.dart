@@ -27,7 +27,11 @@ class ApiEndpoints {
       '/api/admin/users/$userId/suspend';
   static String unsuspendUser(String userId) =>
       '/api/admin/users/$userId/unsuspend';
+  static String markPaymentPaid(String paymentId) =>
+      '/api/admin/payments/$paymentId/mark-paid';
   static String archiveUser(String userId) => '/api/admin/users/$userId';
+  static String deleteUserDocuments(String userId) =>
+      '/api/admin/users/$userId/documents';
   static String restoreUser(String userId) =>
       '/api/admin/users/$userId/restore';
   static String assignRfid(String userId) =>

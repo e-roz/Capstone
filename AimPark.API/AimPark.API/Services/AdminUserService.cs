@@ -13,12 +13,18 @@ namespace AimPark.API.Services
         private readonly IRepository<User> _users;
         private readonly IRepository<AdminAuditLog> _auditLogs;
         private readonly AppDbContext _db;
+        private readonly IFileStorageService _storage;
 
-        public AdminUserService(IRepository<User> users, IRepository<AdminAuditLog> auditLogs, AppDbContext db)
+        public AdminUserService(
+            IRepository<User> users,
+            IRepository<AdminAuditLog> auditLogs,
+            AppDbContext db,
+            IFileStorageService storage)
         {
             _users = users;
             _auditLogs = auditLogs;
             _db = db;
+            _storage = storage;
         }
 
         // GET /api/admin/users?page=1&pageSize=20&status=Suspended&search=cruz&role=User (includes archived users)
@@ -258,6 +264,96 @@ namespace AimPark.API.Services
             return new OkObjectResult(new { message = "RFID tag revoked." });
         }
 
+        // DELETE /api/admin/users/{userId}/documents
+        //
+        // Archiving keeps everything, which is right for the records and wrong
+        // for the photographs: an RAF, a licence and an OR carry a home address,
+        // a licence number and a signature, and the reason to hold them ends
+        // when the review that needed them is over. This removes those images
+        // and the raw readings taken off them, and touches nothing else — the
+        // account, its violations, its payments and its parking history all
+        // stay, because those are the school’s records and not only the
+        // user’s.
+        public async Task<ActionResult<object>> DeleteDocumentsAsync(
+            Guid userId,
+            Guid adminUserId,
+            DeleteDocumentsDto dto,
+            CancellationToken ct)
+        {
+            var admin = await _users.FindAsync(u => u.Id == adminUserId, ct);
+            if (admin?.PasswordHash is null)
+                return new BadRequestObjectResult(new { message = "Password confirmation is unavailable for this admin account." });
+
+            if (string.IsNullOrEmpty(dto.Password) || !BCrypt.Net.BCrypt.Verify(dto.Password, admin.PasswordHash))
+                return new UnauthorizedObjectResult(new { message = "Incorrect password." });
+
+            var user = await _users.FindAsync(u => u.Id == userId, ct);
+            if (user is null)
+                return new NotFoundObjectResult(new { message = "User not found." });
+
+            // A decision nobody has made yet is the one case where these images
+            // are still needed: the reviewer is about to look at them, and an
+            // applicant cannot be judged on documents nobody can see.
+            if (user.AccountStatus == AccountStatus.PendingReview)
+            {
+                return new BadRequestObjectResult(new
+                {
+                    message = "This user is still waiting for review. Approve or reject them first — "
+                            + "the documents are the evidence that decision is made on."
+                });
+            }
+
+            var documents = await _db.Set<Document>()
+                .Where(d => d.UserId == userId)
+                .ToListAsync(ct);
+
+            if (documents.Count == 0)
+                return new BadRequestObjectResult(new { message = "This user has no stored documents." });
+
+            // Files first, rows second. The row is the only record of where the
+            // file is, so dropping it before the delete succeeds would leave the
+            // image in the bucket with nothing left pointing at it — the one
+            // outcome this action exists to prevent.
+            await _storage.DeleteAsync(
+                "documents",
+                documents
+                    .Select(d => d.FilePath)
+                    .Where(path => !string.IsNullOrWhiteSpace(path))
+                    .ToList(),
+                ct);
+
+            _db.Set<Document>().RemoveRange(documents);
+
+            // The verdicts stay — they say who was approved and on what
+            // grounds — but the raw OCR text is a transcript of the documents
+            // themselves, so it goes with them.
+            var verifications = await _db.Set<DocumentVerification>()
+                .Where(v => v.UserId == userId && v.RawPayloads != null)
+                .ToListAsync(ct);
+
+            foreach (var verification in verifications)
+            {
+                verification.RawPayloads = null;
+            }
+
+            await LogActionAsync(
+                adminUserId,
+                userId,
+                "DeleteDocuments",
+                $"Documents={documents.Count}",
+                "Documents=0",
+                dto.Reason,
+                ct);
+
+            await _db.SaveChangesAsync(ct);
+
+            var noun = documents.Count == 1 ? "document image" : "document images";
+            return new OkObjectResult(new
+            {
+                message = $"{documents.Count} {noun} deleted. The account and its records are unchanged."
+            });
+        }
+
         private async Task LogActionAsync(
             Guid adminUserId,
             Guid targetUserId,
@@ -330,6 +426,7 @@ namespace AimPark.API.Services
             {
                 "Archive" => "Account archived",
                 "Restore" => "Account restored",
+                "DeleteDocuments" => "ID documents deleted",
                 "AssignRfid" => DescribeCard(oldValue, newValue),
                 "RevokeRfid" => ReadField(oldValue, "RfidTagId") is { Length: > 0 } tag
                     ? $"RFID card {tag} revoked"
