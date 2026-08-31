@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../../core/ocr/ocr_payload.dart';
 import '../../../../core/theme/theme.dart';
 import '../../../../core/utils/app_flushbar.dart';
 import '../../../../core/widgets/widgets.dart';
@@ -103,11 +104,22 @@ class _RegisterConfirmScreenState extends ConsumerState<RegisterConfirmScreen> {
   }
 
   /// Back to the plate photo, keeping the other three photographs.
-  void _retakePlatePhoto() {
+  void _retakePlatePhoto() => _retakeDocument(ScanDocumentType.platePhoto);
+
+  /// Back to the receipt, which is where the plate comes from.
+  ///
+  /// Offered when nothing was read at all. The server refuses a submission with
+  /// no plate while attempts remain — there is no vehicle to register without
+  /// one — so this is the way forward rather than a suggestion.
+  void _retakeReceiptPhoto() => _retakeDocument(ScanDocumentType.officialReceipt);
+
+  void _retakeDocument(ScanDocumentType type) {
     final specs = DocumentSpec.forAffiliation(
       ref.read(registrationNotifierProvider).affiliation,
     );
-    context.go('/register/documents/${specs.length - 1}');
+    final index = specs.indexWhere((spec) => spec.type == type);
+    if (index < 0) return;
+    context.go('/register/documents/$index');
   }
 
   /// Whether a field the rules could not read is still exactly that: unread.
@@ -276,6 +288,7 @@ class _RegisterConfirmScreenState extends ConsumerState<RegisterConfirmScreen> {
             seenInPhoto: _extracted.platePhotoNumber,
             agreement: _extracted.plateAgreement,
             onRetakePhoto: live ? _retakePlatePhoto : null,
+            onRetakeReceipt: live ? _retakeReceiptPhoto : null,
           ),
           const SizedBox(height: AppSpacing.lg),
 

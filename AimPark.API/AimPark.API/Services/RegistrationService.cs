@@ -554,10 +554,27 @@ namespace AimPark.API.Services
             verification.ConfirmedSemester = FuzzyText.TrimValue(dto.Semester);
             verification.ConfirmedLicenseName = FuzzyText.TrimValue(dto.LicenseName);
             verification.ConfirmedLicenseExpiry = dto.LicenseExpiry;
-            verification.ConfirmedPlateNumber = IdentifierNormalizer.NormalizePlate(dto.PlateNumber);
+            // Null rather than empty when the client sent no plate. Every reader of
+            // this column takes a value to mean "the applicant committed to this",
+            // and an empty string is not one — it silently outranked the server's
+            // own reading in the coalesce below.
+            var committedPlate = IdentifierNormalizer.NormalizePlate(dto.PlateNumber);
+            verification.ConfirmedPlateNumber = committedPlate.Length == 0 ? null : committedPlate;
             verification.ConfirmedRegistrationExpiry = dto.RegistrationExpiry;
 
-            var (vehicle, vehicleNote) = await UpsertVehicleFromReceiptAsync(verification, dto, vehicleType, userId, ct);
+            // Counted here for the same reason the scan step counts them: the
+            // allowance is what separates "photograph it again" from "this receipt
+            // is never going to read, go on without it".
+            var attempts = (await _verifications.GetAllAsync(v => v.UserId == userId, ct)).Count;
+
+            var (vehicle, vehicleNote, refusal) = await UpsertVehicleFromReceiptAsync(
+                verification, dto, vehicleType, userId, attempts, ct);
+
+            // Nothing has been saved yet, so returning here leaves the applicant on
+            // the confirmation screen with their submission intact.
+            if (refusal is not null)
+                return new BadRequestObjectResult(new { message = refusal });
+
             verification.VehicleId = vehicle?.Id;
 
             // Evaluate rewrites Notes wholesale, so everything else with something to
@@ -597,41 +614,67 @@ namespace AimPark.API.Services
         /// gave, plus the type and colour they chose.
         /// </summary>
         /// <remarks>
-        /// Two situations produce no vehicle at all, and neither is treated as a
-        /// failure the applicant has to solve. If nothing readable came off the
-        /// receipt there is no plate to store, and the plate column is unique, so a
-        /// blank row would collide with the next applicant in the same position. If
-        /// the plate already belongs to someone else, two accounts are claiming one
-        /// vehicle and only a person can work out which is right.
+        /// The gate matches on the plate, so a submission that produces no vehicle
+        /// produces an account the barrier will never open for. That used to pass
+        /// silently: registration completed, the applicant was told they were done,
+        /// and the absence surfaced weeks later as a card that did not work.
         ///
-        /// In both cases the registration still completes and the reviewer is told
-        /// what is missing, because the alternative — refusing at the final step,
-        /// after four photographs — strands the applicant over something they
-        /// cannot influence.
+        /// It is now refused, and which of the two causes it is decides how.
+        ///
+        /// An unreadable receipt is answered with another photograph, so the
+        /// applicant is sent back while attempts remain. Once they are spent the
+        /// submission goes through without a vehicle, because a receipt too faded
+        /// to read is not something a fourth photograph fixes and stranding
+        /// somebody at the last step over it is worse than letting them in — they
+        /// add the vehicle themselves from My vehicles after approval, where
+        /// retakes are unlimited.
+        ///
+        /// A plate already held by another account is refused outright. No
+        /// photograph changes who owns a plate, so there is no retake to offer, and
+        /// two accounts claiming one vehicle is a question for a person. Asking it
+        /// now is the point: the alternative was approving the second account with
+        /// nothing for the gate to match and no way for anyone to notice.
         /// </remarks>
-        private async Task<(Vehicle? Vehicle, string? Note)> UpsertVehicleFromReceiptAsync(
+        private async Task<(Vehicle? Vehicle, string? Note, string? Refusal)> UpsertVehicleFromReceiptAsync(
             DocumentVerification verification,
             ConfirmDocumentsDto dto,
             VehicleType vehicleType,
             Guid userId,
+            int attempts,
             CancellationToken ct)
         {
-            var plate = IdentifierNormalizer.NormalizePlate(
-                verification.ConfirmedPlateNumber ?? verification.ExtractedPlateNumber);
+            // The server's own reading leads. What the client echoed back is kept to
+            // show a reviewer where the applicant disagreed, and is never the source
+            // of the stored plate.
+            var plate = IdentifierNormalizer.NormalizePlate(verification.ExtractedPlateNumber);
+
+            if (plate.Length == 0)
+                plate = IdentifierNormalizer.NormalizePlate(verification.ConfirmedPlateNumber);
 
             if (plate.Length == 0)
             {
+                if (attempts < MaxScanAttempts)
+                {
+                    return (null, null,
+                        "No plate number could be read from your official receipt, so your vehicle "
+                        + "could not be registered. Photograph the receipt again, keeping the plate "
+                        + "number inside the frame.");
+                }
+
                 return (null,
-                    "No plate could be read from the receipt, so no vehicle record was created. " +
-                    "Add the vehicle by hand when approving, or the gate will have nothing to match.");
+                    "No plate could be read from the receipt after "
+                    + $"{MaxScanAttempts} attempts, so no vehicle record was created. "
+                    + "The applicant adds the vehicle themselves from My vehicles once approved.",
+                    null);
             }
 
             var existing = await _vehicles.FindAsync(v => v.PlateNumber == plate, ct);
 
             if (existing is not null && existing.UserId != userId)
             {
-                return (null,
-                    $"Plate {plate} is already registered to another account. No vehicle record was created.");
+                return (null, null,
+                    $"Plate {plate} is already registered to another account. If this vehicle is "
+                    + "yours, contact the administrator — it cannot be registered twice.");
             }
 
             var expiry = verification.ConfirmedRegistrationExpiry ?? verification.ExtractedRegistrationExpiry;
@@ -650,7 +693,7 @@ namespace AimPark.API.Services
             else
                 _vehicles.Update(vehicle);
 
-            return (vehicle, null);
+            return (vehicle, null, null);
         }
 
         /// <summary>

@@ -117,8 +117,10 @@ class _ConfirmVehicleScreenState extends ConsumerState<ConfirmVehicleScreen> {
             seenInPhoto: _extracted.platePhotoNumber,
             agreement: _extracted.plateAgreement,
             // Nowhere to send them back to from here — the capture screen is one
-            // pop away and still holds both photos.
+            // pop away and still holds both photos, so both retakes are the
+            // same gesture.
             onRetakePhoto: live ? () => Navigator.of(context).pop() : null,
+            onRetakeReceipt: live ? () => Navigator.of(context).pop() : null,
           ),
           const SizedBox(height: AppSpacing.lg),
 
