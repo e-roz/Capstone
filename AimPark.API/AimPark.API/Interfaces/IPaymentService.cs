@@ -36,7 +36,28 @@ namespace AimPark.API.Interfaces
 
         Task<ActionResult<PaymentListResponse>> GetMyPaymentsAsync(Guid userId, int page, int pageSize, CancellationToken ct);
         Task<ActionResult<PaymentResponse>> GetMyPaymentDetailAsync(Guid userId, Guid paymentId, CancellationToken ct);
-        Task<ActionResult<object>> PayAsync(Guid userId, Guid paymentId, CancellationToken ct);
+        /// <summary>
+        /// Opens a checkout with the payment provider and returns where to send
+        /// the payer.
+        /// </summary>
+        /// <remarks>
+        /// This replaced a <c>Pay</c> endpoint that set the row to Paid on the
+        /// payer's own say-so. Nothing stopped anyone clearing their own bill
+        /// with it, which is the one thing a payment system must not allow: the
+        /// statement that money arrived has to come from whoever received it.
+        /// </remarks>
+        Task<ActionResult<CheckoutResponse>> StartCheckoutAsync(Guid userId, Guid paymentId, CancellationToken ct);
+
+        /// <summary>
+        /// Settles a bill from a provider's callback. Safe to call twice with the
+        /// same message.
+        /// </summary>
+        Task<bool> HandleGatewayCallbackAsync(string rawBody, IDictionary<string, string> headers, CancellationToken ct);
+
+        /// <summary>
+        /// Records a bill settled in cash, and who took it.
+        /// </summary>
+        Task<ActionResult<object>> MarkPaidByAdminAsync(Guid paymentId, Guid adminUserId, MarkPaidDto dto, CancellationToken ct);
         Task<ActionResult<PaymentListResponse>> ListAllAsync(string? status, int page, int pageSize, CancellationToken ct);
         Task<ActionResult<List<ParkingRateResponse>>> ListRatesAsync(CancellationToken ct);
         Task<ActionResult<object>> UpsertRateAsync(UpsertParkingRateDto dto, CancellationToken ct);

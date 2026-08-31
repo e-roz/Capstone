@@ -3,6 +3,7 @@ using AimPark.API.Data;
 using AimPark.API.Middleware;
 using AimPark.API.Interfaces;
 using AimPark.API.Services;
+using AimPark.API.Services.Payments;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authentication.Google;
@@ -100,6 +101,11 @@ builder.Services.AddAuthentication(options =>
                 Encoding.UTF8.GetBytes(jwtKey)
             )
         };
+
+        // Signature and expiry are not the whole question: the account named by
+        // a perfectly valid token may have been archived or suspended since it
+        // was issued.
+        options.EventsType = typeof(AccountStateJwtEvents);
     })
     .AddGoogle(options =>
     {
@@ -119,6 +125,8 @@ builder.Services.AddAuthentication(options =>
     // strand the barrier mid-shift with no way to recover.
     .AddScheme<AuthenticationSchemeOptions, ApiKeyAuthenticationHandler>(
         ApiKeyDefaults.AuthenticationScheme, _ => { });
+
+builder.Services.AddScoped<AccountStateJwtEvents>();
 
 builder.Services.AddAuthorization();
 
@@ -144,6 +152,26 @@ builder.Services.AddScoped<IPreScreeningService, PreScreeningService>();
 builder.Services.AddScoped<INotificationService, NotificationService>();
 builder.Services.AddScoped<IIncidentService, IncidentService>();
 builder.Services.AddScoped<IPaymentService, PaymentService>();
+
+// Which provider settles the money. "Simulated" until the school holds a
+// verified merchant account — see SimulatedPaymentGateway for why that is a
+// stand-in rather than a shortcut. Both sides implement IPaymentGateway, so
+// this line is the whole of the switch.
+var paymentProvider = builder.Configuration["Payments:Provider"] ?? "Simulated";
+
+if (string.Equals(paymentProvider, "PayMongo", StringComparison.OrdinalIgnoreCase))
+{
+    builder.Services.AddHttpClient<IPaymentGateway, PayMongoPaymentGateway>();
+}
+else
+{
+    builder.Services.AddScoped<IPaymentGateway, SimulatedPaymentGateway>();
+}
+
+// The stand-in checkout page needs the concrete type to sign its callback with.
+// Registered whichever provider is live; the page itself refuses to serve when
+// a real one is configured.
+builder.Services.AddScoped<SimulatedPaymentGateway>();
 builder.Services.AddScoped<IViolationService, ViolationService>();
 builder.Services.AddScoped<IVisitorPassService, VisitorPassService>();
 builder.Services.AddScoped<IReportService, ReportService>();

@@ -63,13 +63,41 @@ class PaymentActions extends _$PaymentActions {
   @override
   AsyncValue<void> build() => const AsyncData(null);
 
-  Future<String?> upsertRate(String? vehicleType, double ratePerHour) async {
+  /// Records a bill settled in person, and who took the money.
+  Future<String?> markPaid(
+    String paymentId, {
+    String method = 'Cash',
+    String? referenceNumber,
+  }) async {
+    state = const AsyncLoading();
+    try {
+      final dio = ref.read(dioProvider);
+      final res = await dio.post(
+        ApiEndpoints.markPaymentPaid(paymentId),
+        data: {'method': method, 'referenceNumber': referenceNumber},
+      );
+      state = const AsyncData(null);
+      return (res.data as Map<String, dynamic>)['message']?.toString();
+    } on DioException catch (e) {
+      state = const AsyncData(null);
+      final data = e.response?.data;
+      if (data is Map) return data['message']?.toString() ?? e.message ?? 'Error';
+      return e.message ?? 'Unknown error';
+    }
+  }
+
+  Future<String?> upsertRate(
+    String? vehicleType,
+    double ratePerHour, {
+    double? minimumFee,
+  }) async {
     state = const AsyncLoading();
     try {
       final dio = ref.read(dioProvider);
       final res = await dio.put(ApiEndpoints.paymentRates, data: {
         'vehicleType': vehicleType,
         'ratePerHour': ratePerHour,
+        'minimumFee': minimumFee,
       });
       state = const AsyncData(null);
       return (res.data as Map<String, dynamic>)['message']?.toString();

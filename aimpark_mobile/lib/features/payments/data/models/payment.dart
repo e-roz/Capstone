@@ -14,6 +14,9 @@ class Payment {
     this.exitTime,
     this.paidAt,
     this.dueAt,
+    this.method,
+    this.referenceNumber,
+    this.provider,
   });
 
   final String paymentId;
@@ -34,7 +37,24 @@ class Payment {
   /// dates existed, so every read has to tolerate its absence.
   final DateTime? dueAt;
 
+  /// Cash, GCash, Maya or Card. Null until the bill is settled.
+  final String? method;
+
+  /// What the payer can quote if a payment is ever disputed.
+  final String? referenceNumber;
+
+  /// Which provider handled it, or `Simulated`.
+  final String? provider;
+
   bool get isPaid => paidAt != null;
+
+  /// A checkout is open and nothing has come back from the provider yet.
+  ///
+  /// The gap between leaving for GCash and the money being confirmed is real,
+  /// and short, and the screen has to say something honest during it. Not
+  /// "paid" — nobody has told us that — and not "unpaid" either, or the
+  /// payer pays a second time.
+  bool get isProcessing => !isPaid && status.toLowerCase() == 'processing';
 
   bool get isOverdue =>
       !isPaid && dueAt != null && DateTime.now().isAfter(dueAt!);
@@ -74,6 +94,9 @@ class Payment {
       createdAt: DateTime.parse(json['createdAt'] as String),
       paidAt: json['paidAt'] == null ? null : DateTime.parse(json['paidAt'] as String),
       dueAt: json['dueAt'] == null ? null : DateTime.parse(json['dueAt'] as String),
+      method: json['method'] as String?,
+      referenceNumber: json['referenceNumber'] as String?,
+      provider: json['provider'] as String?,
     );
   }
 }
@@ -90,6 +113,39 @@ class PaymentListResult {
           .map((e) => Payment.fromJson(e as Map<String, dynamic>))
           .toList(),
       totalCount: json['totalCount'] as int,
+    );
+  }
+}
+
+/// An open checkout: the page to send the payer to, and who is hosting it.
+class Checkout {
+  const Checkout({
+    required this.paymentId,
+    required this.checkoutUrl,
+    required this.provider,
+    required this.amountDue,
+  });
+
+  final String paymentId;
+  final String checkoutUrl;
+
+  /// `PayMongo`, or `Simulated` while the school has no merchant account.
+  final String provider;
+
+  final double amountDue;
+
+  /// True while no real provider is connected.
+  ///
+  /// Worth saying on screen. A test payment that looks exactly like a real one
+  /// is how somebody ends up believing a bill is settled when no money moved.
+  bool get isSimulated => provider.toLowerCase() == 'simulated';
+
+  factory Checkout.fromJson(Map<String, dynamic> json) {
+    return Checkout(
+      paymentId: json['paymentId'] as String,
+      checkoutUrl: json['checkoutUrl'] as String,
+      provider: json['provider'] as String? ?? '',
+      amountDue: (json['amountDue'] as num?)?.toDouble() ?? 0,
     );
   }
 }

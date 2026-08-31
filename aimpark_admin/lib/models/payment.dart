@@ -11,6 +11,20 @@ class PaymentTransaction {
   final DateTime createdAt;
   final DateTime? paidAt;
 
+  /// Cash, GCash, Maya or Card. Null while the bill is unsettled.
+  final String? method;
+
+  /// The number the payer can quote: a provider's payment id, or an OR number
+  /// typed in by whoever took the cash.
+  final String? referenceNumber;
+
+  /// Which provider handled it, or `Simulated`. Null for cash, which no
+  /// provider ever sees.
+  final String? provider;
+
+  /// The admin who took the money, on payments settled in person.
+  final String? confirmedBy;
+
   const PaymentTransaction({
     required this.paymentId,
     required this.source,
@@ -23,6 +37,10 @@ class PaymentTransaction {
     required this.status,
     required this.createdAt,
     required this.paidAt,
+    this.method,
+    this.referenceNumber,
+    this.provider,
+    this.confirmedBy,
   });
 
   factory PaymentTransaction.fromJson(Map<String, dynamic> json) =>
@@ -45,6 +63,10 @@ class PaymentTransaction {
         paidAt: json['paidAt'] == null
             ? null
             : DateTime.parse(json['paidAt'].toString()),
+        method: json['method']?.toString(),
+        referenceNumber: json['referenceNumber']?.toString(),
+        provider: json['provider']?.toString(),
+        confirmedBy: json['confirmedBy']?.toString(),
       );
 }
 
@@ -76,12 +98,21 @@ class ParkingRate {
   final String rateId;
   final String? vehicleType;
   final double ratePerHour;
+
+  /// The least a finished session can cost.
+  ///
+  /// A flat first block, the way parking is priced everywhere — and the
+  /// reason online payment works at all, since no gateway accepts a charge
+  /// under twenty pesos.
+  final double minimumFee;
+
   final DateTime updatedAt;
 
   const ParkingRate({
     required this.rateId,
     required this.vehicleType,
     required this.ratePerHour,
+    required this.minimumFee,
     required this.updatedAt,
   });
 
@@ -89,6 +120,7 @@ class ParkingRate {
         rateId: json['rateId']?.toString() ?? '',
         vehicleType: json['vehicleType']?.toString(),
         ratePerHour: (json['ratePerHour'] as num?)?.toDouble() ?? 0,
+        minimumFee: (json['minimumFee'] as num?)?.toDouble() ?? 0,
         updatedAt: DateTime.parse(json['updatedAt'].toString()),
       );
 }

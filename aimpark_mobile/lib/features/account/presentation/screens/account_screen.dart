@@ -61,7 +61,7 @@ class AccountScreen extends ConsumerWidget {
     final balance =
         (ref.watch(paymentsNotifierProvider).valueOrNull?.payments ??
                 const <Payment>[])
-            .where((p) => p.status.toLowerCase() == 'pending')
+            .where((p) => !p.isPaid && p.status.toLowerCase() != 'waived')
             .fold<double>(0, (sum, p) => sum + p.amountDue);
 
     return AppScreen.tab(

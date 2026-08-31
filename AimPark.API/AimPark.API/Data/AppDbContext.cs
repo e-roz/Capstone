@@ -392,6 +392,10 @@ namespace AimPark.API.Data
                 entity.Property(r => r.RatePerHour)
                       .HasColumnType("decimal(10,2)");
 
+                entity.Property(r => r.MinimumFee)
+                      .HasColumnType("decimal(10,2)")
+                      .HasDefaultValue(20.00m);
+
                 entity.Property(r => r.UpdatedAt)
                       .HasDefaultValueSql("NOW()");
 
@@ -418,6 +422,17 @@ namespace AimPark.API.Data
 
                 entity.Property(p => p.Status)
                       .HasConversion<string>();
+
+                entity.Property(p => p.Method)
+                      .HasConversion<string>();
+
+                entity.Property(p => p.Provider).HasMaxLength(32);
+                entity.Property(p => p.ProviderPaymentId).HasMaxLength(128);
+                entity.Property(p => p.ReferenceNumber).HasMaxLength(128);
+
+                // The callback arrives knowing the provider's id and nothing
+                // else, so this is the lookup every settlement goes through.
+                entity.HasIndex(p => p.ProviderPaymentId);
 
                 entity.Property(p => p.RatePerHourApplied)
                       .HasColumnType("decimal(10,2)");

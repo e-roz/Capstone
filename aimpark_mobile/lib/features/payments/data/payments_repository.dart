@@ -21,7 +21,14 @@ class PaymentsRepository {
     return Payment.fromJson(response.data as Map<String, dynamic>);
   }
 
-  Future<void> pay(String paymentId) {
-    return _dio.post(ApiEndpoints.paymentPay(paymentId));
+  /// Opens a checkout and returns where to send the payer.
+  ///
+  /// This replaced a `pay` call that told the server the bill was settled. The
+  /// phone is not in a position to know that: it can say the payer was sent to
+  /// GCash, and nothing more. Whether money arrived comes back to the server
+  /// from the provider, on its own connection.
+  Future<Checkout> startCheckout(String paymentId) async {
+    final response = await _dio.post(ApiEndpoints.paymentCheckout(paymentId));
+    return Checkout.fromJson(response.data as Map<String, dynamic>);
   }
 }
