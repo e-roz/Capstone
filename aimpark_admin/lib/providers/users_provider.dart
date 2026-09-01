@@ -5,6 +5,7 @@ import 'package:riverpod_annotation/riverpod_annotation.dart';
 import '../core/constants/api_endpoints.dart';
 import '../core/network/dio_client.dart';
 import '../models/admin_user.dart';
+import '../models/rfid_card.dart';
 
 part 'users_provider.g.dart';
 
@@ -68,6 +69,27 @@ Future<UserListPage> userList(Ref ref) async {
 
   final response = await dio.get(ApiEndpoints.users, queryParameters: params);
   return UserListPage.fromJson(response.data as Map<String, dynamic>);
+}
+
+class BulkRevokeResult {
+  final int revoked;
+  final int skippedCount;
+  final String? error;
+
+  const BulkRevokeResult(
+      {required this.revoked, required this.skippedCount, this.error});
+}
+
+// ── RFID card pool (Free / Blocked) ────────────────────────────────────────
+
+@riverpod
+Future<List<RfidCard>> rfidCards(Ref ref, {String? cardState}) async {
+  final dio = ref.watch(dioProvider);
+  final res = await dio.get(ApiEndpoints.rfidCards,
+      queryParameters: {if (cardState != null) 'state': cardState});
+  return (res.data as List<dynamic>)
+      .map((c) => RfidCard.fromJson(c as Map<String, dynamic>))
+      .toList();
 }
 
 // ── User actions ─────────────────────────────────────────────────────────────
@@ -136,12 +158,41 @@ class UserActions extends _$UserActions {
     });
   }
 
-  Future<String?> revokeRfid(String userId) async {
+  Future<String?> revokeRfid(String userId, String reason, String? note) async {
     return _run(() async {
       final dio = ref.read(dioProvider);
-      final res = await dio.post(ApiEndpoints.revokeRfid(userId));
+      final res = await dio.post(ApiEndpoints.revokeRfid(userId),
+          data: {'reason': reason, 'note': note});
       return (res.data as Map<String, dynamic>)['message']?.toString();
     });
+  }
+
+  /// Returns how many were revoked and the reasons any were skipped (e.g.
+  /// already had no card) — a partial success, not something to throw on.
+  Future<BulkRevokeResult> bulkRevokeRfid(
+      List<String> userIds, String reason, String? note) async {
+    state = const AsyncLoading();
+    try {
+      final dio = ref.read(dioProvider);
+      final res = await dio.post(ApiEndpoints.bulkRevokeRfid, data: {
+        'userIds': userIds,
+        'reason': reason,
+        'note': note,
+      });
+      state = const AsyncData(null);
+      final data = res.data as Map<String, dynamic>;
+      return BulkRevokeResult(
+        revoked: (data['revoked'] as num?)?.toInt() ?? 0,
+        skippedCount: (data['skipped'] as List<dynamic>? ?? []).length,
+      );
+    } on DioException catch (e) {
+      state = const AsyncData(null);
+      final data = e.response?.data;
+      final message = data is Map
+          ? data['message']?.toString() ?? e.message ?? 'Error'
+          : e.message ?? 'Unknown error';
+      return BulkRevokeResult(revoked: 0, skippedCount: 0, error: message);
+    }
   }
 
   Future<String?> _run(Future<String?> Function() fn) async {

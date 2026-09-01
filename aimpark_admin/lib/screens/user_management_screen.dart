@@ -3,10 +3,13 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
+import '../core/constants/api_endpoints.dart';
+import '../core/network/dio_client.dart';
 import '../core/utils/responsive.dart';
 import '../models/admin_user.dart';
 import '../providers/users_provider.dart';
 import '../theme/theme.dart';
+import '../widgets/rfid_revoke_dialog.dart';
 import '../widgets/ui/ui.dart';
 
 const _statuses = [
@@ -31,6 +34,12 @@ class UserManagementScreen extends ConsumerWidget {
       title: 'User Management',
       subtitle: 'Everyone with an AimPark account, and the state of it.',
       actions: [
+        OutlinedButton.icon(
+          icon: const Icon(Icons.nfc, size: AppSizes.iconSm),
+          label: const Text('Bulk Revoke RFID'),
+          onPressed: () => _bulkRevokeRfid(context, ref),
+        ),
+        const SizedBox(width: AppSpacing.x2),
         IconButton(
           icon: const Icon(Icons.refresh),
           tooltip: 'Refresh',
@@ -70,6 +79,7 @@ class UserManagementScreen extends ConsumerWidget {
             DataColumn(label: Text('Full Name')),
             DataColumn(label: Text('Email')),
             DataColumn(label: Text('Status')),
+            DataColumn(label: Text('RFID')),
             DataColumn(label: Text('Joined')),
             DataColumn(label: Text('Actions')),
           ],
@@ -120,6 +130,11 @@ class UserManagementScreen extends ConsumerWidget {
           intent: user.isDeleted
               ? StatusIntent.neutral
               : StatusIntents.user(user.accountStatus),
+          dense: true,
+        )),
+        DataCell(StatusPill.of(
+          user.rfidStatus == 'Unassigned' ? 'No card' : user.rfidStatus,
+          intent: StatusIntents.rfid(user.rfidStatus),
           dense: true,
         )),
         DataCell(Text(
@@ -303,5 +318,126 @@ class _RowActions extends ConsumerWidget {
     ScaffoldMessenger.of(context)
         .showSnackBar(SnackBar(content: Text(message)));
     ref.invalidate(userListProvider);
+  }
+}
+
+// ── Bulk revoke ──────────────────────────────────────────────────────────────
+//
+// Built for the graduation sweep: dozens of cards coming back at once, all for
+// the same reason. The single-user Revoke button on the detail screen does not
+// scale to that, and doing it one row at a time is exactly the tedium this
+// exists to remove.
+
+Future<void> _bulkRevokeRfid(BuildContext context, WidgetRef ref) async {
+  final dio = ref.read(dioProvider);
+  final res = await dio.get(ApiEndpoints.users,
+      queryParameters: {'page': 1, 'pageSize': 500});
+  final page = UserListPage.fromJson(res.data as Map<String, dynamic>);
+  final candidates = page.users
+      .where((u) => !u.isDeleted && u.rfidStatus != 'Unassigned')
+      .toList();
+
+  if (!context.mounted) return;
+
+  if (candidates.isEmpty) {
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('No user currently has an RFID tag assigned.')));
+    return;
+  }
+
+  final selected = await showDialog<Set<String>>(
+    context: context,
+    builder: (ctx) => _UserPickerDialog(candidates: candidates),
+  );
+  if (selected == null || selected.isEmpty || !context.mounted) return;
+
+  final holderName = selected.length == 1
+      ? candidates.firstWhere((u) => u.userId == selected.first).fullName
+      : '${selected.length} selected users';
+
+  final reasonResult =
+      await showRevokeRfidDialog(context, holderName: holderName);
+  if (reasonResult == null || !context.mounted) return;
+
+  final result = await ref
+      .read(userActionsProvider.notifier)
+      .bulkRevokeRfid(selected.toList(), reasonResult.reason, reasonResult.note);
+  if (!context.mounted) return;
+
+  final message = result.error ??
+      (result.skippedCount == 0
+          ? 'Revoked ${result.revoked} RFID tag${result.revoked == 1 ? '' : 's'}.'
+          : 'Revoked ${result.revoked}, skipped ${result.skippedCount}.');
+
+  ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+  ref.invalidate(userListProvider);
+}
+
+class _UserPickerDialog extends StatefulWidget {
+  const _UserPickerDialog({required this.candidates});
+
+  final List<AdminUser> candidates;
+
+  @override
+  State<_UserPickerDialog> createState() => _UserPickerDialogState();
+}
+
+class _UserPickerDialogState extends State<_UserPickerDialog> {
+  final _selected = <String>{};
+
+  @override
+  Widget build(BuildContext context) {
+    final text = Theme.of(context).textTheme;
+
+    return AlertDialog(
+      title: const Text('Select users to revoke RFID from'),
+      content: SizedBox(
+        width: context.dialogWidth(440),
+        height: 420,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Only users with a card currently assigned are listed.',
+              style: text.bodySmall
+                  ?.copyWith(color: context.tokens.text.secondary),
+            ),
+            const SizedBox(height: AppSpacing.x2),
+            Expanded(
+              child: ListView(
+                children: [
+                  for (final user in widget.candidates)
+                    CheckboxListTile(
+                      dense: true,
+                      value: _selected.contains(user.userId),
+                      title: Text(user.fullName),
+                      subtitle: Text('${user.email} · ${user.rfidStatus}'),
+                      onChanged: (checked) => setState(() {
+                        if (checked == true) {
+                          _selected.add(user.userId);
+                        } else {
+                          _selected.remove(user.userId);
+                        }
+                      }),
+                    ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          onPressed: _selected.isEmpty
+              ? null
+              : () => Navigator.pop(context, _selected),
+          child: Text('Continue (${_selected.length})'),
+        ),
+      ],
+    );
   }
 }

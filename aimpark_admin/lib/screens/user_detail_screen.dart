@@ -8,6 +8,8 @@ import '../providers/registrations_provider.dart';
 import '../providers/users_provider.dart';
 import '../theme/theme.dart';
 import '../widgets/document_viewer.dart';
+import '../widgets/rfid_revoke_dialog.dart';
+import '../widgets/rfid_scan_field.dart';
 import '../widgets/ui/ui.dart';
 
 String _date(DateTime dt) => DateFormat('MMM d, yyyy').format(dt.toLocal());
@@ -278,17 +280,11 @@ class _UserActions {
       context: context,
       builder: (ctx) => AlertDialog(
         title: Text('Assign RFID to ${detail.fullName}'),
-        content: Form(
-          key: formKey,
-          child: TextFormField(
-            controller: tagCtrl,
-            autofocus: true,
-            decoration: const InputDecoration(
-              labelText: 'RFID Tag ID',
-              helperText: 'Tap the card on a reader, or type the printed ID.',
-            ),
-            validator: (v) =>
-                (v == null || v.trim().isEmpty) ? 'Tag ID is required' : null,
+        content: SizedBox(
+          width: 420,
+          child: Form(
+            key: formKey,
+            child: RfidScanField(controller: tagCtrl, userId: userId),
           ),
         ),
         actions: [
@@ -314,18 +310,12 @@ class _UserActions {
   }
 
   Future<void> revokeRfid(BuildContext context) async {
-    final confirmed = await _confirm(
-      context,
-      title: 'Revoke RFID Tag',
-      message:
-          'Revoke the RFID tag from ${detail.fullName}? They will no longer be '
-          'able to use RFID entry/exit until a new tag is assigned.',
-      confirmLabel: 'Revoke',
-      danger: true,
-    );
-    if (!confirmed || !context.mounted) return;
+    final result = await showRevokeRfidDialog(context, holderName: detail.fullName);
+    if (result == null || !context.mounted) return;
 
-    final msg = await ref.read(userActionsProvider.notifier).revokeRfid(userId);
+    final msg = await ref
+        .read(userActionsProvider.notifier)
+        .revokeRfid(userId, result.reason, result.note);
     if (!context.mounted) return;
     _done(context, msg ?? 'RFID tag revoked.');
   }
@@ -514,36 +504,6 @@ class _UserActions {
         .archive(userId, passwordCtrl.text);
     if (!context.mounted) return;
     _done(context, msg ?? 'User archived.');
-  }
-
-  Future<bool> _confirm(
-    BuildContext context, {
-    required String title,
-    required String message,
-    required String confirmLabel,
-    bool danger = false,
-  }) async {
-    final result = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text(title),
-        content: SizedBox(width: 420, child: Text(message)),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('Cancel')),
-          FilledButton(
-            style: danger
-                ? FilledButton.styleFrom(
-                    backgroundColor: ctx.tokens.status.danger.solid)
-                : null,
-            onPressed: () => Navigator.pop(ctx, true),
-            child: Text(confirmLabel),
-          ),
-        ],
-      ),
-    );
-    return result == true;
   }
 
   void _done(BuildContext context, String msg) {

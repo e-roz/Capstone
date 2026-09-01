@@ -31,6 +31,7 @@ namespace AimPark.API.Data
         public DbSet<UserActivityLog> UserActivityLogs { get; set; }
         public DbSet<SystemErrorLog> SystemErrorLogs { get; set; }
         public DbSet<VisitorPass> VisitorPasses { get; set; }
+        public DbSet<RfidCard> RfidCards { get; set; }
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -539,6 +540,21 @@ namespace AimPark.API.Data
                       .WithMany()
                       .HasForeignKey(t => t.UserId)
                       .OnDelete(DeleteBehavior.Cascade);
+            });
+
+            modelBuilder.Entity<RfidCard>(entity =>
+            {
+                entity.HasKey(c => c.RfidTagId);
+
+                // The screen this feeds is "show me the free ones" / "show me
+                // the blocked ones" — nothing else filters on this table.
+                entity.HasIndex(c => c.State);
+
+                entity.Property(c => c.State).HasConversion<string>();
+                entity.Property(c => c.Reason).HasConversion<string>();
+
+                entity.Property(c => c.UpdatedAt)
+                      .HasDefaultValueSql("NOW()");
             });
 
             modelBuilder.Entity<ViolationAppeal>(entity =>

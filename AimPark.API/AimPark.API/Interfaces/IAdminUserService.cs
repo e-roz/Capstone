@@ -13,6 +13,8 @@ namespace AimPark.API.Interfaces
         Task<ActionResult<object>> RestoreAsync(Guid userId, Guid adminUserId, CancellationToken ct);
         Task<ActionResult<object>> DeleteDocumentsAsync(Guid userId, Guid adminUserId, DeleteDocumentsDto dto, CancellationToken ct);
         Task<ActionResult<object>> AssignRfidAsync(Guid userId, Guid adminUserId, AssignRfidDto dto, CancellationToken ct);
-        Task<ActionResult<object>> RevokeRfidAsync(Guid userId, Guid adminUserId, CancellationToken ct);
+        Task<ActionResult<object>> RevokeRfidAsync(Guid userId, Guid adminUserId, RevokeRfidDto dto, CancellationToken ct);
+        Task<ActionResult<BulkRevokeRfidResponse>> BulkRevokeRfidAsync(Guid adminUserId, BulkRevokeRfidDto dto, CancellationToken ct);
+        Task<ActionResult<List<RfidCardResponse>>> ListRfidCardsAsync(string? state, CancellationToken ct);
     }
 }

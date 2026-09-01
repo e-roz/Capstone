@@ -58,7 +58,7 @@ final paymentsQueryNotifierProvider =
     );
 
 typedef _$PaymentsQueryNotifier = AutoDisposeNotifier<PaymentsQuery>;
-String _$paymentActionsHash() => r'9d35647aa548d88c48fdbe13777d940d0e6b5294';
+String _$paymentActionsHash() => r'3b63a3e7f745166583501454ef2ccaad4a08d0fa';
 
 /// See also [PaymentActions].
 @ProviderFor(PaymentActions)

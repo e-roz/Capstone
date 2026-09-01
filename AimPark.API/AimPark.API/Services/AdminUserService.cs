@@ -2,6 +2,7 @@ using AimPark.API.Data;
 using AimPark.API.DTOs;
 using AimPark.API.Entities;
 using AimPark.API.Enums;
+using AimPark.API.Helpers;
 using AimPark.API.Interfaces;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -74,6 +75,7 @@ namespace AimPark.API.Services
                     Email        = u.Email,
                     Role         = u.Role.ToString(),
                     AccountStatus = u.AccountStatus.ToString(),
+                    RfidStatus   = u.RfidStatus.ToString(),
                     IsDeleted    = u.IsDeleted,
                     CreatedAt    = u.CreatedAt
                 })
@@ -223,15 +225,34 @@ namespace AimPark.API.Services
             if (user is null)
                 return new NotFoundObjectResult(new { message = "User not found." });
 
-            var tagId = dto.RfidTagId.Trim();
+            // Squeezed into one spelling before it is stored, so a card read by
+            // the desk reader and the same card typed off its label end up as
+            // the same string. Lookups at the gate are exact comparisons, so
+            // this is what stops "registered but never recognised".
+            var tagId = RfidTag.Normalize(dto.RfidTagId);
+            if (tagId.Length == 0)
+                return new BadRequestObjectResult(new { message = "RFID tag ID is required." });
+
             var tagInUse = await _users.ExistsAsync(u => u.Id != userId && u.RfidTagId == tagId, ct);
             if (tagInUse)
                 return new BadRequestObjectResult(new { message = "This RFID tag is already assigned to another user." });
+
+            // A card revoked as lost/stolen/damaged stays blocked forever — see
+            // RfidCardState. Everything else (graduated, no longer needed) left
+            // a Free row behind, which a straight reassignment now clears.
+            var card = await _db.Set<RfidCard>().FindAsync([tagId], ct);
+            if (card is not null && card.State == RfidCardState.Blocked)
+                return new BadRequestObjectResult(new
+                {
+                    message = $"This card was reported {card.Reason.ToString().ToLowerInvariant()} and cannot be reissued."
+                });
 
             var oldValue = $"RfidTagId={user.RfidTagId}, RfidStatus={user.RfidStatus}";
             user.RfidTagId = tagId;
             user.RfidStatus = RfidStatus.Active;
             user.UpdatedAt = DateTime.UtcNow;
+
+            if (card is not null) _db.Set<RfidCard>().Remove(card);
 
             await LogActionAsync(adminUserId, userId, "AssignRfid", oldValue, $"RfidTagId={user.RfidTagId}, RfidStatus={user.RfidStatus}", null, ct);
 
@@ -242,26 +263,133 @@ namespace AimPark.API.Services
         }
 
         // POST /api/admin/users/{userId}/revoke-rfid
-        public async Task<ActionResult<object>> RevokeRfidAsync(Guid userId, Guid adminUserId, CancellationToken ct)
+        public async Task<ActionResult<object>> RevokeRfidAsync(Guid userId, Guid adminUserId, RevokeRfidDto dto, CancellationToken ct)
         {
+            if (!Enum.TryParse<RfidRevokeReason>(dto.Reason, true, out var reason))
+                return new BadRequestObjectResult(new { message = "Choose a reason for the revoke." });
+
             var user = await _users.FindAsync(u => u.Id == userId, ct);
             if (user is null)
                 return new NotFoundObjectResult(new { message = "User not found." });
 
-            if (user.RfidStatus == RfidStatus.Unassigned)
-                return new BadRequestObjectResult(new { message = "User has no RFID tag assigned." });
+            var (ok, message) = await RevokeCardAsync(user, adminUserId, reason, dto.Note, ct);
+            if (!ok)
+                return new BadRequestObjectResult(new { message });
 
+            await _users.SaveAsync(ct);
+            return new OkObjectResult(new { message });
+        }
+
+        // POST /api/admin/users/bulk-revoke-rfid
+        //
+        // Built for the end-of-year graduation sweep: dozens of cards coming
+        // back at once, all for the same reason. One bad ID in the batch
+        // (already-unassigned, already-archived) is skipped and reported, not
+        // a reason to fail the other 40.
+        public async Task<ActionResult<BulkRevokeRfidResponse>> BulkRevokeRfidAsync(Guid adminUserId, BulkRevokeRfidDto dto, CancellationToken ct)
+        {
+            if (dto.UserIds.Count == 0)
+                return new BadRequestObjectResult(new { message = "Select at least one user." });
+
+            if (!Enum.TryParse<RfidRevokeReason>(dto.Reason, true, out var reason))
+                return new BadRequestObjectResult(new { message = "Choose a reason for the revoke." });
+
+            var response = new BulkRevokeRfidResponse();
+
+            foreach (var userId in dto.UserIds)
+            {
+                var user = await _users.FindAsync(u => u.Id == userId, ct);
+                if (user is null)
+                {
+                    response.Skipped.Add(new BulkRevokeSkip { UserId = userId, Reason = "User not found." });
+                    continue;
+                }
+
+                var (ok, message) = await RevokeCardAsync(user, adminUserId, reason, dto.Note, ct);
+                if (!ok)
+                {
+                    response.Skipped.Add(new BulkRevokeSkip { UserId = userId, Reason = message });
+                    continue;
+                }
+
+                response.Revoked++;
+            }
+
+            await _users.SaveAsync(ct);
+            return new OkObjectResult(response);
+        }
+
+        // GET /api/admin/rfid-cards?state=Free
+        //
+        // The pool an admin picks from when handing out a card someone else
+        // already carried — and, filtered to Blocked, the list of UIDs that
+        // must never be reissued.
+        public async Task<ActionResult<List<RfidCardResponse>>> ListRfidCardsAsync(string? state, CancellationToken ct)
+        {
+            var query = _db.Set<RfidCard>().AsNoTracking().AsQueryable();
+
+            if (!string.IsNullOrWhiteSpace(state) && Enum.TryParse<RfidCardState>(state, true, out var parsedState))
+                query = query.Where(c => c.State == parsedState);
+
+            var cards = await query
+                .OrderByDescending(c => c.UpdatedAt)
+                .Select(c => new RfidCardResponse
+                {
+                    RfidTagId = c.RfidTagId,
+                    State = c.State.ToString(),
+                    Reason = c.Reason.ToString(),
+                    Note = c.Note,
+                    LastUserId = c.LastUserId,
+                    LastUserName = c.LastUserName,
+                    UpdatedAt = c.UpdatedAt
+                })
+                .ToListAsync(ct);
+
+            return new OkObjectResult(cards);
+        }
+
+        /// <summary>
+        /// The half of a revoke shared by the single and bulk endpoints: clear
+        /// the user's side, then file the card as Free or Blocked depending on
+        /// why it came back. Caller still owns <c>SaveAsync</c> — this only
+        /// stages changes, so a bulk run costs one round trip, not N.
+        /// </summary>
+        private async Task<(bool ok, string message)> RevokeCardAsync(
+            User user, Guid adminUserId, RfidRevokeReason reason, string? note, CancellationToken ct)
+        {
+            if (user.RfidStatus == RfidStatus.Unassigned)
+                return (false, $"{user.FullName} has no RFID tag assigned.");
+
+            var tagId = user.RfidTagId!;
             var oldValue = $"RfidTagId={user.RfidTagId}, RfidStatus={user.RfidStatus}";
+
             user.RfidTagId = null;
             user.RfidStatus = RfidStatus.Unassigned;
             user.UpdatedAt = DateTime.UtcNow;
-
-            await LogActionAsync(adminUserId, userId, "RevokeRfid", oldValue, $"RfidTagId={user.RfidTagId}, RfidStatus={user.RfidStatus}", null, ct);
-
             _users.Update(user);
-            await _users.SaveAsync(ct);
 
-            return new OkObjectResult(new { message = "RFID tag revoked." });
+            var state = reason is RfidRevokeReason.Lost or RfidRevokeReason.Stolen or RfidRevokeReason.Damaged
+                ? RfidCardState.Blocked
+                : RfidCardState.Free;
+
+            var card = await _db.Set<RfidCard>().FindAsync([tagId], ct);
+            if (card is null)
+            {
+                card = new RfidCard { RfidTagId = tagId };
+                _db.Set<RfidCard>().Add(card);
+            }
+
+            card.State = state;
+            card.Reason = reason;
+            card.Note = note;
+            card.LastUserId = user.Id;
+            card.LastUserName = user.FullName;
+            card.UpdatedAt = DateTime.UtcNow;
+
+            var reasonNote = note is null ? reason.ToString() : $"{reason}: {note}";
+            await LogActionAsync(adminUserId, user.Id, "RevokeRfid", oldValue, "RfidTagId=null, RfidStatus=Unassigned", reasonNote, ct);
+
+            return (true, "RFID tag revoked.");
         }
 
         // DELETE /api/admin/users/{userId}/documents

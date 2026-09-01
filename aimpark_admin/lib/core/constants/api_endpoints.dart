@@ -38,6 +38,16 @@ class ApiEndpoints {
       '/api/admin/users/$userId/assign-rfid';
   static String revokeRfid(String userId) =>
       '/api/admin/users/$userId/revoke-rfid';
+  static const bulkRevokeRfid = '/api/admin/users/bulk-revoke-rfid';
+
+  /// The pool of physical cards revoked from a user and not yet reissued —
+  /// Free ones ready to hand to someone else, Blocked ones that must not be.
+  static const rfidCards = '/api/admin/rfid-cards';
+
+  /// The last card tapped on the enrollment desk reader. Polled while the
+  /// Assign RFID dialog is open so nobody has to type a UID. Returns null when
+  /// nothing has been tapped recently.
+  static const rfidLastScan = '/api/admin/rfid/last-scan';
 
   // Admin – Audit Logs
   static const auditLogs = '/api/admin/audit-logs';

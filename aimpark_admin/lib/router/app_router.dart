@@ -16,6 +16,7 @@ import '../screens/pending_registrations_screen.dart';
 import '../screens/policy_rules_screen.dart';
 import '../screens/registration_detail_screen.dart';
 import '../screens/reports_screen.dart';
+import '../screens/rfid_cards_screen.dart';
 import '../screens/user_detail_screen.dart';
 import '../screens/user_management_screen.dart';
 import '../screens/security_gate_screen.dart';
@@ -97,6 +98,10 @@ GoRouter appRouter(Ref ref) {
             builder: (context, state) => UserDetailScreen(
               userId: state.pathParameters['userId']!,
             ),
+          ),
+          GoRoute(
+            path: '/rfid-cards',
+            builder: (context, state) => const RfidCardsScreen(),
           ),
           GoRoute(
             path: '/system-logs',
