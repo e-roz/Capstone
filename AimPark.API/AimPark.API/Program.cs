@@ -145,6 +145,11 @@ builder.Services.AddScoped<IParkingSlotService, ParkingSlotService>();
 builder.Services.AddScoped<IParkingHistoryService, ParkingHistoryService>();
 builder.Services.AddScoped<IParkingAllocationService, ParkingAllocationService>();
 builder.Services.AddScoped<IGateDeviceService, GateDeviceService>();
+
+// The enrollment desk's card buffer is one shared slot, so it is a singleton
+// while the service that reads it stays scoped for its DbContext.
+builder.Services.AddSingleton<RfidScanBuffer>();
+builder.Services.AddScoped<IRfidEnrollmentService, RfidEnrollmentService>();
 builder.Services.AddScoped<IUserProfileService, UserProfileService>();
 builder.Services.AddScoped<IVehicleService, VehicleService>();
 builder.Services.AddScoped<IDocumentExtractionService, DocumentExtractionService>();

@@ -5,6 +5,12 @@
 Written 2026-07-30, against the API as of Phase 4. The API side is complete and
 testable today — you do not need the hardware to verify any of it.
 
+**This guide covers the barrier readers.** The third unit — the reader on the
+admin's desk that reads a card during registration — is a different job with
+different rules, and lives in [`../firmware/README.md`](../firmware/README.md).
+Its key is issued with `gate: 0`, and the entry and exit endpoints below refuse
+it: a reader sitting on an open desk must not be able to open a barrier.
+
 ---
 
 ## 1. How it fits together
@@ -307,9 +313,14 @@ for (byte i = 0; i < rfid.uid.size; i++) {
 uid.toUpperCase();     // e.g. "04A2B3C4D5"
 ```
 
-A mismatch here is the most common integration bug: the API compares the string
-exactly, so `04a2b3` and `04:A2:B3` are three different cards as far as it is
-concerned.
+A mismatch here is the most common integration bug: the lookup is a string
+comparison, so `04a2b3` and `04:A2:B3` would otherwise be three different cards.
+
+The API now squeezes every UID into this shape on the way in — separators
+dropped, uppercased — on both the enrollment scan and the admin panel's assign,
+so the two ends agree even if a library changes its formatting. Format it the
+same way anyway: matching what is stored keeps serial output readable against
+the admin panel.
 
 ---
 
@@ -390,6 +401,7 @@ blast radius is entry and exit logging at that one gate.
 | `ALREADY_INSIDE` on first scan | An earlier session was never closed | Close it from admin Parking → Log Exit |
 | Connection timeout | Wrong `API_BASE`, or ESP32 on another network | `curl` the same URL from a laptop on the ESP32's WiFi |
 | Works then stops after ~1 hour | You are sending a JWT, not a device key | Device keys never expire. Use `X-Api-Key`, not `Authorization` |
+| 403 `DEVICE_NOT_AT_GATE` | The key belongs to the enrollment desk (`gate: 0`) | Issue a separate key with `gate: 1` or `gate: 2` for a barrier unit |
 
 ---
 
@@ -399,6 +411,8 @@ blast radius is entry and exit logging at that one gate.
 |---|---|---|
 | `POST /api/admin/parking/log-entry` | Device key **or** Admin/Security JWT | Record entry, get assigned bay |
 | `POST /api/admin/parking/log-exit` | Device key **or** Admin/Security JWT | Close session, get fee |
+| `POST /api/admin/rfid/scan` | Device key, `gate: 0` only | Report a card at the enrollment desk |
+| `GET /api/admin/rfid/last-scan` | Admin JWT only | Read the last card tapped at the desk |
 | `POST /api/admin/gate-devices` | Admin JWT only | Register a device, receive its key |
 | `GET /api/admin/gate-devices` | Admin JWT only | List devices, prefixes, last seen |
 | `POST /api/admin/gate-devices/{id}/revoke` | Admin JWT only | Disable a key |

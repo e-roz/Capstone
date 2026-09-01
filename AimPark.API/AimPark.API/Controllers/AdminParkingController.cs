@@ -57,6 +57,9 @@ namespace AimPark.API.Controllers
         [HttpPost("log-entry")]
         public Task<ActionResult<object>> LogEntry([FromBody] LogParkingEntryDto dto, CancellationToken ct)
         {
+            if (RejectIfEnrollmentDevice() is { } refusal)
+                return Task.FromResult<ActionResult<object>>(refusal);
+
             // A reader is bolted to one barrier, so its own identity decides the
             // gate. Anything the request body claims is ignored — otherwise a
             // leaked key could log entries against the wrong gate.
@@ -71,7 +74,27 @@ namespace AimPark.API.Controllers
             Roles = "Admin,Security," + ApiKeyDefaults.DeviceRole)]
         [HttpPost("log-exit")]
         public Task<ActionResult<object>> LogExit([FromBody] LogParkingExitDto dto, CancellationToken ct)
-            => _parkingHistoryService.LogExitAsync(dto, GetUserId(), GetDeviceId(), ct);
+        {
+            if (RejectIfEnrollmentDevice() is { } refusal)
+                return Task.FromResult<ActionResult<object>>(refusal);
+
+            return _parkingHistoryService.LogExitAsync(dto, GetUserId(), GetDeviceId(), ct);
+        }
+
+        /// <summary>
+        /// The reader on the admin's desk has a device key like any other, but
+        /// it is not on a barrier and must not be able to move a vehicle
+        /// through one. Returns null when the caller is allowed through.
+        /// </summary>
+        private ObjectResult? RejectIfEnrollmentDevice()
+            => IsDevice && GetDeviceGate() == ApiKeyDefaults.EnrollmentGate
+                ? new ObjectResult(new
+                {
+                    result = "DEVICE_NOT_AT_GATE",
+                    message = "This reader is registered to the enrollment desk, not a gate."
+                })
+                { StatusCode = StatusCodes.Status403Forbidden }
+                : null;
 
         private bool IsDevice => User.IsInRole(ApiKeyDefaults.DeviceRole);
 
