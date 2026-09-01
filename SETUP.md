@@ -67,30 +67,65 @@ API credentials are kept out of Git on purpose. They live in .NET *user
 secrets*, which is a file outside the project folder, so nothing sensitive can
 be committed by accident.
 
-### Copy them from the old machine
+### The two you actually have to have
 
-On the **old** machine the file is here:
+Start here, because the full list is longer than what it takes to get running.
+
+| Secret | Needed for | Can you invent it? |
+|---|---|---|
+| `ConnectionStrings:DefaultConnection` | everything | No. Supabase dashboard. |
+| `Jwt:Key` | logging in | **Yes** — any long random string. |
+
+With those two the API runs, the admin panel works, and you can log in. Add the
+rest when you need what they unlock: Brevo for registration emails, Supabase for
+document photos and backups, Firebase for push notifications.
+
+### Moving them without a USB stick
+
+The old machine's whole set lives in one file:
 
 ```
 C:\Users\<you>\AppData\Roaming\Microsoft\UserSecrets\9a0857be-3a82-4509-aa0c-bfa8bbd7b8a2\secrets.json
 ```
 
-Copy that whole folder to the same path on the **new** machine. That is the
-entire step — the ID `9a0857be-…` is stored in `AimPark.API.csproj`, so .NET
-will find it.
+Copying that folder to the same path on the new machine is the fastest route —
+the ID is recorded in `AimPark.API.csproj`, so .NET finds it by itself. To get
+it there, in order of preference:
 
-Move it on a USB stick. Do not email it, do not put it in a chat, and do not
-commit it — it contains the database password and the Supabase service key,
-which together give full access to the live data.
+1. **A password manager.** Bitwarden or Proton Pass, both free. Paste the file's
+   contents into a secure note here, open the web vault there. Nothing lands in
+   an inbox or a Downloads folder.
+2. **Fetch each value from its own dashboard.** You do not need the old file at
+   all — every secret except the two local ones comes from a service you can log
+   into from anywhere. The list below says which dashboard each one is in.
+3. **Retype the two required ones** and skip the rest for now.
 
-### Or set them one by one
+Not by email, not through a chat app, and never committed. The database password
+and the Supabase service key together open all the live data, scanned student
+IDs included.
 
-If you cannot get to the old machine, from `AimPark.API/AimPark.API`:
+### On a shared lab computer
+
+User secrets are a plain file under the Windows account you are signed in as. On
+a machine other people use, and especially on a shared login, they sit there for
+whoever comes next. When you finish for the day:
+
+```
+cd AimPark.API/AimPark.API
+dotnet user-secrets clear
+```
+
+On a shared login, prefer option 3 above: the connection string and a throwaway
+`Jwt:Key`, nothing else.
+
+### Setting them one by one
+
+From `AimPark.API/AimPark.API`:
 
 ```
 dotnet user-secrets set "ConnectionStrings:DefaultConnection" "Host=...;Port=5432;Database=postgres;Username=...;Password=..."
-dotnet user-secrets set "Jwt:Key" "<long random string>"
-dotnet user-secrets set "Otp:Pepper" "<the same value as before>"
+dotnet user-secrets set "Jwt:Key" "<any long random string>"
+dotnet user-secrets set "Otp:Pepper" "<any long random string>"
 dotnet user-secrets set "Supabase:Url" "https://<project>.supabase.co"
 dotnet user-secrets set "Supabase:ServiceRoleKey" "<service role key>"
 dotnet user-secrets set "Brevo:ApiKey" "<brevo api key>"
@@ -104,10 +139,13 @@ Where each one comes from:
 - **ConnectionStrings:DefaultConnection** — Supabase dashboard → Project
   Settings → Database → Connection string (URI). Same database as before; see
   section 4.
-- **Jwt:Key** — signs login tokens. Any long random string works, but copying
-  the old one means logins issued before the move keep working.
-- **Otp:Pepper** — mixed into stored OTP hashes. **Must** be the old value, or
-  any registration OTP already sent out will stop verifying.
+- **Jwt:Key** — signs login tokens. Invent one. It is only ever checked by the
+  same API that issued the token, so a new value costs you nothing more than
+  signing in again.
+- **Otp:Pepper** — mixed into stored OTP hashes. Invent one too. A different
+  value only affects a registration code that was *already sent* by another
+  machine; start the registration here and it verifies fine. Copy the old value
+  only if you are mid-registration and want to finish that exact attempt.
 - **Supabase:Url / ServiceRoleKey** — Supabase dashboard → Project Settings →
   API. Used for document photos and database backups.
 - **Brevo** — sends the registration OTP emails. Without it, registration
@@ -119,11 +157,13 @@ Where each one comes from:
 ### The Firebase key file
 
 Push notifications need a Firebase service-account JSON. It is git-ignored
-(`firebase-adminsdk*.json`), so copy the file across too, put it anywhere
-sensible outside the repo, and point `Firebase:CredentialsPath` at it.
+(`firebase-adminsdk*.json`), so it has to travel the same way the secrets do —
+or be downloaded fresh from the Firebase console (Project Settings → Service
+accounts → Generate new private key). Put it anywhere outside the repo and point
+`Firebase:CredentialsPath` at it.
 
-Skip it if you like — the API starts without it and simply sends no
-notifications. Everything else works.
+Easiest answer on a borrowed machine: skip it. The API starts without it and
+simply sends no notifications. Everything else works.
 
 ### What you do *not* need to copy
 
