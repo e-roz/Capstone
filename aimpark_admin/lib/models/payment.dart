@@ -11,6 +11,10 @@ class PaymentTransaction {
   final DateTime createdAt;
   final DateTime? paidAt;
 
+  /// When the payer was sent to the provider. Null unless the bill is, or once
+  /// was, Processing — this is how long a checkout has been sitting there.
+  final DateTime? checkoutStartedAt;
+
   /// Cash, GCash, Maya or Card. Null while the bill is unsettled.
   final String? method;
 
@@ -37,6 +41,7 @@ class PaymentTransaction {
     required this.status,
     required this.createdAt,
     required this.paidAt,
+    this.checkoutStartedAt,
     this.method,
     this.referenceNumber,
     this.provider,
@@ -63,6 +68,9 @@ class PaymentTransaction {
         paidAt: json['paidAt'] == null
             ? null
             : DateTime.parse(json['paidAt'].toString()),
+        checkoutStartedAt: json['checkoutStartedAt'] == null
+            ? null
+            : DateTime.parse(json['checkoutStartedAt'].toString()),
         method: json['method']?.toString(),
         referenceNumber: json['referenceNumber']?.toString(),
         provider: json['provider']?.toString(),
@@ -91,6 +99,32 @@ class PaymentListPage {
         totalCount: (json['totalCount'] as num?)?.toInt() ?? 0,
         page: (json['page'] as num?)?.toInt() ?? 1,
         pageSize: (json['pageSize'] as num?)?.toInt() ?? 20,
+      );
+}
+
+/// An unpaged pull of every transaction matching a filter, for download.
+class PaymentExportResult {
+  final List<PaymentTransaction> payments;
+
+  /// How many rows matched the filter, before the export cap was applied.
+  final int matchingCount;
+
+  /// True when [matchingCount] exceeds how many rows actually came back.
+  final bool truncated;
+
+  const PaymentExportResult({
+    required this.payments,
+    required this.matchingCount,
+    required this.truncated,
+  });
+
+  factory PaymentExportResult.fromJson(Map<String, dynamic> json) =>
+      PaymentExportResult(
+        payments: (json['payments'] as List<dynamic>? ?? [])
+            .map((p) => PaymentTransaction.fromJson(p as Map<String, dynamic>))
+            .toList(),
+        matchingCount: (json['matchingCount'] as num?)?.toInt() ?? 0,
+        truncated: json['truncated'] as bool? ?? false,
       );
 }
 

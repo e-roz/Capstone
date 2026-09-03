@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 import '../core/utils/responsive.dart';
 import '../providers/auth_provider.dart';
@@ -10,6 +9,7 @@ import '../providers/violations_provider.dart';
 import '../router/destinations.dart';
 import '../theme/theme.dart';
 import '../widgets/appeals_panel.dart';
+import '../widgets/document_viewer.dart';
 import '../widgets/ui/ui.dart';
 
 const _incidentStatuses = ['Submitted', 'UnderReview', 'Resolved', 'Dismissed'];
@@ -450,12 +450,20 @@ class _IncidentsTab extends ConsumerWidget {
                       for (final (index, url) in detail.evidenceUrls.indexed)
                         Padding(
                           padding: const EdgeInsets.only(bottom: AppSpacing.x1),
+                          // Was a straight launchUrl, so every photo threw the
+                          // reviewer out into another tab and back. The same
+                          // viewer the registration documents use keeps an
+                          // image in a dialog on the page; a PDF still opens in
+                          // a tab, since the browser renders those and Flutter
+                          // Web does not.
                           child: AppRowAction(
                             label: 'Attachment ${index + 1}',
-                            icon: Icons.open_in_new,
-                            onPressed: () => launchUrl(
-                              Uri.parse(url),
-                              mode: LaunchMode.externalApplication,
+                            icon: Icons.visibility_outlined,
+                            onPressed: () => viewDocument(
+                              context,
+                              title: 'Attachment ${index + 1}',
+                              fileName: Uri.parse(url).path,
+                              url: url,
                             ),
                           ),
                         ),

@@ -366,13 +366,60 @@ namespace AimPark.API.Services
         }
 
         // GET /api/admin/payments
-        public Task<ActionResult<PaymentListResponse>> ListAllAsync(string? status, int page, int pageSize, CancellationToken ct)
+        public Task<ActionResult<PaymentListResponse>> ListAllAsync(
+            string? status, DateTime? from, DateTime? to, int page, int pageSize, CancellationToken ct)
         {
-            var query = _db.Set<PaymentTransaction>().AsNoTracking();
+            var query = ApplyFilters(_db.Set<PaymentTransaction>().AsNoTracking(), status, from, to);
+            return ListAsync(query, page, pageSize, ct);
+        }
+
+        /// <summary>Caps how much a single export can hand back.</summary>
+        /// <remarks>
+        /// Not streaming — a plain capped query. Fine at the scale of one
+        /// campus lot; a deployment large enough to hit this would need a
+        /// different mechanism entirely, not a bigger number here.
+        /// </remarks>
+        private const int ExportCap = 5000;
+
+        // GET /api/admin/payments/export
+        public async Task<ActionResult<PaymentExportResponse>> ExportAsync(
+            string? status, DateTime? from, DateTime? to, CancellationToken ct)
+        {
+            var query = ApplyFilters(_db.Set<PaymentTransaction>().AsNoTracking(), status, from, to);
+
+            var matchingCount = await query.CountAsync(ct);
+
+            var payments = await query
+                .OrderByDescending(p => p.CreatedAt)
+                .Take(ExportCap)
+                .Select(ToResponse())
+                .ToListAsync(ct);
+
+            return new OkObjectResult(new PaymentExportResponse
+            {
+                Payments = payments,
+                MatchingCount = matchingCount,
+                Truncated = matchingCount > payments.Count
+            });
+        }
+
+        /// <summary>
+        /// The filters shared by the live admin list and the export pull, kept
+        /// in one place so the two can never quietly disagree on what "matching
+        /// this filter" means.
+        /// </summary>
+        private static IQueryable<PaymentTransaction> ApplyFilters(
+            IQueryable<PaymentTransaction> query, string? status, DateTime? from, DateTime? to)
+        {
             if (!string.IsNullOrWhiteSpace(status) && Enum.TryParse<PaymentStatus>(status, true, out var parsedStatus))
                 query = query.Where(p => p.Status == parsedStatus);
 
-            return ListAsync(query, page, pageSize, ct);
+            // CreatedAt, not PaidAt: every row has one regardless of whether it
+            // ever settled, so a date range does not silently drop unpaid bills.
+            if (from is not null) query = query.Where(p => p.CreatedAt >= from);
+            if (to is not null) query = query.Where(p => p.CreatedAt <= to);
+
+            return query;
         }
 
         // GET /api/admin/payments/rates
@@ -483,6 +530,7 @@ namespace AimPark.API.Services
             DueAt = p.DueAt,
             CreatedAt = p.CreatedAt,
             PaidAt = p.PaidAt,
+            CheckoutStartedAt = p.CheckoutStartedAt,
             Method = p.Method != null ? p.Method.ToString() : null,
             ReferenceNumber = p.ReferenceNumber,
             Provider = p.Provider,

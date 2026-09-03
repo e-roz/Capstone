@@ -106,6 +106,19 @@ class _UserDetailView extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final actions = _UserActions(userId: userId, detail: detail, ref: ref);
 
+    // Mirrors the rule the API enforces on assign-rfid. A card sets RfidStatus
+    // to Active, which is what the gate reads, so it only belongs to an account
+    // somebody has actually approved. Disabled rather than hidden: a reviewer
+    // looking for the button needs to be told why it will not work, not left
+    // hunting for one that is no longer there.
+    final cardBlockedReason = switch (detail.accountStatus) {
+      'PendingReview' => 'Approve this registration first — assigning a '
+          'card activates it at the gate.',
+      'Rejected' => 'A rejected registration cannot be given a card.',
+      'Suspended' => 'Lift the suspension before issuing a card.',
+      _ => null,
+    };
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -151,10 +164,15 @@ class _UserDetailView extends ConsumerWidget {
           icon: Icons.nfc,
           actions: [
             if (!detail.isDeleted)
-              AppRowAction(
-                label: detail.rfidTagId == null ? 'Assign' : 'Reassign',
-                icon: Icons.nfc,
-                onPressed: () => actions.assignRfid(context),
+              Tooltip(
+                message: cardBlockedReason ?? '',
+                child: AppRowAction(
+                  label: detail.rfidTagId == null ? 'Assign' : 'Reassign',
+                  icon: Icons.nfc,
+                  onPressed: cardBlockedReason != null
+                      ? null
+                      : () => actions.assignRfid(context),
+                ),
               ),
             if (!detail.isDeleted && detail.rfidTagId != null)
               AppRowAction(

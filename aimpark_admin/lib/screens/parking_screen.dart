@@ -116,6 +116,7 @@ class ParkingScreen extends ConsumerWidget {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
+                  const AppRequiredNote(),
                   TextFormField(
                     controller: codeCtrl,
                     decoration: const InputDecoration(

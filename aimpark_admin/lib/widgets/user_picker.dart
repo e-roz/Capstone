@@ -9,6 +9,7 @@ import '../core/network/dio_client.dart';
 import '../models/admin_user.dart';
 import '../core/utils/responsive.dart';
 import '../theme/theme.dart';
+import 'ui/ui.dart';
 
 /// The result of picking a user — the id the API needs, plus the name to show
 /// back to the operator so they can confirm they picked the right person.
@@ -192,12 +193,16 @@ class UserPickerField extends StatelessWidget {
     required this.onChanged,
     this.label = 'User',
     this.errorText,
+    this.isRequired = false,
   });
 
   final PickedUser? selected;
   final ValueChanged<PickedUser> onChanged;
   final String label;
   final String? errorText;
+
+  /// Marks the label with the asterisk the rest of the forms use.
+  final bool isRequired;
 
   @override
   Widget build(BuildContext context) {
@@ -208,7 +213,7 @@ class UserPickerField extends StatelessWidget {
       },
       child: InputDecorator(
         decoration: InputDecoration(
-          labelText: label,
+          label: AppFieldLabel(label, isRequired: isRequired),
           errorText: errorText,
           suffixIcon: const Icon(Icons.search),
         ),

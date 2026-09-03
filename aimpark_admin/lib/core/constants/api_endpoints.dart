@@ -81,6 +81,7 @@ class ApiEndpoints {
 
   // Admin – Payments
   static const payments = '/api/admin/payments';
+  static const paymentsExport = '/api/admin/payments/export';
   static const paymentRates = '/api/admin/payments/rates';
 
   // Admin – Violations

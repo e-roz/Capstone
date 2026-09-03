@@ -98,17 +98,24 @@ int postScan(const String& uid, JsonDocument& doc) {
   String body = String("{\"rfidTagId\":\"") + uid + "\"}";
   int status = http.POST(body);
 
-  if (status > 0) {
-    DeserializationError err = deserializeJson(doc, http.getString());
-    if (err) {
-      Serial.printf("Bad JSON from API: %s\n", err.c_str());
-      status = -1;
-    }
-  } else {
+  if (status <= 0) {
     Serial.printf("Request failed: %s\n", http.errorToString(status).c_str());
+    http.end();
+    return status;
   }
 
+  String payload = http.getString();
   http.end();
+
+  // Parsing is best-effort and never changes the status. A rejected key comes
+  // back as a bare 401 with no body at all; turning that into "no reply" here
+  // is how a wrong key gets reported as an unreachable API, sending you after
+  // the firewall instead of after the key.
+  if (payload.length() > 0) {
+    DeserializationError err = deserializeJson(doc, payload);
+    if (err) Serial.printf("Bad JSON from API: %s\n", err.c_str());
+  }
+
   return status;
 }
 
@@ -151,6 +158,15 @@ void handleCard(const String& uid) {
 
   const char* result = doc["result"] | "";
   const char* message = doc["message"] | "";
+
+  // A reply we cannot read is not a successful tap: the panel has nothing to
+  // show, so say so rather than beeping as if it worked.
+  if (result[0] == '\0') {
+    Serial.printf("  -> HTTP %d, no result in the reply\n", status);
+    signal(false, 3);
+    return;
+  }
+
   Serial.printf("  -> %s: %s\n", result, message);
 
   // FREE and IN_USE both reached the panel — the admin decides what to do with
@@ -195,12 +211,17 @@ void loop() {
   // A card left resting on the reader is one tap, not a stream of them.
   bool repeat = (uid == lastUid) && (now - lastUidAt < SAME_CARD_COOLDOWN_MS);
   lastUid = uid;
-  lastUidAt = now;
 
   if (!repeat) {
     clearSignal();
     handleCard(uid);
   }
+
+  // Stamped after the tap is handled, not before it. handleCard blocks for as
+  // long as the request takes, and a timeout plus its error beeps outruns the
+  // cooldown on its own — the card still resting there would post all over
+  // again.
+  lastUidAt = millis();
 
   rfid.PICC_HaltA();
   rfid.PCD_StopCrypto1();

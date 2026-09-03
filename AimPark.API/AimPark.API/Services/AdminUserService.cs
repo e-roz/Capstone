@@ -225,6 +225,29 @@ namespace AimPark.API.Services
             if (user is null)
                 return new NotFoundObjectResult(new { message = "User not found." });
 
+            // Assigning a card sets RfidStatus to Active, which is what the gate
+            // reads — so handing one to an account still in the queue lets that
+            // person through before anybody approved them. Revoking afterwards
+            // works, but only once somebody notices.
+            //
+            // Active is the only status a card belongs to: Rejected and
+            // Suspended are both decisions to keep this person out, and issuing
+            // a working card is the opposite of carrying them out.
+            if (user.AccountStatus != AccountStatus.Active)
+            {
+                var reason = user.AccountStatus switch
+                {
+                    AccountStatus.PendingReview =>
+                        "This registration is still waiting for review. Approve it first — "
+                        + "assigning a card activates it at the gate.",
+                    AccountStatus.Rejected =>
+                        "This registration was rejected, so it cannot be given a card.",
+                    _ =>
+                        "This account is suspended. Lift the suspension before issuing a card.",
+                };
+                return new BadRequestObjectResult(new { message = reason });
+            }
+
             // Squeezed into one spelling before it is stored, so a card read by
             // the desk reader and the same card typed off its label end up as
             // the same string. Lookups at the gate are exact comparisons, so
