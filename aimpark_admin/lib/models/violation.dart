@@ -56,6 +56,10 @@ class ViolationSummary {
   final String status;
   final double penaltyAmount;
   final String suspensionType;
+
+  /// How long a Temporary suspension runs. Null for None and Permanent.
+  final int? suspensionDays;
+
   final DateTime createdAt;
 
   const ViolationSummary({
@@ -64,6 +68,7 @@ class ViolationSummary {
     required this.status,
     required this.penaltyAmount,
     required this.suspensionType,
+    required this.suspensionDays,
     required this.createdAt,
   });
 
@@ -74,6 +79,7 @@ class ViolationSummary {
         status: json['status']?.toString() ?? '',
         penaltyAmount: (json['penaltyAmount'] as num?)?.toDouble() ?? 0,
         suspensionType: json['suspensionType']?.toString() ?? '',
+        suspensionDays: (json['suspensionDays'] as num?)?.toInt(),
         createdAt: DateTime.parse(json['createdAt'].toString()),
       );
 }

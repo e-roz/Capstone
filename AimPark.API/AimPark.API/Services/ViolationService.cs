@@ -683,6 +683,7 @@ namespace AimPark.API.Services
                     Status = v.Status.ToString(),
                     PenaltyAmount = v.PenaltyAmount,
                     SuspensionType = v.SuspensionType.ToString(),
+                    SuspensionDays = v.SuspensionDays,
                     CreatedAt = v.CreatedAt
                 })
                 .ToListAsync(ct);

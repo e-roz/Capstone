@@ -78,8 +78,10 @@ class ViolationsScreen extends ConsumerWidget {
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
+                    const AppRequiredNote(),
                     UserPickerField(
                       selected: picked,
+                      isRequired: true,
                       errorText: userError,
                       onChanged: (u) => setState(() {
                         picked = u;
@@ -89,8 +91,8 @@ class ViolationsScreen extends ConsumerWidget {
                     const SizedBox(height: AppSpacing.x3),
                     DropdownButtonFormField<String>(
                       initialValue: ruleId,
-                      decoration:
-                          const InputDecoration(labelText: 'Policy Rule'),
+                      decoration: const InputDecoration(
+                          label: AppFieldLabel('Policy Rule', isRequired: true)),
                       items: activeRules
                           .map((r) => DropdownMenuItem(
                               value: r.ruleId, child: Text(r.title)))
@@ -102,8 +104,8 @@ class ViolationsScreen extends ConsumerWidget {
                     TextFormField(
                       controller: descriptionCtrl,
                       maxLines: 3,
-                      decoration:
-                          const InputDecoration(labelText: 'Description'),
+                      decoration: const InputDecoration(
+                          label: AppFieldLabel('Description', isRequired: true)),
                       validator: (v) => (v == null || v.isEmpty)
                           ? 'Description is required'
                           : null,
@@ -147,8 +149,9 @@ class ViolationsScreen extends ConsumerWidget {
                       TextFormField(
                         controller: daysCtrl,
                         keyboardType: TextInputType.number,
-                        decoration:
-                            const InputDecoration(labelText: 'Suspension days'),
+                        decoration: const InputDecoration(
+                            label: AppFieldLabel('Suspension days',
+                                isRequired: true)),
                         validator: (v) {
                           final n = int.tryParse(v ?? '');
                           return (n == null || n <= 0)
@@ -316,7 +319,12 @@ class _ViolationsTab extends ConsumerWidget {
       DataCell(v.suspensionType == 'None'
           ? Text('—', style: text.bodyMedium?.copyWith(color: t.text.tertiary))
           : StatusPill.of(
-              v.suspensionType,
+              // A bare "Temporary" left the reviewer to open the violation to
+              // find out whether it meant three days or thirty.
+              v.suspensionType == 'Temporary' && v.suspensionDays != null
+                  ? '${v.suspensionType} · ${v.suspensionDays} '
+                      '${v.suspensionDays == 1 ? 'day' : 'days'}'
+                  : v.suspensionType,
               intent: v.suspensionType == 'Permanent'
                   ? StatusIntent.danger
                   : StatusIntent.warning,
@@ -415,11 +423,12 @@ class _ViolationsTab extends ConsumerWidget {
                     Text(v.policyRuleTitle,
                         style: Theme.of(ctx).textTheme.titleSmall),
                     const SizedBox(height: AppSpacing.x3),
+                    const AppRequiredNote(),
                     TextFormField(
                       controller: descriptionCtrl,
                       maxLines: 3,
-                      decoration:
-                          const InputDecoration(labelText: 'Description'),
+                      decoration: const InputDecoration(
+                          label: AppFieldLabel('Description', isRequired: true)),
                       validator: (v) => (v == null || v.trim().isEmpty)
                           ? 'Description is required'
                           : null,
@@ -429,7 +438,7 @@ class _ViolationsTab extends ConsumerWidget {
                       controller: penaltyCtrl,
                       keyboardType: TextInputType.number,
                       decoration: const InputDecoration(
-                        labelText: 'Penalty amount',
+                        label: AppFieldLabel('Penalty amount', isRequired: true),
                         prefixText: '₱',
                       ),
                       validator: (v) {
@@ -459,8 +468,9 @@ class _ViolationsTab extends ConsumerWidget {
                       TextFormField(
                         controller: daysCtrl,
                         keyboardType: TextInputType.number,
-                        decoration:
-                            const InputDecoration(labelText: 'Suspension days'),
+                        decoration: const InputDecoration(
+                            label: AppFieldLabel('Suspension days',
+                                isRequired: true)),
                         validator: (v) {
                           final n = int.tryParse(v ?? '');
                           return (n == null || n <= 0)
