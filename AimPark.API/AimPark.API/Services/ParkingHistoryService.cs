@@ -175,6 +175,17 @@ namespace AimPark.API.Services
                         result = AllocationResult.SlotUnavailable,
                         message = "Slot is not available."
                     });
+
+                // Naming the slot by hand used to skip every rule the allocator
+                // applies, so the panel would put a car in a motorcycle bay.
+                var types = await _db.Set<Vehicle>().AsNoTracking()
+                    .Where(v => v.UserId == user.Id)
+                    .Select(v => v.VehicleType)
+                    .Distinct()
+                    .ToListAsync(ct);
+
+                var refusal = await CheckSlotFitsAsync(slot, types, ct);
+                if (refusal is not null) return refusal;
             }
             else
             {
@@ -245,6 +256,58 @@ namespace AimPark.API.Services
         /// vehicle freed the only one. No extra column, and nothing to get out
         /// of step with the slots table.
         /// </remarks>
+        /// <summary>
+        /// Refuses a hand-picked slot the vehicle has no business in, or null
+        /// when the placement is fine.
+        /// </summary>
+        /// <remarks>
+        /// Only the manual paths need this. The allocator never offers a bay
+        /// the vehicle does not fit, but an admin naming a slot themselves was
+        /// not checked against anything.
+        ///
+        /// An empty <paramref name="types"/> means nothing is registered to
+        /// check against — a user with no vehicle on file. That is the admin's
+        /// judgement to make, so it passes.
+        /// </remarks>
+        private async Task<ActionResult<object>?> CheckSlotFitsAsync(
+            ParkingSlot slot, IReadOnlyCollection<VehicleType> types, CancellationToken ct)
+        {
+            if (types.Count == 0) return null;
+
+            if (!types.Any(t => SlotFit.Accepts(slot.VehicleType, t)))
+            {
+                return new BadRequestObjectResult(new
+                {
+                    result = AllocationResult.SlotUnavailable,
+                    message = $"Slot {slot.SlotCode} is for {SlotFit.Describe(slot.VehicleType)}, "
+                            + "which does not match this vehicle."
+                });
+            }
+
+            // Fits, but only through the overflow rule. The allocator reaches
+            // for a four-wheel bay just once the motorcycle bays are gone, and
+            // a manual placement has to hold to the same limit or the handful
+            // of car bays get spent on motorcycles while their own sit empty.
+            if (types.All(t => SlotFit.IsOverflow(slot.VehicleType, t)))
+            {
+                var motorcycleBayFree = await _db.Set<ParkingSlot>().AsNoTracking()
+                    .AnyAsync(s => s.VehicleType == VehicleType.Motorcycle
+                               && s.Status == ParkingSlotStatus.Available, ct);
+
+                if (motorcycleBayFree)
+                {
+                    return new BadRequestObjectResult(new
+                    {
+                        result = AllocationResult.SlotUnavailable,
+                        message = $"Slot {slot.SlotCode} is a four-wheel bay. Motorcycle bays are "
+                                + "still free, so use one of those first."
+                    });
+                }
+            }
+
+            return null;
+        }
+
         private async Task AnnounceAvailabilityAsync(bool afterEntry, CancellationToken ct)
         {
             var free = await _db.Set<ParkingSlot>().AsNoTracking()
@@ -350,6 +413,10 @@ namespace AimPark.API.Services
                         result = AllocationResult.SlotUnavailable,
                         message = "Slot is not available."
                     });
+
+                // Same rule as a registered vehicle, read off the pass.
+                var refusal = await CheckSlotFitsAsync(slot, [pass.VehicleType], ct);
+                if (refusal is not null) return refusal;
             }
             else
             {

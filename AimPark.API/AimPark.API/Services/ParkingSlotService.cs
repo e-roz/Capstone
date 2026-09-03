@@ -76,6 +76,30 @@ namespace AimPark.API.Services
             if (slot is null)
                 return new NotFoundObjectResult(new { message = "Slot not found." });
 
+            // A vehicle is inside until somebody logs its exit, and the exit is
+            // what closes the session, works out the duration and raises the
+            // bill. Flipping the slot to Available around it freed the bay on
+            // screen while the session stayed open forever: the plate went on
+            // showing in active sessions, and nobody was ever charged.
+            //
+            // Out of service is no different — the car is still parked in it.
+            if (newStatus != slot.Status)
+            {
+                var occupant = await _db.Set<ParkingLog>().AsNoTracking()
+                    .Where(l => l.SlotId == slotId && l.ExitTime == null)
+                    .Select(l => l.User != null ? l.User.Email : l.VisitorPass!.PlateNumber)
+                    .FirstOrDefaultAsync(ct);
+
+                if (occupant is not null)
+                {
+                    return new BadRequestObjectResult(new
+                    {
+                        message = $"{slot.SlotCode} still has a vehicle in it ({occupant}). "
+                                + "Log the exit first — that is what ends the session and bills it."
+                    });
+                }
+            }
+
             slot.Status = newStatus;
             slot.UpdatedAt = DateTime.UtcNow;
 
