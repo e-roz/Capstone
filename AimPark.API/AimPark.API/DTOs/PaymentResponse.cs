@@ -25,6 +25,13 @@ namespace AimPark.API.DTOs
         public DateTime CreatedAt { get; set; }
         public DateTime? PaidAt { get; set; }
 
+        /// <summary>
+        /// When the payer was sent to the provider. Null unless the bill is, or
+        /// once was, Processing — this is what says how long a checkout has been
+        /// sitting there with nothing back from the provider yet.
+        /// </summary>
+        public DateTime? CheckoutStartedAt { get; set; }
+
         /// <summary>Cash, GCash, Maya or Card. Null while unpaid.</summary>
         public string? Method { get; set; }
 
@@ -43,6 +50,21 @@ namespace AimPark.API.DTOs
         /// somebody's hand, and this is the only thing that says whose.
         /// </remarks>
         public string? ConfirmedBy { get; set; }
+    }
+
+    /// <summary>
+    /// An unpaged pull of every transaction matching a filter, for the admin to
+    /// download as a spreadsheet rather than page through on screen.
+    /// </summary>
+    public class PaymentExportResponse
+    {
+        public List<PaymentResponse> Payments { get; set; } = [];
+
+        /// <summary>How many rows matched the filter, before the cap was applied.</summary>
+        public int MatchingCount { get; set; }
+
+        /// <summary>True when <see cref="MatchingCount"/> exceeds what was returned.</summary>
+        public bool Truncated { get; set; }
     }
 
     /// <summary>Where to send the payer, once a checkout is open.</summary>

@@ -220,6 +220,13 @@ const navGroups = <NavGroup>[
       description: 'Usage summaries, trends and generated reports.',
     ),
     NavItem(
+      icon: Icons.receipt_long_outlined,
+      selectedIcon: Icons.receipt_long,
+      label: 'Payment Log',
+      route: '/payment-log',
+      description: 'Itemized payment history for a date range, with export.',
+    ),
+    NavItem(
       icon: Icons.history_outlined,
       selectedIcon: Icons.history,
       label: 'System Logs',

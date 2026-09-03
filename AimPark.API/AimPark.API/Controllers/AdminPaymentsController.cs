@@ -21,10 +21,24 @@ namespace AimPark.API.Controllers
         [HttpGet]
         public Task<ActionResult<PaymentListResponse>> List(
             [FromQuery] string? status = null,
+            [FromQuery] DateTime? from = null,
+            [FromQuery] DateTime? to = null,
             [FromQuery] int page = 1,
             [FromQuery] int pageSize = 20,
             CancellationToken ct = default)
-            => _paymentService.ListAllAsync(status, page, pageSize, ct);
+            => _paymentService.ListAllAsync(status, from, to, page, pageSize, ct);
+
+        /// <summary>
+        /// Every transaction matching a filter, for the admin to download as a
+        /// spreadsheet — not the paged view the live table uses.
+        /// </summary>
+        [HttpGet("export")]
+        public Task<ActionResult<PaymentExportResponse>> Export(
+            [FromQuery] string? status = null,
+            [FromQuery] DateTime? from = null,
+            [FromQuery] DateTime? to = null,
+            CancellationToken ct = default)
+            => _paymentService.ExportAsync(status, from, to, ct);
 
         [HttpGet("rates")]
         public Task<ActionResult<List<ParkingRateResponse>>> ListRates(CancellationToken ct)

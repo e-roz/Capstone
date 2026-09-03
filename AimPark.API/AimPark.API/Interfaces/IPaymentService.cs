@@ -58,7 +58,14 @@ namespace AimPark.API.Interfaces
         /// Records a bill settled in cash, and who took it.
         /// </summary>
         Task<ActionResult<object>> MarkPaidByAdminAsync(Guid paymentId, Guid adminUserId, MarkPaidDto dto, CancellationToken ct);
-        Task<ActionResult<PaymentListResponse>> ListAllAsync(string? status, int page, int pageSize, CancellationToken ct);
+        Task<ActionResult<PaymentListResponse>> ListAllAsync(string? status, DateTime? from, DateTime? to, int page, int pageSize, CancellationToken ct);
+
+        /// <summary>
+        /// Every transaction matching a filter, unpaged and capped — for
+        /// downloading as a spreadsheet rather than paging through on screen.
+        /// </summary>
+        Task<ActionResult<PaymentExportResponse>> ExportAsync(string? status, DateTime? from, DateTime? to, CancellationToken ct);
+
         Task<ActionResult<List<ParkingRateResponse>>> ListRatesAsync(CancellationToken ct);
         Task<ActionResult<object>> UpsertRateAsync(UpsertParkingRateDto dto, CancellationToken ct);
     }

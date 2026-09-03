@@ -117,8 +117,7 @@ class PaymentsScreen extends ConsumerWidget {
       DataCell(AppNumericCell('${p.durationMinutes} min')),
       DataCell(AppNumericCell(_money.format(p.ratePerHourApplied))),
       DataCell(AppNumericCell(_money.format(p.amountDue), emphasis: true)),
-      DataCell(StatusPill.of(p.status,
-          intent: StatusIntents.payment(p.status), dense: true)),
+      DataCell(_StatusCell(payment: p)),
       // Cash and GCash both read as "Paid" in the status column, and they are
       // not the same fact: one is in the school's merchant account with a
       // provider's record behind it, the other is in somebody's drawer.
@@ -441,6 +440,61 @@ class PaymentsScreen extends ConsumerWidget {
     ScaffoldMessenger.of(context)
         .showSnackBar(SnackBar(content: Text(msg ?? 'Rate saved.')));
     ref.invalidate(parkingRatesProvider);
+  }
+}
+
+/// "47m", or "2h 15m" past the first hour — matches how duration reads
+/// elsewhere on this screen (`'${p.durationMinutes} min'`), just scaled up
+/// since a stuck checkout can sit for days.
+String _formatAge(Duration age) {
+  final hours = age.inHours;
+  final minutes = age.inMinutes % 60;
+  if (hours == 0) return '${age.inMinutes}m';
+  if (hours < 24) return '${hours}h ${minutes}m';
+  final days = age.inDays;
+  return '${days}d ${hours % 24}h';
+}
+
+/// The status pill, plus how long a Processing checkout has been open.
+///
+/// A checkout opened two minutes ago and one abandoned three days ago both
+/// read as "Processing" — this is the difference the pill alone can't show.
+class _StatusCell extends StatelessWidget {
+  const _StatusCell({required this.payment});
+
+  final PaymentTransaction payment;
+
+  /// Past this, a checkout with no callback almost certainly means the payer
+  /// left the tab rather than that they're still filling in a form.
+  static const _stuckAfter = Duration(minutes: 15);
+
+  @override
+  Widget build(BuildContext context) {
+    final started = payment.checkoutStartedAt;
+    final age = payment.status == 'Processing' && started != null
+        ? DateTime.now().difference(started.toLocal())
+        : null;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        StatusPill.of(payment.status,
+            intent: StatusIntents.payment(payment.status), dense: true),
+        if (age != null) ...[
+          const SizedBox(height: 2),
+          Text(
+            'Open for ${_formatAge(age)}',
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: age >= _stuckAfter
+                      ? context.tokens.status.of(StatusIntent.danger).fg
+                      : context.tokens.text.secondary,
+                  fontWeight: age >= _stuckAfter ? FontWeight.w700 : null,
+                ),
+          ),
+        ],
+      ],
+    );
   }
 }
 

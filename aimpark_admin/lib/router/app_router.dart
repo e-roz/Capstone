@@ -11,6 +11,7 @@ import '../screens/incidents_screen.dart';
 import '../screens/login_screen.dart';
 import '../screens/notifications_screen.dart';
 import '../screens/parking_screen.dart';
+import '../screens/payment_log_screen.dart';
 import '../screens/payments_screen.dart';
 import '../screens/pending_registrations_screen.dart';
 import '../screens/policy_rules_screen.dart';
@@ -134,6 +135,10 @@ GoRouter appRouter(Ref ref) {
           GoRoute(
             path: '/reports',
             builder: (context, state) => const ReportsScreen(),
+          ),
+          GoRoute(
+            path: '/payment-log',
+            builder: (context, state) => const PaymentLogScreen(),
           ),
           GoRoute(
             path: '/backup',
