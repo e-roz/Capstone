@@ -23,7 +23,7 @@ final userListProvider = AutoDisposeFutureProvider<UserListPage>.internal(
 @Deprecated('Will be removed in 3.0. Use Ref instead')
 // ignore: unused_element
 typedef UserListRef = AutoDisposeFutureProviderRef<UserListPage>;
-String _$rfidCardsHash() => r'1f7a7a83804eb8083da8b5fac0841bff2061230e';
+String _$rfidCardsHash() => r'd228237a52c916b640aa2eae797473c83c3cec4a';
 
 /// Copied from Dart SDK
 class _SystemHash {

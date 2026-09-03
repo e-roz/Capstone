@@ -1,0 +1,76 @@
+name: Mobile app
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'aimpark_mobile/**'
+      - '.github/workflows/mobile.yml'
+  pull_request:
+    paths:
+      - 'aimpark_mobile/**'
+      - '.github/workflows/mobile.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: mobile-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    working-directory: aimpark_mobile
+
+jobs:
+  check:
+    name: Analyze and test
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.38.5'
+          channel: stable
+          cache: true
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      # The generated Riverpod files are committed. If someone edits a provider
+      # and forgets to re-run build_runner, the checked-in .g.dart no longer
+      # matches — and the first thing anyone notices is a runtime error.
+      #
+      # --ignore-cr-at-eol because the repo has no .gitattributes and these
+      # files were committed from Windows with CRLF. build_runner writes LF on
+      # a Linux runner, so without it every file reads as changed and the check
+      # fails on a repository nobody has touched.
+      - name: Check generated files are current
+        run: |
+          dart run build_runner build --delete-conflicting-outputs
+          if ! git diff --ignore-cr-at-eol --quiet -- '*.g.dart'; then
+            echo "::error::Generated files are stale. Run: dart run build_runner build --delete-conflicting-outputs"
+            git diff --ignore-cr-at-eol --stat -- '*.g.dart'
+            exit 1
+          fi
+
+      - name: Analyze
+        run: flutter analyze
+
+      # No `flutter test` step yet: test/widget_test.dart pumps the real app and
+      # pumpAndSettle never returns, because something on the first screen
+      # animates forever. Wiring a failing test into CI only teaches people to
+      # ignore a red tick. Add this back once that test is fixed.
+
+      # Debug, not release, and deliberately not published. A release APK needs
+      # the signing keystore, and an APK signed with CI's throwaway debug key
+      # would fail Google Sign-In for everyone who installed it — see the
+      # warning in DEPLOYMENT.md. This step only proves the Android build is
+      # not broken; the APK testers install is still built and shared by hand.
+      - name: Build APK (compile check only)
+        run: flutter build apk --debug

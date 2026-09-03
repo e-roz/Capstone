@@ -1,0 +1,77 @@
+name: API
+
+# Only when the backend or the image that ships it changes. Touching the
+# Flutter apps or the firmware should not spend minutes rebuilding .NET.
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'AimPark.API/**'
+      - 'Dockerfile'
+      - '.dockerignore'
+      - '.github/workflows/api.yml'
+  pull_request:
+    paths:
+      - 'AimPark.API/**'
+      - 'Dockerfile'
+      - '.dockerignore'
+      - '.github/workflows/api.yml'
+  workflow_dispatch:
+
+# A second push to the same branch makes the first run pointless — cancel it
+# rather than paying for both.
+concurrency:
+  group: api-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-test:
+    name: Build and test
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # 8.0 to match the Dockerfile that actually ships. Building on a newer
+      # SDK than production would let a difference through unnoticed.
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Restore
+        run: dotnet restore AimPark.API/AimPark.API.sln
+
+      - name: Build
+        run: dotnet build AimPark.API/AimPark.API.sln --configuration Release --no-restore
+
+      # No database and no secrets: the suite is pure document-extraction logic.
+      # Keep it that way — CI must never point at the shared Supabase instance.
+      - name: Test
+        run: dotnet test AimPark.API/AimPark.API.sln --configuration Release --no-build --logger "trx;LogFileName=results.trx" --results-directory TestResults
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: api-test-results
+          path: TestResults/
+          retention-days: 7
+
+  docker:
+    name: Docker image builds
+    runs-on: ubuntu-latest
+
+    # Render builds this exact file on every deploy. A Dockerfile that only
+    # breaks there is found after the push, in a log nobody is watching.
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: false
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

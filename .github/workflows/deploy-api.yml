@@ -1,0 +1,62 @@
+name: Deploy API
+
+# Publishes the backend to Render, but only after the API checks have gone
+# green on main.
+#
+# Render's own auto-deploy publishes on every push, pass or fail, so a commit
+# that breaks the build still reaches the live API and the first person to find
+# out is whoever opens the app. Turning Render's auto-deploy off and letting
+# this fire the deploy hook instead puts the tests in front of the deploy.
+#
+# Needs, in the repository settings:
+#   Secret RENDER_DEPLOY_HOOK_URL — Render → your service → Settings → Deploy Hook
+#
+# And in Render itself: Settings → Build & Deploy → Auto-Deploy → No.
+# Leaving Render's auto-deploy on as well means every push deploys twice, and
+# the gate below buys you nothing.
+on:
+  workflow_run:
+    workflows: ["API"]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-api
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Trigger Render deploy
+    runs-on: ubuntu-latest
+
+    # A manual run is a deliberate act and goes ahead. An automatic one only
+    # follows a run that actually passed — `completed` fires on failure too.
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      github.event.workflow_run.conclusion == 'success'
+
+    steps:
+      - name: Check the deploy hook is configured
+        env:
+          HOOK: ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
+        run: |
+          if [ -z "$HOOK" ]; then
+            echo "::error::Secret RENDER_DEPLOY_HOOK_URL is not set. Render → your service → Settings → Deploy Hook, then add it under Settings → Secrets and variables → Actions."
+            exit 1
+          fi
+
+      - name: Tell Render to deploy
+        env:
+          HOOK: ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
+        run: |
+          status=$(curl -sS -o response.txt -w '%{http_code}' -X POST "$HOOK")
+          echo "Render replied $status"
+          cat response.txt
+          # curl succeeds on a 4xx, so the status has to be checked by hand or a
+          # rejected deploy would report as a green tick.
+          if [ "$status" -lt 200 ] || [ "$status" -ge 300 ]; then
+            echo "::error::Render refused the deploy hook (HTTP $status)."
+            exit 1
+          fi
+          echo "Deploy started. Watch it in the Render dashboard."

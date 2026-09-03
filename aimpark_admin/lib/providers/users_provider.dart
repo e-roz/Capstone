@@ -86,7 +86,7 @@ class BulkRevokeResult {
 Future<List<RfidCard>> rfidCards(Ref ref, {String? cardState}) async {
   final dio = ref.watch(dioProvider);
   final res = await dio.get(ApiEndpoints.rfidCards,
-      queryParameters: {if (cardState != null) 'state': cardState});
+      queryParameters: {'state': ?cardState});
   return (res.data as List<dynamic>)
       .map((c) => RfidCard.fromJson(c as Map<String, dynamic>))
       .toList();
