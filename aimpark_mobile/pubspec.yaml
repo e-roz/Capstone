@@ -51,6 +51,11 @@ dependencies:
   # receives text and rectangles, never has to host a vision model.
   google_mlkit_text_recognition: ^0.15.0
   google_sign_in: ^6.2.1
+  # Opens the payment provider's checkout in the phone's browser. Deliberately
+  # not an in-app webview: the payer is about to hand credentials to GCash, and
+  # the address bar of a real browser is the only way they can tell they are
+  # doing it on the provider's page and not on ours.
+  url_launcher: ^6.3.1
   rive: ^0.14.11
   firebase_core: ^4.12.1
   firebase_messaging: ^16.4.3

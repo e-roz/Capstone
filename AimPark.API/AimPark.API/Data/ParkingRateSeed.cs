@@ -16,6 +16,7 @@ namespace AimPark.API.Data
                 Id = new Guid("00000000-0000-0000-0000-0000000000f1"),
                 VehicleType = null,
                 RatePerHour = 15.00m,
+                MinimumFee = 20.00m,
                 UpdatedAt = SeedTimestamp
             }
         ];

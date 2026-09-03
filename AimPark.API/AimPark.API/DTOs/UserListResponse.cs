@@ -15,6 +15,7 @@ namespace AimPark.API.DTOs
         public string Email { get; set; } = string.Empty;
         public string Role { get; set; } = string.Empty;
         public string AccountStatus { get; set; } = string.Empty;
+        public string RfidStatus { get; set; } = string.Empty;
         public bool IsDeleted { get; set; }
         public DateTime CreatedAt { get; set; }
     }

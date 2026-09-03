@@ -10,12 +10,21 @@ import '../widgets/ui/ui.dart';
 
 const _statuses = [
   AppFilterOption('Pending', 'Pending'),
+  // A payer who is at the provider's page right now. Filterable because it is
+  // the one state that can get stuck: a checkout nobody finished sits here, and
+  // an admin looking for money that never arrived starts by looking at these.
+  AppFilterOption('Processing', 'Processing'),
   AppFilterOption('Paid', 'Paid'),
   AppFilterOption('Waived', 'Waived'),
 ];
 
 final _money = NumberFormat.currency(symbol: '₱', decimalDigits: 2);
 final _dateTime = DateFormat('MMM d, yyyy HH:mm');
+
+/// Entry and exit only. Duration is billed from the real elapsed time, so a
+/// receipt reading 9:34 to 9:36 and then "2 min" looks wrong to anyone who
+/// assumes those are whole minutes. The seconds are what make the sum add up.
+final _dateTimeExact = DateFormat('MMM d, yyyy HH:mm:ss');
 
 class PaymentsScreen extends ConsumerWidget {
   const PaymentsScreen({super.key});
@@ -81,10 +90,11 @@ class PaymentsScreen extends ConsumerWidget {
             DataColumn(label: Text('Rate/hr'), numeric: true),
             DataColumn(label: Text('Amount Due'), numeric: true),
             DataColumn(label: Text('Status')),
+            DataColumn(label: Text('Settled by')),
             DataColumn(label: Text('Created')),
             DataColumn(label: Text('')),
           ],
-          rows: [for (final p in page.payments) _row(context, p)],
+          rows: [for (final p in page.payments) _row(context, ref, p)],
           footer: AppPagination(
             page: page.page,
             pageSize: page.pageSize,
@@ -97,7 +107,7 @@ class PaymentsScreen extends ConsumerWidget {
     );
   }
 
-  DataRow _row(BuildContext context, PaymentTransaction p) {
+  DataRow _row(BuildContext context, WidgetRef ref, PaymentTransaction p) {
     final t = context.tokens;
     final text = Theme.of(context).textTheme;
 
@@ -109,14 +119,34 @@ class PaymentsScreen extends ConsumerWidget {
       DataCell(AppNumericCell(_money.format(p.amountDue), emphasis: true)),
       DataCell(StatusPill.of(p.status,
           intent: StatusIntents.payment(p.status), dense: true)),
+      // Cash and GCash both read as "Paid" in the status column, and they are
+      // not the same fact: one is in the school's merchant account with a
+      // provider's record behind it, the other is in somebody's drawer.
+      DataCell(Text(
+        // "Cash — J. Santos" answers the only question this column is here
+        // to answer: not whether it was settled, but by whom.
+        p.confirmedBy == null ? (p.method ?? '—') : '${p.method} · ${p.confirmedBy}',
+        style: text.bodySmall?.copyWith(color: t.text.secondary),
+      )),
       DataCell(Text(
         _dateTime.format(p.createdAt.toLocal()),
         style: text.bodySmall?.copyWith(color: t.text.secondary),
       )),
-      DataCell(AppRowAction(
-        icon: Icons.receipt_long,
-        label: 'Receipt',
-        onPressed: () => _showReceipt(context, p),
+      DataCell(Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (p.paidAt == null && p.status != 'Waived')
+            AppRowAction(
+              icon: Icons.payments_outlined,
+              label: 'Mark paid',
+              onPressed: () => _markPaid(context, ref, p),
+            ),
+          AppRowAction(
+            icon: Icons.receipt_long,
+            label: 'Receipt',
+            onPressed: () => _showReceipt(context, p),
+          ),
+        ],
       )),
     ]);
   }
@@ -129,6 +159,9 @@ class PaymentsScreen extends ConsumerWidget {
 
     String time(DateTime? at) =>
         at == null ? '—' : _dateTime.format(at.toLocal());
+
+    String exact(DateTime? at) =>
+        at == null ? '—' : _dateTimeExact.format(at.toLocal());
 
     return showDialog<void>(
       context: context,
@@ -155,8 +188,8 @@ class PaymentsScreen extends ConsumerWidget {
                 const Divider(height: AppSpacing.x6),
                 _ReceiptRow(label: 'Source', value: p.source),
                 _ReceiptRow(label: 'Slot', value: p.slotCode ?? '—'),
-                _ReceiptRow(label: 'Entry', value: time(p.entryTime)),
-                _ReceiptRow(label: 'Exit', value: time(p.exitTime)),
+                _ReceiptRow(label: 'Entry', value: exact(p.entryTime)),
+                _ReceiptRow(label: 'Exit', value: exact(p.exitTime)),
                 _ReceiptRow(
                     label: 'Duration', value: '${p.durationMinutes} min'),
                 _ReceiptRow(
@@ -166,6 +199,14 @@ class PaymentsScreen extends ConsumerWidget {
                 const Divider(height: AppSpacing.x6),
                 _ReceiptRow(label: 'Created', value: time(p.createdAt)),
                 _ReceiptRow(label: 'Paid', value: time(p.paidAt)),
+                if (p.method != null)
+                  _ReceiptRow(label: 'Method', value: p.method!),
+                if (p.provider != null)
+                  _ReceiptRow(label: 'Provider', value: p.provider!),
+                if (p.referenceNumber != null)
+                  _ReceiptRow(label: 'Reference', value: p.referenceNumber!),
+                if (p.confirmedBy != null)
+                  _ReceiptRow(label: 'Received by', value: p.confirmedBy!),
                 const SizedBox(height: AppSpacing.x3),
                 SelectableText(
                   'Ref ${p.paymentId}',
@@ -177,6 +218,82 @@ class PaymentsScreen extends ConsumerWidget {
         ),
       ),
     );
+  }
+
+  /// Records money handed over in person.
+  ///
+  /// The counterpart of a provider callback, and the reason the transaction
+  /// carries who confirmed it: online money arrives with a record attached, and
+  /// cash arrives in somebody's hand. Whoever presses this is the answer to
+  /// "who took it", so the confirmation says as much before it is pressed.
+  Future<void> _markPaid(
+      BuildContext context, WidgetRef ref, PaymentTransaction p) async {
+    final referenceCtrl = TextEditingController();
+    var method = 'Cash';
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setLocal) => AlertDialog(
+          title: const Text('Mark as paid'),
+          content: SizedBox(
+            width: context.dialogWidth(420),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Record ${_money.format(p.amountDue)} as received. Your name '
+                  'is saved against this payment as the one who took it.',
+                ),
+                const SizedBox(height: AppSpacing.x4),
+                DropdownButtonFormField<String>(
+                  initialValue: method,
+                  decoration: const InputDecoration(labelText: 'Method'),
+                  items: const [
+                    DropdownMenuItem(value: 'Cash', child: Text('Cash')),
+                    DropdownMenuItem(value: 'GCash', child: Text('GCash')),
+                    DropdownMenuItem(value: 'Maya', child: Text('Maya')),
+                    DropdownMenuItem(value: 'Card', child: Text('Card')),
+                  ],
+                  onChanged: (v) => setLocal(() => method = v ?? 'Cash'),
+                ),
+                const SizedBox(height: AppSpacing.x3),
+                TextField(
+                  controller: referenceCtrl,
+                  decoration: const InputDecoration(
+                    labelText: 'Reference or OR number (optional)',
+                  ),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: const Text('Cancel')),
+            FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Mark paid'),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    if (confirmed != true || !context.mounted) return;
+
+    final reference = referenceCtrl.text.trim();
+    final msg = await ref.read(paymentActionsProvider.notifier).markPaid(
+          p.paymentId,
+          method: method,
+          referenceNumber: reference.isEmpty ? null : reference,
+        );
+
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context)
+        .showSnackBar(SnackBar(content: Text(msg ?? 'Payment recorded.')));
+    ref.invalidate(paymentListProvider);
   }
 
   Future<void> _showRates(
@@ -213,10 +330,23 @@ class PaymentsScreen extends ConsumerWidget {
                       title: Text(r.vehicleType ?? 'Default rate'),
                       subtitle: Text(
                           'Updated ${DateFormat('MMM d, yyyy').format(r.updatedAt.toLocal())}'),
-                      trailing: Text(
-                        '${_money.format(r.ratePerHour)}/hr',
-                        style: AppTypography.tabular(
-                            Theme.of(ctx).textTheme.titleSmall!),
+                      trailing: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: [
+                          Text(
+                            '${_money.format(r.ratePerHour)}/hr',
+                            style: AppTypography.tabular(
+                                Theme.of(ctx).textTheme.titleSmall!),
+                          ),
+                          Text(
+                            '${_money.format(r.minimumFee)} minimum',
+                            style: Theme.of(ctx)
+                                .textTheme
+                                .bodySmall
+                                ?.copyWith(color: ctx.tokens.text.secondary),
+                          ),
+                        ],
                       ),
                     )),
               const Divider(height: AppSpacing.x6),
@@ -238,6 +368,7 @@ class PaymentsScreen extends ConsumerWidget {
   Future<void> _showUpsertRate(BuildContext context, WidgetRef ref) async {
     final vehicleTypeCtrl = TextEditingController();
     final rateCtrl = TextEditingController();
+    final minimumCtrl = TextEditingController(text: '20');
     final formKey = GlobalKey<FormState>();
 
     final confirmed = await showDialog<bool>(
@@ -266,6 +397,21 @@ class PaymentsScreen extends ConsumerWidget {
                     ? 'Enter a valid number'
                     : null,
               ),
+              const SizedBox(height: AppSpacing.x4),
+              TextFormField(
+                controller: minimumCtrl,
+                keyboardType: TextInputType.number,
+                decoration: const InputDecoration(
+                  label: AppFieldLabel('Minimum fee', isRequired: true),
+                  helperText:
+                      'Charged for any session shorter than this is worth. '
+                      'Card and e-wallet payments under ₱20 are refused by the '
+                      'provider, so keep it at ₱20 or above.',
+                ),
+                validator: (v) => double.tryParse(v ?? '') == null
+                    ? 'Enter a valid number'
+                    : null,
+              ),
             ],
           ),
         ),
@@ -287,9 +433,10 @@ class PaymentsScreen extends ConsumerWidget {
     final vehicleType =
         vehicleTypeCtrl.text.trim().isEmpty ? null : vehicleTypeCtrl.text.trim();
     final rate = double.parse(rateCtrl.text.trim());
+    final minimum = double.parse(minimumCtrl.text.trim());
     final msg = await ref
         .read(paymentActionsProvider.notifier)
-        .upsertRate(vehicleType, rate);
+        .upsertRate(vehicleType, rate, minimumFee: minimum);
     if (!context.mounted) return;
     ScaffoldMessenger.of(context)
         .showSnackBar(SnackBar(content: Text(msg ?? 'Rate saved.')));

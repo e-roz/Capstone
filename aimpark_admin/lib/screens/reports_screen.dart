@@ -81,7 +81,10 @@ class ReportsScreen extends ConsumerWidget {
               for (final d in reportWindowOptions)
                 AppFilterOption(d, 'Last $d days'),
             ],
-            allLabel: 'Last 14 days',
+            // A period filter is never "off", so it offers no all-entry — one
+            // labelled "Last 14 days" sat above the real 14-day option and read
+            // as a duplicate.
+            allowAll: false,
             onChanged: (value) =>
                 ref.read(reportWindowProvider.notifier).setDays(value ?? 14),
           ),

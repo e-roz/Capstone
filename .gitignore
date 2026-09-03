@@ -441,3 +441,10 @@ firebase-adminsdk*.json
 # Saved browser session used by the ui-review skill. Never commit this.
 .claude/.browser-profile/
 .claude/.ui-shots/
+
+# Firmware secrets — WiFi password and device API key. secrets.example.h is the
+# committed template; the filled-in copy never goes near a commit.
+firmware/**/secrets.h
+
+# PlatformIO build output and local project state
+firmware/.pio/

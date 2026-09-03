@@ -180,6 +180,38 @@ namespace AimPark.API.Services
                 .ToList();
         }
 
+        public async Task<int> DeleteAsync(
+            string bucket,
+            IReadOnlyCollection<string> objectPaths,
+            CancellationToken ct = default)
+        {
+            if (objectPaths.Count == 0) return 0;
+
+            // One call for the whole set. Supabase answers with a row per object
+            // it actually removed, so the count comes back from the server
+            // rather than from what was asked for.
+            var request = BuildRequest(HttpMethod.Delete, $"/storage/v1/object/{bucket}");
+            request.Content = JsonContent.Create(new { prefixes = objectPaths });
+
+            var response = await _httpClient.SendAsync(request, ct);
+
+            if (!response.IsSuccessStatusCode)
+            {
+                var error = await response.Content.ReadAsStringAsync(ct);
+
+                // Nothing there to delete. The caller wanted these objects gone
+                // and they are gone, which is the result it asked for.
+                if (response.StatusCode is HttpStatusCode.NotFound) return 0;
+
+                throw new InvalidOperationException(
+                    $"Failed to delete from {bucket}: {response.StatusCode} {error}");
+            }
+
+            var removed = await response.Content
+                .ReadFromJsonAsync<List<StorageListItem>>(cancellationToken: ct) ?? [];
+            return removed.Count;
+        }
+
         private HttpRequestMessage BuildRequest(HttpMethod method, string relativePath)
         {
             var baseUrl = _configuration["Supabase:Url"]!.TrimEnd('/');

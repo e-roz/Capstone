@@ -6,6 +6,7 @@ import '../../../../core/theme/theme.dart';
 import '../../../../core/utils/app_flushbar.dart';
 import '../../../../core/utils/validators.dart';
 import '../../../../core/widgets/widgets.dart';
+import '../../../../router/registration_back_stack.dart';
 import '../providers/auth_provider.dart';
 import '../providers/registration_provider.dart';
 import '../widgets/google_auth_button.dart';
@@ -83,7 +84,7 @@ class _RegisterEmailScreenState extends ConsumerState<RegisterEmailScreen> {
       registration.setRegistrationSessionId(sessionToken);
 
       if (mounted) {
-        context.go('/register/otp', extra: email);
+        context.goRegistrationStep('/register/otp', extra: email);
       }
     } catch (e) {
       if (mounted) {
@@ -102,7 +103,6 @@ class _RegisterEmailScreenState extends ConsumerState<RegisterEmailScreen> {
       step: 1,
       title: 'Register',
       busy: _isLoading || _isGoogleLoading,
-      onBack: () => context.go('/login'),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [

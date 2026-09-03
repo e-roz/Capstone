@@ -31,8 +31,13 @@ namespace AimPark.API.Services
             if (string.IsNullOrWhiteSpace(dto.Name))
                 return new BadRequestObjectResult(new { message = "Device name is required." });
 
-            if (dto.Gate < 1)
-                return new BadRequestObjectResult(new { message = "Gate must be 1 or greater." });
+            // 0 is the enrollment desk rather than a barrier — see
+            // ApiKeyDefaults.EnrollmentGate. Negative numbers are nothing.
+            if (dto.Gate < ApiKeyDefaults.EnrollmentGate)
+                return new BadRequestObjectResult(new
+                {
+                    message = "Gate must be 1 or greater, or 0 for an enrollment desk reader."
+                });
 
             var apiKey = GenerateKey();
 

@@ -43,8 +43,9 @@ class ViolationDetailScreen extends ConsumerWidget {
                       ),
                       const SizedBox(width: AppSpacing.sm),
                       AppStatusBadge(
-                        label: violation.status,
-                        intent: StatusIntents.violation(violation.status),
+                        label: violation.displayStatus,
+                        intent:
+                            StatusIntents.violation(violation.displayStatus),
                       ),
                     ],
                   ),
@@ -54,8 +55,33 @@ class ViolationDetailScreen extends ConsumerWidget {
                   AppDetailRow(
                     label: 'Penalty',
                     value: Formatters.peso(violation.penaltyAmount),
-                    intent: StatusIntent.danger,
+                    // Only red while it is still owed. Colouring a settled fine
+                    // as a problem is how a paid violation kept reading like an
+                    // unpaid one.
+                    intent: violation.isPayable
+                        ? StatusIntent.danger
+                        : StatusIntent.neutral,
                   ),
+                  if (violation.isPaid)
+                    AppDetailRow(
+                      label: 'Paid',
+                      value: violation.paidAt != null
+                          ? Formatters.date(violation.paidAt!)
+                          : 'Settled',
+                      intent: StatusIntent.success,
+                    )
+                  else if (violation.isWaived)
+                    const AppDetailRow(
+                      label: 'Payment',
+                      value: 'Waived',
+                      intent: StatusIntent.info,
+                    )
+                  else if (violation.isPayable && violation.paymentDueAt != null)
+                    AppDetailRow(
+                      label: 'Due by',
+                      value: Formatters.date(violation.paymentDueAt!),
+                      intent: StatusIntent.warning,
+                    ),
                   AppDetailRow(
                     label: 'Suspension',
                     value: violation.suspensionDays != null

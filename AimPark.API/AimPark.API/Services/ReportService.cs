@@ -50,8 +50,13 @@ namespace AimPark.API.Services
                 .Where(p => p.Status == PaymentStatus.Paid)
                 .SumAsync(p => (decimal?)p.AmountDue, ct) ?? 0;
 
+            // Processing counts as outstanding. A bill someone opened a
+            // checkout for and did not finish is still money the school has not
+            // received, and leaving it out of this figure would quietly shrink
+            // the amount owed every time a payer changed their mind.
             var revenuePending = await _db.Set<PaymentTransaction>()
-                .Where(p => p.Status == PaymentStatus.Pending)
+                .Where(p => p.Status == PaymentStatus.Pending
+                         || p.Status == PaymentStatus.Processing)
                 .SumAsync(p => (decimal?)p.AmountDue, ct) ?? 0;
 
             var violationsIssued = await _db.Set<Violation>().CountAsync(ct);

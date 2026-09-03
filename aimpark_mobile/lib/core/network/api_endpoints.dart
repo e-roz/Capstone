@@ -49,7 +49,8 @@ class ApiEndpoints {
 
   static const payments = '/api/payments';
   static String paymentDetail(String paymentId) => '/api/payments/$paymentId';
-  static String paymentPay(String paymentId) => '/api/payments/$paymentId/pay';
+  static String paymentCheckout(String paymentId) =>
+      '/api/payments/$paymentId/checkout';
 
   static const incidents = '/api/incidents';
   static String incidentDetail(String incidentId) => '/api/incidents/$incidentId';

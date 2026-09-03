@@ -111,7 +111,10 @@ class _ResetPasswordScreenState extends ConsumerState<ResetPasswordScreen> {
         // someone reading it had finished typing their email.
         context.go(
           '/login/sign-in',
-          extra: 'Password reset. Log in with your new password.',
+          extra: const ScreenNotice(
+            'Password reset. Log in with your new password.',
+            intent: StatusIntent.success,
+          ),
         );
       }
     } catch (e) {

@@ -1,0 +1,66 @@
+name: Deploy admin panel
+
+# Firebase Hosting. Inert until two things exist in the repository settings:
+#
+#   Secret   FIREBASE_SERVICE_ACCOUNT  — a Google service-account JSON with the
+#                                        "Firebase Hosting Admin" role
+#   Variable API_BASE_URL              — e.g. https://aimpark-api.onrender.com
+#
+# Without API_BASE_URL the build silently falls back to http://localhost:5041,
+# which loads for a visitor and then fails every request. The guard below stops
+# that reaching the live site rather than letting someone discover it there.
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'aimpark_admin/**'
+      - '.github/workflows/deploy-admin.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-admin
+  cancel-in-progress: false
+
+defaults:
+  run:
+    working-directory: aimpark_admin
+
+jobs:
+  deploy:
+    name: Build and deploy
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Require API_BASE_URL
+        if: vars.API_BASE_URL == ''
+        run: |
+          echo "::error::Repository variable API_BASE_URL is not set. Settings → Secrets and variables → Actions → Variables."
+          exit 1
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.38.5'
+          channel: stable
+          cache: true
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      # Deploying something that does not analyse cleanly is how a broken panel
+      # reaches the people testing it. The gate is cheap; the embarrassment is not.
+      - name: Analyze
+        run: flutter analyze
+
+      - name: Build web
+        run: flutter build web --release --dart-define=API_BASE_URL=${{ vars.API_BASE_URL }}
+
+      - name: Deploy to Firebase Hosting
+        uses: FirebaseExtended/action-hosting-deploy@v0
+        with:
+          repoToken: ${{ secrets.GITHUB_TOKEN }}
+          firebaseServiceAccount: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          projectId: aim-park
+          channelId: live
+          entryPoint: aimpark_admin

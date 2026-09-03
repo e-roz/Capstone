@@ -1,0 +1,493 @@
+<title>AimPark Transaction Register</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600&family=Barlow+Condensed:wght@500;600;700&family=IBM+Plex+Mono:wght@400;600&display=swap">
+<style>
+  :root{
+    --bg:#F1F3F6; --surface:#FFFFFF; --surface-2:#E7EBF1; --surface-3:#F7F9FB;
+    --text:#131820; --muted:#596474; --border:#D2D9E2; --border-strong:#B9C3CF;
+    --accent:#1B4FA0; --accent-ink:#FFFFFF;
+    --shadow:0 1px 2px rgba(19,24,32,.06), 0 8px 24px -16px rgba(19,24,32,.28);
+    --r-pub-fg:#5C6675; --r-pub-bg:#E7EBF1;
+    --r-drv-fg:#1B4FA0; --r-drv-bg:#DEE8F8;
+    --r-sec-fg:#0B6357; --r-sec-bg:#D5EDE8;
+    --r-adm-fg:#5A3A9E; --r-adm-bg:#E5DEF7;
+    --r-dev-fg:#855100; --r-dev-bg:#F7E8CB;
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --bg:#0F1317; --surface:#161B21; --surface-2:#1D242C; --surface-3:#12171C;
+      --text:#E3E8EE; --muted:#909BA9; --border:#29313B; --border-strong:#3A444F;
+      --accent:#79A3E8; --accent-ink:#0F1317;
+      --shadow:0 1px 2px rgba(0,0,0,.5), 0 8px 24px -16px rgba(0,0,0,.8);
+      --r-pub-fg:#A3AEBD; --r-pub-bg:#232B34;
+      --r-drv-fg:#8FB4EE; --r-drv-bg:#17243A;
+      --r-sec-fg:#6FC9B8; --r-sec-bg:#102B28;
+      --r-adm-fg:#B39EEC; --r-adm-bg:#221B38;
+      --r-dev-fg:#DDA94E; --r-dev-bg:#2E2513;
+    }
+  }
+  :root[data-theme="dark"]{
+    --bg:#0F1317; --surface:#161B21; --surface-2:#1D242C; --surface-3:#12171C;
+    --text:#E3E8EE; --muted:#909BA9; --border:#29313B; --border-strong:#3A444F;
+    --accent:#79A3E8; --accent-ink:#0F1317;
+    --shadow:0 1px 2px rgba(0,0,0,.5), 0 8px 24px -16px rgba(0,0,0,.8);
+    --r-pub-fg:#A3AEBD; --r-pub-bg:#232B34;
+    --r-drv-fg:#8FB4EE; --r-drv-bg:#17243A;
+    --r-sec-fg:#6FC9B8; --r-sec-bg:#102B28;
+    --r-adm-fg:#B39EEC; --r-adm-bg:#221B38;
+    --r-dev-fg:#DDA94E; --r-dev-bg:#2E2513;
+  }
+
+  *{box-sizing:border-box}
+  body{
+    background:var(--bg); color:var(--text);
+    font-family:"Barlow", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+    font-size:15px; line-height:1.5; -webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:1180px; margin:0 auto; padding:0 20px}
+
+  .masthead{border-bottom:1px solid var(--border); background:var(--surface-3)}
+  .masthead .wrap{display:flex; flex-wrap:wrap; gap:24px; align-items:flex-end;
+    justify-content:space-between; padding-top:34px; padding-bottom:26px}
+  .brand{display:flex; gap:14px; align-items:center}
+  .mark{
+    width:46px; height:46px; flex:none; border-radius:9px;
+    background:var(--accent); color:var(--accent-ink);
+    font-family:"Barlow Condensed", sans-serif; font-weight:700; font-size:32px;
+    display:grid; place-items:center; line-height:1; padding-bottom:2px;
+    box-shadow:var(--shadow);
+  }
+  h1{
+    margin:0; font-family:"Barlow Condensed", sans-serif; font-weight:700;
+    font-size:34px; line-height:1.05; letter-spacing:.01em; text-wrap:balance;
+  }
+  .sub{margin:3px 0 0; color:var(--muted); font-size:13.5px; letter-spacing:.02em}
+  .tally{display:flex; gap:26px}
+  .tally div{display:flex; flex-direction:column}
+  .tally b{
+    font-family:"Barlow Condensed", sans-serif; font-weight:700; font-size:30px;
+    line-height:1; font-variant-numeric:tabular-nums;
+  }
+  .tally span{
+    font-size:10.5px; text-transform:uppercase; letter-spacing:.11em;
+    color:var(--muted); margin-top:5px; font-weight:600;
+  }
+
+  .controls{
+    position:sticky; top:0; z-index:20; background:var(--surface);
+    border-bottom:1px solid var(--border); box-shadow:var(--shadow);
+  }
+  .controls .wrap{display:flex; flex-wrap:wrap; gap:12px 16px; align-items:center; padding:11px 20px}
+  .search{
+    flex:1 1 210px; min-width:0; padding:8px 11px; font:inherit; font-size:14px;
+    color:var(--text); background:var(--surface-3);
+    border:1px solid var(--border); border-radius:7px;
+  }
+  .search::placeholder{color:var(--muted)}
+  .search:focus-visible{outline:2px solid var(--accent); outline-offset:1px; border-color:transparent}
+  .filters{display:flex; flex-wrap:wrap; gap:6px}
+  .filters button{
+    font:inherit; font-size:12px; font-weight:600; cursor:pointer;
+    padding:5px 11px 5px 8px; border-radius:20px; color:var(--muted);
+    background:var(--surface-3); border:1px solid var(--border);
+    display:inline-flex; align-items:center; gap:6px;
+  }
+  .filters .dot{width:7px; height:7px; border-radius:50%; flex:none; background:var(--c)}
+  .filters button[aria-pressed="true"]{color:var(--text); border-color:var(--border-strong); background:var(--surface-2)}
+  .filters button:focus-visible{outline:2px solid var(--accent); outline-offset:1px}
+  .f-pub{--c:var(--r-pub-fg)} .f-drv{--c:var(--r-drv-fg)} .f-sec{--c:var(--r-sec-fg)}
+  .f-adm{--c:var(--r-adm-fg)} .f-dev{--c:var(--r-dev-fg)}
+  .progress{display:flex; align-items:center; gap:9px; margin-left:auto}
+  .bar{width:82px; height:5px; border-radius:3px; background:var(--surface-2); overflow:hidden}
+  .bar i{display:block; height:100%; width:0; background:var(--accent); transition:width .18s ease}
+  .progress span{
+    font-size:12px; color:var(--muted); font-variant-numeric:tabular-nums;
+    white-space:nowrap; font-weight:600;
+  }
+  .reset{
+    font:inherit; font-size:12px; font-weight:600; cursor:pointer; color:var(--muted);
+    background:none; border:1px solid var(--border); border-radius:7px; padding:5px 10px;
+  }
+  .reset:hover{color:var(--text); border-color:var(--border-strong)}
+  .reset:focus-visible{outline:2px solid var(--accent); outline-offset:1px}
+
+  main{padding:30px 0 70px}
+  .module{margin-bottom:30px}
+  .mod-head{
+    display:flex; align-items:baseline; gap:11px; padding-bottom:8px; margin-bottom:10px;
+    border-bottom:2px solid var(--border-strong);
+  }
+  .mod-head h2{
+    margin:0; font-family:"Barlow Condensed", sans-serif; font-weight:600;
+    font-size:21px; letter-spacing:.02em; text-transform:uppercase;
+  }
+  .mod-head em{
+    font-style:normal; font-size:12px; color:var(--muted);
+    font-variant-numeric:tabular-nums; font-weight:600;
+  }
+  .mod-head .note{margin-left:auto; font-size:12.5px; color:var(--muted); text-align:right}
+
+  .rows{display:flex; flex-direction:column; gap:2px}
+  .row{
+    display:grid; align-items:start; gap:4px 14px; cursor:pointer;
+    grid-template-columns:20px minmax(140px,.95fr) 128px minmax(215px,1fr) minmax(200px,1.35fr);
+    padding:9px 12px 9px 10px; border-radius:8px; background:var(--surface);
+    border:1px solid var(--border);
+  }
+  .row:hover{border-color:var(--border-strong)}
+  .row:has(:focus-visible){outline:2px solid var(--accent); outline-offset:1px}
+  .row input{margin:3px 0 0; accent-color:var(--accent); width:15px; height:15px; cursor:pointer}
+  .row:has(input:checked){background:var(--surface-3)}
+  .row:has(input:checked) .tx, .row:has(input:checked) .desc{color:var(--muted)}
+  .row:has(input:checked) .tx{text-decoration:line-through; text-decoration-thickness:1px}
+  .tx{font-weight:600; font-size:14.5px}
+  .desc{color:var(--muted); font-size:13.5px}
+  .ep{
+    font-family:"IBM Plex Mono", ui-monospace, monospace; font-size:12px;
+    color:var(--muted); word-break:break-all; padding-top:1px;
+  }
+  .ep b{color:var(--text); font-weight:600; letter-spacing:.02em}
+  .actors{display:flex; flex-wrap:wrap; gap:4px; padding-top:1px}
+  .chip{
+    font-size:10.5px; font-weight:600; letter-spacing:.05em; text-transform:uppercase;
+    padding:2px 7px; border-radius:4px; white-space:nowrap;
+  }
+  .c-pub{color:var(--r-pub-fg); background:var(--r-pub-bg)}
+  .c-drv{color:var(--r-drv-fg); background:var(--r-drv-bg)}
+  .c-sec{color:var(--r-sec-fg); background:var(--r-sec-bg)}
+  .c-adm{color:var(--r-adm-fg); background:var(--r-adm-bg)}
+  .c-dev{color:var(--r-dev-fg); background:var(--r-dev-bg)}
+
+  .empty{display:none; padding:50px 0; text-align:center; color:var(--muted)}
+  .hidden{display:none !important}
+
+  footer{
+    border-top:1px solid var(--border); padding:22px 0 40px;
+    color:var(--muted); font-size:12.5px; max-width:70ch;
+  }
+  footer code{font-family:"IBM Plex Mono", monospace; font-size:11.5px; color:var(--text)}
+
+  @media (max-width:880px){
+    .row{grid-template-columns:20px 1fr; gap:5px 11px}
+    .row .actors, .row .ep, .row .desc{grid-column:2}
+    .mod-head .note{display:none}
+  }
+  @media (prefers-reduced-motion: reduce){ *{transition:none !important} }
+  @media print{
+    .controls, .reset, .progress{display:none}
+    .row{break-inside:avoid}
+  }
+</style>
+
+<header class="masthead">
+  <div class="wrap">
+    <div class="brand">
+      <div class="mark">P</div>
+      <div>
+        <h1>Transaction Register</h1>
+        <p class="sub">AimPark &middot; RFID Smart Parking &middot; STI Baliuag</p>
+      </div>
+    </div>
+    <div class="tally">
+      <div><b id="t-total">0</b><span>Transactions</span></div>
+      <div><b id="t-mod">0</b><span>Modules</span></div>
+      <div><b>5</b><span>Actors</span></div>
+    </div>
+  </div>
+</header>
+
+<div class="controls">
+  <div class="wrap">
+    <input class="search" id="q" type="search" placeholder="Search a transaction, route or word&hellip;" aria-label="Search transactions">
+    <div class="filters" id="filters">
+      <button class="f-pub" data-role="pub" aria-pressed="false"><i class="dot"></i>Public</button>
+      <button class="f-drv" data-role="drv" aria-pressed="false"><i class="dot"></i>Driver</button>
+      <button class="f-sec" data-role="sec" aria-pressed="false"><i class="dot"></i>Security</button>
+      <button class="f-adm" data-role="adm" aria-pressed="false"><i class="dot"></i>Admin</button>
+      <button class="f-dev" data-role="dev" aria-pressed="false"><i class="dot"></i>Gate device</button>
+    </div>
+    <div class="progress">
+      <div class="bar"><i id="bar"></i></div>
+      <span id="count">0 of 0 checked</span>
+      <button class="reset" id="reset" type="button">Clear</button>
+    </div>
+  </div>
+</div>
+
+<main class="wrap">
+  <div id="list"></div>
+  <p class="empty" id="empty">No transaction matches that filter.</p>
+</main>
+
+<footer class="wrap">
+  Built from the 23 controllers in <code>AimPark.API/Controllers</code>.
+  &ldquo;Driver&rdquo; means any signed-in account &mdash; in practice the student, faculty or staff driver.
+  &ldquo;Gate device&rdquo; is the RFID reader authenticating with a device API key instead of a login.
+  Tick marks are saved in this browser only.
+</footer>
+
+<script>
+const ROLE = {pub:"Public", drv:"Driver", sec:"Security", adm:"Admin", dev:"Gate device"};
+
+const DATA = [
+ {m:"Sign-in &amp; Account Access", n:"No login required", i:[
+  {n:"Log in",                    r:["pub"], v:"POST", p:"/api/auth/login",                       d:"Sign in with email and password, receive a token."},
+  {n:"Google sign-in (mobile)",   r:["pub"], v:"POST", p:"/api/auth/google/signin",               d:"Sign in by handing the API a Google ID token."},
+  {n:"Request password reset",    r:["pub"], v:"POST", p:"/api/auth/forgot-password",             d:"Email a reset code to the account holder."},
+  {n:"Reset password",            r:["pub"], v:"POST", p:"/api/auth/reset-password",              d:"Set a new password using the emailed code."},
+  {n:"Start Google sign-in",      r:["pub"], v:"GET",  p:"/api/auth/external/google",             d:"Redirect the browser to Google for consent."},
+  {n:"Finish Google sign-in",     r:["pub"], v:"GET",  p:"/api/auth/external/google/callback",    d:"Take Google's answer and issue the token."},
+  {n:"Start Microsoft sign-in",   r:["pub"], v:"GET",  p:"/api/auth/external/microsoft",          d:"Redirect the browser to Microsoft for consent."},
+  {n:"Finish Microsoft sign-in",  r:["pub"], v:"GET",  p:"/api/auth/external/microsoft/callback", d:"Take Microsoft's answer and issue the token."}
+ ]},
+
+ {m:"Driver Registration", n:"The sign-up journey, step by step", i:[
+  {n:"Start sign-up",           r:["pub"], v:"POST", p:"/api/auth/register/initiate-email",    d:"Take an email address and send a one-time code."},
+  {n:"Verify email code",       r:["pub"], v:"POST", p:"/api/auth/register/verify-email",      d:"Check the code the applicant typed in."},
+  {n:"Resend email code",       r:["pub"], v:"POST", p:"/api/auth/register/resend-otp",        d:"Send the one-time code again."},
+  {n:"Complete profile",        r:["pub"], v:"POST", p:"/api/auth/register/complete-profile",  d:"Save name, password and affiliation, create the account."},
+  {n:"Scan documents",          r:["drv"], v:"POST", p:"/api/auth/register/documents/scan",    d:"Upload the RAF, driver's licence and OR/CR for reading."},
+  {n:"Confirm scanned values",  r:["drv"], v:"POST", p:"/api/auth/register/documents/confirm", d:"Applicant confirms every value the scan pulled out."},
+  {n:"Reapply after rejection", r:["drv"], v:"POST", p:"/api/auth/register/reapply",           d:"Open a fresh application after being turned down."},
+  {n:"Check my application",    r:["drv"], v:"GET",  p:"/api/auth/register/status",            d:"See which step the application is sitting on."}
+ ]},
+
+ {m:"My Account", i:[
+  {n:"View my profile",    r:["drv"], v:"GET",  p:"/api/account/profile",         d:"Read back my own details."},
+  {n:"Update my profile",  r:["drv"], v:"PUT",  p:"/api/account/profile",         d:"Change my own details."},
+  {n:"Change my password", r:["drv"], v:"POST", p:"/api/account/change-password", d:"Replace my password with a new one."},
+  {n:"Check my access",    r:["drv"], v:"GET",  p:"/api/account/access-status",   d:"See whether my RFID card is active or suspended."}
+ ]},
+
+ {m:"My Vehicles", i:[
+  {n:"List my vehicles",       r:["drv"], v:"GET",  p:"/api/vehicles",                   d:"Show every vehicle registered under my account."},
+  {n:"Add a vehicle",          r:["drv"], v:"POST", p:"/api/vehicles",                   d:"Register another vehicle to my account."},
+  {n:"Scan vehicle documents", r:["drv"], v:"POST", p:"/api/vehicles/documents/scan",    d:"Upload the OR/CR of an extra vehicle for reading."},
+  {n:"Confirm vehicle values", r:["drv"], v:"POST", p:"/api/vehicles/documents/confirm", d:"Confirm the plate and details the scan pulled out."}
+ ]},
+
+ {m:"Parking &mdash; Driver", i:[
+  {n:"See slot availability",   r:["drv"], v:"GET",  p:"/api/parking/slots",     d:"Show which slots are free, taken or closed."},
+  {n:"Get a recommended slot",  r:["drv"], v:"POST", p:"/api/parking/recommend", d:"Suggest the best open slot for this driver."},
+  {n:"View my parking history", r:["drv"], v:"GET",  p:"/api/parking/history",   d:"List my past entries and exits."}
+ ]},
+
+ {m:"Parking Operations", n:"Driven by the gate reader, or by hand from the panel", i:[
+  {n:"View all slots",        r:["adm","sec"],       v:"GET",  p:"/api/admin/parking/slots",             d:"Full slot list with current status."},
+  {n:"Create a slot",         r:["adm"],             v:"POST", p:"/api/admin/parking/slots",             d:"Add a new parking slot to the lot."},
+  {n:"Change slot status",    r:["adm"],             v:"PUT",  p:"/api/admin/parking/slots/{id}/status", d:"Open, close or reserve a single slot."},
+  {n:"See who is parked now", r:["adm","sec"],       v:"GET",  p:"/api/admin/parking/active-sessions",   d:"List every vehicle currently inside."},
+  {n:"Log a vehicle entry",   r:["adm","sec","dev"], v:"POST", p:"/api/admin/parking/log-entry",         d:"Record a vehicle passing the entry barrier."},
+  {n:"Log a vehicle exit",    r:["adm","sec","dev"], v:"POST", p:"/api/admin/parking/log-exit",          d:"Record a vehicle leaving and close the session."}
+ ]},
+
+ {m:"Registration Review", n:"Admin side of the sign-up journey", i:[
+  {n:"List pending applications", r:["adm"], v:"GET",  p:"/api/admin/registrations/pending",                d:"Everything waiting for a decision."},
+  {n:"Open an application",       r:["adm"], v:"GET",  p:"/api/admin/registrations/{userId}",               d:"Read the full application with its documents."},
+  {n:"Approve an application",    r:["adm"], v:"POST", p:"/api/admin/registrations/{userId}/approve",       d:"Accept the applicant and let them park."},
+  {n:"Reject an application",     r:["adm"], v:"POST", p:"/api/admin/registrations/{userId}/reject",        d:"Turn the applicant down with a reason."},
+  {n:"Allow a reapplication",     r:["adm"], v:"POST", p:"/api/admin/registrations/{userId}/reset-reapply", d:"Let a rejected applicant start over."},
+  {n:"Request a document retake", r:["adm"], v:"POST", p:"/api/admin/registrations/{userId}/request-retake",d:"Ask for a clearer photo of one document."},
+  {n:"Send back one step",        r:["adm"], v:"POST", p:"/api/admin/registrations/{userId}/reset-step",    d:"Return the applicant to an earlier step."}
+ ]},
+
+ {m:"User &amp; RFID Management", i:[
+  {n:"List users",         r:["adm"], v:"GET",    p:"/api/admin/users",                      d:"Browse and filter every account."},
+  {n:"Suspend a user",     r:["adm"], v:"POST",   p:"/api/admin/users/{userId}/suspend",     d:"Block an account from parking."},
+  {n:"Lift a suspension",  r:["adm"], v:"POST",   p:"/api/admin/users/{userId}/unsuspend",   d:"Return a suspended account to good standing."},
+  {n:"Archive a user",     r:["adm"], v:"DELETE", p:"/api/admin/users/{userId}",             d:"Retire an account without erasing its history."},
+  {n:"Restore a user",     r:["adm"], v:"POST",   p:"/api/admin/users/{userId}/restore",     d:"Bring an archived account back."},
+  {n:"Assign an RFID card",r:["adm"], v:"POST",   p:"/api/admin/users/{userId}/assign-rfid", d:"Bind a physical RFID tag to the account."},
+  {n:"Revoke an RFID card",r:["adm"], v:"POST",   p:"/api/admin/users/{userId}/revoke-rfid", d:"Unbind the tag, for example when a card is lost."}
+ ]},
+
+ {m:"My Violations", i:[
+  {n:"List my violations", r:["drv"], v:"GET",  p:"/api/violations",             d:"Every violation recorded against me."},
+  {n:"Open a violation",   r:["drv"], v:"GET",  p:"/api/violations/{id}",        d:"Read one violation in full."},
+  {n:"File an appeal",     r:["drv"], v:"POST", p:"/api/violations/{id}/appeal", d:"Contest a violation and attach evidence."}
+ ]},
+
+ {m:"Violation Management", i:[
+  {n:"Issue a violation",   r:["adm"], v:"POST", p:"/api/admin/violations",                     d:"Record a violation against a driver."},
+  {n:"List violations",     r:["adm"], v:"GET",  p:"/api/admin/violations",                     d:"Browse and filter all violations."},
+  {n:"Open a violation",    r:["adm"], v:"GET",  p:"/api/admin/violations/{id}",                d:"Read one violation with its appeal, if any."},
+  {n:"Edit a violation",    r:["adm"], v:"PUT",  p:"/api/admin/violations/{id}",                d:"Correct the details of a recorded violation."},
+  {n:"Dismiss a violation", r:["adm"], v:"PUT",  p:"/api/admin/violations/{id}/dismiss",        d:"Void a violation that should not stand."},
+  {n:"List appeals",        r:["adm"], v:"GET",  p:"/api/admin/violations/appeals",             d:"Every appeal waiting on a decision."},
+  {n:"Decide an appeal",    r:["adm"], v:"PUT",  p:"/api/admin/violations/appeals/{id}/decide", d:"Uphold or overturn a contested violation."}
+ ]},
+
+ {m:"My Payments", i:[
+  {n:"List my payments", r:["drv"], v:"GET",  p:"/api/payments",          d:"Every charge and fine on my account."},
+  {n:"Open a payment",   r:["drv"], v:"GET",  p:"/api/payments/{id}",     d:"Read one payment in full."},
+  {n:"Pay a charge",     r:["drv"], v:"POST", p:"/api/payments/{id}/pay", d:"Settle an outstanding charge."}
+ ]},
+
+ {m:"Payments &amp; Rates", i:[
+  {n:"List all payments",  r:["adm"], v:"GET", p:"/api/admin/payments",       d:"Browse and filter every transaction."},
+  {n:"View parking rates", r:["adm"], v:"GET", p:"/api/admin/payments/rates", d:"The rate table currently in force."},
+  {n:"Set a parking rate", r:["adm"], v:"PUT", p:"/api/admin/payments/rates", d:"Add or change a rate in the table."}
+ ]},
+
+ {m:"Report an Incident", i:[
+  {n:"Report an incident", r:["drv"], v:"POST", p:"/api/incidents",               d:"Raise an incident with photo evidence."},
+  {n:"List my reports",    r:["drv"], v:"GET",  p:"/api/incidents",               d:"Everything I have reported."},
+  {n:"Open my report",     r:["drv"], v:"GET",  p:"/api/incidents/{id}",          d:"Read one of my reports in full."},
+  {n:"Edit my report",     r:["drv"], v:"PUT",  p:"/api/incidents/{id}",          d:"Correct a report I already filed."},
+  {n:"Withdraw my report", r:["drv"], v:"POST", p:"/api/incidents/{id}/withdraw", d:"Take back a report I no longer stand by."}
+ ]},
+
+ {m:"Incident Review", i:[
+  {n:"List incidents",    r:["adm","sec"], v:"GET", p:"/api/admin/incidents",            d:"Every incident reported across the lot."},
+  {n:"Open an incident",  r:["adm","sec"], v:"GET", p:"/api/admin/incidents/{id}",       d:"Read one incident with its evidence."},
+  {n:"Review an incident",r:["adm"],       v:"PUT", p:"/api/admin/incidents/{id}/review",d:"Record the outcome and close it out."}
+ ]},
+
+ {m:"My Notifications", i:[
+  {n:"List my notifications", r:["drv"], v:"GET",    p:"/api/notifications",              d:"Everything the system has sent me."},
+  {n:"Mark one as read",      r:["drv"], v:"POST",   p:"/api/notifications/{id}/read",    d:"Clear a single notification."},
+  {n:"Register for push",     r:["drv"], v:"POST",   p:"/api/notifications/device-token", d:"Save this phone's push token."},
+  {n:"Unregister from push",  r:["drv"], v:"DELETE", p:"/api/notifications/device-token", d:"Drop the token, for example on sign-out."}
+ ]},
+
+ {m:"Announcements", i:[
+  {n:"List sent notifications",  r:["adm"], v:"GET",  p:"/api/admin/notifications", d:"History of everything broadcast."},
+  {n:"Broadcast a notification", r:["adm"], v:"POST", p:"/api/admin/notifications", d:"Push an announcement out to drivers."}
+ ]},
+
+ {m:"Security Desk &amp; Visitor Passes", i:[
+  {n:"Look up an RFID tag",   r:["adm","sec"], v:"GET",  p:"/api/security/tags/{rfidTagId}",           d:"See whose card this is before the barrier lifts."},
+  {n:"Issue a visitor pass",  r:["adm","sec"], v:"POST", p:"/api/security/visitor-passes",             d:"Lend a temporary RFID card to a guest."},
+  {n:"List visitor passes",   r:["adm","sec"], v:"GET",  p:"/api/security/visitor-passes",             d:"Which passes are out and which are back."},
+  {n:"Return a visitor pass", r:["adm","sec"], v:"POST", p:"/api/security/visitor-passes/{id}/return", d:"Take the card back and free it for reuse."}
+ ]},
+
+ {m:"Policy Rules", i:[
+  {n:"List policy rules", r:["adm"], v:"GET",  p:"/api/admin/policy-rules",      d:"The rules that drive fines and suspensions."},
+  {n:"Create a rule",     r:["adm"], v:"POST", p:"/api/admin/policy-rules",      d:"Add a new rule to the policy set."},
+  {n:"Edit a rule",       r:["adm"], v:"PUT",  p:"/api/admin/policy-rules/{id}", d:"Change a rule's penalty or appeal window."}
+ ]},
+
+ {m:"Reports &amp; Analytics", i:[
+  {n:"Dashboard summary",     r:["adm"], v:"GET", p:"/api/admin/reports/summary",              d:"Headline figures for the whole system."},
+  {n:"Occupancy trend",       r:["adm"], v:"GET", p:"/api/admin/reports/occupancy-trend",      d:"How full the lot runs over time."},
+  {n:"Entry and exit report", r:["adm"], v:"GET", p:"/api/admin/reports/entry-exit",           d:"Gate traffic over a chosen period."},
+  {n:"Peak hours",            r:["adm"], v:"GET", p:"/api/admin/reports/peak-hours",           d:"Which hours of the day run busiest."},
+  {n:"Violations breakdown",  r:["adm"], v:"GET", p:"/api/admin/reports/violations-breakdown", d:"Violations grouped by type."},
+  {n:"Revenue trend",         r:["adm"], v:"GET", p:"/api/admin/reports/revenue-trend",        d:"Money collected over time."}
+ ]},
+
+ {m:"System Logs", i:[
+  {n:"RFID access log",   r:["adm","sec"], v:"GET", p:"/api/admin/logs/rfid-access",   d:"Every tag read at a barrier, accepted or refused."},
+  {n:"User activity log", r:["adm"],       v:"GET", p:"/api/admin/logs/user-activity", d:"What accounts did, and when."},
+  {n:"Error log",         r:["adm"],       v:"GET", p:"/api/admin/logs/errors",        d:"Server errors, searchable by trace id."}
+ ]},
+
+ {m:"Audit Trail", i:[
+  {n:"View the audit trail", r:["adm"], v:"GET", p:"/api/admin/audit-logs", d:"Who changed what, with the before and after."}
+ ]},
+
+ {m:"Gate Devices", n:"No admin screen &mdash; API only, on purpose", i:[
+  {n:"Enrol a gate device",  r:["adm"], v:"POST", p:"/api/admin/gate-devices",             d:"Register a reader and hand it an API key."},
+  {n:"List gate devices",    r:["adm"], v:"GET",  p:"/api/admin/gate-devices",             d:"Every reader known to the system."},
+  {n:"Revoke a gate device", r:["adm"], v:"POST", p:"/api/admin/gate-devices/{id}/revoke", d:"Kill a reader's key so it stops being trusted."}
+ ]},
+
+ {m:"Backup &amp; Restore", i:[
+  {n:"List backups",      r:["adm"], v:"GET",  p:"/api/admin/backup",            d:"Every backup held in storage."},
+  {n:"Take a backup",     r:["adm"], v:"POST", p:"/api/admin/backup",            d:"Export the whole database to a file."},
+  {n:"Download a backup", r:["adm"], v:"GET",  p:"/api/admin/backup/{fileName}", d:"Pull a stored backup down as a file."},
+  {n:"Preview a restore", r:["adm"], v:"POST", p:"/api/admin/backup/preview",    d:"Show what a chosen file would put back."},
+  {n:"Restore a backup",  r:["adm"], v:"POST", p:"/api/admin/backup/restore",    d:"Replace live data with the file's contents."}
+ ]}
+];
+
+const list = document.getElementById("list");
+let total = 0;
+
+list.innerHTML = DATA.map(function (mod) {
+  total += mod.i.length;
+  const rows = mod.i.map(function (t) {
+    const key = t.v + " " + t.p;
+    const chips = t.r.map(function (r) {
+      return '<span class="chip c-' + r + '">' + ROLE[r] + '</span>';
+    }).join("");
+    const hay = (t.n + " " + t.p + " " + t.d + " " + t.v + " " + mod.m)
+      .toLowerCase().replace(/"/g, "");
+    return '<label class="row" data-roles="' + t.r.join(" ") + '" data-hay="' + hay + '">' +
+      '<input type="checkbox" data-key="' + key + '">' +
+      '<span class="tx">' + t.n + '</span>' +
+      '<span class="actors">' + chips + '</span>' +
+      '<code class="ep"><b>' + t.v + '</b> ' + t.p + '</code>' +
+      '<span class="desc">' + t.d + '</span>' +
+      '</label>';
+  }).join("");
+  return '<section class="module">' +
+    '<div class="mod-head"><h2>' + mod.m + '</h2><em>' + mod.i.length + '</em>' +
+    (mod.n ? '<span class="note">' + mod.n + '</span>' : '') + '</div>' +
+    '<div class="rows">' + rows + '</div></section>';
+}).join("");
+
+document.getElementById("t-total").textContent = total;
+document.getElementById("t-mod").textContent = DATA.length;
+
+const STORE = "aimpark.tx.checked";
+let checked = new Set();
+try { checked = new Set(JSON.parse(localStorage.getItem(STORE) || "[]")); } catch (e) {}
+
+const boxes = Array.prototype.slice.call(document.querySelectorAll(".row input"));
+boxes.forEach(function (b) { b.checked = checked.has(b.dataset.key); });
+
+function save() {
+  try { localStorage.setItem(STORE, JSON.stringify(Array.from(checked))); } catch (e) {}
+}
+function tally() {
+  const n = boxes.filter(function (b) { return b.checked; }).length;
+  document.getElementById("count").textContent = n + " of " + total + " checked";
+  document.getElementById("bar").style.width = (total ? (n / total) * 100 : 0) + "%";
+}
+list.addEventListener("change", function (e) {
+  const b = e.target;
+  if (!b.dataset || !b.dataset.key) return;
+  if (b.checked) { checked.add(b.dataset.key); } else { checked.delete(b.dataset.key); }
+  save(); tally();
+});
+document.getElementById("reset").addEventListener("click", function () {
+  checked.clear();
+  boxes.forEach(function (b) { b.checked = false; });
+  save(); tally();
+});
+tally();
+
+const active = new Set();
+document.getElementById("filters").addEventListener("click", function (e) {
+  const btn = e.target.closest("button");
+  if (!btn) return;
+  const r = btn.dataset.role;
+  if (active.has(r)) { active.delete(r); } else { active.add(r); }
+  btn.setAttribute("aria-pressed", active.has(r) ? "true" : "false");
+  apply();
+});
+document.getElementById("q").addEventListener("input", apply);
+
+function apply() {
+  const q = document.getElementById("q").value.trim().toLowerCase();
+  let shown = 0;
+  document.querySelectorAll(".module").forEach(function (sec) {
+    let visible = 0;
+    sec.querySelectorAll(".row").forEach(function (row) {
+      const roles = row.dataset.roles.split(" ");
+      const okRole = active.size === 0 || roles.some(function (r) { return active.has(r); });
+      const okText = q === "" || row.dataset.hay.indexOf(q) !== -1;
+      const ok = okRole && okText;
+      row.classList.toggle("hidden", !ok);
+      if (ok) visible++;
+    });
+    sec.classList.toggle("hidden", visible === 0);
+    sec.querySelector(".mod-head em").textContent = visible;
+    shown += visible;
+  });
+  document.getElementById("empty").style.display = shown === 0 ? "block" : "none";
+}
+</script>

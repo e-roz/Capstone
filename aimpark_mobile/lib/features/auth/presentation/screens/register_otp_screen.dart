@@ -2,12 +2,12 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
 import 'package:pin_code_fields/pin_code_fields.dart';
 
 import '../../../../core/theme/theme.dart';
 import '../../../../core/utils/app_flushbar.dart';
 import '../../../../core/widgets/widgets.dart';
+import '../../../../router/registration_back_stack.dart';
 import '../providers/auth_provider.dart';
 import '../providers/registration_provider.dart';
 import '../widgets/registration_step_scaffold.dart';
@@ -93,7 +93,7 @@ class _RegisterOtpScreenState extends ConsumerState<RegisterOtpScreen> {
           .setRegistrationSessionId(sessionToken);
 
       if (mounted) {
-        context.go('/register/profile');
+        context.goRegistrationStep('/register/profile');
       }
     } catch (e) {
       if (mounted) {
@@ -150,11 +150,11 @@ class _RegisterOtpScreenState extends ConsumerState<RegisterOtpScreen> {
     return RegistrationStepScaffold(
       step: 2,
       title: 'Verify Email',
-      // A mistyped address is only discoverable here — the code never arrives —
-      // so this is exactly the screen that has to be able to go back and fix
-      // it. Re-entering the email step issues a fresh session and a fresh code.
+      // A mistyped address is only discoverable here — the code never arrives
+      // — so this is exactly the screen that has to be able to go back and fix
+      // it. Back lands on the email step it came from, which issues a fresh
+      // session and a fresh code when it is submitted again.
       busy: busy,
-      onBack: () => context.go('/register/email'),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [

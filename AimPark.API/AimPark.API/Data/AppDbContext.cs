@@ -31,6 +31,7 @@ namespace AimPark.API.Data
         public DbSet<UserActivityLog> UserActivityLogs { get; set; }
         public DbSet<SystemErrorLog> SystemErrorLogs { get; set; }
         public DbSet<VisitorPass> VisitorPasses { get; set; }
+        public DbSet<RfidCard> RfidCards { get; set; }
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -392,6 +393,10 @@ namespace AimPark.API.Data
                 entity.Property(r => r.RatePerHour)
                       .HasColumnType("decimal(10,2)");
 
+                entity.Property(r => r.MinimumFee)
+                      .HasColumnType("decimal(10,2)")
+                      .HasDefaultValue(20.00m);
+
                 entity.Property(r => r.UpdatedAt)
                       .HasDefaultValueSql("NOW()");
 
@@ -418,6 +423,17 @@ namespace AimPark.API.Data
 
                 entity.Property(p => p.Status)
                       .HasConversion<string>();
+
+                entity.Property(p => p.Method)
+                      .HasConversion<string>();
+
+                entity.Property(p => p.Provider).HasMaxLength(32);
+                entity.Property(p => p.ProviderPaymentId).HasMaxLength(128);
+                entity.Property(p => p.ReferenceNumber).HasMaxLength(128);
+
+                // The callback arrives knowing the provider's id and nothing
+                // else, so this is the lookup every settlement goes through.
+                entity.HasIndex(p => p.ProviderPaymentId);
 
                 entity.Property(p => p.RatePerHourApplied)
                       .HasColumnType("decimal(10,2)");
@@ -524,6 +540,21 @@ namespace AimPark.API.Data
                       .WithMany()
                       .HasForeignKey(t => t.UserId)
                       .OnDelete(DeleteBehavior.Cascade);
+            });
+
+            modelBuilder.Entity<RfidCard>(entity =>
+            {
+                entity.HasKey(c => c.RfidTagId);
+
+                // The screen this feeds is "show me the free ones" / "show me
+                // the blocked ones" — nothing else filters on this table.
+                entity.HasIndex(c => c.State);
+
+                entity.Property(c => c.State).HasConversion<string>();
+                entity.Property(c => c.Reason).HasConversion<string>();
+
+                entity.Property(c => c.UpdatedAt)
+                      .HasDefaultValueSql("NOW()");
             });
 
             modelBuilder.Entity<ViolationAppeal>(entity =>

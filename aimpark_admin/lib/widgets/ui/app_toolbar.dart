@@ -185,6 +185,20 @@ class AppFilterOption<T> {
   final String label;
 }
 
+/// A menu value that is never null, so the "all" entry can actually be picked.
+///
+/// `PopupMenuButton` cannot tell a null selection from a dismissed menu: it
+/// calls `onCanceled` for both. The "all" entry's value is null by definition,
+/// so it silently did nothing — you could filter down but never back out, on
+/// every filter in the panel. Boxing the value keeps the menu's own type
+/// non-nullable and leaves null free to go on meaning "dismissed".
+@immutable
+class _FilterChoice<T> {
+  const _FilterChoice(this.value);
+
+  final T? value;
+}
+
 /// A filter rendered as a pill rather than a bare `DropdownButton`.
 ///
 /// It shows its own name even when nothing is chosen ("Status: All"), so the
@@ -199,6 +213,7 @@ class AppFilterDropdown<T> extends StatefulWidget {
     required this.options,
     required this.onChanged,
     this.allLabel = 'All',
+    this.allowAll = true,
   });
 
   /// The filter's name — "Status", "Action".
@@ -213,6 +228,13 @@ class AppFilterDropdown<T> extends StatefulWidget {
   final ValueChanged<T?> onChanged;
 
   final String allLabel;
+
+  /// Whether to offer the "no filter" entry at all.
+  ///
+  /// False for a filter that always holds a value. A report period is always
+  /// *some* period, so an "all" row there both duplicates a real option and
+  /// offers a state the screen cannot be in.
+  final bool allowAll;
 
   @override
   State<AppFilterDropdown<T>> createState() => _AppFilterDropdownState<T>();
@@ -232,17 +254,18 @@ class _AppFilterDropdownState<T> extends State<AppFilterDropdown<T>> {
         .map((o) => o.label)
         .firstOrNull;
 
-    return PopupMenuButton<T?>(
+    return PopupMenuButton<_FilterChoice<T>>(
       tooltip: 'Filter by ${widget.label.toLowerCase()}',
-      onSelected: widget.onChanged,
+      onSelected: (choice) => widget.onChanged(choice.value),
       itemBuilder: (context) => [
-        PopupMenuItem<T?>(
-          value: null,
-          child: _MenuRow(label: widget.allLabel, checked: !active),
-        ),
+        if (widget.allowAll)
+          PopupMenuItem<_FilterChoice<T>>(
+            value: _FilterChoice<T>(null),
+            child: _MenuRow(label: widget.allLabel, checked: !active),
+          ),
         for (final option in widget.options)
-          PopupMenuItem<T?>(
-            value: option.value,
+          PopupMenuItem<_FilterChoice<T>>(
+            value: _FilterChoice<T>(option.value),
             child: _MenuRow(
               label: option.label,
               checked: option.value == widget.value,

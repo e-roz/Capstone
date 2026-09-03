@@ -6,6 +6,7 @@ import '../../../../core/ocr/ocr_payload.dart';
 import '../../../../core/theme/theme.dart';
 import '../../../../core/utils/app_flushbar.dart';
 import '../../../../core/widgets/widgets.dart';
+import '../../../../router/registration_back_stack.dart';
 import '../../data/models/document_spec.dart';
 import '../../data/models/scan_result.dart';
 import '../../data/registration_preflight.dart';
@@ -119,7 +120,10 @@ class _RegisterConfirmScreenState extends ConsumerState<RegisterConfirmScreen> {
     );
     final index = specs.indexWhere((spec) => spec.type == type);
     if (index < 0) return;
-    context.go('/register/documents/$index');
+    // A move like any other: this screen sits on top of the last document, so
+    // back from the retake returns there rather than to whatever the document
+    // before it was.
+    context.goRegistrationStep('/register/documents/$index');
   }
 
   /// Whether a field the rules could not read is still exactly that: unread.
@@ -220,6 +224,9 @@ class _RegisterConfirmScreenState extends ConsumerState<RegisterConfirmScreen> {
         title: "You're all set!",
         message: 'Registration submitted — your account is pending review.',
       );
+      // Nothing behind this to go back to any more — the account is submitted
+      // and the flow's history describes a registration that is over.
+      registrationBackStack.clear();
       if (mounted) context.go('/login/sign-in');
     } catch (e) {
       if (mounted) showApiError(context, e);

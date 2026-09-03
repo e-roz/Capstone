@@ -5,10 +5,29 @@ import 'package:go_router/go_router.dart';
 import '../../../../core/theme/theme.dart';
 import '../../../../core/utils/formatters.dart';
 import '../../../../core/widgets/widgets.dart';
+import '../../data/models/violation.dart';
 import '../providers/violations_provider.dart';
 
 class ViolationsListScreen extends ConsumerWidget {
   const ViolationsListScreen({super.key});
+
+  /// Splits the record into what still needs doing and what does not.
+  ///
+  /// A paid fine used to sit at the top of this list looking exactly like an
+  /// unpaid one, because the row only ever showed the appeal status and payment
+  /// was not part of it. Keeping settled rows — rather than hiding them — leaves
+  /// the user their own proof they paid; moving them down is what stops the list
+  /// reading as a pile of outstanding debt.
+  static (List<ViolationSummary> open, List<ViolationSummary> settled) _split(
+    List<ViolationSummary> violations,
+  ) {
+    final open = <ViolationSummary>[];
+    final settled = <ViolationSummary>[];
+    for (final v in violations) {
+      (v.isSettled ? settled : open).add(v);
+    }
+    return (open, settled);
+  }
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -35,27 +54,52 @@ class ViolationsListScreen extends ConsumerWidget {
           title: 'Squeaky clean!',
           message: 'No violations on your record.',
         ),
-        data: (result) => ListView(
-          padding: kScreenListPadding,
-          children: [
-            for (final v in result.violations) ...[
-              AppListRow(
-                icon: Icons.gavel_rounded,
-                title: v.policyRuleTitle,
-                subtitle: '${Formatters.peso(v.penaltyAmount)} · '
-                    '${Formatters.date(v.createdAt)}',
-                trailing: AppStatusBadge(
-                  label: v.status,
-                  intent: StatusIntents.violation(v.status),
-                ),
-                onTap: () =>
-                    context.push('/home/user/violations/${v.violationId}'),
-              ),
-              if (v != result.violations.last) const AppRowGap(),
+        data: (result) {
+          final (open, settled) = _split(result.violations);
+
+          return ListView(
+            padding: kScreenListPadding,
+            children: [
+              for (final v in open) ...[
+                _ViolationRow(violation: v),
+                if (v != open.last) const AppRowGap(),
+              ],
+              // Only announced when there is both something settled to head and
+              // something open above it to separate it from.
+              if (settled.isNotEmpty) ...[
+                if (open.isNotEmpty) const SizedBox(height: AppSpacing.lg),
+                const AppSectionHeader(title: 'Settled'),
+                for (final v in settled) ...[
+                  _ViolationRow(violation: v),
+                  if (v != settled.last) const AppRowGap(),
+                ],
+              ],
             ],
-          ],
-        ),
+          );
+        },
       ),
+    );
+  }
+}
+
+class _ViolationRow extends StatelessWidget {
+  const _ViolationRow({required this.violation});
+
+  final ViolationSummary violation;
+
+  @override
+  Widget build(BuildContext context) {
+    return AppListRow(
+      icon: Icons.gavel_rounded,
+      title: violation.policyRuleTitle,
+      subtitle: '${Formatters.peso(violation.penaltyAmount)} · '
+          '${Formatters.date(violation.createdAt)}',
+      trailing: AppStatusBadge(
+        label: violation.displayStatus,
+        intent: StatusIntents.violation(violation.displayStatus),
+      ),
+      onTap: () =>
+          context.push('/home/user/violations/${violation.violationId}'),
     );
   }
 }

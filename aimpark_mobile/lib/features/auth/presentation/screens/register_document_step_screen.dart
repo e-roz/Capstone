@@ -1,7 +1,6 @@
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
 
 import '../../../../core/camera/camera_capture_screen.dart';
 import '../../../../core/ocr/document_recognizer.dart';
@@ -10,6 +9,7 @@ import '../../../../core/ocr/ocr_payload.dart';
 import '../../../../core/theme/theme.dart';
 import '../../../../core/utils/app_flushbar.dart';
 import '../../../../core/widgets/widgets.dart';
+import '../../../../router/registration_back_stack.dart';
 import '../../data/models/document_spec.dart';
 import '../../data/models/scan_result.dart';
 import '../providers/auth_provider.dart';
@@ -214,7 +214,7 @@ class _RegisterDocumentStepScreenState
       if (i == widget.index) {
         setState(() => _retakeMessage = message);
       } else {
-        context.go('/register/documents/$i', extra: message);
+        context.goRegistrationStep('/register/documents/$i', extra: message);
       }
       return;
     }
@@ -271,19 +271,16 @@ class _RegisterDocumentStepScreenState
       step: 4,
       title: 'Documents',
       subStep: '${widget.index + 1} of ${specs.length}',
-      // Back walks the sequence, so a document can be looked at or retaken
-      // after moving past it. From the first document it goes to the profile
-      // step, which reopens as an edit of the account that step created rather
-      // than as a second submission of it.
+      // Back walks the flow's history, so a document can be looked at or
+      // retaken after moving past it, and the first of them returns to the
+      // profile step — which reopens as an edit of the account that step
+      // created rather than as a second submission of it.
       //
       // That step is where affiliation is chosen, and affiliation is what
       // decides which documents this screen asks for — so without a way back to
       // it, someone who picked the wrong one was being asked for a document
       // they do not have, on a screen with no way out.
       busy: _isSubmitting,
-      onBack: widget.index == 0
-          ? () => context.go('/register/profile')
-          : () => context.go('/register/documents/${widget.index - 1}'),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -325,7 +322,9 @@ class _RegisterDocumentStepScreenState
                     if (isLast) {
                       _submitAll(specs);
                     } else {
-                      context.go('/register/documents/${widget.index + 1}');
+                      context.goRegistrationStep(
+                        '/register/documents/${widget.index + 1}',
+                      );
                     }
                   },
           ),
@@ -380,7 +379,8 @@ class _DocumentStepOutOfRange extends StatelessWidget {
           const SizedBox(height: AppSpacing.lg),
           AppButton(
             label: 'Go to what is needed',
-            onPressed: () => context.go('/register/documents/$lastIndex'),
+            onPressed: () =>
+                context.jumpRegistrationStep('/register/documents/$lastIndex'),
           ),
         ],
       ),

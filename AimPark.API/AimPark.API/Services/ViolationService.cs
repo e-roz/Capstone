@@ -687,6 +687,31 @@ namespace AimPark.API.Services
                 })
                 .ToListAsync(ct);
 
+            // The penalty and the violation live in separate tables, and until this
+            // was joined up the app had no way to know a fine had been settled: it
+            // showed every violation as outstanding forever and counted it against
+            // the user's standing long after they had paid.
+            //
+            // Loaded as a second query keyed by the ids just fetched rather than as
+            // a correlated subquery, which is the shape the appeal lookup below
+            // already uses and keeps this to two round trips instead of one per row.
+            var violationIds = violations.Select(v => v.ViolationId).ToList();
+            var penalties = await _db.Set<PaymentTransaction>().AsNoTracking()
+                .Where(p => p.ViolationId != null && violationIds.Contains(p.ViolationId.Value))
+                .Select(p => new { ViolationId = p.ViolationId!.Value, p.Status, p.PaidAt })
+                .ToListAsync(ct);
+
+            var penaltyByViolation = penalties.ToDictionary(p => p.ViolationId);
+
+            foreach (var violation in violations)
+            {
+                if (!penaltyByViolation.TryGetValue(violation.ViolationId, out var penalty))
+                    continue;
+
+                violation.PaymentStatus = penalty.Status.ToString();
+                violation.PaidAt = penalty.PaidAt;
+            }
+
             return new OkObjectResult(new ViolationListResponse
             {
                 Violations = violations,
@@ -717,6 +742,21 @@ namespace AimPark.API.Services
 
             if (violation is null)
                 return new NotFoundObjectResult(new { message = "Violation not found." });
+
+            // Same join as the list, for the same reason — plus the amount and the
+            // deadline, because this is the screen someone opens to find out what
+            // they still owe and by when.
+            var penalty = await _db.Set<PaymentTransaction>().AsNoTracking()
+                .FirstOrDefaultAsync(p => p.ViolationId == violation.ViolationId, ct);
+
+            if (penalty is not null)
+            {
+                violation.PaymentId = penalty.Id;
+                violation.PaymentStatus = penalty.Status.ToString();
+                violation.PaidAt = penalty.PaidAt;
+                violation.AmountDue = penalty.AmountDue;
+                violation.PaymentDueAt = penalty.DueAt;
+            }
 
             var appeal = await _db.Set<ViolationAppeal>().AsNoTracking()
                 .Where(a => a.ViolationId == violation.ViolationId)

@@ -69,6 +69,20 @@ namespace AimPark.API.Services
             if (await _users.ExistsAsync(u => u.Email == email, ct))
             {
                 var existing = await _users.FindAsync(u => u.Email == email, ct);
+
+                // An archived account still holds its address, so the person it
+                // belonged to cannot register again — and "Email already
+                // registered" told them to go and log in to an account that
+                // refuses to let them. Only an admin can undo this, so say so.
+                if (existing?.IsDeleted == true)
+                {
+                    return new BadRequestObjectResult(new
+                    {
+                        message = "This account has been archived by an administrator. "
+                                + "Contact the administrator to have it restored."
+                    });
+                }
+
                 if (existing?.AccountStatus == AccountStatus.Rejected)
                     return RejectedAccountResult<SessionResponse>(existing);
                 return new BadRequestObjectResult(new { message = "Email already registered." });

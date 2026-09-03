@@ -1,0 +1,94 @@
+name: Release APK
+
+# Builds the APK testers install.
+#
+# Signing: the app signs its release build with the *debug* key on purpose (see
+# android/app/build.gradle.kts), because that key's SHA-1 is the one registered
+# in Firebase for Google Sign-In. So this workflow restores the very same
+# keystore rather than generating one — a differently signed APK would fail
+# Google Sign-In, and Android would refuse to install it over an existing copy.
+#
+# Needs, in the repository settings:
+#   Secret ANDROID_DEBUG_KEYSTORE_BASE64 — your ~/.android/debug.keystore,
+#                                          base64-encoded (see DEPLOYMENT.md)
+#   Variable API_BASE_URL                — e.g. https://aimpark-api.onrender.com
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+concurrency:
+  group: release-apk-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    working-directory: aimpark_mobile
+
+jobs:
+  build:
+    name: Build signed APK
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # Without this the build quietly falls back to the LAN address in
+      # api_constants, and the APK looks completely broken to everyone who is
+      # not on your Wi-Fi. Worth failing loudly for.
+      - name: Require API_BASE_URL
+        if: vars.API_BASE_URL == ''
+        run: |
+          echo "::error::Repository variable API_BASE_URL is not set. Settings → Secrets and variables → Actions → Variables."
+          exit 1
+
+      - name: Restore the signing key
+        env:
+          KEYSTORE: ${{ secrets.ANDROID_DEBUG_KEYSTORE_BASE64 }}
+        run: |
+          if [ -z "$KEYSTORE" ]; then
+            echo "::error::Secret ANDROID_DEBUG_KEYSTORE_BASE64 is not set. See DEPLOYMENT.md for how to produce it."
+            exit 1
+          fi
+          mkdir -p "$HOME/.android"
+          echo "$KEYSTORE" | base64 -d > "$HOME/.android/debug.keystore"
+          # A truncated or mis-pasted secret decodes to something, so prove the
+          # file is a real keystore before spending ten minutes building.
+          keytool -list -keystore "$HOME/.android/debug.keystore" \
+            -storepass android -keypass android > /dev/null
+          echo "Keystore restored. SHA-1 below must match the one in Firebase:"
+          keytool -list -v -keystore "$HOME/.android/debug.keystore" \
+            -alias androiddebugkey -storepass android -keypass android | grep SHA1
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.38.5'
+          channel: stable
+          cache: true
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Build release APK
+        run: flutter build apk --release --dart-define=API_BASE_URL=${{ vars.API_BASE_URL }}
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: aimpark-apk
+          path: aimpark_mobile/build/app/outputs/flutter-apk/app-release.apk
+          retention-days: 30
+
+      # On a tag, also publish it so testers have a plain link to download
+      # instead of needing a GitHub account to reach the artifact.
+      - name: Attach to release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: aimpark_mobile/build/app/outputs/flutter-apk/app-release.apk
+          generate_release_notes: true

@@ -63,6 +63,19 @@ namespace AimPark.API.Controllers
             => _adminUserService.ArchiveAsync(userId, GetAdminUserId(), dto, ct);
 
         /// <summary>
+        /// Permanently deletes a user's uploaded identity documents — the image
+        /// files and the raw OCR readings taken from them. The account, and every
+        /// violation, payment and parking record on it, is left alone.
+        /// Requires the acting admin's password, and cannot be undone.
+        /// </summary>
+        [HttpDelete("{userId:guid}/documents")]
+        public Task<ActionResult<object>> DeleteDocuments(
+            Guid userId,
+            [FromBody] DeleteDocumentsDto dto,
+            CancellationToken ct)
+            => _adminUserService.DeleteDocumentsAsync(userId, GetAdminUserId(), dto, ct);
+
+        /// <summary>
         /// Restores a soft-deleted user account, clearing IsDeleted and DeletedAt.
         /// </summary>
         [HttpPost("{userId:guid}/restore")]
@@ -78,11 +91,23 @@ namespace AimPark.API.Controllers
             => _adminUserService.AssignRfidAsync(userId, GetAdminUserId(), dto, ct);
 
         /// <summary>
-        /// Revokes a user's RFID tag, clearing it and setting RfidStatus back to Unassigned.
+        /// Revokes a user's RFID tag, clearing it and setting RfidStatus back to
+        /// Unassigned. The reason decides whether the physical card goes back
+        /// into the free pool or is blocked from ever being reissued.
         /// </summary>
         [HttpPost("{userId:guid}/revoke-rfid")]
-        public Task<ActionResult<object>> RevokeRfid(Guid userId, CancellationToken ct)
-            => _adminUserService.RevokeRfidAsync(userId, GetAdminUserId(), ct);
+        public Task<ActionResult<object>> RevokeRfid(Guid userId, [FromBody] RevokeRfidDto dto, CancellationToken ct)
+            => _adminUserService.RevokeRfidAsync(userId, GetAdminUserId(), dto, ct);
+
+        /// <summary>
+        /// Revokes the RFID tag from several users in one call, all for the same
+        /// reason — built for a graduation batch rather than one card at a time.
+        /// Users with no tag assigned are skipped and reported, not treated as
+        /// a failure of the whole request.
+        /// </summary>
+        [HttpPost("bulk-revoke-rfid")]
+        public Task<ActionResult<BulkRevokeRfidResponse>> BulkRevokeRfid([FromBody] BulkRevokeRfidDto dto, CancellationToken ct)
+            => _adminUserService.BulkRevokeRfidAsync(GetAdminUserId(), dto, ct);
 
         private Guid GetAdminUserId()
             => Guid.Parse(User.FindFirst(ClaimTypes.NameIdentifier)!.Value);

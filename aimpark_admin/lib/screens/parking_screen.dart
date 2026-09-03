@@ -520,7 +520,6 @@ class _Legend extends StatelessWidget {
   static const _entries = [
     ('Available', 'Available'),
     ('Occupied', 'Occupied'),
-    ('Reserved', 'Reserved'),
     ('OutOfService', 'Out of service'),
   ];
 

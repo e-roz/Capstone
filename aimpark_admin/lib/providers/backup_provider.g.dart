@@ -23,7 +23,7 @@ final backupListProvider = AutoDisposeFutureProvider<List<BackupFile>>.internal(
 @Deprecated('Will be removed in 3.0. Use Ref instead')
 // ignore: unused_element
 typedef BackupListRef = AutoDisposeFutureProviderRef<List<BackupFile>>;
-String _$backupActionsHash() => r'cf7c8bc43fd397af52186cd515451fe58db38960';
+String _$backupActionsHash() => r'122d0288d0c3857bdf8a20d416f798e0fee3eb1b';
 
 /// See also [BackupActions].
 @ProviderFor(BackupActions)

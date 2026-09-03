@@ -39,6 +39,18 @@ class UserDashboardScreen extends ConsumerWidget {
     return status != 'dismissed' && status != 'overturned';
   }
 
+  /// Whether a violation should still be holding the standing meter down.
+  ///
+  /// Narrower than [_countsAgainstUser] by one case: a fine that has been paid
+  /// is done with, and leaving it counted meant settling up changed nothing the
+  /// user could see — the meter sat on Silver with no way back to Gold.
+  ///
+  /// The streak deliberately keeps using the wider test. Standing is a running
+  /// account that paying squares; the streak is a record of which days went
+  /// wrong, and paying afterwards does not make the day go right.
+  static bool _countsAgainstStanding(ViolationSummary v) =>
+      _countsAgainstUser(v) && !v.isSettled;
+
   /// Whether a violation is still open — issued, or under appeal — and so is
   /// something the user has to do something about.
   ///
@@ -86,7 +98,7 @@ class UserDashboardScreen extends ConsumerWidget {
     ViolationListResult? violations,
   ) {
     final count = (violations?.violations ?? const <ViolationSummary>[])
-        .where(_countsAgainstUser)
+        .where(_countsAgainstStanding)
         .length;
     if (count == 0) return (level: 1.0, tier: 'Gold');
     if (count == 1) return (level: 0.65, tier: 'Silver');
@@ -154,7 +166,7 @@ class UserDashboardScreen extends ConsumerWidget {
         .where(_isOpen)
         .length;
     final unpaid = (paymentsAsync.valueOrNull?.payments ?? const <Payment>[])
-        .where((p) => p.status.toLowerCase() == 'pending')
+        .where((p) => !p.isPaid && p.status.toLowerCase() != 'waived')
         .toList();
     final balance = unpaid.fold<double>(0, (sum, p) => sum + p.amountDue);
     final overdueCount = unpaid.where((p) => p.isOverdue).length;

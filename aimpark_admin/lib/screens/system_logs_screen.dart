@@ -121,6 +121,7 @@ Map<String, String> _parseFields(String? raw) {
 String _actionLabel(String action) => switch (action) {
       'Backup' => 'Backup',
       'RestoreBackup' => 'Restore backup',
+      'DeleteDocuments' => 'Delete documents',
       _ => action,
     };
 
@@ -161,6 +162,16 @@ String? _changeSummary(AuditLogEntry entry) {
     case 'Archive':
       return 'Account archived';
 
+    case 'DeleteDocuments':
+      // Before says how many images there were; after is always none. The count
+      // is the whole content of the row.
+      final count = before['Documents'];
+      return switch (count) {
+        null => 'ID documents deleted',
+        '1' => '1 ID document image deleted',
+        _ => '$count ID document images deleted',
+      };
+
     case 'Restore':
       // The restore row carries the status the account came back as, which is
       // the only part of it anyone actually wants.
@@ -195,6 +206,7 @@ const _actions = [
   AppFilterOption('Suspend', 'Suspend'),
   AppFilterOption('Unsuspend', 'Unsuspend'),
   AppFilterOption('Archive', 'Archive'),
+  AppFilterOption('DeleteDocuments', 'Delete documents'),
   AppFilterOption('Restore', 'Restore'),
   AppFilterOption('Approve', 'Approve'),
   AppFilterOption('Reject', 'Reject'),

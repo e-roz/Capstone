@@ -102,7 +102,11 @@ class StatusDot extends StatelessWidget {
 abstract class StatusIntents {
   /// Violation and appeal outcomes. `Dismissed` is a *good* outcome here.
   static StatusIntent violation(String status) => switch (status.toLowerCase()) {
-        'resolved' || 'dismissed' || 'overturned' => StatusIntent.success,
+        // `Paid` arrives here because a settled violation shows its payment
+        // state in place of its appeal state. Without it the badge fell through
+        // to the default and a fine the user had just paid stayed red.
+        'resolved' || 'dismissed' || 'overturned' || 'paid' =>
+          StatusIntent.success,
         'appealed' => StatusIntent.warning,
         'upheld' || 'denied' => StatusIntent.danger,
         'pending' => StatusIntent.info,
@@ -113,6 +117,9 @@ abstract class StatusIntents {
   static StatusIntent payment(String status) => switch (status.toLowerCase()) {
         'paid' => StatusIntent.success,
         'waived' => StatusIntent.info,
+        // Neither settled nor outstanding: the payer is at the provider and the
+        // answer is on its way.
+        'processing' => StatusIntent.info,
         'overdue' || 'failed' => StatusIntent.danger,
         _ => StatusIntent.warning,
       };

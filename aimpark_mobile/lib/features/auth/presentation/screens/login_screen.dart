@@ -7,6 +7,7 @@ import '../../../../core/theme/theme.dart';
 import '../../../../core/utils/app_flushbar.dart';
 import '../../../../core/utils/jwt_utils.dart';
 import '../../../../core/widgets/widgets.dart';
+import '../../../../router/registration_back_stack.dart';
 import '../../../notifications/presentation/providers/push_registration_provider.dart';
 import '../providers/auth_provider.dart';
 import '../widgets/google_auth_button.dart';
@@ -16,10 +17,11 @@ class LoginScreen extends ConsumerStatefulWidget {
   const LoginScreen({super.key, this.notice});
 
   /// A line to show above the form, from whatever sent the user here — a
-  /// finished password reset, so far. Inline and left up rather than flashed:
-  /// it is the only thing on the screen that says which password now works,
-  /// and a bar would be gone before the email field had been filled in.
-  final String? notice;
+  /// finished password reset, a session that ended while the app was open.
+  /// Inline and left up rather than flashed: it is the only thing on the screen
+  /// that says which password now works, or why the app is asking again, and a
+  /// bar would be gone before the email field had been filled in.
+  final ScreenNotice? notice;
 
   @override
   ConsumerState<LoginScreen> createState() => _LoginScreenState();
@@ -150,8 +152,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
           const SizedBox(height: AppSpacing.xl),
           if (widget.notice != null) ...[
             AppNotice(
-              message: widget.notice!,
-              intent: StatusIntent.success,
+              message: widget.notice!.message,
+              intent: widget.notice!.intent,
             ),
             const SizedBox(height: AppSpacing.md),
           ],
@@ -206,7 +208,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
           Center(
             child: TextButton(
               onPressed:
-                  isAnyLoading ? null : () => context.go('/register/email'),
+                  isAnyLoading
+                      ? null
+                      : () => context.startRegistration('/register/email'),
               child: const Text("Don't have an account? Register"),
             ),
           ),

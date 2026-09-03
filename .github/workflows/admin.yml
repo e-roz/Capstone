@@ -1,0 +1,73 @@
+name: Admin panel
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'aimpark_admin/**'
+      - '.github/workflows/admin.yml'
+  pull_request:
+    paths:
+      - 'aimpark_admin/**'
+      - '.github/workflows/admin.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: admin-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    working-directory: aimpark_admin
+
+jobs:
+  check:
+    name: Analyze and build
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # Pinned, not "stable". A Flutter release that changes a lint turns every
+      # unrelated pull request red on a morning nobody touched the analyzer.
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.38.5'
+          channel: stable
+          cache: true
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      # The generated Riverpod files are committed. If someone edits a provider
+      # and forgets to re-run build_runner, the checked-in .g.dart no longer
+      # matches — and the first thing anyone notices is a runtime error.
+      #
+      # --ignore-cr-at-eol because the repo has no .gitattributes and these
+      # files were committed from Windows with CRLF. build_runner writes LF on
+      # a Linux runner, so without it every file reads as changed and the check
+      # fails on a repository nobody has touched.
+      - name: Check generated files are current
+        run: |
+          dart run build_runner build --delete-conflicting-outputs
+          if ! git diff --ignore-cr-at-eol --quiet -- '*.g.dart'; then
+            echo "::error::Generated files are stale. Run: dart run build_runner build --delete-conflicting-outputs"
+            git diff --ignore-cr-at-eol --stat -- '*.g.dart'
+            exit 1
+          fi
+
+      - name: Analyze
+        run: flutter analyze
+
+      # There is no `flutter test` step on purpose: the panel is web-only and
+      # imports package:web for its CSV download, which will not compile under
+      # the VM test runner. See the note in the CI section of DEPLOYMENT.md.
+      - name: Build web
+        run: flutter build web --release --dart-define=API_BASE_URL=${{ vars.API_BASE_URL || 'http://localhost:5041' }}
+
+      - name: Upload build
+        uses: actions/upload-artifact@v4
+        with:
+          name: admin-web
+          path: aimpark_admin/build/web
+          retention-days: 7

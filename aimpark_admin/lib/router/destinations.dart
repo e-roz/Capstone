@@ -193,6 +193,14 @@ const navGroups = <NavGroup>[
       description: 'Verify credentials and control RFID access permissions.',
     ),
     NavItem(
+      icon: Icons.credit_card_outlined,
+      selectedIcon: Icons.credit_card,
+      label: 'RFID Cards',
+      route: '/rfid-cards',
+      description:
+          'Physical cards revoked from an account and not yet reissued.',
+    ),
+    NavItem(
       icon: Icons.notifications_outlined,
       selectedIcon: Icons.notifications,
       label: 'Notifications',

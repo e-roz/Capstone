@@ -521,6 +521,11 @@ namespace AimPark.API.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
+                    b.Property<decimal>("MinimumFee")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("decimal(10,2)")
+                        .HasDefaultValue(20.00m);
+
                     b.Property<decimal>("RatePerHour")
                         .HasColumnType("decimal(10,2)");
 
@@ -544,6 +549,7 @@ namespace AimPark.API.Migrations
                         new
                         {
                             Id = new Guid("00000000-0000-0000-0000-0000000000f1"),
+                            MinimumFee = 20.00m,
                             RatePerHour = 15.00m,
                             UpdatedAt = new DateTime(2026, 7, 23, 0, 0, 0, 0, DateTimeKind.Utc)
                         });
@@ -798,6 +804,12 @@ namespace AimPark.API.Migrations
                     b.Property<decimal>("AmountDue")
                         .HasColumnType("decimal(10,2)");
 
+                    b.Property<DateTime?>("CheckoutStartedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("ConfirmedByUserId")
+                        .HasColumnType("uuid");
+
                     b.Property<DateTime>("CreatedAt")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("timestamp with time zone")
@@ -809,14 +821,29 @@ namespace AimPark.API.Migrations
                     b.Property<int>("DurationMinutes")
                         .HasColumnType("integer");
 
+                    b.Property<string>("Method")
+                        .HasColumnType("text");
+
                     b.Property<DateTime?>("PaidAt")
                         .HasColumnType("timestamp with time zone");
 
                     b.Property<Guid?>("ParkingLogId")
                         .HasColumnType("uuid");
 
+                    b.Property<string>("Provider")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<string>("ProviderPaymentId")
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
+
                     b.Property<decimal>("RatePerHourApplied")
                         .HasColumnType("decimal(10,2)");
+
+                    b.Property<string>("ReferenceNumber")
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
 
                     b.Property<string>("Source")
                         .IsRequired()
@@ -837,6 +864,8 @@ namespace AimPark.API.Migrations
                     b.HasIndex("ParkingLogId")
                         .IsUnique()
                         .HasFilter("\"ParkingLogId\" IS NOT NULL");
+
+                    b.HasIndex("ProviderPaymentId");
 
                     b.HasIndex("Status");
 
@@ -949,6 +978,41 @@ namespace AimPark.API.Migrations
                     b.HasIndex("ExpiresAt");
 
                     b.ToTable("RegistrationSessions");
+                });
+
+            modelBuilder.Entity("AimPark.API.Entities.RfidCard", b =>
+                {
+                    b.Property<string>("RfidTagId")
+                        .HasColumnType("text");
+
+                    b.Property<Guid>("LastUserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("LastUserName")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("Note")
+                        .HasColumnType("text");
+
+                    b.Property<string>("Reason")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("State")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("timestamp with time zone")
+                        .HasDefaultValueSql("NOW()");
+
+                    b.HasKey("RfidTagId");
+
+                    b.HasIndex("State");
+
+                    b.ToTable("RfidCards");
                 });
 
             modelBuilder.Entity("AimPark.API.Entities.SystemErrorLog", b =>
