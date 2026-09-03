@@ -10,8 +10,23 @@ import '../router/destinations.dart';
 import '../theme/theme.dart';
 import '../widgets/ui/ui.dart';
 
+/// What an administrator may *send*. The rest of NotificationType is raised by
+/// the system itself and cannot be broadcast by hand.
 const _types = ['Announcement', 'PolicyUpdate', 'ParkingAvailability', 'System'];
 const _roles = ['Admin', 'Security', 'User'];
+
+/// Every type that can land in an inbox, in the order the filter offers them:
+/// the four an admin can send, then the four the system raises on its own.
+const _inboxTypes = [
+  'Announcement',
+  'PolicyUpdate',
+  'ParkingAvailability',
+  'System',
+  'Violation',
+  'Payment',
+  'Incident',
+  'Account',
+];
 
 /// Human wording for the API's enum names — `ParkingAvailability` is a value,
 /// not a phrase, and it should not be what an administrator reads.
@@ -20,6 +35,10 @@ const _typeLabels = <String, String>{
   'PolicyUpdate': 'Policy update',
   'ParkingAvailability': 'Parking availability',
   'System': 'System',
+  'Violation': 'Violation',
+  'Payment': 'Payment',
+  'Incident': 'Incident',
+  'Account': 'Account',
 };
 
 /// Two directions, two tabs.
@@ -102,38 +121,85 @@ class _NotificationsPage extends ConsumerWidget {
 }
 
 /// Everything addressed to this account, newest first.
-class _InboxTab extends ConsumerWidget {
+///
+/// The inbox mixes four kinds of post — broadcasts, violation decisions,
+/// payment receipts and incident outcomes — and with a busy account that meant
+/// scrolling past everything else to find the one you wanted. Hence the filter.
+///
+/// It narrows the list already fetched rather than asking the API for a subset:
+/// the inbox is a single 50-row request with no paging, so there is nothing
+/// offscreen for a server-side filter to reach that this one misses.
+class _InboxTab extends ConsumerStatefulWidget {
   const _InboxTab();
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    return AsyncView(
-      value: ref.watch(inboxProvider),
-      onRetry: () => ref.invalidate(inboxProvider),
-      isEmpty: (page) => page.notifications.isEmpty,
-      empty: const AppEmptyState(
-        icon: Icons.inbox_outlined,
-        title: 'Nothing for you yet',
-        message:
-            'Announcements sent to your role, and anything the system raises '
-            'about your account, will appear here.',
-      ),
-      data: (page) => ListView.separated(
-        itemCount: page.notifications.length,
-        separatorBuilder: (_, _) => const SizedBox(height: AppSpacing.gutter),
-        itemBuilder: (context, i) => _NotificationCard(
-          item: page.notifications[i],
-          // Only in the inbox. In the Sent log "read" is a fact about somebody
-          // else, and there is nothing for the sender to mark.
-          onMarkRead: page.notifications[i].isRead
-              ? null
-              : () => ref
-                  .read(inboxActionsProvider.notifier)
-                  .markRead(page.notifications[i].notificationId),
+  ConsumerState<_InboxTab> createState() => _InboxTabState();
+}
+
+class _InboxTabState extends ConsumerState<_InboxTab> {
+  String? _type;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        AppToolbar(
+          filters: [
+            AppFilterDropdown<String>(
+              label: 'Category',
+              value: _type,
+              allLabel: 'All',
+              options: [
+                for (final type in _inboxTypes)
+                  AppFilterOption(type, _typeLabels[type] ?? type),
+              ],
+              onChanged: (value) => setState(() => _type = value),
+            ),
+          ],
         ),
-      ),
+        const SizedBox(height: AppSpacing.gutter),
+        Expanded(
+          child: AsyncView(
+            value: ref.watch(inboxProvider),
+            onRetry: () => ref.invalidate(inboxProvider),
+            isEmpty: (page) => _visible(page.notifications).isEmpty,
+            empty: AppEmptyState(
+              icon: Icons.inbox_outlined,
+              title: _type == null
+                  ? 'Nothing for you yet'
+                  : 'Nothing in this category',
+              message: _type == null
+                  ? 'Announcements sent to your role, and anything the system '
+                      'raises about your account, will appear here.'
+                  : 'Clear the filter to see everything in your inbox.',
+            ),
+            data: (page) {
+              final items = _visible(page.notifications);
+              return ListView.separated(
+                itemCount: items.length,
+                separatorBuilder: (_, _) =>
+                    const SizedBox(height: AppSpacing.gutter),
+                itemBuilder: (context, i) => _NotificationCard(
+                  item: items[i],
+                  // Only in the inbox. In the Sent log "read" is a fact about
+                  // somebody else, and there is nothing for the sender to mark.
+                  onMarkRead: items[i].isRead
+                      ? null
+                      : () => ref
+                          .read(inboxActionsProvider.notifier)
+                          .markRead(items[i].notificationId),
+                ),
+              );
+            },
+          ),
+        ),
+      ],
     );
   }
+
+  List<NotificationItem> _visible(List<NotificationItem> all) =>
+      _type == null ? all : all.where((n) => n.type == _type).toList();
 }
 
 /// The broadcast log - what this panel has sent out.
