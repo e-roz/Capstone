@@ -21,6 +21,11 @@ const _statuses = [
 final _money = NumberFormat.currency(symbol: '₱', decimalDigits: 2);
 final _dateTime = DateFormat('MMM d, yyyy HH:mm');
 
+/// Entry and exit only. Duration is billed from the real elapsed time, so a
+/// receipt reading 9:34 to 9:36 and then "2 min" looks wrong to anyone who
+/// assumes those are whole minutes. The seconds are what make the sum add up.
+final _dateTimeExact = DateFormat('MMM d, yyyy HH:mm:ss');
+
 class PaymentsScreen extends ConsumerWidget {
   const PaymentsScreen({super.key});
 
@@ -155,6 +160,9 @@ class PaymentsScreen extends ConsumerWidget {
     String time(DateTime? at) =>
         at == null ? '—' : _dateTime.format(at.toLocal());
 
+    String exact(DateTime? at) =>
+        at == null ? '—' : _dateTimeExact.format(at.toLocal());
+
     return showDialog<void>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -180,8 +188,8 @@ class PaymentsScreen extends ConsumerWidget {
                 const Divider(height: AppSpacing.x6),
                 _ReceiptRow(label: 'Source', value: p.source),
                 _ReceiptRow(label: 'Slot', value: p.slotCode ?? '—'),
-                _ReceiptRow(label: 'Entry', value: time(p.entryTime)),
-                _ReceiptRow(label: 'Exit', value: time(p.exitTime)),
+                _ReceiptRow(label: 'Entry', value: exact(p.entryTime)),
+                _ReceiptRow(label: 'Exit', value: exact(p.exitTime)),
                 _ReceiptRow(
                     label: 'Duration', value: '${p.durationMinutes} min'),
                 _ReceiptRow(

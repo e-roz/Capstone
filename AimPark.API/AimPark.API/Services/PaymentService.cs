@@ -1,4 +1,4 @@
-using AimPark.API.Data;
+﻿using AimPark.API.Data;
 using AimPark.API.DTOs;
 using AimPark.API.Entities;
 using AimPark.API.Enums;
@@ -68,7 +68,12 @@ namespace AimPark.API.Services
             }
 
             var ratePerHour = rate?.RatePerHour ?? 0m;
-            var durationMinutes = Math.Max(0, (int)Math.Round((log.ExitTime!.Value - log.EntryTime).TotalMinutes));
+            // Rounded up, not to nearest: a started minute is a charged minute,
+            // which is how paid parking is billed everywhere. Rounding to
+            // nearest also billed people for less time than they parked - a
+            // 9:34:50 entry and a 9:36:10 exit is 1m20s, which came out as one
+            // minute on a receipt showing two different clock minutes.
+            var durationMinutes = Math.Max(0, (int)Math.Ceiling((log.ExitTime!.Value - log.EntryTime).TotalMinutes));
             var metered = Math.Round(ratePerHour / 60m * durationMinutes, 2);
 
             // A floor, not a fee on top. Twenty minutes at ₱15 an hour is five

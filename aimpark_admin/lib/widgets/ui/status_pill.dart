@@ -157,7 +157,6 @@ class StatusIntents {
   static StatusIntent slot(String status) => switch (status) {
         'Available' => StatusIntent.success,
         'Occupied' => StatusIntent.accent,
-        'Reserved' => StatusIntent.info,
         'OutOfService' => StatusIntent.danger,
         _ => StatusIntent.neutral,
       };
