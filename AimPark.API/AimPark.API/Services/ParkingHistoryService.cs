@@ -553,22 +553,21 @@ namespace AimPark.API.Services
 
             await AnnounceAvailabilityAsync(afterEntry: false, ct);
 
-            // A visitor has no account to bill and no app to be told in, so
-            // nothing is raised against them - the fee is quoted for the guard
-            // to collect at the barrier, which is the only place it can be
-            // collected from somebody who is about to drive away.
+            // Visitor parking is free by design — a guest being escorted in for
+            // a specific purpose, not a campus regular. No quote, no charge.
             if (log.UserId is null)
             {
-                var quote = await _paymentService.QuoteForCompletedLogAsync(log, ct);
+                var durationMinutes = Math.Max(0,
+                    (int)Math.Ceiling((log.ExitTime!.Value - log.EntryTime).TotalMinutes));
 
                 return new OkObjectResult(new
                 {
                     result = AllocationResult.ExitLogged,
-                    message = "Exit logged. Collect the fee at the barrier.",
+                    message = "Exit logged. No charge for visitors.",
                     paymentId = (Guid?)null,
-                    amountDue = quote.AmountDue,
-                    durationMinutes = quote.DurationMinutes,
-                    collectInCash = true
+                    amountDue = 0m,
+                    durationMinutes,
+                    collectInCash = false
                 });
             }
 

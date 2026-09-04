@@ -16,6 +16,11 @@ namespace AimPark.API.Entities
     /// physical tag id a registered user carries, so the reader does not know or
     /// care which kind it just scanned. Only one pass may hold a given tag at a
     /// time — see the filtered unique index in <c>AppDbContext</c>.
+    ///
+    /// Parking on this pass is free, by design — a guest here for a specific
+    /// purpose, not a campus regular. <c>ParkingHistoryService.LogExitAsync</c>
+    /// skips the fee quote entirely for a log with no <c>UserId</c>; that is
+    /// deliberate and not a gap to close.
     /// </remarks>
     public class VisitorPass
     {
