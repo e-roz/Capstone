@@ -90,9 +90,9 @@ Future<PaymentExportResult> fetchPaymentExport(
   final response = await dio.get(
     ApiEndpoints.paymentsExport,
     queryParameters: {
-      if (status != null) 'status': status,
-      if (from != null) 'from': from.toIso8601String(),
-      if (to != null) 'to': to.toIso8601String(),
+      'status': ?status,
+      'from': ?from?.toIso8601String(),
+      'to': ?to?.toIso8601String(),
     },
   );
   return PaymentExportResult.fromJson(response.data as Map<String, dynamic>);
