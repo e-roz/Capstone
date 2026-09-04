@@ -6,6 +6,7 @@ import '../core/utils/responsive.dart';
 import '../models/security.dart';
 import '../providers/security_provider.dart';
 import '../theme/theme.dart';
+import '../widgets/rfid_scan_field.dart';
 import '../widgets/ui/ui.dart';
 
 const _passStatuses = ['Active', 'Returned', 'Expired'];
@@ -108,7 +109,6 @@ class VisitorPassesScreen extends ConsumerWidget {
     final nameCtrl = TextEditingController();
     final plateCtrl = TextEditingController();
     final purposeCtrl = TextEditingController();
-    final contactCtrl = TextEditingController();
     var vehicleType = 'Car';
     final formKey = GlobalKey<FormState>();
 
@@ -126,17 +126,7 @@ class VisitorPassesScreen extends ConsumerWidget {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     const AppRequiredNote(),
-                    TextFormField(
-                      controller: cardCtrl,
-                      autofocus: true,
-                      decoration: const InputDecoration(
-                        label: AppFieldLabel('Card number', isRequired: true),
-                        helperText: 'Scan the spare card, or type its number.',
-                      ),
-                      validator: (v) => (v == null || v.trim().isEmpty)
-                          ? 'The card number is required'
-                          : null,
-                    ),
+                    RfidScanField(controller: cardCtrl),
                     const SizedBox(height: AppSpacing.x3),
                     TextFormField(
                       controller: nameCtrl,
@@ -184,13 +174,6 @@ class VisitorPassesScreen extends ConsumerWidget {
                         helperText: 'Who or what they are here for.',
                       ),
                     ),
-                    const SizedBox(height: AppSpacing.x3),
-                    TextFormField(
-                      controller: contactCtrl,
-                      decoration: const InputDecoration(
-                        label: AppFieldLabel('Contact number'),
-                      ),
-                    ),
                   ],
                 ),
               ),
@@ -220,7 +203,6 @@ class VisitorPassesScreen extends ConsumerWidget {
           plateNumber: plateCtrl.text.trim(),
           vehicleType: vehicleType,
           purpose: purposeCtrl.text.trim(),
-          contactNumber: contactCtrl.text.trim(),
         );
 
     if (!context.mounted) return;
@@ -306,8 +288,6 @@ class _PassCard extends ConsumerWidget {
                 ),
               if (pass.issuedByName case final by?)
                 _Meta(label: 'Issued by', value: by),
-              if (pass.contactNumber case final contact?)
-                _Meta(label: 'Contact', value: contact),
             ],
           ),
           if (pass.returnedAt == null) ...[

@@ -23,15 +23,17 @@ class RfidScanField extends ConsumerStatefulWidget {
   const RfidScanField({
     super.key,
     required this.controller,
-    required this.userId,
+    this.userId,
   });
 
   /// Filled in when a card is tapped; also what the dialog reads on save.
   final TextEditingController controller;
 
   /// The user being assigned to, so a card already on *their* account reads as
-  /// "already theirs" rather than as a clash.
-  final String userId;
+  /// "already theirs" rather than as a clash. Null where there is no account
+  /// to compare against — issuing a visitor pass, say — which just drops that
+  /// one special case from the status line below.
+  final String? userId;
 
   @override
   ConsumerState<RfidScanField> createState() => _RfidScanFieldState();
@@ -145,7 +147,7 @@ class _StatusStrip extends StatelessWidget {
   });
 
   final RfidScan? scan;
-  final String userId;
+  final String? userId;
   final bool reachable;
   final bool waiting;
 
@@ -200,7 +202,7 @@ class _StatusStrip extends StatelessWidget {
       );
     }
 
-    if (s.isAssigned && s.assignedToUserId == userId) {
+    if (userId != null && s.isAssigned && s.assignedToUserId == userId) {
       return (
         StatusIntent.info,
         Icons.check_circle_outline,

@@ -108,7 +108,6 @@ class VisitorPassActions extends _$VisitorPassActions {
     required String plateNumber,
     required String vehicleType,
     String? purpose,
-    String? contactNumber,
     int? validForHours,
   }) async {
     return _run(() async {
@@ -119,8 +118,6 @@ class VisitorPassActions extends _$VisitorPassActions {
         'plateNumber': plateNumber,
         'vehicleType': vehicleType,
         if (purpose != null && purpose.isNotEmpty) 'purpose': purpose,
-        if (contactNumber != null && contactNumber.isNotEmpty)
-          'contactNumber': contactNumber,
         'validForHours': ?validForHours,
       });
       final data = res.data as Map<String, dynamic>;
