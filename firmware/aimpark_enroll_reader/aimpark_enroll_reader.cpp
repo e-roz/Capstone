@@ -10,6 +10,7 @@
 
 #include <Arduino.h>
 #include <WiFi.h>
+#include <WiFiClientSecure.h>
 #include <HTTPClient.h>
 #include <ArduinoJson.h>
 #include <SPI.h>
@@ -89,11 +90,22 @@ void connectWifi() {
 int postScan(const String& uid, JsonDocument& doc) {
   if (WiFi.status() != WL_CONNECTED) connectWifi();
 
+  // API_BASE is a public https:// host now, not a machine on the LAN, so this
+  // needs a TLS client rather than a plain one. setInsecure() skips
+  // certificate validation — fine for a desk device hitting our own API, not
+  // something to carry into a product that handles anything sensitive over
+  // this connection.
+  WiFiClientSecure client;
+  client.setInsecure();
+
   HTTPClient http;
-  http.begin(String(API_BASE) + "/api/admin/rfid/scan");
+  http.begin(client, String(API_BASE) + "/api/admin/rfid/scan");
   http.addHeader("Content-Type", "application/json");
   http.addHeader("X-Api-Key", API_KEY);
-  http.setTimeout(5000);
+  // The free-tier host sleeps when idle and can take 30-60s to wake back up
+  // on the first request after a while — long enough that the old 5s timeout
+  // would misreport a slow-waking server as "could not reach the API".
+  http.setTimeout(60000);
 
   String body = String("{\"rfidTagId\":\"") + uid + "\"}";
   int status = http.POST(body);

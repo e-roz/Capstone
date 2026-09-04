@@ -13,10 +13,11 @@
 #define WIFI_PASSWORD "your-password"
 
 // ── API ──────────────────────────────────────────────────────────────────────
-// The LAN address of the machine running the API, and the port the `http`
-// launch profile binds. Run `ipconfig` on that machine and take the IPv4
-// address; `localhost` here would mean the ESP32 itself.
-#define API_BASE "http://192.168.1.50:5041"
+// The deployed API's URL. Point this at a local machine's LAN address only
+// for dev against a locally-run API (e.g. "http://192.168.1.50:5041") — the
+// board just needs whatever network has internet, not one matching this
+// machine's.
+#define API_BASE "https://your-api.onrender.com"
 
 // From POST /api/admin/gate-devices with { "name": "Enrollment Desk", "gate": 0 }.
 // Returned once at creation and never again — only its hash is stored.
