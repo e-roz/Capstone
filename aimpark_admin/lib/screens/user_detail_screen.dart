@@ -44,6 +44,7 @@ class UserDetailScreen extends ConsumerWidget {
       body: AsyncView(
         value: async,
         onRetry: () => ref.invalidate(registrationDetailProvider(userId)),
+        loading: const SkeletonDetail(sections: 3, fieldsPerSection: 3),
         data: (detail) => _UserDetailView(userId: userId, detail: detail),
       ),
     );

@@ -266,6 +266,10 @@ class _ViolationsTab extends ConsumerWidget {
           child: AsyncView(
             value: ref.watch(violationListProvider),
             onRetry: () => ref.invalidate(violationListProvider),
+            loading: const SkeletonTable(
+              columns: 6,
+              columnWidths: [160, 100, 110, 140, 110, 90],
+            ),
             isEmpty: (page) => page.violations.isEmpty,
             empty: AppEmptyState(
               icon: Icons.gavel_outlined,

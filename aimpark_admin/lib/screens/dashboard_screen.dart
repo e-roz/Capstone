@@ -52,9 +52,20 @@ class DashboardScreen extends ConsumerWidget {
           AsyncView(
             value: ref.watch(reportsSummaryProvider),
             onRetry: () => ref.invalidate(reportsSummaryProvider),
-            loading: const SizedBox(
-              height: 120,
-              child: AppLoadingState(),
+            loading: const Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                SkeletonMetricRow(),
+                SizedBox(height: AppSpacing.gutter),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Expanded(child: SkeletonBlock(height: 200)),
+                    SizedBox(width: AppSpacing.gutter),
+                    Expanded(child: SkeletonBlock(height: 200)),
+                  ],
+                ),
+              ],
             ),
             data: (summary) => Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -74,6 +85,7 @@ class DashboardScreen extends ConsumerWidget {
             child: AsyncView(
               value: ref.watch(revenueTrendProvider()),
               onRetry: () => ref.invalidate(revenueTrendProvider),
+              loading: const SkeletonBlock(),
               data: (points) => AppAreaChart(
                 seriesIndex: 5,
                 valueLabel: _money.format,
@@ -97,6 +109,7 @@ class DashboardScreen extends ConsumerWidget {
               child: AsyncView(
                 value: ref.watch(occupancyTrendProvider()),
                 onRetry: () => ref.invalidate(occupancyTrendProvider),
+                loading: const SkeletonBlock(),
                 data: (points) => AppBarChart(
                   data: [
                     for (final p in points)
@@ -116,6 +129,7 @@ class DashboardScreen extends ConsumerWidget {
               child: AsyncView(
                 value: ref.watch(peakHoursProvider()),
                 onRetry: () => ref.invalidate(peakHoursProvider),
+                loading: const SkeletonBlock(),
                 data: (points) => AppBarChart(
                   seriesIndex: 2,
                   data: [

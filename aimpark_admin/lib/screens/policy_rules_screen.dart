@@ -53,6 +53,7 @@ class PolicyRulesScreen extends ConsumerWidget {
       body: AsyncView(
         value: ref.watch(policyRulesProvider),
         onRetry: () => ref.invalidate(policyRulesProvider),
+        loading: const SkeletonList(),
         isEmpty: (rules) => rules.isEmpty,
         empty: AppEmptyState(
           icon: Icons.rule_outlined,

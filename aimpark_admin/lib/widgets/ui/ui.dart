@@ -17,4 +17,5 @@ export 'app_pagination.dart';
 export 'app_toolbar.dart';
 export 'async_view.dart';
 export 'metric_card.dart';
+export 'skeleton.dart';
 export 'status_pill.dart';

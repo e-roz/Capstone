@@ -71,6 +71,10 @@ class PaymentsScreen extends ConsumerWidget {
       body: AsyncView(
         value: ref.watch(paymentListProvider),
         onRetry: () => ref.invalidate(paymentListProvider),
+        loading: const SkeletonTable(
+          columns: 9,
+          columnWidths: [100, 90, 90, 90, 110, 100, 130, 140, 90],
+        ),
         isEmpty: (page) => page.payments.isEmpty,
         empty: AppEmptyState(
           icon: Icons.receipt_long_outlined,

@@ -59,6 +59,7 @@ class VisitorPassesScreen extends ConsumerWidget {
             child: AsyncView(
               value: ref.watch(visitorPassListProvider),
               onRetry: () => ref.invalidate(visitorPassListProvider),
+              loading: const SkeletonList(),
               isEmpty: (page) => page.passes.isEmpty,
               empty: AppEmptyState(
                 icon: Icons.badge_outlined,

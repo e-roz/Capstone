@@ -96,7 +96,7 @@ class ReportsScreen extends ConsumerWidget {
           AsyncView(
             value: summary,
             onRetry: () => ref.invalidate(reportsSummaryProvider),
-            loading: const SizedBox(height: 120, child: AppLoadingState()),
+            loading: const SkeletonMetricRow(count: 6),
             data: (summary) => _SummaryTiles(summary: summary),
           ),
           const SizedBox(height: AppSpacing.gutter),
@@ -106,6 +106,7 @@ class ReportsScreen extends ConsumerWidget {
             child: AsyncView(
               value: occupancy,
               onRetry: () => ref.invalidate(occupancyTrendProvider),
+              loading: const SkeletonBlock(height: 260),
               data: (points) => AppBarChart(
                 height: 260,
                 data: [
@@ -127,6 +128,16 @@ class ReportsScreen extends ConsumerWidget {
             child: AsyncView(
               value: entryExit,
               onRetry: () => ref.invalidate(entryExitReportProvider),
+              loading: const Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  SkeletonMetricRow(count: 4, width: 130),
+                  SizedBox(height: AppSpacing.x5),
+                  SkeletonBlock(height: 130),
+                  SizedBox(height: AppSpacing.x2),
+                  SkeletonBlock(height: 130),
+                ],
+              ),
               data: (report) => _EntryExitPanel(report: report),
             ),
           ),
@@ -137,6 +148,7 @@ class ReportsScreen extends ConsumerWidget {
             child: AsyncView(
               value: peaks,
               onRetry: () => ref.invalidate(peakHoursProvider),
+              loading: const SkeletonBlock(height: 260),
               data: (points) => AppBarChart(
                 height: 260,
                 seriesIndex: 2,
@@ -158,6 +170,7 @@ class ReportsScreen extends ConsumerWidget {
             child: AsyncView(
               value: revenue,
               onRetry: () => ref.invalidate(revenueTrendProvider),
+              loading: const SkeletonBlock(height: 260),
               data: (points) => AppAreaChart(
                 height: 260,
                 seriesIndex: 5,
@@ -178,6 +191,14 @@ class ReportsScreen extends ConsumerWidget {
           AsyncView(
             value: breakdown,
             onRetry: () => ref.invalidate(violationsBreakdownProvider),
+            loading: const Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(child: SkeletonBlock(height: 220)),
+                SizedBox(width: AppSpacing.gutter),
+                Expanded(child: SkeletonBlock(height: 220)),
+              ],
+            ),
             data: (breakdown) => _BreakdownSection(breakdown: breakdown),
           ),
         ],

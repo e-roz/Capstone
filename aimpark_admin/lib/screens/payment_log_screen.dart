@@ -70,6 +70,10 @@ class PaymentLogScreen extends ConsumerWidget {
       body: AsyncView(
         value: ref.watch(paymentLogListProvider),
         onRetry: () => ref.invalidate(paymentLogListProvider),
+        loading: const SkeletonTable(
+          columns: 8,
+          columnWidths: [100, 90, 110, 100, 100, 120, 140, 140],
+        ),
         isEmpty: (page) => page.payments.isEmpty,
         empty: AppEmptyState(
           icon: Icons.receipt_long_outlined,

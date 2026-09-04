@@ -67,6 +67,10 @@ class UserManagementScreen extends ConsumerWidget {
       body: AsyncView(
         value: ref.watch(userListProvider),
         onRetry: () => ref.invalidate(userListProvider),
+        loading: const SkeletonTable(
+          columns: 6,
+          columnWidths: [180, 200, 110, 100, 100, 140],
+        ),
         isEmpty: (page) => page.users.isEmpty,
         empty: const AppEmptyState(
           icon: Icons.person_search_outlined,

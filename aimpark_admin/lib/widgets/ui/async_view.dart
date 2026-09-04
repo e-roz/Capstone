@@ -63,8 +63,11 @@ class AsyncView<T> extends StatelessWidget {
   }
 }
 
-/// Centred spinner. Deliberately plain — a skeleton screen would be nicer but
-/// only if every screen has one, and half-skeletons look broken.
+/// Centred spinner — the fallback for an [AsyncView] whose caller didn't pass
+/// a shape-matched `loading:` (see skeleton.dart). Every screen with a table,
+/// list, metric row or detail layout should pass one of those instead; this
+/// stays as the honest "still loading, no better guess" default rather than
+/// stretching a skeleton over content shapes it wasn't built to imitate.
 class AppLoadingState extends StatelessWidget {
   const AppLoadingState({super.key, this.message});
 

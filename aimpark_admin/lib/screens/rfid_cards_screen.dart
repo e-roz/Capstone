@@ -55,6 +55,10 @@ class _RfidCardsScreenState extends ConsumerState<RfidCardsScreen> {
       body: AsyncView(
         value: cardsAsync,
         onRetry: () => ref.invalidate(rfidCardsProvider),
+        loading: const SkeletonTable(
+          columns: 5,
+          columnWidths: [140, 100, 180, 160, 140],
+        ),
         isEmpty: (cards) => cards.isEmpty,
         empty: const AppEmptyState(
           icon: Icons.nfc,

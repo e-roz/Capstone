@@ -61,6 +61,10 @@ class _PendingRegistrationsScreenState
       body: AsyncView(
         value: ref.watch(pendingRegistrationsProvider),
         onRetry: () => ref.invalidate(pendingRegistrationsProvider),
+        loading: const SkeletonTable(
+          columns: 6,
+          columnWidths: [160, 140, 200, 140, 100, 100],
+        ),
         isEmpty: (list) => list.isEmpty,
         empty: const AppEmptyState(
           icon: Icons.check_circle_outline,

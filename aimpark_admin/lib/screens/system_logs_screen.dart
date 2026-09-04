@@ -242,6 +242,10 @@ class _AdminActionsTab extends ConsumerWidget {
       child: AsyncView(
         value: async,
         onRetry: () => ref.invalidate(auditLogsProvider),
+        loading: const SkeletonTable(
+          columns: 5,
+          columnWidths: [130, 140, 140, 200, 140],
+        ),
         isEmpty: (page) => page.logs.isEmpty,
         empty: AppEmptyState(
           icon: Icons.history,
@@ -391,6 +395,10 @@ class _RfidAccessTab extends ConsumerWidget {
       child: AsyncView(
         value: async,
         onRetry: () => ref.invalidate(rfidAccessLogsProvider),
+        loading: const SkeletonTable(
+          columns: 6,
+          columnWidths: [160, 110, 140, 140, 100, 110],
+        ),
         isEmpty: (page) => page.logs.isEmpty,
         empty: const AppEmptyState(
           icon: Icons.nfc,
@@ -547,6 +555,10 @@ class _ViolationLogsTab extends ConsumerWidget {
       child: AsyncView(
         value: async,
         onRetry: () => ref.invalidate(violationLogListProvider),
+        loading: const SkeletonTable(
+          columns: 5,
+          columnWidths: [160, 100, 100, 120, 140],
+        ),
         isEmpty: (page) => page.violations.isEmpty,
         empty: const AppEmptyState(
           icon: Icons.gavel_outlined,
@@ -709,6 +721,10 @@ class _UserActivityTab extends ConsumerWidget {
       child: AsyncView(
         value: async,
         onRetry: () => ref.invalidate(userActivityLogsProvider),
+        loading: const SkeletonTable(
+          columns: 5,
+          columnWidths: [120, 160, 220, 110, 140],
+        ),
         isEmpty: (page) => page.logs.isEmpty,
         empty: AppEmptyState(
           icon: Icons.manage_accounts_outlined,
@@ -830,6 +846,10 @@ class _SystemErrorsTab extends ConsumerWidget {
       child: AsyncView(
         value: async,
         onRetry: () => ref.invalidate(systemErrorLogsProvider),
+        loading: const SkeletonTable(
+          columns: 5,
+          columnWidths: [140, 120, 180, 220, 90],
+        ),
         isEmpty: (page) => page.logs.isEmpty,
         empty: const AppEmptyState(
           icon: Icons.check_circle_outline,

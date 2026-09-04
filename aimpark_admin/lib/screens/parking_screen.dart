@@ -56,6 +56,16 @@ class ParkingScreen extends ConsumerWidget {
       body: AsyncView(
         value: ref.watch(parkingSlotsProvider),
         onRetry: () => ref.invalidate(parkingSlotsProvider),
+        loading: const Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            SkeletonBlock(height: 180),
+            SizedBox(height: AppSpacing.gutter),
+            SkeletonBlock(height: 220),
+            SizedBox(height: AppSpacing.gutter),
+            SkeletonBlock(height: 220),
+          ],
+        ),
         isEmpty: (availability) => availability.slots.isEmpty,
         empty: const AppEmptyState(
           icon: Icons.local_parking_outlined,

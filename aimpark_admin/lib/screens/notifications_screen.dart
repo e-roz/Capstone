@@ -163,6 +163,7 @@ class _InboxTabState extends ConsumerState<_InboxTab> {
           child: AsyncView(
             value: ref.watch(inboxProvider),
             onRetry: () => ref.invalidate(inboxProvider),
+            loading: const SkeletonList(),
             isEmpty: (page) => _visible(page.notifications).isEmpty,
             empty: AppEmptyState(
               icon: Icons.inbox_outlined,
@@ -213,6 +214,7 @@ class _SentTab extends ConsumerWidget {
     return AsyncView(
       value: ref.watch(notificationListProvider),
       onRetry: () => ref.invalidate(notificationListProvider),
+      loading: const SkeletonList(),
       isEmpty: (page) => page.notifications.isEmpty,
       empty: AppEmptyState(
         icon: Icons.campaign_outlined,

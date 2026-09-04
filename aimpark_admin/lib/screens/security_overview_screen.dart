@@ -131,6 +131,7 @@ class SecurityOverviewScreen extends ConsumerWidget {
           AsyncView(
             value: sessions,
             onRetry: () => ref.invalidate(activeParkingSessionsProvider),
+            loading: const SkeletonList(count: 4),
             isEmpty: (list) => list.isEmpty,
             empty: const AppEmptyState(
               icon: Icons.local_parking_outlined,

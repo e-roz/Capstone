@@ -53,6 +53,7 @@ class AppealsPanel extends ConsumerWidget {
           child: AsyncView(
             value: ref.watch(appealListProvider),
             onRetry: () => ref.invalidate(appealListProvider),
+            loading: const SkeletonList(),
             isEmpty: (page) => page.appeals.isEmpty,
             empty: AppEmptyState(
               icon: Icons.gavel_outlined,

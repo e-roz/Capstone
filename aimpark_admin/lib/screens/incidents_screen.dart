@@ -204,6 +204,10 @@ class _IncidentsTab extends ConsumerWidget {
           child: AsyncView(
             value: ref.watch(incidentListProvider),
             onRetry: () => ref.invalidate(incidentListProvider),
+            loading: const SkeletonTable(
+              columns: 4,
+              columnWidths: [140, 120, 160, 100],
+            ),
             isEmpty: (page) => page.incidents.isEmpty,
             empty: AppEmptyState(
               icon: Icons.report_outlined,
