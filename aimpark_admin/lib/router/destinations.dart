@@ -113,7 +113,9 @@ const navGroups = <NavGroup>[
       moduleLabel: 'Entry/Exit Verification',
       description:
           'Look up a card, check the vehicle matches, and log entry or exit.',
-      roles: {StaffRole.admin, StaffRole.security},
+      // Security only — not in the capstone document as an admin feature.
+      // Admin still has Parking for the same manual entry/exit ability.
+      roles: {StaffRole.security},
     ),
     NavItem(
       icon: Icons.person_add_alt_outlined,
