@@ -529,6 +529,9 @@ class _UserActions {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
     ref.invalidate(registrationDetailProvider(userId));
     ref.invalidate(userListProvider);
+    // Assigning pulls a card out of the Free pool; revoking puts one back in
+    // it. Either way the RFID Cards page's list is now stale.
+    ref.invalidate(rfidCardsProvider);
   }
 }
 

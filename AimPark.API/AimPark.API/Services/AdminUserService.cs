@@ -380,7 +380,14 @@ namespace AimPark.API.Services
         private async Task<(bool ok, string message)> RevokeCardAsync(
             User user, Guid adminUserId, RfidRevokeReason reason, string? note, CancellationToken ct)
         {
-            if (user.RfidStatus == RfidStatus.Unassigned)
+            // RfidStatus and RfidTagId can drift apart — a handful of accounts
+            // exist with RfidStatus=Active but an empty RfidTagId, which the
+            // Assign/Revoke UI already treats as "no card" (see rfidTagId ==
+            // null in user_detail_screen.dart). Without this check, such an
+            // account reaches the write below with an empty-string tag, which
+            // is how a corrupted-data account crashed bulk-revoke instead of
+            // being reported as a normal skip.
+            if (user.RfidStatus == RfidStatus.Unassigned || string.IsNullOrWhiteSpace(user.RfidTagId))
                 return (false, $"{user.FullName} has no RFID tag assigned.");
 
             var tagId = user.RfidTagId!;

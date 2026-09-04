@@ -375,6 +375,8 @@ Future<void> _bulkRevokeRfid(BuildContext context, WidgetRef ref) async {
 
   ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
   ref.invalidate(userListProvider);
+  // Every revoked card lands back in the Free pool the RFID Cards page shows.
+  ref.invalidate(rfidCardsProvider);
 }
 
 class _UserPickerDialog extends StatefulWidget {
