@@ -127,6 +127,9 @@ class _SecurityGateScreenState extends ConsumerState<SecurityGateScreen> {
                       onLogExit: () => _act(() => ref
                           .read(parkingActionsProvider.notifier)
                           .logExitByTag(_tagCtrl.text.trim())),
+                      onDismissAlert: (attemptId) => _act(() => ref
+                          .read(gateAccessAttemptActionsProvider.notifier)
+                          .dismiss(attemptId)),
                     ),
             ),
           ],
@@ -142,11 +145,13 @@ class _LookupResult extends StatelessWidget {
     required this.result,
     required this.onLogEntry,
     required this.onLogExit,
+    required this.onDismissAlert,
   });
 
   final TagLookup result;
   final VoidCallback onLogEntry;
   final VoidCallback onLogExit;
+  final void Function(String attemptId) onDismissAlert;
 
   @override
   Widget build(BuildContext context) {
@@ -185,6 +190,15 @@ class _LookupResult extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
+        // Why this card needed a person at all. The camera already looked at
+        // it and turned it away — shown before the verdict below, because it
+        // is the reason a guard is on this screen instead of the barrier
+        // having opened on its own.
+        if (result.pendingAlert case final alert?) ...[
+          _PendingAlertBanner(alert: alert, onDismiss: onDismissAlert),
+          const SizedBox(height: AppSpacing.gutter),
+        ],
+
         // The verdict, first and large. A guard glances at this screen with a
         // car waiting; whether to raise the barrier must not be something they
         // have to read a paragraph to work out.
@@ -329,6 +343,69 @@ class _LookupResult extends StatelessWidget {
           label: const Text('Log entry'),
         ),
     ];
+  }
+}
+
+/// The camera already looked at this card and turned it away. Shown before
+/// the guard does anything else, so they know *why* they are the ones
+/// deciding instead of assuming the screen is just being used as normal.
+class _PendingAlertBanner extends StatelessWidget {
+  const _PendingAlertBanner({required this.alert, required this.onDismiss});
+
+  final PendingGateAlert alert;
+  final void Function(String attemptId) onDismiss;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = context.tokens;
+    final text = Theme.of(context).textTheme;
+
+    final message = alert.isMismatch
+        ? (alert.alprPlateNumber == null
+            ? 'The camera read a plate that does not match this card.'
+            : 'The camera read ${alert.alprPlateNumber}, which does not '
+                'match this card.')
+        : 'The camera had no reading to check this card against.';
+
+    return AppCard(
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(
+            alert.isMismatch ? Icons.videocam_off_outlined : Icons.videocam_off,
+            color: t.status.warning.solid,
+            size: 28,
+          ),
+          const SizedBox(width: AppSpacing.x4),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Camera flagged this card', style: text.titleSmall),
+                const SizedBox(height: AppSpacing.x1),
+                Text(
+                  message,
+                  style: text.bodyMedium?.copyWith(color: t.text.secondary),
+                ),
+                const SizedBox(height: AppSpacing.x1),
+                Text(
+                  'Flagged at ${DateFormat('HH:mm').format(alert.attemptedAt.toLocal())}',
+                  style: text.bodySmall?.copyWith(color: t.text.secondary),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: AppSpacing.controlGap),
+          // No "let them in" button here on purpose — logging the entry below
+          // closes this flag on its own. This is only for the other outcome:
+          // the guard looked and the vehicle stays outside.
+          OutlinedButton(
+            onPressed: () => onDismiss(alert.attemptId),
+            child: const Text('Keep out'),
+          ),
+        ],
+      ),
+    );
   }
 }
 

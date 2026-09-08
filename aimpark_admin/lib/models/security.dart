@@ -107,6 +107,38 @@ class TagVehicle {
       );
 }
 
+/// A tap the automatic RFID+ALPR check already turned away, still waiting on
+/// a guard's decision. Set on a lookup only when it belongs to this exact
+/// card — it is why Gate Check needed a person just now, not a general queue.
+class PendingGateAlert {
+  final String attemptId;
+
+  /// "PLATE_MISMATCH" or "ALPR_UNAVAILABLE".
+  final String outcome;
+
+  /// What the camera actually read, if it read anything at all.
+  final String? alprPlateNumber;
+
+  final DateTime attemptedAt;
+
+  const PendingGateAlert({
+    required this.attemptId,
+    required this.outcome,
+    required this.alprPlateNumber,
+    required this.attemptedAt,
+  });
+
+  bool get isMismatch => outcome == 'PLATE_MISMATCH';
+
+  factory PendingGateAlert.fromJson(Map<String, dynamic> json) =>
+      PendingGateAlert(
+        attemptId: json['attemptId']?.toString() ?? '',
+        outcome: json['outcome']?.toString() ?? '',
+        alprPlateNumber: json['alprPlateNumber']?.toString(),
+        attemptedAt: DateTime.parse(json['attemptedAt'].toString()),
+      );
+}
+
 /// What a guard sees when they look up the card in front of them.
 ///
 /// This is the guard's half of dual-factor verification: the reader proves the
@@ -133,6 +165,10 @@ class TagLookup {
   /// Set only for a visitor card.
   final DateTime? passExpiresAt;
 
+  /// Set when the camera already flagged this exact card and nobody has
+  /// acted on it yet.
+  final PendingGateAlert? pendingAlert;
+
   const TagLookup({
     required this.holder,
     required this.name,
@@ -144,6 +180,7 @@ class TagLookup {
     required this.slotCode,
     required this.entryTime,
     required this.passExpiresAt,
+    required this.pendingAlert,
   });
 
   bool get isKnown => holder != 'Unknown';
@@ -166,5 +203,9 @@ class TagLookup {
         passExpiresAt: json['passExpiresAt'] == null
             ? null
             : DateTime.parse(json['passExpiresAt'].toString()),
+        pendingAlert: json['pendingAlert'] == null
+            ? null
+            : PendingGateAlert.fromJson(
+                json['pendingAlert'] as Map<String, dynamic>),
       );
 }

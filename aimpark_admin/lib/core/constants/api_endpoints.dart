@@ -74,6 +74,10 @@ class ApiEndpoints {
   static String returnVisitorPass(String passId) =>
       '/api/security/visitor-passes/$passId/return';
 
+  // Security: attempts the automatic RFID+ALPR check turned away.
+  static String dismissGateAccessAttempt(String attemptId) =>
+      '/api/security/gate-access-attempts/$attemptId/dismiss';
+
   // Admin – Gate Devices (RFID reader hardware)
   static const gateDevices = '/api/admin/gate-devices';
   static String revokeGateDevice(String deviceId) =>

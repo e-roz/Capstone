@@ -83,6 +83,26 @@ final gateTagQueryProvider =
     );
 
 typedef _$GateTagQuery = AutoDisposeNotifier<String?>;
+String _$gateAccessAttemptActionsHash() =>
+    r'd37e0a1bad203a4b5df335d96379ffb16b206370';
+
+/// See also [GateAccessAttemptActions].
+@ProviderFor(GateAccessAttemptActions)
+final gateAccessAttemptActionsProvider =
+    AutoDisposeNotifierProvider<
+      GateAccessAttemptActions,
+      AsyncValue<void>
+    >.internal(
+      GateAccessAttemptActions.new,
+      name: r'gateAccessAttemptActionsProvider',
+      debugGetCreateSourceHash: const bool.fromEnvironment('dart.vm.product')
+          ? null
+          : _$gateAccessAttemptActionsHash,
+      dependencies: null,
+      allTransitiveDependencies: null,
+    );
+
+typedef _$GateAccessAttemptActions = AutoDisposeNotifier<AsyncValue<void>>;
 String _$visitorPassQueryNotifierHash() =>
     r'60d1fb17da1e642d70b0b32f456ddeaf8886ca23';
 

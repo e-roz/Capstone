@@ -34,6 +34,33 @@ Future<TagLookup?> gateTagLookup(Ref ref) async {
   return TagLookup.fromJson(response.data as Map<String, dynamic>);
 }
 
+@riverpod
+class GateAccessAttemptActions extends _$GateAccessAttemptActions {
+  @override
+  AsyncValue<void> build() => const AsyncData(null);
+
+  /// Closes a flag without letting the vehicle in — the guard looked and
+  /// decided it stays outside.
+  Future<String?> dismiss(String attemptId) async {
+    state = const AsyncLoading();
+    try {
+      final dio = ref.read(dioProvider);
+      final res =
+          await dio.post(ApiEndpoints.dismissGateAccessAttempt(attemptId));
+      state = const AsyncData(null);
+      return (res.data as Map<String, dynamic>)['message']?.toString() ??
+          'Dismissed.';
+    } on DioException catch (e) {
+      state = const AsyncData(null);
+      final data = e.response?.data;
+      if (data is Map) {
+        return data['message']?.toString() ?? e.message ?? 'Error';
+      }
+      return e.message ?? 'Unknown error';
+    }
+  }
+}
+
 class VisitorPassQuery {
   final int page;
   final int pageSize;
