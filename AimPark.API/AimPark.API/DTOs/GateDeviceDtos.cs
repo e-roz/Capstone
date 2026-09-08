@@ -1,9 +1,12 @@
+using AimPark.API.Enums;
+
 namespace AimPark.API.DTOs
 {
     public class CreateGateDeviceDto
     {
         public string Name { get; set; } = string.Empty;
         public int Gate { get; set; }
+        public GateDeviceType DeviceType { get; set; } = GateDeviceType.RfidReader;
     }
 
     /// <summary>
@@ -16,6 +19,7 @@ namespace AimPark.API.DTOs
         public Guid DeviceId { get; set; }
         public string Name { get; set; } = string.Empty;
         public int Gate { get; set; }
+        public GateDeviceType DeviceType { get; set; }
         public string ApiKey { get; set; } = string.Empty;
         public string Warning { get; set; } =
             "Copy this key now — it is not stored and cannot be shown again.";
@@ -26,6 +30,7 @@ namespace AimPark.API.DTOs
         public Guid DeviceId { get; set; }
         public string Name { get; set; } = string.Empty;
         public int Gate { get; set; }
+        public GateDeviceType DeviceType { get; set; }
 
         /// <summary>Leading characters of the key, for telling devices apart.</summary>
         public string ApiKeyPrefix { get; set; } = string.Empty;

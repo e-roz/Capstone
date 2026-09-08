@@ -26,10 +26,13 @@ namespace AimPark.API.Controllers
     public class SecurityController : ControllerBase
     {
         private readonly IVisitorPassService _visitorPasses;
+        private readonly IGateAccessAttemptService _gateAccessAttempts;
 
-        public SecurityController(IVisitorPassService visitorPasses)
+        public SecurityController(
+            IVisitorPassService visitorPasses, IGateAccessAttemptService gateAccessAttempts)
         {
             _visitorPasses = visitorPasses;
+            _gateAccessAttempts = gateAccessAttempts;
         }
 
         /// <summary>
@@ -61,6 +64,26 @@ namespace AimPark.API.Controllers
         [HttpPost("visitor-passes/{passId:guid}/return")]
         public Task<ActionResult<object>> ReturnPass(Guid passId, CancellationToken ct)
             => _visitorPasses.ReturnAsync(passId, ct);
+
+        /// <summary>
+        /// Taps the automatic RFID+ALPR check turned away. Unreviewed only by
+        /// default — pass includeReviewed=true for the full history.
+        /// </summary>
+        [HttpGet("gate-access-attempts")]
+        public Task<ActionResult<GateAccessAttemptListResponse>> ListGateAccessAttempts(
+            [FromQuery] bool includeReviewed = false,
+            [FromQuery] int page = 1,
+            [FromQuery] int pageSize = 20,
+            CancellationToken ct = default)
+            => _gateAccessAttempts.ListAsync(includeReviewed, page, pageSize, ct);
+
+        /// <summary>
+        /// Closes a flag without letting the vehicle in. Letting it in closes
+        /// the flag on its own — this is only for the other outcome.
+        /// </summary>
+        [HttpPost("gate-access-attempts/{attemptId:guid}/dismiss")]
+        public Task<ActionResult<object>> DismissGateAccessAttempt(Guid attemptId, CancellationToken ct)
+            => _gateAccessAttempts.DismissAsync(attemptId, GetUserId(), ct);
 
         private Guid GetUserId()
             => Guid.Parse(User.FindFirst(ClaimTypes.NameIdentifier)!.Value);

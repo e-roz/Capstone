@@ -184,6 +184,7 @@ namespace AimPark.API.Services
                     .ToListAsync(ct);
 
                 var session = await OpenSessionAsync(l => l.UserId == user.Id, ct);
+                var pendingAlert = await GetPendingAlertAsync(userId: user.Id, visitorPassId: null, ct);
 
                 var denied =
                     user.AccountStatus != AccountStatus.Active
@@ -204,7 +205,8 @@ namespace AimPark.API.Services
                     DeniedReason = denied,
                     IsInside = session is not null,
                     SlotCode = session?.SlotCode,
-                    EntryTime = session?.EntryTime
+                    EntryTime = session?.EntryTime,
+                    PendingAlert = pendingAlert
                 });
             }
 
@@ -224,6 +226,7 @@ namespace AimPark.API.Services
                 });
 
             var passSession = await OpenSessionAsync(l => l.VisitorPassId == pass.Id, ct);
+            var passPendingAlert = await GetPendingAlertAsync(userId: null, visitorPassId: pass.Id, ct);
 
             var passDenied = pass.Status switch
             {
@@ -251,8 +254,39 @@ namespace AimPark.API.Services
                 IsInside = passSession is not null,
                 SlotCode = passSession?.SlotCode,
                 EntryTime = passSession?.EntryTime,
-                PassExpiresAt = pass.ExpiresAt
+                PassExpiresAt = pass.ExpiresAt,
+                PendingAlert = passPendingAlert
             });
+        }
+
+        /// <summary>
+        /// The most recent gate attempt nobody has acted on yet for this card
+        /// holder, if any — what tells a guard why they need to look at this
+        /// card instead of the barrier having just opened on its own.
+        /// </summary>
+        private async Task<PendingGateAlertResponse?> GetPendingAlertAsync(
+            Guid? userId, Guid? visitorPassId, CancellationToken ct)
+        {
+            var attempt = await _db.Set<GateAccessAttempt>().AsNoTracking()
+                .Where(a => a.ReviewedAt == null
+                         && (userId != null ? a.UserId == userId : a.VisitorPassId == visitorPassId))
+                .OrderByDescending(a => a.AttemptedAt)
+                .FirstOrDefaultAsync(ct);
+
+            return attempt is null
+                ? null
+                : new PendingGateAlertResponse
+                {
+                    AttemptId = attempt.Id,
+                    Outcome = attempt.Outcome switch
+                    {
+                        GateAccessOutcome.PlateMismatch => AllocationResult.PlateMismatch,
+                        GateAccessOutcome.AlprUnavailable => AllocationResult.AlprUnavailable,
+                        _ => attempt.Outcome.ToString()
+                    },
+                    AlprPlateNumber = attempt.AlprPlateNumber,
+                    AttemptedAt = attempt.AttemptedAt
+                };
         }
 
         /// <summary>

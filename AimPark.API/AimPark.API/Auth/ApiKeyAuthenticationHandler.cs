@@ -52,7 +52,8 @@ namespace AimPark.API.Auth
                 new Claim(ClaimTypes.NameIdentifier, device.Id.ToString()),
                 new Claim(ClaimTypes.Name, device.Name),
                 new Claim(ClaimTypes.Role, ApiKeyDefaults.DeviceRole),
-                new Claim(ApiKeyDefaults.GateClaim, device.Gate.ToString(CultureInfo.InvariantCulture))
+                new Claim(ApiKeyDefaults.GateClaim, device.Gate.ToString(CultureInfo.InvariantCulture)),
+                new Claim(ApiKeyDefaults.DeviceTypeClaim, device.DeviceType.ToString())
             };
 
             var identity = new ClaimsIdentity(claims, ApiKeyDefaults.AuthenticationScheme);

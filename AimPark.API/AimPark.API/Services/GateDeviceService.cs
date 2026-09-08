@@ -46,6 +46,7 @@ namespace AimPark.API.Services
                 Id = Guid.NewGuid(),
                 Name = dto.Name.Trim(),
                 Gate = dto.Gate,
+                DeviceType = dto.DeviceType,
                 ApiKeyHash = Hash(apiKey),
                 ApiKeyPrefix = apiKey[..PrefixLength],
                 IsRevoked = false,
@@ -60,6 +61,7 @@ namespace AimPark.API.Services
                 DeviceId = device.Id,
                 Name = device.Name,
                 Gate = device.Gate,
+                DeviceType = device.DeviceType,
                 ApiKey = apiKey
             });
         }
@@ -74,6 +76,7 @@ namespace AimPark.API.Services
                     DeviceId = d.Id,
                     Name = d.Name,
                     Gate = d.Gate,
+                    DeviceType = d.DeviceType,
                     ApiKeyPrefix = d.ApiKeyPrefix,
                     IsRevoked = d.IsRevoked,
                     LastSeenAt = d.LastSeenAt,

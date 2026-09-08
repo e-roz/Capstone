@@ -32,6 +32,8 @@ namespace AimPark.API.Data
         public DbSet<SystemErrorLog> SystemErrorLogs { get; set; }
         public DbSet<VisitorPass> VisitorPasses { get; set; }
         public DbSet<RfidCard> RfidCards { get; set; }
+        public DbSet<AlprReading> AlprReadings { get; set; }
+        public DbSet<GateAccessAttempt> GateAccessAttempts { get; set; }
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -241,8 +243,79 @@ namespace AimPark.API.Data
                 entity.HasIndex(d => d.ApiKeyHash)
                       .IsUnique();
 
+                entity.Property(d => d.DeviceType)
+                      .HasConversion<string>()
+                      .HasDefaultValue(Enums.GateDeviceType.RfidReader);
+
                 entity.Property(d => d.CreatedAt)
                       .HasDefaultValueSql("NOW()");
+            });
+
+            modelBuilder.Entity<AlprReading>(entity =>
+            {
+                entity.HasKey(r => r.Id);
+
+                // Matching an RFID tap looks up the newest unconsumed reading
+                // for a gate — this index is that query.
+                entity.HasIndex(r => new { r.Gate, r.ConsumedAt, r.ReadAt });
+
+                entity.Property(r => r.PlateNumber).IsRequired().HasMaxLength(20);
+
+                entity.Property(r => r.ReadAt)
+                      .HasDefaultValueSql("NOW()");
+
+                entity.Property(r => r.CreatedAt)
+                      .HasDefaultValueSql("NOW()");
+
+                entity.HasOne(r => r.Device)
+                      .WithMany()
+                      .HasForeignKey(r => r.DeviceId)
+                      // A reading is evidence of what a camera saw; losing the
+                      // device record later must not erase that history.
+                      .OnDelete(DeleteBehavior.Restrict);
+            });
+
+            modelBuilder.Entity<GateAccessAttempt>(entity =>
+            {
+                entity.HasKey(a => a.Id);
+
+                entity.HasIndex(a => a.AttemptedAt);
+                entity.HasIndex(a => a.UserId);
+
+                // The guard's queue: attempts nobody has reviewed yet.
+                entity.HasIndex(a => a.ReviewedAt);
+
+                entity.Property(a => a.RfidTagId).IsRequired().HasMaxLength(64);
+                entity.Property(a => a.AlprPlateNumber).HasMaxLength(20);
+
+                entity.Property(a => a.Outcome)
+                      .HasConversion<string>();
+
+                entity.Property(a => a.AttemptedAt)
+                      .HasDefaultValueSql("NOW()");
+
+                entity.Property(a => a.CreatedAt)
+                      .HasDefaultValueSql("NOW()");
+
+                entity.HasOne(a => a.User)
+                      .WithMany()
+                      .HasForeignKey(a => a.UserId)
+                      .OnDelete(DeleteBehavior.Cascade);
+
+                entity.HasOne(a => a.VisitorPass)
+                      .WithMany()
+                      .HasForeignKey(a => a.VisitorPassId)
+                      .OnDelete(DeleteBehavior.Restrict);
+
+                entity.HasOne(a => a.ReviewedByUser)
+                      .WithMany()
+                      .HasForeignKey(a => a.ReviewedByUserId)
+                      .OnDelete(DeleteBehavior.SetNull);
+
+                entity.HasOne(a => a.ResultingLog)
+                      .WithMany()
+                      .HasForeignKey(a => a.ResultingLogId)
+                      .OnDelete(DeleteBehavior.SetNull);
             });
 
             modelBuilder.Entity<VisitorPass>(entity =>
@@ -296,6 +369,13 @@ namespace AimPark.API.Data
                 entity.HasOne(l => l.Slot)
                       .WithMany()
                       .HasForeignKey(l => l.SlotId)
+                      .OnDelete(DeleteBehavior.SetNull);
+
+                entity.Property(l => l.AlprPlateNumber).HasMaxLength(20);
+
+                entity.HasOne(l => l.AlprReading)
+                      .WithMany()
+                      .HasForeignKey(l => l.AlprReadingId)
                       .OnDelete(DeleteBehavior.SetNull);
             });
 

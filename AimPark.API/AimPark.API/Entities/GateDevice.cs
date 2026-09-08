@@ -1,3 +1,5 @@
+using AimPark.API.Enums;
+
 namespace AimPark.API.Entities
 {
     /// <summary>
@@ -22,6 +24,13 @@ namespace AimPark.API.Entities
         /// trusted from the request body.
         /// </summary>
         public int Gate { get; set; }
+
+        /// <summary>
+        /// An RFID reader and an ALPR camera at the same barrier are two
+        /// separate devices with two separate keys — this is what tells them
+        /// apart, so one's key can't be used to act as the other.
+        /// </summary>
+        public GateDeviceType DeviceType { get; set; } = GateDeviceType.RfidReader;
 
         /// <summary>
         /// SHA-256 of the issued key. The key itself is shown once at creation

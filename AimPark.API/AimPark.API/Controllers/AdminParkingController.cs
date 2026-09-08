@@ -1,5 +1,6 @@
 using AimPark.API.Auth;
 using AimPark.API.DTOs;
+using AimPark.API.Enums;
 using AimPark.API.Interfaces;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
@@ -60,6 +61,9 @@ namespace AimPark.API.Controllers
             if (RejectIfEnrollmentDevice() is { } refusal)
                 return Task.FromResult<ActionResult<object>>(refusal);
 
+            if (RejectIfNotRfidReader() is { } wrongType)
+                return Task.FromResult<ActionResult<object>>(wrongType);
+
             // A reader is bolted to one barrier, so its own identity decides the
             // gate. Anything the request body claims is ignored — otherwise a
             // leaked key could log entries against the wrong gate.
@@ -78,6 +82,9 @@ namespace AimPark.API.Controllers
             if (RejectIfEnrollmentDevice() is { } refusal)
                 return Task.FromResult<ActionResult<object>>(refusal);
 
+            if (RejectIfNotRfidReader() is { } wrongType)
+                return Task.FromResult<ActionResult<object>>(wrongType);
+
             return _parkingHistoryService.LogExitAsync(dto, GetUserId(), GetDeviceId(), ct);
         }
 
@@ -94,6 +101,27 @@ namespace AimPark.API.Controllers
                     message = "This reader is registered to the enrollment desk, not a gate."
                 })
                 { StatusCode = StatusCodes.Status403Forbidden }
+                : null;
+
+        /// <summary>
+        /// An ALPR camera has its own key and its own endpoint
+        /// (<c>GateController</c>) — it must not also be able to open a
+        /// barrier if its key is ever pointed at this one instead.
+        /// </summary>
+        private ObjectResult? RejectIfNotRfidReader()
+            => IsDevice && GetDeviceType() != GateDeviceType.RfidReader
+                ? new ObjectResult(new
+                {
+                    result = "WRONG_DEVICE_TYPE",
+                    message = "This key is not registered to an RFID reader."
+                })
+                { StatusCode = StatusCodes.Status403Forbidden }
+                : null;
+
+        private GateDeviceType? GetDeviceType()
+            => Enum.TryParse<GateDeviceType>(
+                User.FindFirst(ApiKeyDefaults.DeviceTypeClaim)?.Value, out var type)
+                ? type
                 : null;
 
         private bool IsDevice => User.IsInRole(ApiKeyDefaults.DeviceRole);

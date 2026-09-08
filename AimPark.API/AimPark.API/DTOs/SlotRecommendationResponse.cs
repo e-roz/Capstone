@@ -20,6 +20,12 @@ namespace AimPark.API.DTOs
         public const string ExitLogged = "EXIT_LOGGED";
         public const string LogNotFound = "LOG_NOT_FOUND";
         public const string AlreadyExited = "ALREADY_EXITED";
+
+        // RFID passed, but the camera check on the automatic gate path did not.
+        // Only ever returned from the device path — a guard at Gate Check has
+        // already looked at the car themselves, so these never apply to them.
+        public const string PlateMismatch = "PLATE_MISMATCH";
+        public const string AlprUnavailable = "ALPR_UNAVAILABLE";
     }
 
     public class SlotRecommendationResponse

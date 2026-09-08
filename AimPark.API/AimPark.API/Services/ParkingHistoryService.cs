@@ -158,6 +158,17 @@ namespace AimPark.API.Services
                     message = "This vehicle is already inside the lot."
                 });
 
+            var registeredPlates = await _db.Set<Vehicle>().AsNoTracking()
+                .Where(v => v.UserId == user.Id)
+                .Select(v => v.PlateNumber)
+                .ToListAsync(ct);
+
+            var alprCheck = await CheckAlprAsync(
+                dto.Gate, registeredPlates, dto.RfidTagId ?? string.Empty,
+                userId: user.Id, visitorPassId: null, loggedByDeviceId, nowUtc, ct);
+
+            if (alprCheck.Denial is not null) return alprCheck.Denial;
+
             ParkingSlot? slot = null;
             if (dto.SlotId is not null)
             {
@@ -212,6 +223,9 @@ namespace AimPark.API.Services
                 ExitTime = null,
                 LoggedByUserId = loggedByUserId,
                 LoggedByDeviceId = loggedByDeviceId,
+                AlprReadingId = alprCheck.Matched?.Id,
+                AlprPlateNumber = alprCheck.Matched?.PlateNumber,
+                AlprMatched = alprCheck.Matched is not null ? true : null,
                 CreatedAt = DateTime.UtcNow
             };
 
@@ -225,6 +239,9 @@ namespace AimPark.API.Services
                 slot.UpdatedAt = DateTime.UtcNow;
                 _slots.Update(slot);
             }
+
+            if (loggedByUserId is not null)
+                await ResolvePendingAttemptAsync(userId: user.Id, visitorPassId: null, log.Id, loggedByUserId.Value, nowUtc, ct);
 
             await _logs.SaveAsync(ct);
 
@@ -306,6 +323,165 @@ namespace AimPark.API.Services
             }
 
             return null;
+        }
+
+        /// <summary>
+        /// How stale an ALPR reading can be and still count as "this car,
+        /// right now" — wide enough that a slightly early or late camera read
+        /// still matches the tap, narrow enough that it can't drift onto the
+        /// next car in line.
+        /// </summary>
+        private static readonly TimeSpan AlprMatchWindow = TimeSpan.FromSeconds(8);
+
+        private readonly record struct AlprCheckResult(ActionResult<object>? Denial, AlprReading? Matched);
+
+        /// <summary>
+        /// The automatic gate path's half of dual-factor verification: looks
+        /// for a fresh, unconsumed ALPR reading at this gate and checks it
+        /// against the plates on file for whoever the tag resolved to.
+        /// </summary>
+        /// <remarks>
+        /// Only runs when a device reported the tap. A guard working Gate
+        /// Check has already looked at the car themselves — that manual check
+        /// *is* the ALPR-down fallback, so this is a deliberate pass-through
+        /// for the staff-driven path, not a gap.
+        ///
+        /// A denial here writes a <see cref="GateAccessAttempt"/> instead of a
+        /// <see cref="ParkingLog"/> — the car never got in, and ParkingLog's
+        /// occupancy/session queries all lean on every row meaning it did.
+        /// </remarks>
+        private async Task<AlprCheckResult> CheckAlprAsync(
+            int? gate,
+            IReadOnlyCollection<string> registeredPlates,
+            string rfidTagId,
+            Guid? userId,
+            Guid? visitorPassId,
+            Guid? loggedByDeviceId,
+            DateTime nowUtc,
+            CancellationToken ct)
+        {
+            if (loggedByDeviceId is null)
+                return new AlprCheckResult(null, null);
+
+            // The device path always carries its own gate — the controller
+            // fills this in from the reader's identity before this runs. No
+            // gate means nothing to correlate a camera reading against.
+            if (gate is not int gateNumber)
+            {
+                await RecordAttemptAsync(0, rfidTagId, userId, visitorPassId,
+                    alprPlate: null, confidence: null, GateAccessOutcome.AlprUnavailable, nowUtc, ct);
+
+                return new AlprCheckResult(new BadRequestObjectResult(new
+                {
+                    result = AllocationResult.AlprUnavailable,
+                    message = "No gate context to verify this vehicle against. See a guard."
+                }), null);
+            }
+
+            var reading = await _db.Set<AlprReading>()
+                .Where(r => r.Gate == gateNumber
+                         && r.ConsumedAt == null
+                         && r.ReadAt >= nowUtc - AlprMatchWindow)
+                .OrderByDescending(r => r.ReadAt)
+                .FirstOrDefaultAsync(ct);
+
+            if (reading is null)
+            {
+                await RecordAttemptAsync(gateNumber, rfidTagId, userId, visitorPassId,
+                    alprPlate: null, confidence: null, GateAccessOutcome.AlprUnavailable, nowUtc, ct);
+
+                return new AlprCheckResult(new BadRequestObjectResult(new
+                {
+                    result = AllocationResult.AlprUnavailable,
+                    message = "No camera reading is available to verify this vehicle. See a guard."
+                }), null);
+            }
+
+            // Consumed either way — a mismatched frame must not be offered to
+            // the next tap either.
+            reading.ConsumedAt = nowUtc;
+
+            if (!registeredPlates.Contains(reading.PlateNumber))
+            {
+                await RecordAttemptAsync(gateNumber, rfidTagId, userId, visitorPassId,
+                    reading.PlateNumber, reading.Confidence, GateAccessOutcome.PlateMismatch, nowUtc, ct);
+
+                return new AlprCheckResult(new BadRequestObjectResult(new
+                {
+                    result = AllocationResult.PlateMismatch,
+                    message = "The vehicle at the camera does not match this card. See a guard.",
+                    plateRead = reading.PlateNumber
+                }), null);
+            }
+
+            await _db.SaveChangesAsync(ct);
+            return new AlprCheckResult(null, reading);
+        }
+
+        private async Task RecordAttemptAsync(
+            int gate,
+            string rfidTagId,
+            Guid? userId,
+            Guid? visitorPassId,
+            string? alprPlate,
+            double? confidence,
+            GateAccessOutcome outcome,
+            DateTime nowUtc,
+            CancellationToken ct)
+        {
+            _db.Set<GateAccessAttempt>().Add(new GateAccessAttempt
+            {
+                Id = Guid.NewGuid(),
+                Gate = gate,
+                RfidTagId = rfidTagId,
+                UserId = userId,
+                VisitorPassId = visitorPassId,
+                AlprPlateNumber = alprPlate,
+                AlprConfidence = confidence,
+                Outcome = outcome,
+                AttemptedAt = nowUtc,
+                CreatedAt = nowUtc
+            });
+
+            await _db.SaveChangesAsync(ct);
+        }
+
+        /// <summary>
+        /// How long a flagged attempt stays eligible to be closed by whatever
+        /// entry follows it. Long enough that a guard walking over to look at
+        /// the car isn't racing a clock; short enough that a car turned away
+        /// an hour ago can't get silently linked to an unrelated visit later.
+        /// </summary>
+        private static readonly TimeSpan AttemptReviewWindow = TimeSpan.FromMinutes(15);
+
+        /// <summary>
+        /// A staff account manually logging this card in *is* the guard's
+        /// review — there is no separate "resolve" step to remember. Finds
+        /// the most recent open flag for this card holder and closes it out
+        /// against the entry that just happened.
+        /// </summary>
+        /// <remarks>
+        /// Only called from the manual path (<c>loggedByUserId is not null</c>).
+        /// The automatic device path never reaches ParkingLog creation with an
+        /// open attempt still outstanding — CheckAlprAsync already returned a
+        /// denial before getting this far.
+        /// </remarks>
+        private async Task ResolvePendingAttemptAsync(
+            Guid? userId, Guid? visitorPassId, Guid resultingLogId, Guid reviewedByUserId,
+            DateTime nowUtc, CancellationToken ct)
+        {
+            var attempt = await _db.Set<GateAccessAttempt>()
+                .Where(a => a.ReviewedAt == null
+                         && (userId != null ? a.UserId == userId : a.VisitorPassId == visitorPassId)
+                         && a.AttemptedAt >= nowUtc - AttemptReviewWindow)
+                .OrderByDescending(a => a.AttemptedAt)
+                .FirstOrDefaultAsync(ct);
+
+            if (attempt is null) return;
+
+            attempt.ReviewedByUserId = reviewedByUserId;
+            attempt.ReviewedAt = nowUtc;
+            attempt.ResultingLogId = resultingLogId;
         }
 
         private async Task AnnounceAvailabilityAsync(bool afterEntry, CancellationToken ct)
@@ -396,6 +572,12 @@ namespace AimPark.API.Services
                     message = "This vehicle is already inside the lot."
                 });
 
+            var alprCheck = await CheckAlprAsync(
+                dto.Gate, [pass.PlateNumber], dto.RfidTagId ?? string.Empty,
+                userId: null, visitorPassId: pass.Id, loggedByDeviceId, nowUtc, ct);
+
+            if (alprCheck.Denial is not null) return alprCheck.Denial;
+
             ParkingSlot? slot = null;
             if (dto.SlotId is not null)
             {
@@ -445,6 +627,9 @@ namespace AimPark.API.Services
                 ExitTime = null,
                 LoggedByUserId = loggedByUserId,
                 LoggedByDeviceId = loggedByDeviceId,
+                AlprReadingId = alprCheck.Matched?.Id,
+                AlprPlateNumber = alprCheck.Matched?.PlateNumber,
+                AlprMatched = alprCheck.Matched is not null ? true : null,
                 CreatedAt = nowUtc
             };
 
@@ -456,6 +641,9 @@ namespace AimPark.API.Services
                 slot.UpdatedAt = nowUtc;
                 _slots.Update(slot);
             }
+
+            if (loggedByUserId is not null)
+                await ResolvePendingAttemptAsync(userId: null, visitorPassId: pass.Id, log.Id, loggedByUserId.Value, nowUtc, ct);
 
             await _logs.SaveAsync(ct);
 

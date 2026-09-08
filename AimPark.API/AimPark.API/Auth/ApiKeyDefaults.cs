@@ -19,6 +19,13 @@ namespace AimPark.API.Auth
         public const string GateClaim = "gate";
 
         /// <summary>
+        /// Claim holding the device's <see cref="Enums.GateDeviceType"/>, so an
+        /// RFID reader's key can be told apart from an ALPR camera's without a
+        /// database round trip on every request.
+        /// </summary>
+        public const string DeviceTypeClaim = "deviceType";
+
+        /// <summary>
         /// Gate number for a reader that is not on a barrier at all — the one
         /// on the admin's desk, used to read a card during registration.
         ///

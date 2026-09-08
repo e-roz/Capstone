@@ -30,6 +30,24 @@ namespace AimPark.API.Entities
         public DateTime EntryTime { get; set; }
         public DateTime? ExitTime { get; set; }
 
+        /// <summary>The camera reading this entry was checked against, if any.</summary>
+        public Guid? AlprReadingId { get; set; }
+        public AlprReading? AlprReading { get; set; }
+
+        /// <summary>
+        /// Denormalized copy of what was read, kept even if the AlprReading
+        /// row is ever pruned — same reasoning as RfidCard.LastUserName.
+        /// </summary>
+        public string? AlprPlateNumber { get; set; }
+
+        /// <summary>
+        /// Null = no camera reading was available to check against. True =
+        /// the read plate matched one registered to this card holder. False
+        /// only reaches here via a guard's manual override — an automatic
+        /// mismatch never becomes a ParkingLog row; see GateAccessAttempt.
+        /// </summary>
+        public bool? AlprMatched { get; set; }
+
         // Exactly one of these identifies who recorded the entry: a staff
         // account working the admin panel, or a gate device reporting a scan.
         public Guid? LoggedByUserId { get; set; }

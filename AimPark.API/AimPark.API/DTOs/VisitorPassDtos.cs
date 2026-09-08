@@ -62,9 +62,12 @@ namespace AimPark.API.DTOs
     /// belongs to, and what should be sitting in front of them.
     /// </summary>
     /// <remarks>
-    /// This is the "dual-factor verification" half the hardware cannot do. The
-    /// reader proves the card is genuine; only a person can check that the car
-    /// holding it is the car the card is registered to.
+    /// This is the "dual-factor verification" half the hardware cannot do on
+    /// its own. The reader proves the card is genuine; ALPR normally checks
+    /// the car matches it automatically, and this is what a person falls back
+    /// to — either because the camera path just flagged this exact card (see
+    /// <see cref="PendingAlert"/>), or because they are doing the whole check
+    /// by eye, same as before ALPR existed.
     /// </remarks>
     public class TagLookupResponse
     {
@@ -89,6 +92,14 @@ namespace AimPark.API.DTOs
 
         /// <summary>Set only for a visitor card.</summary>
         public DateTime? PassExpiresAt { get; set; }
+
+        /// <summary>
+        /// Set when the automatic gate path already turned this exact card
+        /// away and nobody has acted on it yet — the reason Gate Check needed
+        /// a human just now, spelled out instead of left for the guard to
+        /// guess.
+        /// </summary>
+        public PendingGateAlertResponse? PendingAlert { get; set; }
     }
 
     public class TagVehicleResponse
@@ -97,5 +108,18 @@ namespace AimPark.API.DTOs
         public string VehicleType { get; set; } = string.Empty;
         public string? Color { get; set; }
         public bool RegistrationExpired { get; set; }
+    }
+
+    public class PendingGateAlertResponse
+    {
+        public Guid AttemptId { get; set; }
+
+        /// <summary>"PLATE_MISMATCH" or "ALPR_UNAVAILABLE" — see AllocationResult.</summary>
+        public string Outcome { get; set; } = string.Empty;
+
+        /// <summary>What the camera actually read, if it read anything.</summary>
+        public string? AlprPlateNumber { get; set; }
+
+        public DateTime AttemptedAt { get; set; }
     }
 }
