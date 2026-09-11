@@ -14,7 +14,7 @@ CONFIG_PATH = Path(__file__).parent / "config.json"
 # Every gate PC talks to the same server, so this is only something a guard
 # would ever need to change if a technical person is troubleshooting — the
 # setup dialog pre-fills it rather than asking a non-technical user to know it.
-DEFAULT_API_BASE = "http://192.168.100.95:5041"
+DEFAULT_API_BASE = "https://aimpark-api.onrender.com"
 
 
 @dataclass
