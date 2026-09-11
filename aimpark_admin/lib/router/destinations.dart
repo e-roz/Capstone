@@ -126,6 +126,15 @@ const navGroups = <NavGroup>[
       description: 'Lend spare RFID cards to guests and take them back.',
       roles: {StaffRole.admin, StaffRole.security},
     ),
+    NavItem(
+      icon: Icons.sensors_outlined,
+      selectedIcon: Icons.sensors,
+      label: 'Gate Devices',
+      route: '/gate-devices',
+      description: 'Register the RFID readers and ALPR cameras at each gate, '
+          'and the keys they use to connect.',
+      roles: {StaffRole.admin, StaffRole.security},
+    ),
   ]),
   NavGroup('Operations', [
     NavItem(
