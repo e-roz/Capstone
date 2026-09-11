@@ -1,0 +1,7 @@
+{
+  "api_base": "https://your-api.onrender.com",
+  "api_key": "aimpark_PASTE_YOUR_KEY_HERE",
+  "camera_index": 0,
+  "camera_mirrored": false,
+  "gate_label": "Gate 1"
+}

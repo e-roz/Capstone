@@ -10,8 +10,13 @@ import cv2
 
 
 class Camera:
-    def __init__(self, index: int = 0):
+    def __init__(self, index: int = 0, mirrored: bool = False):
         self.index = index
+        # Off by default: a real gate camera has no reason to mirror its
+        # feed, and mirroring would flip the plate text backwards before
+        # OCR ever sees it. Only laptop webcams tend to do this, for a
+        # "looking in a mirror" feel that has no place at a barrier.
+        self.mirrored = mirrored
         self._cap: cv2.VideoCapture | None = None
 
     def open(self) -> None:
@@ -28,7 +33,9 @@ class Camera:
 
     def read_frame(self) -> cv2.typing.MatLike | None:
         ok, frame = self._cap.read()
-        return frame if ok else None
+        if not ok:
+            return None
+        return cv2.flip(frame, 1) if self.mirrored else frame
 
     def resolution(self) -> tuple[int, int]:
         width = int(self._cap.get(cv2.CAP_PROP_FRAME_WIDTH))
@@ -54,10 +61,15 @@ def main() -> int:
         "--camera", type=int, default=0,
         help="Capture device index (default 0 — the guard PC's primary camera).",
     )
+    parser.add_argument(
+        "--mirrored", action="store_true",
+        help="Un-mirror the feed — set this if the preview looks like a mirror "
+             "(common on laptop webcams, not expected on real gate hardware).",
+    )
     args = parser.parse_args()
 
     try:
-        camera = Camera(args.camera)
+        camera = Camera(args.camera, mirrored=args.mirrored)
         camera.open()
     except RuntimeError as e:
         print(f"Error: {e}", file=sys.stderr)
