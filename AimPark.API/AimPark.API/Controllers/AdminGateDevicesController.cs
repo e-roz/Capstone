@@ -8,12 +8,12 @@ namespace AimPark.API.Controllers
 {
     /// <summary>
     /// Issues and revokes the keys gate hardware uses to talk to the API.
-    /// Admin-only, and deliberately not reachable with a device key — a reader
-    /// must never be able to mint more readers.
+    /// Admin or Security, and deliberately not reachable with a device key —
+    /// a reader must never be able to mint more readers.
     /// </summary>
     [ApiController]
     [Route("api/admin/gate-devices")]
-    [Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme, Roles = "Admin")]
+    [Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme, Roles = "Admin,Security")]
     public class AdminGateDevicesController : ControllerBase
     {
         private readonly IGateDeviceService _gateDevices;
