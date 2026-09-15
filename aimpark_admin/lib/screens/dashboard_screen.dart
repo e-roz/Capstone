@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
 import '../models/report.dart';
+import '../providers/auth_provider.dart';
 import '../providers/registrations_provider.dart';
 import '../providers/reports_provider.dart';
 import '../router/destinations.dart';
@@ -166,13 +167,15 @@ class DashboardScreen extends ConsumerWidget {
 /// faster route. This grid is for the visitor who does not yet know what the
 /// system contains — the tile carries a sentence saying what the module is for,
 /// which a 13px rail label cannot.
-class _ModuleShortcuts extends StatelessWidget {
+class _ModuleShortcuts extends ConsumerWidget {
   const _ModuleShortcuts();
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final t = context.tokens;
     final text = Theme.of(context).textTheme;
+    final shortcuts =
+        moduleShortcutsFor(ref.watch(staffRoleProvider) ?? StaffRole.admin);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -206,7 +209,7 @@ class _ModuleShortcuts extends StatelessWidget {
               spacing: AppSpacing.gutter,
               runSpacing: AppSpacing.gutter,
               children: [
-                for (final item in moduleShortcuts)
+                for (final item in shortcuts)
                   _ModuleTile(item: item, width: width),
               ],
             );

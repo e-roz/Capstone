@@ -266,7 +266,13 @@ const navGroups = <NavGroup>[
 /// derived from [navGroups] rather than written out a second time.
 final navItems = [for (final group in navGroups) ...group.items];
 
-/// Every destination except Overview — the dashboard's shortcut grid, which
-/// would otherwise offer a link back to the page you are already on.
-final moduleShortcuts =
-    navItems.where((item) => item.route != '/dashboard').toList();
+/// Every destination except Overview, narrowed to what this role may
+/// actually open — the dashboard's shortcut grid otherwise either links back
+/// to the page you're already on, or offers a module the router's redirect
+/// guard will just bounce straight back from, which reads as "broken," not
+/// as "not for you."
+List<NavItem> moduleShortcutsFor(StaffRole role) => [
+      for (final group in navGroupsFor(role))
+        for (final item in group.items)
+          if (item.route != '/dashboard') item,
+    ];
