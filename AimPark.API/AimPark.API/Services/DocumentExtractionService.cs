@@ -17,7 +17,7 @@ namespace AimPark.API.Services
             OcrPayloadDto? identity,
             OcrPayloadDto? license,
             OcrPayloadDto? receipt,
-            OcrPayloadDto? platePhoto)
+            string? accountName)
         {
             var result = new ExtractedValuesDto();
 
@@ -27,24 +27,47 @@ namespace AimPark.API.Services
 
             ExtractSchoolForm(identityLines, result);
 
-            result.LicenseName = ValueAfterAnyLabel(licenseLines, DocumentLabels.License.Name, allowNextLine: true);
+            result.LicenseName = ValueAfterAnyLabel(
+                licenseLines, DocumentLabels.License.Name, allowNextLine: true, preferNextLine: true);
             result.LicenseExpiry = DateExtraction.FindFullDate(
-                ValueAfterAnyLabel(licenseLines, DocumentLabels.License.Expiry, allowNextLine: true));
+                ValueAfterAnyLabel(
+                    licenseLines, DocumentLabels.License.Expiry, allowNextLine: true, preferNextLine: true));
+
+            // Faculty and staff have no RAF, so the only trusted name to search
+            // with is the one they typed at signup. Students always prefer the
+            // RAF reading — it is read from labelled cells, not free text.
+            var expectedName = result.StudentName ?? NameFormat.FromTypedFullName(accountName);
+            result.LicenseNameFound = NameLocator.AppearsIn(licenseLines, expectedName);
 
             var plate = ExtractPlate(receiptLines);
             result.PlateNumber = plate;
             result.RegistrationExpiry = ExtractRegistrationExpiry(receiptLines, plate, result);
-
-            // Order matters: the plate photo has no label to anchor on, but none is
-            // needed once the receipt has told us what to look for. The question
-            // stops being "what is the plate" and becomes "does this plate appear
-            // here" — a far easier one.
-            var (seenOnPlate, agreement) = ConfirmPlateInPhoto(Prepare(platePhoto), plate);
-            result.PlatePhotoNumber = seenOnPlate;
-            result.PlateAgreement = agreement.ToString();
+            result.VehicleType = ExtractVehicleType(receiptLines);
+            result.Color = ValueAfterAnyLabel(receiptLines, [DocumentLabels.Receipt.Color]);
 
             FlagMissing(result);
             return result;
+        }
+
+        /// <summary>
+        /// Car or Motorcycle, read off the receipt's own body-type field.
+        /// </summary>
+        /// <remarks>
+        /// LTO prints this as e.g. "Vehicle Type: MC Without Sidecar" — every
+        /// motorcycle classification observed starts with "MC". The facility
+        /// only has two bay types, so anything else read is treated as a car
+        /// rather than trying to enumerate every four-wheeled body type LTO
+        /// might print.
+        /// </remarks>
+        private static string? ExtractVehicleType(List<OcrLineDto> lines)
+        {
+            var raw = ValueAfterAnyLabel(lines, [DocumentLabels.Receipt.VehicleType]);
+            if (string.IsNullOrWhiteSpace(raw))
+                return null;
+
+            return raw.TrimStart().StartsWith("MC", StringComparison.OrdinalIgnoreCase)
+                ? nameof(VehicleType.Motorcycle)
+                : nameof(VehicleType.Car);
         }
 
         private static List<OcrLineDto> Prepare(OcrPayloadDto? payload)
@@ -70,20 +93,14 @@ namespace AimPark.API.Services
             result.StudentNumber = CleanStudentNumber(
                 OcrLayout.ValueFor(lines, DocumentLabels.SchoolForm.StudentNumber, captionBelowValue: true));
 
-            // Printed as three separate cells. The comparison against the licence
-            // needs the whole name, and the matcher ignores word order, so the parts
-            // are simply gathered rather than arranged.
-            var nameParts = new[]
-                {
-                    OcrLayout.ValueFor(lines, DocumentLabels.SchoolForm.FirstName, captionBelowValue: true),
-                    OcrLayout.ValueFor(lines, DocumentLabels.SchoolForm.MiddleName, captionBelowValue: true),
-                    OcrLayout.ValueFor(lines, DocumentLabels.SchoolForm.LastName, captionBelowValue: true)
-                }
-                .Where(part => !string.IsNullOrWhiteSpace(part))
-                .ToList();
+            // Printed as three separate cells, each read independently — unlike an
+            // account's typed name, we genuinely know which part is which here, so
+            // they are assembled rather than just gathered.
+            var last = OcrLayout.ValueFor(lines, DocumentLabels.SchoolForm.LastName, captionBelowValue: true);
+            var first = OcrLayout.ValueFor(lines, DocumentLabels.SchoolForm.FirstName, captionBelowValue: true);
+            var middle = OcrLayout.ValueFor(lines, DocumentLabels.SchoolForm.MiddleName, captionBelowValue: true);
 
-            if (nameParts.Count > 0)
-                result.StudentName = string.Join(' ', nameParts);
+            result.StudentName = NameFormat.LastFirstMiddle(last, first, middle);
 
             result.Semester = ExtractTerm(lines);
             result.Section = ExtractSection(lines);
@@ -182,11 +199,22 @@ namespace AimPark.API.Services
         /// Some fields print their value on the same line as the label; a Philippine
         /// driver's licence prints the heading above the value instead. Falling
         /// through to the next line covers the second case without a spatial rule.
+        ///
+        /// <paramref name="preferNextLine"/> exists for a specific failure this once
+        /// had: the licence's name caption is long ("Last Name, First Name, Middle
+        /// Name") and reads badly, so the full label often fails to match — at which
+        /// point a shorter fallback label in the array (just "Last Name") can still
+        /// match, but only because it is sitting *inside* that same garbled caption
+        /// line. The "remainder" after it is then more caption noise, not a value,
+        /// and was being returned as if it were one. A field known to always print
+        /// its value on the line below — never beside the label — should never
+        /// accept a same-line remainder at all, whichever label variant matched.
         /// </remarks>
         private static string? ValueAfterAnyLabel(
             List<OcrLineDto> lines,
             string[] labels,
-            bool allowNextLine = false)
+            bool allowNextLine = false,
+            bool preferNextLine = false)
         {
             foreach (var label in labels)
             {
@@ -196,9 +224,12 @@ namespace AimPark.API.Services
                     if (after < 0)
                         continue;
 
-                    var remainder = FuzzyText.TrimValue(lines[i].Text[after..]);
-                    if (remainder.Length > 1)
-                        return remainder;
+                    if (!preferNextLine)
+                    {
+                        var remainder = FuzzyText.TrimValue(lines[i].Text[after..]);
+                        if (remainder.Length > 1)
+                            return remainder;
+                    }
 
                     if (allowNextLine && i + 1 < lines.Count)
                     {
@@ -285,74 +316,6 @@ namespace AimPark.API.Services
         }
 
         /// <summary>
-        /// Looks for the expected plate in the photo of the physical plate.
-        /// </summary>
-        /// <remarks>
-        /// Surrounding text — PILIPINAS, region names, stickers — is ignored for
-        /// free, since the rule only ever searches for the value it already expects.
-        ///
-        /// Adjacent lines are joined before comparing because Philippine motorcycle
-        /// plates are commonly stacked across two rows, which comes back as "130"
-        /// and "301" rather than one line.
-        ///
-        /// One character of difference is allowed, but it is reported as its own
-        /// outcome rather than as agreement. These photos are taken outdoors, at an
-        /// angle, in whatever light there is, so strict comparison fails on
-        /// perfectly good-faith submissions — yet the plate is shown read-only and
-        /// written straight to the vehicle record, so the same slack was quietly
-        /// absorbing a one-character misreading of the receipt. The applicant is
-        /// holding both the paper and the vehicle; they are the one who can settle
-        /// it.
-        ///
-        /// A plate that is readable but different is reported as such rather than as
-        /// nothing. The applicant types no plate anywhere, so this comparison is what
-        /// stands behind the value, and "we could not read your photo" and "your
-        /// photo shows another vehicle" call for opposite responses — one a retake,
-        /// the other a reviewer.
-        /// </remarks>
-        private static (string? Seen, PlateAgreement Agreement) ConfirmPlateInPhoto(
-            List<OcrLineDto> lines,
-            string? expected)
-        {
-            if (string.IsNullOrEmpty(expected) || lines.Count == 0)
-                return (null, PlateAgreement.NotChecked);
-
-            var candidates = new List<string>();
-
-            for (var i = 0; i < lines.Count; i++)
-            {
-                var single = IdentifierNormalizer.NormalizePlate(lines[i].Text);
-                if (single.Length > 0)
-                    candidates.Add(single);
-
-                if (i + 1 < lines.Count)
-                {
-                    var joined = single + IdentifierNormalizer.NormalizePlate(lines[i + 1].Text);
-                    if (joined.Length is >= MinPlateLength and <= MaxPlateLength)
-                        candidates.Add(joined);
-                }
-            }
-
-            var plausible = candidates
-                .Where(c => c.Length is >= MinPlateLength and <= MaxPlateLength)
-                .Select(c => (Value: c, Distance: FuzzyText.EditDistance(c, expected)))
-                .OrderBy(c => c.Distance)
-                .ToList();
-
-            if (plausible.Count == 0)
-                return (null, PlateAgreement.NotChecked);
-
-            var closest = plausible[0];
-
-            return closest.Distance switch
-            {
-                0 => (closest.Value, PlateAgreement.Agreed),
-                1 => (closest.Value, PlateAgreement.NearMatch),
-                _ => (closest.Value, PlateAgreement.Differs)
-            };
-        }
-
-        /// <summary>
         /// Marks a field for the user's attention, without ever listing it twice.
         /// </summary>
         private static void Flag(ExtractedValuesDto result, string field, FieldFlag reason)
@@ -385,6 +348,7 @@ namespace AimPark.API.Services
             FlagIfEmpty(result.Semester, nameof(result.Semester));
             FlagIfEmpty(result.LicenseName, nameof(result.LicenseName));
             FlagIfEmpty(result.PlateNumber, nameof(result.PlateNumber));
+            FlagIfEmpty(result.Color, nameof(result.Color));
 
             if (result.LicenseExpiry is null)
                 Flag(result, nameof(result.LicenseExpiry), FieldFlag.NotFound);

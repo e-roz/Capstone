@@ -1,11 +1,15 @@
+import 'dart:async';
+
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/camera/camera_capture_screen.dart';
+import '../../../../core/camera/capture_tips_preference.dart';
+import '../../../../core/camera/capture_tips_sheet.dart';
+import '../../../../core/camera/document_review_screen.dart';
 import '../../../../core/ocr/document_recognizer.dart';
 import '../../../../core/ocr/document_scanner.dart';
-import '../../../../core/ocr/ocr_payload.dart';
 import '../../../../core/theme/theme.dart';
 import '../../../../core/utils/app_flushbar.dart';
 import '../../../../core/widgets/widgets.dart';
@@ -16,16 +20,12 @@ import '../../../auth/presentation/widgets/document_photo_panel.dart';
 import '../providers/vehicles_provider.dart';
 import 'confirm_vehicle_screen.dart';
 
-/// Adding a vehicle: the receipt, the plate, and nothing about the person.
+/// Adding a vehicle: the receipt, and nothing about the person.
 ///
-/// Two documents rather than the four registration asks for, because a second
-/// vehicle raises no new question about its owner — their enrolment and licence
-/// were read when they registered. What is unknown is which vehicle this is,
-/// and that is precisely what the receipt and the plate answer.
-///
-/// Both photographs on one screen rather than one per screen as in
-/// registration: the sequencing there exists to keep four documents from
-/// arriving as one wall of demands, and two do not need it.
+/// One document rather than the three registration asks for, because a second
+/// vehicle raises no new question about its owner — their enrolment and
+/// licence were read when they registered. What is unknown is which vehicle
+/// this is, and that is precisely what the receipt answers.
 class AddVehicleScreen extends ConsumerStatefulWidget {
   const AddVehicleScreen({super.key});
 
@@ -34,46 +34,62 @@ class AddVehicleScreen extends ConsumerStatefulWidget {
 }
 
 class _AddVehicleScreenState extends ConsumerState<AddVehicleScreen> {
-  static const _specs = [
-    DocumentSpec.officialReceipt,
-    DocumentSpec.platePhoto,
-  ];
+  static const _spec = DocumentSpec.officialReceipt;
+  static const _tipsPreference = CaptureTipsPreference();
 
-  final _captured = <ScanDocumentType, CapturedDocument>{};
+  CapturedDocument? _captured;
   bool _isSubmitting = false;
 
-  Future<void> _capture(DocumentSpec spec) async {
-    final result = await Navigator.of(context).push<CapturedDocument>(
-      MaterialPageRoute(
-        builder: (_) => CameraCaptureScreen<CapturedDocument>(
-          spec: spec,
-          recognizer: DocumentRecognizer(
-            ref.read(documentScannerProvider),
-            spec.type,
+  Future<void> _capture() async {
+    if (!await _tipsPreference.hasBeenShown()) {
+      if (!mounted) return;
+      final proceed = await CaptureTipsSheet.show(context);
+      if (!proceed || !mounted) return;
+      unawaited(_tipsPreference.markShown());
+    }
+
+    if (!mounted) return;
+    final navigator = Navigator.of(context);
+
+    while (mounted) {
+      final captured = await navigator.push<CapturedDocument>(
+        MaterialPageRoute(
+          builder: (_) => CameraCaptureScreen<CapturedDocument>(
+            spec: _spec,
+            recognizer: DocumentRecognizer(
+              ref.read(documentScannerProvider),
+              _spec.type,
+            ),
           ),
         ),
-      ),
-    );
+      );
+      if (captured == null || !mounted) return;
 
-    if (result == null || !mounted) return;
-    setState(() => _captured[spec.type] = result);
+      final useIt = await navigator.push<bool>(
+        MaterialPageRoute(
+          builder: (_) => DocumentReviewScreen(photo: captured, spec: _spec),
+        ),
+      );
+
+      if (useIt == true) {
+        setState(() => _captured = captured);
+        return;
+      }
+      // Anything else goes round again rather than leaving the screen on a
+      // photo the user just said no to.
+    }
   }
 
   Future<void> _submit() async {
     setState(() => _isSubmitting = true);
 
     try {
-      final fields = <String, dynamic>{};
-      for (final spec in _specs) {
-        final photo = _captured[spec.type]!;
-        final field = switch (spec.type) {
-          ScanDocumentType.officialReceipt => 'OfficialReceipt',
-          _ => 'PlatePhoto',
-        };
-        fields[field] = await MultipartFile.fromFile(photo.file.path);
-        final payload = photo.payload;
-        if (payload != null) fields['${field}Ocr'] = payload.toJsonString();
-      }
+      final photo = _captured!;
+      final fields = <String, dynamic>{
+        'OfficialReceipt': await MultipartFile.fromFile(photo.file.path),
+      };
+      final payload = photo.payload;
+      if (payload != null) fields['OfficialReceiptOcr'] = payload.toJsonString();
 
       final response = await ref
           .read(vehiclesRepositoryProvider)
@@ -101,9 +117,9 @@ class _AddVehicleScreenState extends ConsumerState<AddVehicleScreen> {
       );
 
       // Coming back means it was either committed or abandoned. Either way the
-      // photos have served their purpose and holding them would re-upload this
-      // attempt's images on a second pass.
-      if (mounted) setState(_captured.clear);
+      // photo has served its purpose and holding it would re-upload this
+      // attempt's image on a second pass.
+      if (mounted) setState(() => _captured = null);
     } catch (e) {
       if (mounted) showApiError(context, e);
     } finally {
@@ -113,34 +129,27 @@ class _AddVehicleScreenState extends ConsumerState<AddVehicleScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final missing = _specs.where((s) => !_captured.containsKey(s.type)).toList();
-    final unusable = _specs
-        .where((s) => _captured[s.type]?.isUsable == false)
-        .toList();
-    final canSubmit = missing.isEmpty && unusable.isEmpty && !_isSubmitting;
+    final canSubmit = _captured?.isUsable == true && !_isSubmitting;
 
     return AppScreen(
       title: 'Add a vehicle',
       body: ListView(
         padding: kScreenListPadding,
         children: [
-          const AppSectionHeader(
+          AppSectionHeader(
             title: 'Prove the vehicle',
-            subtitle: 'The plate is read from your receipt and checked against '
-                'the photo of the plate itself, so you never type it.',
+            subtitle: _spec.purpose,
           ),
-          for (final spec in _specs) ...[
-            Text(spec.label, style: context.text.labelLarge),
-            const SizedBox(height: AppSpacing.xs),
-            Text(spec.purpose, style: context.text.bodySmall),
-            const SizedBox(height: AppSpacing.sm),
-            DocumentPhotoPanel(
-              spec: spec,
-              photo: _captured[spec.type],
-              onCapture: _isSubmitting ? null : () => _capture(spec),
-            ),
-            const SizedBox(height: AppSpacing.lg),
-          ],
+          Text(_spec.label, style: context.text.labelLarge),
+          const SizedBox(height: AppSpacing.xs),
+          Text(_spec.purpose, style: context.text.bodySmall),
+          const SizedBox(height: AppSpacing.sm),
+          DocumentPhotoPanel(
+            spec: _spec,
+            photo: _captured,
+            onCapture: _isSubmitting ? null : _capture,
+          ),
+          const SizedBox(height: AppSpacing.lg),
           AppButton(
             label: 'Read my documents',
             isLoading: _isSubmitting,
@@ -150,9 +159,9 @@ class _AddVehicleScreenState extends ConsumerState<AddVehicleScreen> {
             Padding(
               padding: const EdgeInsets.only(top: AppSpacing.sm),
               child: Text(
-                missing.isNotEmpty
-                    ? 'Still needed: ${missing.map((s) => s.label).join(', ')}.'
-                    : 'Retake the photos marked above to continue.',
+                _captured == null
+                    ? 'Still needed: ${_spec.label}.'
+                    : 'Retake the photo above to continue.',
                 textAlign: TextAlign.center,
                 style: context.text.bodySmall,
               ),

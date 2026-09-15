@@ -236,8 +236,6 @@ class _UserDetailView extends ConsumerWidget {
                   value: vehicle.plateNumber ?? '—',
                   emphasis: true,
                 ),
-                AppField(label: 'Brand', value: vehicle.brand ?? '—'),
-                AppField(label: 'Model', value: vehicle.model ?? '—'),
                 AppField(
                     label: 'Vehicle Type', value: vehicle.vehicleType ?? '—'),
                 AppField(label: 'Color', value: vehicle.color ?? '—'),

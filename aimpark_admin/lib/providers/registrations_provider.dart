@@ -37,12 +37,22 @@ class RegistrationActions extends _$RegistrationActions {
   @override
   AsyncValue<void> build() => const AsyncData(null);
 
-  Future<String?> approve(String userId) async {
+  Future<String?> approve(
+    String userId, {
+    DateTime? enrollmentValidUntil,
+    String? overrideNote,
+  }) async {
     state = const AsyncLoading();
     try {
       final dio = ref.read(dioProvider);
-      final res =
-          await dio.post(ApiEndpoints.approveRegistration(userId));
+      final res = await dio.post(
+        ApiEndpoints.approveRegistration(userId),
+        data: {
+          if (enrollmentValidUntil != null)
+            'enrollmentValidUntil': enrollmentValidUntil.toIso8601String(),
+          if (overrideNote != null) 'overrideNote': overrideNote,
+        },
+      );
       state = const AsyncData(null);
       return (res.data as Map<String, dynamic>)['message']?.toString();
     } on DioException catch (e) {

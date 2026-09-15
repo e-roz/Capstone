@@ -10,10 +10,6 @@ namespace AimPark.API.Entities
 
         public VehicleType VehicleType { get; set; }
 
-        public string Brand { get; set; } = string.Empty;
-
-        public string Model { get; set; } = string.Empty;
-
         public string Color { get; set; } = string.Empty;
 
         /// <summary>

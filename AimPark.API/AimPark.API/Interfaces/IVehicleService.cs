@@ -6,11 +6,10 @@ namespace AimPark.API.Interfaces
     public interface IVehicleService
     {
         Task<ActionResult<List<VehicleDetailResponse>>> GetMyVehiclesAsync(Guid userId, CancellationToken ct);
-        Task<ActionResult<object>> AddVehicleAsync(VehicleDTO dto, Guid userId, CancellationToken ct);
 
         /// <summary>
-        /// Reads a receipt and a plate photo for a vehicle being added, and
-        /// returns what they said for the user to check.
+        /// Reads the receipt for a vehicle being added, and returns what it said
+        /// for the user to check.
         /// </summary>
         Task<ActionResult<ScanResultResponse>> ScanVehicleDocumentsAsync(VehicleDocumentUploadDto dto, Guid userId, CancellationToken ct);
 

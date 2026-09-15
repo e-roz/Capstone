@@ -109,7 +109,9 @@ namespace AimPark.API.Helpers
                    && FuzzyText.EditDistance(a, b) <= 1;
         }
 
-        private static string RemoveDiacritics(string value)
+        /// <summary>Shared with <see cref="NameLocator"/>, which normalizes the
+        /// same way before searching for a whole name rather than tokens.</summary>
+        internal static string RemoveDiacritics(string value)
         {
             var normalized = value.Normalize(NormalizationForm.FormD);
             var builder = new StringBuilder(normalized.Length);

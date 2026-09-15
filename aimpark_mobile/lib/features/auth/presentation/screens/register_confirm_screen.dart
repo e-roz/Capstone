@@ -2,32 +2,26 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../../../core/ocr/ocr_payload.dart';
 import '../../../../core/theme/theme.dart';
 import '../../../../core/utils/app_flushbar.dart';
 import '../../../../core/widgets/widgets.dart';
 import '../../../../router/registration_back_stack.dart';
-import '../../data/models/document_spec.dart';
 import '../../data/models/scan_result.dart';
 import '../../data/registration_preflight.dart';
 import '../providers/auth_provider.dart';
 import '../providers/registration_provider.dart';
-import '../widgets/plate_verdict_card.dart';
+import '../widgets/registration_step_scaffold.dart';
 import '../widgets/scanned_field.dart';
-import '../widgets/vehicle_color_picker.dart';
 
 /// The last screen: what was read, plus the two things no document can say.
 ///
-/// Most of this is still editable, which is why extraction accuracy is not
+/// Everything here is editable, which is why extraction accuracy is not
 /// load-bearing — a field the rules missed is typed once here rather than
 /// chased through retake after retake, and both readings are kept so a reviewer
-/// can see where the person disagreed with the machine.
-///
-/// The plate is the exception. It is what the gate camera matches on, so it is
-/// shown read-only and comes from the receipt: a hand-typed plate proves
-/// nothing about the vehicle, while the receipt and the photograph of the metal
-/// agreeing does. Where they disagree the fix offered is another photograph,
-/// not a keyboard.
+/// can see where the person disagreed with the machine. The plate is no
+/// different: there is no photograph of the physical plate to corroborate it
+/// any more, so a correction here is trusted the same way a corrected name is,
+/// and shown to the reviewer the same way if it was changed.
 class RegisterConfirmScreen extends ConsumerStatefulWidget {
   const RegisterConfirmScreen({super.key, required this.result});
 
@@ -44,6 +38,8 @@ class _RegisterConfirmScreenState extends ConsumerState<RegisterConfirmScreen> {
   late final TextEditingController _section;
   late final TextEditingController _semester;
   late final TextEditingController _licenseName;
+  late final TextEditingController _plateNumber;
+  late final TextEditingController _color;
 
   DateTime? _licenseExpiry;
   DateTime? _registrationExpiry;
@@ -62,13 +58,12 @@ class _RegisterConfirmScreenState extends ConsumerState<RegisterConfirmScreen> {
   };
 
   String? _vehicleType;
-  String? _color;
   bool _isSubmitting = false;
 
-  /// The two pickers are the only inputs here that a flushbar had to speak for,
-  /// and it spoke from the top of a screen they sit halfway down.
+  /// The type chip group is the only input here that a flushbar has to speak
+  /// for — every other field, colour included, is now free text with the
+  /// same "we couldn't read this" flag every other field already uses.
   String? _vehicleTypeError;
-  String? _colorError;
 
   ExtractedValues get _extracted => widget.result.extracted;
 
@@ -80,8 +75,16 @@ class _RegisterConfirmScreenState extends ConsumerState<RegisterConfirmScreen> {
     _section = TextEditingController(text: _extracted.section);
     _semester = TextEditingController(text: _extracted.semester);
     _licenseName = TextEditingController(text: _extracted.licenseName);
+    _plateNumber = TextEditingController(text: _extracted.plateNumber);
+    _color = TextEditingController(text: _extracted.color);
     _licenseExpiry = _extracted.licenseExpiry;
     _registrationExpiry = _extracted.registrationExpiry;
+
+    // Pre-filled from the receipt, same as every other field on this screen —
+    // still a tap away from changing, never forced.
+    _vehicleType = _vehicleTypes.containsKey(_extracted.vehicleType)
+        ? _extracted.vehicleType
+        : null;
 
     // The pre-flight compares the two names, and the dates already rebuild this
     // screen through their own onChanged. Without these, correcting a misread
@@ -101,29 +104,9 @@ class _RegisterConfirmScreenState extends ConsumerState<RegisterConfirmScreen> {
     _section.dispose();
     _semester.dispose();
     _licenseName.dispose();
+    _plateNumber.dispose();
+    _color.dispose();
     super.dispose();
-  }
-
-  /// Back to the plate photo, keeping the other three photographs.
-  void _retakePlatePhoto() => _retakeDocument(ScanDocumentType.platePhoto);
-
-  /// Back to the receipt, which is where the plate comes from.
-  ///
-  /// Offered when nothing was read at all. The server refuses a submission with
-  /// no plate while attempts remain — there is no vehicle to register without
-  /// one — so this is the way forward rather than a suggestion.
-  void _retakeReceiptPhoto() => _retakeDocument(ScanDocumentType.officialReceipt);
-
-  void _retakeDocument(ScanDocumentType type) {
-    final specs = DocumentSpec.forAffiliation(
-      ref.read(registrationNotifierProvider).affiliation,
-    );
-    final index = specs.indexWhere((spec) => spec.type == type);
-    if (index < 0) return;
-    // A move like any other: this screen sits on top of the last document, so
-    // back from the retake returns there rather than to whatever the document
-    // before it was.
-    context.goRegistrationStep('/register/documents/$index');
   }
 
   /// Whether a field the rules could not read is still exactly that: unread.
@@ -151,6 +134,14 @@ class _RegisterConfirmScreenState extends ConsumerState<RegisterConfirmScreen> {
         _extracted.flagFor('RegistrationExpiry'),
         _registrationExpiry == null,
       ),
+      fieldStillMissing(
+        _extracted.flagFor('PlateNumber'),
+        _plateNumber.text.trim().isEmpty,
+      ),
+      fieldStillMissing(
+        _extracted.flagFor('Color'),
+        _color.text.trim().isEmpty,
+      ),
       if (isStudent) ...[
         fieldStillMissing(
           _extracted.flagFor('StudentNumber'),
@@ -173,9 +164,8 @@ class _RegisterConfirmScreenState extends ConsumerState<RegisterConfirmScreen> {
   Future<void> _submit(bool isStudent) async {
     setState(() {
       _vehicleTypeError = _vehicleType == null ? 'Choose one.' : null;
-      _colorError = _color == null ? 'Choose one.' : null;
     });
-    if (_vehicleTypeError != null || _colorError != null) return;
+    if (_vehicleTypeError != null) return;
 
     if (_hasUnresolvedFlags(isStudent)) {
       showAppMessage(
@@ -197,13 +187,10 @@ class _RegisterConfirmScreenState extends ConsumerState<RegisterConfirmScreen> {
         if (isStudent) 'semester': _semester.text.trim(),
         'licenseName': _licenseName.text.trim(),
         'licenseExpiry': _licenseExpiry?.toIso8601String(),
-        // Echoed back exactly as read. The server compares it against its own
-        // stored reading, so altering it here would be recorded as an edit
-        // rather than quietly accepted.
-        'plateNumber': _extracted.plateNumber,
+        'plateNumber': _plateNumber.text.trim(),
         'registrationExpiry': _registrationExpiry?.toIso8601String(),
         'vehicleType': _vehicleType,
-        'color': _color,
+        'color': _color.text.trim(),
       });
 
       // The registration token is spent. It was only ever a pass through the
@@ -277,32 +264,26 @@ class _RegisterConfirmScreenState extends ConsumerState<RegisterConfirmScreen> {
             Affiliation.student;
     final live = !_isSubmitting;
 
-    return AppScreen(
+    return RegistrationStepScaffold(
+      step: 5,
       title: 'Check your details',
-      body: ListView(
-        padding: kScreenListPadding,
+      busy: _isSubmitting,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          AppSectionHeader(
+          AppNotice(
             title: 'Is this right?',
-            subtitle: 'This is what we read from your documents. Fix anything '
+            message: 'This is what we read from your documents. Fix anything '
                 'that looks wrong — it goes to the admin exactly as you leave '
                 'it.',
-            padding: const EdgeInsets.only(bottom: AppSpacing.lg),
-          ),
-
-          PlateVerdictCard(
-            plate: _extracted.plateNumber,
-            seenInPhoto: _extracted.platePhotoNumber,
-            agreement: _extracted.plateAgreement,
-            onRetakePhoto: live ? _retakePlatePhoto : null,
-            onRetakeReceipt: live ? _retakeReceiptPhoto : null,
+            intent: StatusIntent.info,
           ),
           const SizedBox(height: AppSpacing.lg),
 
           AppSectionHeader(
             title: 'Your vehicle',
-            subtitle: 'Neither of these is printed on the receipt, so they are '
-                'the only two things left to tell us.',
+            subtitle: 'Read from your receipt — check they match before you '
+                'submit.',
             padding: const EdgeInsets.only(bottom: AppSpacing.md),
           ),
           AppChipGroup<String>(
@@ -318,15 +299,11 @@ class _RegisterConfirmScreenState extends ConsumerState<RegisterConfirmScreen> {
             }),
           ),
           const SizedBox(height: AppSpacing.md),
-          VehicleColorPicker(
-            selected: _color,
-            errorText: _colorError,
-            onSelected: live
-                ? (name) => setState(() {
-                      _color = name;
-                      _colorError = null;
-                    })
-                : null,
+          ScannedField(
+            label: 'Colour',
+            controller: _color,
+            flag: _extracted.flagFor('Color'),
+            enabled: live,
           ),
           const SizedBox(height: AppSpacing.lg),
 
@@ -384,6 +361,13 @@ class _RegisterConfirmScreenState extends ConsumerState<RegisterConfirmScreen> {
           ),
 
           const AppSectionHeader(title: 'From your receipt'),
+          ScannedField(
+            label: 'Plate number',
+            controller: _plateNumber,
+            flag: _extracted.flagFor('PlateNumber'),
+            enabled: live,
+            textCapitalization: TextCapitalization.characters,
+          ),
           ScannedDateField(
             label: 'Registration expiry',
             value: _registrationExpiry,
@@ -408,3 +392,4 @@ class _RegisterConfirmScreenState extends ConsumerState<RegisterConfirmScreen> {
     );
   }
 }
+

@@ -37,6 +37,13 @@ namespace AimPark.API.Services
 
             var query = _db.Set<User>().AsNoTracking();
 
+            // An account still mid-registration (no documents submitted yet) has
+            // nothing for an admin to manage — it exists, but showing it here
+            // labeled "Pending Review" alongside applications actually waiting on
+            // a decision is misleading. Matches the same condition the Pending
+            // Registrations queue already uses.
+            query = query.Where(u => u.RegistrationStep == RegistrationStep.Completed);
+
             // "Archived" isn't a real AccountStatus — it's the separate IsDeleted flag —
             // so it's handled as a virtual filter value here rather than a real enum member.
             if (string.Equals(status, "Archived", StringComparison.OrdinalIgnoreCase))

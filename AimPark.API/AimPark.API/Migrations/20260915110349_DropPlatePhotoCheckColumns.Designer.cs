@@ -3,6 +3,7 @@ using System;
 using AimPark.API.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -11,9 +12,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace AimPark.API.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260915110349_DropPlatePhotoCheckColumns")]
+    partial class DropPlatePhotoCheckColumns
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -267,9 +270,6 @@ namespace AimPark.API.Migrations
                     b.Property<string>("ExtractedStudentNumber")
                         .HasColumnType("text");
 
-                    b.Property<bool?>("LicenseNameFound")
-                        .HasColumnType("boolean");
-
                     b.Property<string>("LicenseValidity")
                         .IsRequired()
                         .HasColumnType("text");
@@ -286,9 +286,6 @@ namespace AimPark.API.Migrations
 
                     b.Property<Guid?>("OverriddenByUserId")
                         .HasColumnType("uuid");
-
-                    b.Property<string>("OverrideNote")
-                        .HasColumnType("text");
 
                     b.Property<string>("PlateMatch")
                         .IsRequired()
@@ -1362,12 +1359,20 @@ namespace AimPark.API.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
+                    b.Property<string>("Brand")
+                        .IsRequired()
+                        .HasColumnType("text");
+
                     b.Property<string>("Color")
                         .IsRequired()
                         .HasColumnType("text");
 
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Model")
+                        .IsRequired()
+                        .HasColumnType("text");
 
                     b.Property<string>("PlateNumber")
                         .IsRequired()

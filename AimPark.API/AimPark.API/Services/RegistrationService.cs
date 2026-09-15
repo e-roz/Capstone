@@ -376,8 +376,7 @@ namespace AimPark.API.Services
             {
                 (File: dto.IdentityDocument, Type: identityType, Ocr: dto.IdentityDocumentOcr),
                 (File: dto.License, Type: DocumentType.License, Ocr: dto.LicenseOcr),
-                (File: dto.OfficialReceipt, Type: DocumentType.OfficialReceipt, Ocr: dto.OfficialReceiptOcr),
-                (File: dto.PlatePhoto, Type: DocumentType.PlatePhoto, Ocr: dto.PlatePhotoOcr)
+                (File: dto.OfficialReceipt, Type: DocumentType.OfficialReceipt, Ocr: dto.OfficialReceiptOcr)
             };
 
             // What this submission has to contain. A reviewer who asked for one
@@ -486,7 +485,7 @@ namespace AimPark.API.Services
                 PayloadFor(identityType),
                 PayloadFor(DocumentType.License),
                 PayloadFor(DocumentType.OfficialReceipt),
-                PayloadFor(DocumentType.PlatePhoto));
+                user.FullName);
 
             // A partial submission read only the documents it carried, so every
             // other value came back null. Those are not missing — they were read
@@ -512,9 +511,9 @@ namespace AimPark.API.Services
                 ExtractedSemester = extracted.Semester,
                 ExtractedLicenseName = extracted.LicenseName,
                 ExtractedLicenseExpiry = extracted.LicenseExpiry,
+                LicenseNameFound = extracted.LicenseNameFound,
                 ExtractedPlateNumber = extracted.PlateNumber,
                 ExtractedRegistrationExpiry = extracted.RegistrationExpiry,
-                ExtractedPlatePhotoNumber = extracted.PlatePhotoNumber,
                 RawPayloads = SerializePayloads(payloads),
                 Result = VerificationStatus.NotStarted
             };
@@ -657,13 +656,15 @@ namespace AimPark.API.Services
             int attempts,
             CancellationToken ct)
         {
-            // The server's own reading leads. What the client echoed back is kept to
-            // show a reviewer where the applicant disagreed, and is never the source
-            // of the stored plate.
-            var plate = IdentifierNormalizer.NormalizePlate(verification.ExtractedPlateNumber);
+            // The user's confirmed value leads now — there is no plate photo left to
+            // corroborate the OCR reading, so a correction typed on the confirmation
+            // screen is the best evidence available, the same as every other field.
+            // NoteUserEdits already flags a change from the OCR reading for the
+            // reviewer to check against the receipt image.
+            var plate = IdentifierNormalizer.NormalizePlate(verification.ConfirmedPlateNumber);
 
             if (plate.Length == 0)
-                plate = IdentifierNormalizer.NormalizePlate(verification.ConfirmedPlateNumber);
+                plate = IdentifierNormalizer.NormalizePlate(verification.ExtractedPlateNumber);
 
             if (plate.Length == 0)
             {
@@ -697,8 +698,6 @@ namespace AimPark.API.Services
 
             vehicle.VehicleType = vehicleType;
             vehicle.Color = dto.Color!.Trim();
-            vehicle.Brand = dto.Brand?.Trim() ?? string.Empty;
-            vehicle.Model = dto.Model?.Trim() ?? string.Empty;
             vehicle.RegistrationValidThrough = expiry;
             vehicle.RegistrationRenewalMonth = RegistrationRenewal.RenewalMonthFromPlate(plate);
 
@@ -861,7 +860,6 @@ namespace AimPark.API.Services
             DocumentType.SchoolId => "school ID",
             DocumentType.License => "driver's licence",
             DocumentType.OfficialReceipt => "official receipt",
-            DocumentType.PlatePhoto => "plate photo",
             _ => "document"
         };
 
@@ -1120,9 +1118,9 @@ namespace AimPark.API.Services
             extracted.Semester ??= previous.ExtractedSemester;
             extracted.LicenseName ??= previous.ExtractedLicenseName;
             extracted.LicenseExpiry ??= previous.ExtractedLicenseExpiry;
+            extracted.LicenseNameFound ??= previous.LicenseNameFound;
             extracted.PlateNumber ??= previous.ExtractedPlateNumber;
             extracted.RegistrationExpiry ??= previous.ExtractedRegistrationExpiry;
-            extracted.PlatePhotoNumber ??= previous.ExtractedPlatePhotoNumber;
         }
 
         private static RegistrationStatusResponse MapStatus(User user) => new()

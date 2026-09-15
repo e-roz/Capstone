@@ -69,6 +69,12 @@ namespace AimPark.API.Helpers
             public const string ValidUntil = "valid until";
 
             public static readonly string[] IssueDate = ["Date"];
+
+            /// <summary>Prints as e.g. "Vehicle Type: MC Without Sidecar".</summary>
+            public const string VehicleType = "Vehicle Type";
+
+            /// <summary>Prints as e.g. "Color: MATTE ORANGE/BLACK".</summary>
+            public const string Color = "Color";
         }
     }
 }

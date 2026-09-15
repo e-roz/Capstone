@@ -17,6 +17,6 @@ namespace AimPark.API.Interfaces
             OcrPayloadDto? identity,
             OcrPayloadDto? license,
             OcrPayloadDto? receipt,
-            OcrPayloadDto? platePhoto);
+            string? accountName);
     }
 }

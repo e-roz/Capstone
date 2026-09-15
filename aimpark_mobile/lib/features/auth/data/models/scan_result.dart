@@ -18,38 +18,6 @@ enum FieldFlag {
   };
 }
 
-/// Whether the plate photographed on the vehicle is the plate the receipt names.
-///
-/// Mirrors the C# `PlateAgreement` enum. This carries the plate now: nothing is
-/// typed, so two independent readings agreeing is the whole of the evidence.
-enum PlateAgreement {
-  /// One of the two readings is missing, so there was nothing to compare.
-  notChecked,
-
-  /// The photo shows exactly the plate the receipt names.
-  agreed,
-
-  /// The photo shows a plate one character away from the receipt's.
-  ///
-  /// Not folded into [agreed], because the plate is the one value nobody types
-  /// and it goes straight onto the vehicle the gate matches against. The
-  /// tolerance is there for outdoor photographs taken at an angle, but it is
-  /// exactly wide enough to hide a one-character misreading of the receipt — so
-  /// this is the case where the person holding both the paper and the vehicle is
-  /// asked which reading is right.
-  nearMatch,
-
-  /// The photo shows a readable plate, and it is a different one.
-  differs;
-
-  static PlateAgreement fromWire(String? value) => switch (value) {
-    'Agreed' => PlateAgreement.agreed,
-    'NearMatch' => PlateAgreement.nearMatch,
-    'Differs' => PlateAgreement.differs,
-    _ => PlateAgreement.notChecked,
-  };
-}
-
 /// One document the server could not read, and what to do about it.
 class DocumentDiagnosis {
   const DocumentDiagnosis({
@@ -75,7 +43,7 @@ class DocumentDiagnosis {
       );
 }
 
-/// Everything the extraction rules pulled out of the four photos.
+/// Everything the extraction rules pulled out of the three photos.
 ///
 /// Nulls are ordinary, not errors: the user fills them in.
 class ExtractedValues {
@@ -88,8 +56,8 @@ class ExtractedValues {
     this.licenseExpiry,
     this.plateNumber,
     this.registrationExpiry,
-    this.platePhotoNumber,
-    this.plateAgreement = PlateAgreement.notChecked,
+    this.vehicleType,
+    this.color,
     this.flags = const {},
   });
 
@@ -104,12 +72,13 @@ class ExtractedValues {
   final String? plateNumber;
   final DateTime? registrationExpiry;
 
-  /// What the photo of the physical plate read. Not editable — it is evidence
-  /// for the reviewer, not a value the user is asked to agree to.
-  final String? platePhotoNumber;
+  /// "Car" or "Motorcycle", read off the receipt. Still just a starting
+  /// point — the chip group stays tappable to correct it.
+  final String? vehicleType;
 
-  /// Whether [platePhotoNumber] agrees with [plateNumber].
-  final PlateAgreement plateAgreement;
+  /// Free text as printed on the receipt, matched against the swatch list
+  /// by whichever screen shows it.
+  final String? color;
 
   /// Field name to why it needs attention.
   final Map<String, FieldFlag> flags;
@@ -134,8 +103,8 @@ class ExtractedValues {
       licenseExpiry: _date(json['licenseExpiry']),
       plateNumber: json['plateNumber'] as String?,
       registrationExpiry: _date(json['registrationExpiry']),
-      platePhotoNumber: json['platePhotoNumber'] as String?,
-      plateAgreement: PlateAgreement.fromWire(json['plateAgreement'] as String?),
+      vehicleType: json['vehicleType'] as String?,
+      color: json['color'] as String?,
       flags: flags,
     );
   }

@@ -16,8 +16,8 @@ namespace AimPark.API.Services
             _db = db;
         }
 
-        // GET /api/admin/audit-logs?page=1&pageSize=20&action=Suspend
-        public async Task<ActionResult<AuditLogListResponse>> ListAsync(int page, int pageSize, string? action, CancellationToken ct)
+        // GET /api/admin/audit-logs?page=1&pageSize=20&action=Suspend&targetUserId=...
+        public async Task<ActionResult<AuditLogListResponse>> ListAsync(int page, int pageSize, string? action, Guid? targetUserId, CancellationToken ct)
         {
             page = Math.Max(1, page);
             pageSize = Math.Clamp(pageSize, 1, 100);
@@ -26,6 +26,9 @@ namespace AimPark.API.Services
 
             if (!string.IsNullOrWhiteSpace(action))
                 query = query.Where(l => l.Action == action);
+
+            if (targetUserId is not null)
+                query = query.Where(l => l.TargetUserId == targetUserId.Value);
 
             var totalCount = await query.CountAsync(ct);
 

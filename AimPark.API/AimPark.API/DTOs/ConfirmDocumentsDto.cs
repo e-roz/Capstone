@@ -23,15 +23,12 @@ namespace AimPark.API.DTOs
         public DateTime? LicenseExpiry { get; set; }
 
         /// <summary>
-        /// The plate, as read off the receipt. Echoed back rather than typed — the
-        /// app shows it read-only, because a plate is what the gate camera matches
-        /// on and a hand-corrected one proves nothing about the vehicle.
+        /// The plate, pre-filled from the receipt's OCR reading and editable by the
+        /// user, same as every other field here. There is no plate photo left to
+        /// corroborate the reading, so a correction is trusted; if it differs from
+        /// what the receipt produced, that is recorded as an edit and reaches the
+        /// reviewer as one, same as a corrected name or student number.
         /// </summary>
-        /// <remarks>
-        /// Still compared against the stored reading on arrival. A value that does
-        /// not match what the scan produced did not come from this flow, so it is
-        /// recorded as an edit and reaches the reviewer as one.
-        /// </remarks>
         public string? PlateNumber { get; set; }
 
         public DateTime? RegistrationExpiry { get; set; }
@@ -45,14 +42,5 @@ namespace AimPark.API.DTOs
 
         /// <summary>Chosen from a swatch, for the same reason as the type.</summary>
         public string? Color { get; set; }
-
-        /// <summary>
-        /// Optional. Nothing in the system reads either — the gate matches on the
-        /// plate and allocation on the type — so they are offered rather than
-        /// demanded, and left blank by anyone who does not care to fill them in.
-        /// </summary>
-        public string? Brand { get; set; }
-
-        public string? Model { get; set; }
     }
 }

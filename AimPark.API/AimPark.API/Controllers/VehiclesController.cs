@@ -22,10 +22,6 @@ namespace AimPark.API.Controllers
         public Task<ActionResult<List<VehicleDetailResponse>>> GetMyVehicles(CancellationToken ct)
             => _vehicleService.GetMyVehiclesAsync(GetUserId(), ct);
 
-        [HttpPost]
-        public Task<ActionResult<object>> AddVehicle([FromBody] VehicleDTO dto, CancellationToken ct)
-            => _vehicleService.AddVehicleAsync(dto, GetUserId(), ct);
-
         /// <summary>
         /// Reads the receipt and plate photo for a vehicle being added.
         /// </summary>

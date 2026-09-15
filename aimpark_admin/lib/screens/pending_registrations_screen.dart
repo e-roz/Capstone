@@ -9,9 +9,16 @@ import '../theme/theme.dart';
 import '../widgets/checks_panel.dart';
 import '../widgets/ui/ui.dart';
 
-/// Search and sort run in the widget, not the provider, because this endpoint
-/// returns the whole queue in one response — there is no page to be misled
-/// about. The paginated screens deliberately do *not* copy this.
+const _verdictFilters = [
+  AppFilterOption('LookCloser', 'Look closer'),
+  AppFilterOption('Unreadable', 'Unreadable'),
+  AppFilterOption('Clear', 'Clear'),
+];
+
+/// Search, sort and the checks filter all run in the widget, not the
+/// provider, because this endpoint returns the whole queue in one response —
+/// there is no page to be misled about. The paginated screens deliberately
+/// do *not* copy this.
 class PendingRegistrationsScreen extends ConsumerStatefulWidget {
   const PendingRegistrationsScreen({super.key});
 
@@ -30,6 +37,11 @@ class _PendingRegistrationsScreenState
   static const _waitingColumn = 4;
 
   String _search = '';
+
+  /// Null shows everything. Set from the Checks filter to work one kind of
+  /// finding at a time — clearing an "Unreadable" backlog without the
+  /// "Look closer" ones resorting back to the top of the list every refresh.
+  String? _verdictFilter;
 
   /// Opens on what the checks found rather than on the date. An admin working a
   /// queue wants the applications that need a person first; the date is how you
@@ -57,6 +69,15 @@ class _PendingRegistrationsScreenState
           hint: 'Search name or email',
           onChanged: (value) => setState(() => _search = value.toLowerCase()),
         ),
+        filters: [
+          AppFilterDropdown<String>(
+            label: 'Checks',
+            value: _verdictFilter,
+            options: _verdictFilters,
+            allLabel: 'All',
+            onChanged: (value) => setState(() => _verdictFilter = value),
+          ),
+        ],
       ),
       body: AsyncView(
         value: ref.watch(pendingRegistrationsProvider),
@@ -80,7 +101,10 @@ class _PendingRegistrationsScreenState
             return AppEmptyState(
               icon: Icons.search_off,
               title: 'No matches',
-              message: 'Nothing in the queue matches “$_search”.',
+              message: _search.isEmpty
+                  ? 'Nothing in the queue is currently marked '
+                      '"${_verdictFilters.firstWhere((o) => o.value == _verdictFilter).label}".'
+                  : 'Nothing in the queue matches “$_search”.',
             );
           }
 
@@ -153,13 +177,18 @@ class _PendingRegistrationsScreenState
       });
 
   List<PendingRegistration> _visible(List<PendingRegistration> all) {
-    final filtered = _search.isEmpty
+    var filtered = _search.isEmpty
         ? [...all]
         : all
             .where((r) =>
                 r.fullName.toLowerCase().contains(_search) ||
                 r.email.toLowerCase().contains(_search))
             .toList();
+
+    if (_verdictFilter != null) {
+      filtered =
+          filtered.where((r) => r.checksVerdict == _verdictFilter).toList();
+    }
 
     filtered.sort((a, b) {
       final order = switch (_sortColumn) {

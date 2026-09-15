@@ -28,7 +28,15 @@ namespace AimPark.API.Enums
         /// <summary>LTO Official Receipt — the source of the plate number.</summary>
         OfficialReceipt,
 
-        /// <summary>Photo of the physical plate, checked against the receipt.</summary>
+        /// <summary>
+        /// Retired — no longer collected. The plate photo used to be cross-checked
+        /// against the receipt's plate reading; that check was removed because the
+        /// plate is now user-editable and the photo added a document for little
+        /// evidence. Kept as an enum member, not deleted, because it is stored as an
+        /// integer and old <see cref="Document"/> rows already carry this value —
+        /// removing it would renumber nothing after it (it's last), but deleting a
+        /// member some rows still reference is never done in this codebase.
+        /// </summary>
         PlatePhoto
     }
 }

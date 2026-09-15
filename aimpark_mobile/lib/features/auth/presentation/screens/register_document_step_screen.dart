@@ -1,8 +1,13 @@
+import 'dart:async';
+
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/camera/camera_capture_screen.dart';
+import '../../../../core/camera/capture_tips_preference.dart';
+import '../../../../core/camera/capture_tips_sheet.dart';
+import '../../../../core/camera/document_review_screen.dart';
 import '../../../../core/ocr/document_recognizer.dart';
 import '../../../../core/ocr/document_scanner.dart';
 import '../../../../core/ocr/ocr_payload.dart';
@@ -58,6 +63,8 @@ class _RegisterDocumentStepScreenState
   /// the reviewer is told the system could not recognise it.
   static const int _maxCaptureAttempts = 3;
 
+  static const _tipsPreference = CaptureTipsPreference();
+
   bool _isSubmitting = false;
 
   /// Set when the server sends this document back for a retake.
@@ -70,30 +77,63 @@ class _RegisterDocumentStepScreenState
   }
 
   Future<void> _capture(DocumentSpec spec) async {
-    final result =
-        await Navigator.of(context).push<CapturedDocument>(
-      MaterialPageRoute(
-        builder: (_) => CameraCaptureScreen<CapturedDocument>(
-          spec: spec,
-          // The scanner is shared across all four captures by the provider;
-          // this only binds it to the document being photographed now.
-          recognizer: DocumentRecognizer(
-            ref.read(documentScannerProvider),
-            spec.type,
+    if (!await _tipsPreference.hasBeenShown()) {
+      if (!mounted) return;
+      final proceed = await CaptureTipsSheet.show(context);
+      if (!proceed || !mounted) return;
+      unawaited(_tipsPreference.markShown());
+    }
+
+    if (!mounted) return;
+    final navigator = Navigator.of(context);
+
+    // Loops on a retake chosen from the review screen, rather than requiring
+    // the caller to tap the capture control again — the camera reopens
+    // straight away, which is what "retake" means to whoever just tapped it.
+    while (mounted) {
+      final captured = await navigator.push<CapturedDocument>(
+        MaterialPageRoute(
+          builder: (_) => CameraCaptureScreen<CapturedDocument>(
+            spec: spec,
+            // The scanner is shared across all captures by the provider;
+            // this only binds it to the document being photographed now.
+            recognizer: DocumentRecognizer(
+              ref.read(documentScannerProvider),
+              spec.type,
+            ),
           ),
         ),
-      ),
-    );
-    if (result == null || !mounted) return;
+      );
+      if (captured == null || !mounted) return;
 
-    ref.read(registrationNotifierProvider.notifier).setCaptured(
-          spec.type,
-          result,
-        );
+      ref.read(registrationNotifierProvider.notifier).setCaptured(
+            spec.type,
+            captured,
+          );
 
-    // The verdict described the previous photo. Leaving it up would tell
-    // someone their retake is still blurry before anyone has looked at it.
-    setState(() => _retakeMessage = null);
+      // The verdict described the previous photo. Leaving it up would tell
+      // someone their retake is still blurry before anyone has looked at it.
+      setState(() => _retakeMessage = null);
+
+      final attempts =
+          ref.read(registrationNotifierProvider).captureAttempts[spec.type] ??
+              0;
+
+      final useIt = await navigator.push<bool>(
+        MaterialPageRoute(
+          builder: (_) => DocumentReviewScreen(
+            photo: captured,
+            spec: spec,
+            retakesSpent: attempts >= _maxCaptureAttempts,
+          ),
+        ),
+      );
+
+      if (useIt == true) return;
+      // Anything else — Retake, or backing out of the review screen — goes
+      // round again rather than leaving the step on a photo the user just
+      // said no to.
+    }
   }
 
   /// Names each photo the way the server's multipart form expects.
@@ -101,7 +141,6 @@ class _RegisterDocumentStepScreenState
         ScanDocumentType.raf || ScanDocumentType.schoolId => 'IdentityDocument',
         ScanDocumentType.license => 'License',
         ScanDocumentType.officialReceipt => 'OfficialReceipt',
-        ScanDocumentType.platePhoto => 'PlatePhoto',
       };
 
   Future<String?> _oversizedPhoto(
@@ -270,7 +309,6 @@ class _RegisterDocumentStepScreenState
     return RegistrationStepScaffold(
       step: 4,
       title: 'Documents',
-      subStep: '${widget.index + 1} of ${specs.length}',
       // Back walks the flow's history, so a document can be looked at or
       // retaken after moving past it, and the first of them returns to the
       // profile step — which reopens as an edit of the account that step
@@ -288,6 +326,8 @@ class _RegisterDocumentStepScreenState
             title: spec.label,
             subtitle: spec.purpose,
           ),
+          _DocumentProgressDots(current: widget.index, total: specs.length),
+          const SizedBox(height: AppSpacing.md),
           // The reviewer's own words, above the frame rather than below it: this
           // is the instruction for the photograph about to be taken, not a
           // verdict on one already taken.
@@ -400,6 +440,46 @@ class _DocumentStepLoading extends StatelessWidget {
         padding: EdgeInsets.symmetric(vertical: AppSpacing.xl),
         child: Center(child: CircularProgressIndicator()),
       ),
+    );
+  }
+}
+
+/// Which of the three documents this is, kept separate from the registration
+/// stepper — that one tracks the five-step flow as a whole, and folding a
+/// document count into it was two different questions squeezed into one
+/// small piece of text ("Step 4 of 5 · 1 of 3") that nobody could read at a
+/// glance. This answers only "which document", right where the document
+/// itself is.
+class _DocumentProgressDots extends StatelessWidget {
+  const _DocumentProgressDots({required this.current, required this.total});
+
+  /// 0-indexed.
+  final int current;
+  final int total;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = context.tokens;
+
+    return Row(
+      children: [
+        for (var i = 0; i < total; i++) ...[
+          Container(
+            width: 8,
+            height: 8,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: i <= current ? t.brand.primary : t.surface.muted,
+            ),
+          ),
+          if (i != total - 1) const SizedBox(width: 6),
+        ],
+        const SizedBox(width: AppSpacing.sm),
+        Text(
+          'Document ${current + 1} of $total',
+          style: context.text.labelSmall?.copyWith(color: t.text.secondary),
+        ),
+      ],
     );
   }
 }

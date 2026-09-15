@@ -95,23 +95,17 @@ class RegistrationDetail {
 }
 
 class VehicleInfo {
-  final String? brand;
-  final String? model;
   final String? vehicleType;
   final String? plateNumber;
   final String? color;
 
   const VehicleInfo({
-    this.brand,
-    this.model,
     this.vehicleType,
     this.plateNumber,
     this.color,
   });
 
   factory VehicleInfo.fromJson(Map<String, dynamic> json) => VehicleInfo(
-        brand: json['brand']?.toString(),
-        model: json['model']?.toString(),
         vehicleType: json['vehicleType']?.toString(),
         plateNumber: json['plateNumber']?.toString(),
         color: json['color']?.toString(),

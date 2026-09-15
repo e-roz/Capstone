@@ -170,7 +170,7 @@ GoRouter appRouter(Ref ref) {
         builder: (context, state) {
           final index = int.tryParse(state.pathParameters['index'] ?? '') ?? 0;
           return RegisterDocumentStepScreen(
-            index: index.clamp(0, 3),
+            index: index.clamp(0, 2),
             retakeMessage: state.extra as String?,
           );
         },

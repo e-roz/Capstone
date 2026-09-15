@@ -20,9 +20,9 @@ typedef RegistrationDraft = ({
 /// Remembers a registration in progress across a restart of the app.
 ///
 /// Registration is the longest unbroken stretch of work the app asks anyone to
-/// do — an OTP, a form, four photographs — and the document step runs the
+/// do — an OTP, a form, three photographs — and the document step runs the
 /// camera, which is exactly when Android is most likely to kill the process for
-/// memory. Without this, coming back meant photographing all four documents
+/// memory. Without this, coming back meant photographing all three documents
 /// again, and a staff member came back as a student because the affiliation had
 /// gone with the rest of the state.
 ///

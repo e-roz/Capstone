@@ -120,6 +120,8 @@ class _CameraCaptureScreenState<T> extends State<CameraCaptureScreen<T>> {
               isBusy: _isBusy,
               busyMessage: widget.recognizer.busyMessage,
               onCapture: _capture,
+              isTorchOn: _session.isTorchOn,
+              onToggleTorch: _session.toggleTorch,
             ),
         },
       ),
@@ -134,6 +136,8 @@ class _Viewfinder extends StatelessWidget {
     required this.isBusy,
     required this.busyMessage,
     required this.onCapture,
+    required this.isTorchOn,
+    required this.onToggleTorch,
   });
 
   final CameraController controller;
@@ -141,6 +145,8 @@ class _Viewfinder extends StatelessWidget {
   final bool isBusy;
   final String busyMessage;
   final VoidCallback onCapture;
+  final bool isTorchOn;
+  final VoidCallback onToggleTorch;
 
   @override
   Widget build(BuildContext context) {
@@ -161,6 +167,13 @@ class _Viewfinder extends StatelessWidget {
         ),
         CaptureFrameOverlay(aspectRatio: spec.aspectRatio),
         _Instruction(text: spec.instruction),
+        Align(
+          alignment: Alignment.topRight,
+          child: Padding(
+            padding: const EdgeInsets.all(AppSpacing.md),
+            child: _TorchButton(isOn: isTorchOn, onPressed: onToggleTorch),
+          ),
+        ),
         if (isBusy) _BusyOverlay(message: busyMessage),
         Align(
           alignment: Alignment.bottomCenter,
@@ -170,6 +183,41 @@ class _Viewfinder extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+/// Toggles the back camera's torch, for a document photographed in poor
+/// light. A steady light while framing, not a flash at the moment of
+/// capture — see [CameraSession.toggleTorch] for why that distinction
+/// matters here.
+class _TorchButton extends StatelessWidget {
+  const _TorchButton({required this.isOn, required this.onPressed});
+
+  final bool isOn;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      button: true,
+      label: isOn ? 'Turn off flashlight' : 'Turn on flashlight',
+      child: GestureDetector(
+        onTap: onPressed,
+        child: Container(
+          width: 44,
+          height: 44,
+          decoration: BoxDecoration(
+            color: isOn ? Colors.white : Colors.black.withValues(alpha: 0.4),
+            shape: BoxShape.circle,
+          ),
+          child: Icon(
+            isOn ? Icons.flash_on : Icons.flash_off,
+            color: isOn ? Colors.black87 : Colors.white,
+            size: 22,
+          ),
+        ),
+      ),
     );
   }
 }

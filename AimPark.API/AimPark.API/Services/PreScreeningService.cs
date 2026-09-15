@@ -13,7 +13,6 @@ namespace AimPark.API.Services
 
             verification.NameMatch = CheckName(verification, user, notes);
             verification.PlateMatch = CheckPlate(verification, vehicle, notes);
-            verification.PlatePhotoMatch = CheckPlatePhoto(verification, notes);
             verification.LicenseValidity = CheckLicenseValidity(verification, notes);
             verification.RegistrationValidity = CheckRegistrationValidity(verification, notes);
             verification.EnrollmentValidity = CheckEnrollment(verification, user, notes);
@@ -29,29 +28,35 @@ namespace AimPark.API.Services
         }
 
         /// <summary>
-        /// The names on the documents against each other, and against the account
-        /// they were submitted under.
+        /// The account's name against the school document, and against the
+        /// licence.
         /// </summary>
         /// <remarks>
-        /// The account name is the leg that makes this worth running. Comparing the
-        /// school document to the licence alone establishes only that the two papers
-        /// describe one person — so a set of documents belonging entirely to someone
-        /// else agrees with itself perfectly and passes. The applicant's own name
-        /// reached the account through an email they had to receive a code at, which
-        /// is the closest thing to an identity this registration has.
+        /// The account name is the leg that makes this worth running. Comparing
+        /// the school document to the licence alone would establish only that
+        /// the two papers describe one person — so a set of documents belonging
+        /// entirely to someone else agrees with itself perfectly and passes. The
+        /// applicant's own name reached the account through an email they had to
+        /// receive a code at, which is the closest thing to an identity this
+        /// registration has.
+        ///
+        /// The licence half of this is no longer a second independently-read
+        /// value compared against the first. It is
+        /// <see cref="DocumentVerification.LicenseNameFound"/> — whether the
+        /// trusted name (the RAF's, or the account's for faculty/staff) was
+        /// found printed on the licence at all. See
+        /// <see cref="DocumentExtractionService.Extract"/> and
+        /// <see cref="NameLocator"/> for why: the licence's name caption reads
+        /// badly often enough that trying to read a second name off it and
+        /// comparing two guesses produced false mismatches from OCR noise alone.
         ///
         /// The Official Receipt's owner is still never compared: campus users
         /// commonly drive vehicles registered to a parent, so a mismatch there is
         /// expected and proves nothing.
-        ///
-        /// Faculty and staff used to be skipped entirely, because a school ID is
-        /// filed rather than read. Their licence is read, so the account comparison
-        /// covers them now — they simply have one pairing available instead of three.
         /// </remarks>
         private static CheckResult CheckName(DocumentVerification v, User user, List<string> notes)
         {
             var accountName = user.FullName;
-            var licenseName = v.ConfirmedLicenseName ?? v.ExtractedLicenseName;
 
             // Only students submit a document these rules can take a name off.
             var schoolName = user.Affiliation == Affiliation.Student
@@ -61,23 +66,30 @@ namespace AimPark.API.Services
             var compared = 0;
             var mismatches = 0;
 
-            void Compare(string? left, string leftLabel, string? right, string rightLabel)
+            if (!string.IsNullOrWhiteSpace(accountName) && !string.IsNullOrWhiteSpace(schoolName))
             {
-                if (string.IsNullOrWhiteSpace(left) || string.IsNullOrWhiteSpace(right))
-                    return;
-
                 compared++;
-
-                if (NameMatching.IsProbableMatch(left, right))
-                    return;
-
-                mismatches++;
-                notes.Add($"Name mismatch — {leftLabel} reads \"{left.Trim()}\", {rightLabel} reads \"{right.Trim()}\".");
+                if (!NameMatching.IsProbableMatch(accountName, schoolName))
+                {
+                    mismatches++;
+                    notes.Add(
+                        $"Name mismatch — the account reads \"{accountName.Trim()}\", " +
+                        $"the school document reads \"{schoolName.Trim()}\".");
+                }
             }
 
-            Compare(schoolName, "the school document", licenseName, "the licence");
-            Compare(accountName, "the account", licenseName, "the licence");
-            Compare(accountName, "the account", schoolName, "the school document");
+            switch (v.LicenseNameFound)
+            {
+                case true:
+                    compared++;
+                    break;
+                case false:
+                    compared++;
+                    mismatches++;
+                    notes.Add(
+                        "Name mismatch — the name on file does not appear to be printed on the licence.");
+                    break;
+            }
 
             if (mismatches > 0)
                 return CheckResult.Failed;
@@ -92,84 +104,31 @@ namespace AimPark.API.Services
         }
 
         /// <summary>
-        /// Whether the plate now on the account is the one the receipt gave.
+        /// Whether a usable plate ended up on the account.
         /// </summary>
         /// <remarks>
-        /// This used to compare the receipt against a plate the applicant typed, and
-        /// that comparison no longer exists: the plate is read off the receipt and
-        /// shown read-only, then the vehicle record is created from it. Comparing it
-        /// back against itself would pass every time and tell a reviewer nothing.
-        ///
-        /// What is left is worth keeping. The app echoes the plate back when
-        /// confirming, so a value that differs from the stored reading did not come
-        /// from the screen the user saw, and the record should not quietly carry it.
-        /// Corroboration that the plate is genuinely this vehicle's comes from
-        /// <see cref="CheckPlatePhoto"/>, which reads the physical plate.
-        ///
-        /// Never guessed at. A blank an admin fills in is recoverable; a confidently
-        /// wrong plate sits in the database until someone is denied at the gate with
-        /// a perfectly valid card and no way to understand why.
+        /// The plate is editable now — there is no corroborating photo any more, so
+        /// a value the user typed to correct an OCR misread is a legitimate
+        /// correction, not tampering. This check only asks whether a plate exists;
+        /// whether it was edited, and what it was edited from, is reported separately
+        /// by <see cref="NoteUserEdits"/> so the reviewer can look at the receipt
+        /// image and judge it themselves — the same treatment every other identity
+        /// field already gets.
         /// </remarks>
         private static CheckResult CheckPlate(DocumentVerification v, Vehicle? vehicle, List<string> notes)
         {
-            var fromReceipt = IdentifierNormalizer.NormalizePlate(v.ExtractedPlateNumber);
+            var plate = IdentifierNormalizer.NormalizePlate(v.ConfirmedPlateNumber ?? v.ExtractedPlateNumber);
 
-            if (fromReceipt.Length == 0)
+            if (plate.Length == 0)
             {
                 notes.Add("Could not read a plate number from the receipt.");
                 return CheckResult.NotChecked;
-            }
-
-            var committed = IdentifierNormalizer.NormalizePlate(v.ConfirmedPlateNumber);
-
-            if (committed.Length != 0 && committed != fromReceipt)
-            {
-                notes.Add(
-                    $"The plate submitted ({committed}) is not the plate read from the receipt ({fromReceipt}). " +
-                    "The app shows this value read-only, so it was not changed on the confirmation screen.");
-                return CheckResult.Failed;
             }
 
             if (vehicle is null)
                 return CheckResult.NotChecked;
 
             return CheckResult.Passed;
-        }
-
-        private static CheckResult CheckPlatePhoto(DocumentVerification v, List<string> notes)
-        {
-            var expected = IdentifierNormalizer.NormalizePlate(
-                v.ConfirmedPlateNumber ?? v.ExtractedPlateNumber);
-
-            var seen = IdentifierNormalizer.NormalizePlate(v.ExtractedPlatePhotoNumber);
-
-            if (expected.Length == 0 || seen.Length == 0)
-            {
-                notes.Add("Could not read the plate in the photo of the vehicle.");
-                return CheckResult.NotChecked;
-            }
-
-            var distance = FuzzyText.EditDistance(seen, expected);
-
-            if (distance == 0)
-                return CheckResult.Passed;
-
-            // One character apart is not agreement, and must never be recorded as
-            // one. The slack is there because these are outdoor photos at an angle,
-            // but it is exactly wide enough to swallow a one-character misreading of
-            // the receipt — and the plate is shown read-only, then written to the
-            // vehicle the gate matches on. Passing this silently is how a valid card
-            // stops working with nothing to point at.
-            if (distance == 1)
-            {
-                notes.Add(
-                    $"Plate needs a second look — the receipt reads {expected}, the photo of the vehicle reads {seen}. " +
-                    "One character apart; confirm which is correct against the images before approving.");
-                return CheckResult.NotChecked;
-            }
-
-            notes.Add($"The plate in the photo reads {seen}, but the receipt says {expected}.");
-            return CheckResult.Failed;
         }
 
         private static CheckResult CheckLicenseValidity(DocumentVerification v, List<string> notes)
@@ -261,8 +220,11 @@ namespace AimPark.API.Services
             Compare(v.ExtractedStudentName, v.ConfirmedStudentName, "name", identity: true);
             Compare(v.ExtractedStudentNumber, v.ConfirmedStudentNumber, "student number", identity: true);
             Compare(v.ExtractedLicenseName, v.ConfirmedLicenseName, "licence name", identity: true);
-            // The plate is deliberately absent: it is read-only on screen, so a
-            // difference is not an edit, and CheckPlate already reports it.
+            // Identity-weight now that there is no plate photo to corroborate it —
+            // a plate the user typed is the sole evidence behind what the gate
+            // matches on, so an edit here deserves the same scrutiny as a changed
+            // name.
+            Compare(v.ExtractedPlateNumber, v.ConfirmedPlateNumber, "plate number", identity: true);
             Compare(v.ExtractedSection, v.ConfirmedSection, "section", identity: false);
             Compare(v.ExtractedSemester, v.ConfirmedSemester, "semester", identity: false);
         }

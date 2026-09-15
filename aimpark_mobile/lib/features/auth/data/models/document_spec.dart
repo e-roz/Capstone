@@ -25,7 +25,7 @@ class DocumentSpec extends CaptureSpec {
 
   /// What this document is for, in the applicant's terms.
   ///
-  /// Each one answers exactly one question, and someone asked for four
+  /// Each one answers exactly one question, and someone asked for three
   /// photographs deserves to know which question each is answering — otherwise
   /// the licence and the receipt look like the same demand for paperwork twice.
   final String purpose;
@@ -58,18 +58,10 @@ class DocumentSpec extends CaptureSpec {
   static const officialReceipt = DocumentSpec(
     type: ScanDocumentType.officialReceipt,
     label: 'Official receipt',
-    purpose:
-        'Your plate number is read from here — you will not have to type it.',
+    purpose: 'Your plate number is read from here — you can fix it on the '
+        'next screen if we misread it.',
     instruction: 'The LTO receipt. Keep the plate number and date in frame.',
     aspectRatio: 1 / 1.414,
-  );
-
-  static const platePhoto = DocumentSpec(
-    type: ScanDocumentType.platePhoto,
-    label: 'Plate photo',
-    purpose: 'Checked against the receipt, so the right plate reaches the gate.',
-    instruction: 'The plate on the vehicle itself, straight on and close up.',
-    aspectRatio: 2.0,
   );
 
   /// The documents registration asks for, in the order it asks for them.
@@ -80,6 +72,5 @@ class DocumentSpec extends CaptureSpec {
         affiliation == Affiliation.student ? raf : schoolId,
         license,
         officialReceipt,
-        platePhoto,
       ];
 }

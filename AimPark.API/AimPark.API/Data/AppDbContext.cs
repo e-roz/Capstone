@@ -191,7 +191,6 @@ namespace AimPark.API.Data
 
                 entity.Property(v => v.NameMatch).HasConversion<string>();
                 entity.Property(v => v.PlateMatch).HasConversion<string>();
-                entity.Property(v => v.PlatePhotoMatch).HasConversion<string>();
                 entity.Property(v => v.LicenseValidity).HasConversion<string>();
                 entity.Property(v => v.RegistrationValidity).HasConversion<string>();
                 entity.Property(v => v.EnrollmentValidity).HasConversion<string>();

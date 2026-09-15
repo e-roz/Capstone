@@ -12,7 +12,6 @@ class RegistrationStepScaffold extends StatelessWidget {
     required this.step,
     required this.title,
     required this.child,
-    this.subStep,
     this.onBack,
     this.busy = false,
   });
@@ -20,13 +19,6 @@ class RegistrationStepScaffold extends StatelessWidget {
   final int step;
   final String title;
   final Widget child;
-
-  /// Position within a step that spans several screens, as "2 of 4".
-  ///
-  /// The document step is four screens long. Advancing the main bar four times
-  /// would overstate how much of registration is done; saying nothing would
-  /// leave someone on their third document with no idea how many are left.
-  final String? subStep;
 
   /// Where this step's back arrow goes, when it is somewhere other than the
   /// screen the user came from.
@@ -64,14 +56,6 @@ class RegistrationStepScaffold extends StatelessWidget {
               child: Image.asset('assets/images/owl_mascot.png', width: 64),
             ),
             const SizedBox(height: AppSpacing.md),
-            Text(
-              subStep == null
-                  ? 'Step $step of $_totalSteps'
-                  : 'Step $step of $_totalSteps · $subStep',
-              style: context.text.labelSmall
-                  ?.copyWith(color: context.tokens.brand.subtleText),
-            ),
-            const SizedBox(height: AppSpacing.sm),
             StepProgressBar(currentStep: step, totalSteps: _totalSteps),
             const SizedBox(height: AppSpacing.lg),
             child,

@@ -51,3 +51,21 @@ Future<AuditLogPage> auditLogs(Ref ref) async {
   final response = await dio.get(ApiEndpoints.auditLogs, queryParameters: params);
   return AuditLogPage.fromJson(response.data as Map<String, dynamic>);
 }
+
+/// One account's admin history, for the registration detail screen.
+///
+/// Deliberately its own request rather than a filtered read of
+/// [auditLogsProvider] — that provider's query is shared, paged state driven
+/// by the System Logs screen, and watching it here would tie a detail
+/// screen's history strip to whatever page a reviewer happened to leave the
+/// log list on.
+@riverpod
+Future<AuditLogPage> userAuditLogs(Ref ref, String userId) async {
+  final dio = ref.watch(dioProvider);
+
+  final response = await dio.get(
+    ApiEndpoints.auditLogs,
+    queryParameters: {'targetUserId': userId, 'pageSize': 10},
+  );
+  return AuditLogPage.fromJson(response.data as Map<String, dynamic>);
+}

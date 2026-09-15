@@ -13,8 +13,7 @@ enum ScanDocumentType {
   schoolId('SchoolId'),
 
   license('License'),
-  officialReceipt('OfficialReceipt'),
-  platePhoto('PlatePhoto');
+  officialReceipt('OfficialReceipt');
 
   const ScanDocumentType(this.wireName);
 

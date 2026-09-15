@@ -50,22 +50,23 @@ namespace AimPark.API.DTOs
         public string? LicenseName { get; set; }
         public DateTime? LicenseExpiry { get; set; }
 
+        /// <summary>
+        /// Whether the RAF (or, for faculty/staff, the account's own name) was
+        /// found printed on the licence. Null when there was nothing to check —
+        /// no name to search with, or the licence gave no usable lines at all.
+        /// </summary>
+        public bool? LicenseNameFound { get; set; }
+
         public string? PlateNumber { get; set; }
         public DateTime? RegistrationExpiry { get; set; }
 
-        /// <summary>What the photo of the physical plate read, if anything.</summary>
-        public string? PlatePhotoNumber { get; set; }
+        /// <summary>"Car" or "Motorcycle" — the API's own <c>VehicleType</c>
+        /// enum name, read off the receipt. The user can still change it.</summary>
+        public string? VehicleType { get; set; }
 
-        /// <summary>
-        /// Whether that reading agrees with the receipt. See
-        /// <see cref="Enums.PlateAgreement"/>.
-        /// </summary>
-        /// <remarks>
-        /// The app shows this on the plate step and on the summary. With the plate
-        /// no longer typed, two readings agreeing is the whole of the evidence that
-        /// the right characters end up on the account.
-        /// </remarks>
-        public string PlateAgreement { get; set; } = Enums.PlateAgreement.NotChecked.ToString();
+        /// <summary>Free text as printed on the receipt. Matched against the
+        /// app's fixed swatch list on the confirmation screen.</summary>
+        public string? Color { get; set; }
 
         /// <summary>
         /// Fields the confirmation screen should draw attention to, and why.

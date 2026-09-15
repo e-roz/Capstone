@@ -3,8 +3,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
+import '../models/audit_log_entry.dart';
 import '../models/registration_checks.dart';
 import '../models/registration_detail.dart';
+import '../providers/audit_logs_provider.dart';
 import '../providers/registrations_provider.dart';
 import '../theme/theme.dart';
 import '../widgets/checks_panel.dart';
@@ -80,29 +82,137 @@ class RegistrationDetailScreen extends ConsumerWidget {
     );
   }
 
+  /// Approving used to be one dialog regardless of what the checks found — a
+  /// "Clear" application and one that needed a look got the same plain
+  /// confirm/cancel. This shows the actual findings when they need attention
+  /// and asks for a reason before letting the button through, so the checks
+  /// this system already computes are not simply ignored at the one moment
+  /// they matter most.
   Future<void> _approve(
       BuildContext context, WidgetRef ref, RegistrationDetail detail) async {
-    final confirm = await showDialog<bool>(
+    final isStudent = detail.affiliation == 'Student';
+    final needsOverride =
+        detail.checks != null && detail.checks!.verdict != 'Clear';
+
+    final noteCtrl = TextEditingController();
+    final formKey = GlobalKey<FormState>();
+    DateTime? enrollmentValidUntil;
+
+    final result = await showDialog<
+        ({DateTime? enrollmentValidUntil, String? overrideNote})>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Approve Registration'),
-        content: Text(
-            'Approve ${detail.fullName}\'s registration? This will activate their account.'),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('Cancel')),
-          FilledButton(
-              onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('Approve')),
-        ],
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setState) => AlertDialog(
+          title: const Text('Approve Registration'),
+          content: SizedBox(
+            width: 420,
+            child: Form(
+              key: formKey,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Approve ${detail.fullName}\'s registration? This will '
+                    'activate their account.',
+                  ),
+                  if (needsOverride) ...[
+                    const SizedBox(height: AppSpacing.x3),
+                    for (final headline in detail.checks!.headlines)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: AppSpacing.x1),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Icon(
+                              Icons.warning_amber_rounded,
+                              size: AppSizes.iconSm,
+                              color: ctx.tokens.status.warning.fg,
+                            ),
+                            const SizedBox(width: AppSpacing.x1),
+                            Expanded(child: Text(headline)),
+                          ],
+                        ),
+                      ),
+                    const SizedBox(height: AppSpacing.x2),
+                    TextFormField(
+                      controller: noteCtrl,
+                      decoration: const InputDecoration(
+                        labelText: 'Reason for approving despite the above',
+                      ),
+                      maxLines: 2,
+                      validator: (v) => (v == null || v.trim().isEmpty)
+                          ? 'A reason is required'
+                          : null,
+                    ),
+                  ],
+                  if (isStudent) ...[
+                    const SizedBox(height: AppSpacing.x3),
+                    FormField<DateTime>(
+                      validator: (_) => enrollmentValidUntil == null
+                          ? 'Required for student accounts'
+                          : null,
+                      builder: (state) => InkWell(
+                        onTap: () async {
+                          final now = DateTime.now();
+                          final picked = await showDatePicker(
+                            context: ctx,
+                            initialDate: enrollmentValidUntil ?? now,
+                            firstDate: now.subtract(const Duration(days: 30)),
+                            lastDate: now.add(const Duration(days: 730)),
+                          );
+                          if (picked == null) return;
+                          setState(() => enrollmentValidUntil = picked);
+                          state.didChange(picked);
+                        },
+                        child: InputDecorator(
+                          decoration: InputDecoration(
+                            labelText: 'Enrolment valid until',
+                            errorText: state.errorText,
+                            suffixIcon: const Icon(
+                              Icons.calendar_today_outlined,
+                              size: 18,
+                            ),
+                          ),
+                          child: Text(
+                            enrollmentValidUntil == null
+                                ? 'Select a date'
+                                : DateFormat('MMM d, yyyy')
+                                    .format(enrollmentValidUntil!),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+            FilledButton(
+              onPressed: () {
+                if (!formKey.currentState!.validate()) return;
+                Navigator.pop(ctx, (
+                  enrollmentValidUntil: enrollmentValidUntil,
+                  overrideNote: needsOverride ? noteCtrl.text.trim() : null,
+                ));
+              },
+              child: const Text('Approve'),
+            ),
+          ],
+        ),
       ),
     );
 
-    if (confirm != true || !context.mounted) return;
+    if (result == null || !context.mounted) return;
 
-    final msg =
-        await ref.read(registrationActionsProvider.notifier).approve(userId);
+    final msg = await ref.read(registrationActionsProvider.notifier).approve(
+          userId,
+          enrollmentValidUntil: result.enrollmentValidUntil,
+          overrideNote: result.overrideNote,
+        );
 
     if (!context.mounted) return;
 
@@ -120,7 +230,6 @@ class RegistrationDetailScreen extends ConsumerWidget {
     'SchoolId': 'School ID',
     'License': "Driver's licence",
     'OfficialReceipt': 'Official receipt',
-    'PlatePhoto': 'Plate photo',
   };
 
   /// Common reasons, offered as one tap each.
@@ -294,7 +403,7 @@ class RegistrationDetailScreen extends ConsumerWidget {
       return (preset: 'Expired ID', why: 'the ${expired.label} check failed');
     }
 
-    if (checks.firstFailing({'NameMatch', 'PlateMatch', 'PlatePhotoMatch'})
+    if (checks.firstFailing({'NameMatch', 'PlateMatch'})
         case final mismatch?) {
       return (
         preset: 'Mismatched information',
@@ -527,8 +636,6 @@ class _DetailView extends StatelessWidget {
                   value: vehicle.plateNumber ?? '—',
                   emphasis: true,
                 ),
-                AppField(label: 'Brand', value: vehicle.brand ?? '—'),
-                AppField(label: 'Model', value: vehicle.model ?? '—'),
                 AppField(
                     label: 'Vehicle Type', value: vehicle.vehicleType ?? '—'),
                 AppField(label: 'Color', value: vehicle.color ?? '—'),
@@ -550,7 +657,94 @@ class _DetailView extends StatelessWidget {
             ),
           ),
         ],
+        const SizedBox(height: AppSpacing.gutter),
+        _HistoryCard(userId: detail.userId),
       ],
+    );
+  }
+}
+
+/// What's been done to this application so far — retakes asked for,
+/// approvals, rejections — read without leaving for the separate System Logs
+/// screen and losing the record on screen.
+class _HistoryCard extends ConsumerWidget {
+  const _HistoryCard({required this.userId});
+
+  final String userId;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final async = ref.watch(userAuditLogsProvider(userId));
+
+    // Failing quietly here is deliberate: this card is supporting context for
+    // a decision the reviewer can still make without it, not a reason to
+    // break the page a rejection or approval already depends on.
+    return async.when(
+      loading: () => const AppSectionCard(
+        title: 'Review History',
+        icon: Icons.history,
+        child: SkeletonDetail(sections: 1, fieldsPerSection: 2),
+      ),
+      error: (_, _) => const SizedBox.shrink(),
+      data: (page) {
+        if (page.logs.isEmpty) return const SizedBox.shrink();
+
+        return AppSectionCard(
+          title: 'Review History',
+          subtitle: 'Actions taken on this application, most recent first.',
+          icon: Icons.history,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              for (final entry in page.logs) _HistoryRow(entry: entry),
+            ],
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _HistoryRow extends StatelessWidget {
+  const _HistoryRow({required this.entry});
+
+  final AuditLogEntry entry;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = context.tokens;
+    final text = Theme.of(context).textTheme;
+    final hasReason = entry.reason != null && entry.reason!.isNotEmpty;
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: AppSpacing.x3),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          StatusPill(
+            label: entry.action,
+            intent: StatusIntents.auditAction(entry.action),
+            dense: true,
+          ),
+          const SizedBox(width: AppSpacing.x3),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '${entry.adminName} · ${_fmt(entry.createdAt)}',
+                  style: text.bodySmall?.copyWith(color: t.text.secondary),
+                ),
+                if (hasReason)
+                  Padding(
+                    padding: const EdgeInsets.only(top: AppSpacing.labelGap),
+                    child: Text(entry.reason!, style: text.bodySmall),
+                  ),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

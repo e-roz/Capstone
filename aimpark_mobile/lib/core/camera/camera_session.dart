@@ -47,6 +47,7 @@ class CameraSession extends ChangeNotifier with WidgetsBindingObserver {
   CameraController? _controller;
   CameraFailure? _failure;
   bool _disposed = false;
+  bool _torchOn = false;
 
   /// Null until the camera is ready. Callers must handle that.
   CameraController? get controller => _controller;
@@ -54,6 +55,30 @@ class CameraSession extends ChangeNotifier with WidgetsBindingObserver {
   bool get isReady => _controller?.value.isInitialized ?? false;
 
   CameraFailure? get failure => _failure;
+
+  bool get isTorchOn => _torchOn;
+
+  /// Toggles continuous light on the back camera, for framing a document in
+  /// poor light.
+  ///
+  /// Deliberately [FlashMode.torch], not [FlashMode.always] — the latter only
+  /// fires at the moment of capture, which on a laminated ID or plastic
+  /// licence produces glare that hurts a reading more than the dark it was
+  /// meant to fix. Steady light while framing is what actually helps.
+  Future<void> toggleTorch() async {
+    final controller = _controller;
+    if (controller == null || !controller.value.isInitialized) return;
+
+    final next = !_torchOn;
+    try {
+      await controller.setFlashMode(next ? FlashMode.torch : FlashMode.off);
+      _torchOn = next;
+      notifyListeners();
+    } on CameraException {
+      // Some devices have no torch at all; leave the state as it was rather
+      // than claiming it changed.
+    }
+  }
 
   /// Starts observing lifecycle and opens the camera. Call from `initState`.
   Future<void> start() async {
@@ -69,6 +94,10 @@ class CameraSession extends ChangeNotifier with WidgetsBindingObserver {
   }
 
   Future<void> _open() async {
+    // A fresh controller always starts with the flash off; the previous
+    // session's torch state has no meaning for a new one.
+    _torchOn = false;
+
     try {
       final cameras = await availableCameras();
       if (cameras.isEmpty) {
@@ -141,6 +170,7 @@ class CameraSession extends ChangeNotifier with WidgetsBindingObserver {
     // way back; reusing the old controller after that gives a frozen preview.
     if (state == AppLifecycleState.inactive) {
       _controller = null;
+      _torchOn = false;
       controller.dispose();
       notifyListeners();
     } else if (state == AppLifecycleState.resumed) {

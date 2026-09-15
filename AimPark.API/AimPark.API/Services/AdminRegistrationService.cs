@@ -180,8 +180,6 @@ namespace AimPark.API.Services
                 {
                     PlateNumber = v.PlateNumber,
                     VehicleType = v.VehicleType.ToString(),
-                    Brand = v.Brand,
-                    Model = v.Model,
                     Color = v.Color
                 }).ToList(),
                 Documents = documentResponses,
@@ -189,11 +187,43 @@ namespace AimPark.API.Services
             });
         }
 
-        public async Task<ActionResult<object>> ApproveAsync(Guid userId, Guid adminUserId, CancellationToken ct)
+        /// <remarks>
+        /// Two things this used to skip, both fixed here rather than left for later:
+        ///
+        /// The enrolment end date, the student number and the section were shown to
+        /// the reviewer throughout the review screen but never actually written to
+        /// the account — <see cref="PreScreeningService"/> told the reviewer to "set
+        /// the enrolment end date when approving" and there was nothing here that
+        /// did. They are copied from the latest submission's confirmed values (the
+        /// same values already displayed), plus the date the reviewer supplies —
+        /// nothing on the RAF prints a usable end date, only a term as text.
+        ///
+        /// Approving over a checks verdict that still needs attention used to leave
+        /// no more of a trace than an "Approve" row in the audit log. It now also
+        /// records why on the submission itself, in <see cref="DocumentVerification.OverrideNote"/>
+        /// — the same evidence a reviewer six months from now would otherwise have
+        /// to reconstruct from a bare log line.
+        /// </remarks>
+        public async Task<ActionResult<object>> ApproveAsync(Guid userId, Guid adminUserId, ApproveRegistrationDto dto, CancellationToken ct)
         {
             var user = await _users.FindAsync(u => u.Id == userId, ct);
             if (user is null)
                 return new NotFoundObjectResult(new { message = "User not found." });
+
+            if (user.Affiliation == Affiliation.Student && dto.EnrollmentValidUntil is null)
+                return new BadRequestObjectResult(new { message = "Enrolment end date is required for student accounts." });
+
+            var vehicles = await _vehicles.GetAllAsync(v => v.UserId == userId, ct);
+            var verifications = await _verifications.GetAllAsync(v => v.UserId == userId, ct);
+            var checks = RegistrationChecks.Build(user, verifications, vehicles, DateTime.UtcNow);
+
+            if (checks is not null && checks.Verdict != "Clear" && string.IsNullOrWhiteSpace(dto.OverrideNote))
+            {
+                return new BadRequestObjectResult(new
+                {
+                    message = "The checks need a look — add a note explaining why you're approving anyway."
+                });
+            }
 
             var oldStatus = user.AccountStatus.ToString();
             user.AccountStatus = AccountStatus.Active;
@@ -201,9 +231,30 @@ namespace AimPark.API.Services
             user.RejectionReason = null;
             user.RejectedAt = null;
             user.CanReapplyAt = null;
+
+            var latest = verifications.OrderByDescending(v => v.CreatedAt).FirstOrDefault();
+            if (latest is not null)
+            {
+                user.EnrollmentValidUntil = dto.EnrollmentValidUntil;
+                user.StudentNumber = latest.ConfirmedStudentNumber ?? latest.ExtractedStudentNumber;
+                user.Section = latest.ConfirmedSection ?? latest.ExtractedSection;
+
+                // Only the most recent submission is marked. A reviewer approving
+                // sees the checks for that submission, and that note is what their
+                // override note is a reason for.
+                if (checks is not null && checks.Verdict != "Clear")
+                {
+                    latest.WasOverridden = true;
+                    latest.OverriddenByUserId = adminUserId;
+                    latest.OverriddenAt = DateTime.UtcNow;
+                    latest.OverrideNote = dto.OverrideNote!.Trim();
+                    _verifications.Update(latest);
+                }
+            }
+
             user.UpdatedAt = DateTime.UtcNow;
 
-            await LogActionAsync(adminUserId, userId, "Approve", oldStatus, user.AccountStatus.ToString(), null, ct);
+            await LogActionAsync(adminUserId, userId, "Approve", oldStatus, user.AccountStatus.ToString(), dto.OverrideNote, ct);
 
             _users.Update(user);
             await _users.SaveAsync(ct);
@@ -370,7 +421,6 @@ namespace AimPark.API.Services
             nameof(DocumentType.SchoolId) => "School ID",
             nameof(DocumentType.License) => "Driver's licence",
             nameof(DocumentType.OfficialReceipt) => "Official receipt",
-            nameof(DocumentType.PlatePhoto) => "Plate photo",
             _ => type
         };
 

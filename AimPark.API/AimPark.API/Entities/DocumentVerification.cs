@@ -45,16 +45,18 @@ namespace AimPark.API.Entities
         public string? ExtractedLicenseName { get; set; }
         public DateTime? ExtractedLicenseExpiry { get; set; }
 
+        /// <summary>
+        /// Whether the RAF (or account) name was found printed on the licence.
+        /// Null means nothing could be checked; the reviewer decides by eye.
+        /// This, not <see cref="ExtractedLicenseName"/>, is what
+        /// <see cref="PreScreeningService"/> bases the name-match verdict on —
+        /// <see cref="ExtractedLicenseName"/> stays purely for display.
+        /// </summary>
+        public bool? LicenseNameFound { get; set; }
+
         // --- Read from the OR: what plate should the gate camera look for? ---
         public string? ExtractedPlateNumber { get; set; }
         public DateTime? ExtractedRegistrationExpiry { get; set; }
-
-        /// <summary>
-        /// Read from the photo of the physical plate. Confirmation, not extraction —
-        /// the expected value is already known from the OR, so the question is only
-        /// whether it appears here.
-        /// </summary>
-        public string? ExtractedPlatePhotoNumber { get; set; }
 
         // --- What the user agreed to on the confirmation screen. ---
         //
@@ -78,11 +80,8 @@ namespace AimPark.API.Entities
         /// the OR, whose owner is often a family member and is deliberately ignored.</summary>
         public CheckResult NameMatch { get; set; }
 
-        /// <summary>OR plate against the plate the user typed.</summary>
+        /// <summary>Whether a usable plate was captured. See <see cref="PreScreeningService"/>.</summary>
         public CheckResult PlateMatch { get; set; }
-
-        /// <summary>OR plate against the photographed plate.</summary>
-        public CheckResult PlatePhotoMatch { get; set; }
 
         public CheckResult LicenseValidity { get; set; }
         public CheckResult RegistrationValidity { get; set; }
@@ -116,11 +115,15 @@ namespace AimPark.API.Entities
         /// </remarks>
         public string? RawPayloads { get; set; }
 
-        // Set when an admin's approve/reject contradicts Result — the override,
-        // recorded so "the machine said no but we let them in" is answerable later.
+        // Set when an admin approves despite the computed checks needing
+        // attention — the override, recorded so "the checks flagged this, we
+        // let them in anyway" is answerable later.
         public bool WasOverridden { get; set; }
         public Guid? OverriddenByUserId { get; set; }
         public DateTime? OverriddenAt { get; set; }
+
+        /// <summary>The reviewer's own reason for approving over the checks.</summary>
+        public string? OverrideNote { get; set; }
 
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     }

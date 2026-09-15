@@ -6,17 +6,14 @@ import '../../../../core/utils/app_flushbar.dart';
 import '../../../../core/widgets/widgets.dart';
 import '../../../auth/data/models/scan_result.dart';
 import '../../../auth/data/registration_preflight.dart';
-import '../../../auth/presentation/widgets/plate_verdict_card.dart';
 import '../../../auth/presentation/widgets/scanned_field.dart';
-import '../../../auth/presentation/widgets/vehicle_color_picker.dart';
 import '../providers/vehicles_provider.dart';
 
 /// What the receipt said, plus the two things no document can tell us.
 ///
-/// The same shape as the registration confirmation screen, and for the same
-/// reason: the plate is read-only because it is what the gate matches on, and a
-/// plate somebody could retype here would put back the exact hole this flow
-/// exists to close.
+/// The same shape as the registration confirmation screen: the plate is
+/// pre-filled from the receipt's OCR reading and editable, same as every
+/// other field, with no photo left to corroborate it.
 class ConfirmVehicleScreen extends ConsumerStatefulWidget {
   const ConfirmVehicleScreen({super.key, required this.result});
 
@@ -38,11 +35,11 @@ class _ConfirmVehicleScreenState extends ConsumerState<ConfirmVehicleScreen> {
     'Motorcycle': Icons.two_wheeler_rounded,
   };
 
+  late final TextEditingController _plateNumber;
+  late final TextEditingController _color;
   DateTime? _registrationExpiry;
   String? _vehicleType;
-  String? _color;
   String? _vehicleTypeError;
-  String? _colorError;
   bool _isSubmitting = false;
 
   ExtractedValues get _extracted => widget.result.extracted;
@@ -50,22 +47,46 @@ class _ConfirmVehicleScreenState extends ConsumerState<ConfirmVehicleScreen> {
   @override
   void initState() {
     super.initState();
+    _plateNumber = TextEditingController(text: _extracted.plateNumber);
+    _color = TextEditingController(text: _extracted.color);
     _registrationExpiry = _extracted.registrationExpiry;
+    _vehicleType = _vehicleTypes.containsKey(_extracted.vehicleType)
+        ? _extracted.vehicleType
+        : null;
+  }
+
+  @override
+  void dispose() {
+    _plateNumber.dispose();
+    _color.dispose();
+    super.dispose();
   }
 
   Future<void> _submit() async {
     setState(() {
       _vehicleTypeError = _vehicleType == null ? 'Choose one.' : null;
-      _colorError = _color == null ? 'Choose one.' : null;
     });
-    if (_vehicleTypeError != null || _colorError != null) return;
+    if (_vehicleTypeError != null) return;
+
+    if (fieldStillMissing(
+      _extracted.flagFor('PlateNumber'),
+      _plateNumber.text.trim().isEmpty,
+    )) {
+      showAppMessage(
+        context,
+        "We couldn't read a plate number — type it in before submitting.",
+        isError: true,
+      );
+      return;
+    }
 
     setState(() => _isSubmitting = true);
     try {
       await ref.read(vehiclesRepositoryProvider).confirm({
         'verificationId': widget.result.verificationId,
+        'plateNumber': _plateNumber.text.trim(),
         'vehicleType': _vehicleType,
-        'color': _color,
+        'color': _color.text.trim(),
         'registrationExpiry': _registrationExpiry?.toIso8601String(),
       });
 
@@ -106,27 +127,17 @@ class _ConfirmVehicleScreenState extends ConsumerState<ConfirmVehicleScreen> {
       body: ListView(
         padding: kScreenListPadding,
         children: [
-          AppSectionHeader(
+          AppNotice(
             title: 'Is this right?',
-            subtitle: 'This is what we read from your receipt and plate photo.',
-            padding: const EdgeInsets.only(bottom: AppSpacing.lg),
-          ),
-
-          PlateVerdictCard(
-            plate: _extracted.plateNumber,
-            seenInPhoto: _extracted.platePhotoNumber,
-            agreement: _extracted.plateAgreement,
-            // Nowhere to send them back to from here — the capture screen is one
-            // pop away and still holds both photos, so both retakes are the
-            // same gesture.
-            onRetakePhoto: live ? () => Navigator.of(context).pop() : null,
-            onRetakeReceipt: live ? () => Navigator.of(context).pop() : null,
+            message: 'This is what we read from your receipt.',
+            intent: StatusIntent.info,
           ),
           const SizedBox(height: AppSpacing.lg),
 
           AppSectionHeader(
             title: 'About this vehicle',
-            subtitle: 'Neither of these is printed on the receipt.',
+            subtitle: 'Read from your receipt — check they match before you '
+                'submit.',
             padding: const EdgeInsets.only(bottom: AppSpacing.md),
           ),
           AppChipGroup<String>(
@@ -142,19 +153,22 @@ class _ConfirmVehicleScreenState extends ConsumerState<ConfirmVehicleScreen> {
             }),
           ),
           const SizedBox(height: AppSpacing.md),
-          VehicleColorPicker(
-            selected: _color,
-            errorText: _colorError,
-            onSelected: live
-                ? (name) => setState(() {
-                      _color = name;
-                      _colorError = null;
-                    })
-                : null,
+          ScannedField(
+            label: 'Colour',
+            controller: _color,
+            flag: _extracted.flagFor('Color'),
+            enabled: live,
           ),
           const SizedBox(height: AppSpacing.lg),
 
           const AppSectionHeader(title: 'From your receipt'),
+          ScannedField(
+            label: 'Plate number',
+            controller: _plateNumber,
+            flag: _extracted.flagFor('PlateNumber'),
+            enabled: live,
+            textCapitalization: TextCapitalization.characters,
+          ),
           ScannedDateField(
             label: 'Registration expiry',
             value: _registrationExpiry,

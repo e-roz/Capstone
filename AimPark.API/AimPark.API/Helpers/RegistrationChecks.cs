@@ -91,7 +91,7 @@ namespace AimPark.API.Helpers
                         Title = vehicles.Count > 1
                             ? $"Checks on Vehicle {i + 1} · {Display(vehicle.PlateNumber)}"
                             : $"Checks on the vehicle · {Display(vehicle.PlateNumber)}",
-                        Source = "Official Receipt + plate photo",
+                        Source = "Official Receipt",
                         Checks = BuildVehicleChecks(row, nowUtc)
                     });
                 }
@@ -103,7 +103,7 @@ namespace AimPark.API.Helpers
                 response.Vehicles.Add(new CheckGroupResponse
                 {
                     Title = "Checks on the vehicle",
-                    Source = "Official Receipt + plate photo",
+                    Source = "Official Receipt",
                     Checks = BuildVehicleChecks(newestFirst[0], nowUtc)
                 });
             }
@@ -119,31 +119,38 @@ namespace AimPark.API.Helpers
         {
             var checks = new List<CheckItemResponse>();
 
-            var schoolName = v.ConfirmedStudentName ?? v.ExtractedStudentName;
+            // Faculty and staff submit a school ID these rules do not read, so
+            // there is no school-form name to show them — but the licence is
+            // still checked against their account name, so the row is still
+            // worth showing, just with one fewer piece of evidence.
+            var schoolName = user.Affiliation == Affiliation.Student
+                ? v.ConfirmedStudentName ?? v.ExtractedStudentName
+                : null;
             var licenseName = v.ConfirmedLicenseName ?? v.ExtractedLicenseName;
 
-            // Faculty and staff submit a school ID these rules do not read, so the
-            // comparison is absent rather than failed.
-            if (user.Affiliation == Affiliation.Student)
+            var name = new CheckItemResponse { Key = "NameMatch", Label = "Name matches" };
+
+            name.State = v.NameMatch switch
             {
-                var name = new CheckItemResponse { Key = "NameMatch", Label = "Name matches" };
+                CheckResult.Passed => Passed,
+                CheckResult.Failed => Failed,
+                _ => NotChecked
+            };
 
-                if (string.IsNullOrWhiteSpace(schoolName) || string.IsNullOrWhiteSpace(licenseName))
-                {
-                    name.State = NotChecked;
-                    name.Detail = "Could not compare names — one of the documents did not give a readable name.";
-                }
-                else
-                {
-                    name.State = v.NameMatch == CheckResult.Passed ? Passed : Failed;
-                    if (name.State == Failed)
-                        name.Detail = $"Name mismatch — school document reads \"{schoolName}\", licence reads \"{licenseName}\".";
-                }
+            name.Detail = name.State switch
+            {
+                Failed when v.LicenseNameFound == false =>
+                    "Name mismatch — the name on file does not appear to be printed on the licence.",
+                Failed =>
+                    $"Name mismatch — the account reads \"{user.FullName}\", the school document reads \"{schoolName}\".",
+                NotChecked => "Could not compare names — no readable name came off the documents.",
+                _ => null
+            };
 
+            if (!string.IsNullOrWhiteSpace(schoolName))
                 AddValue(name, "School form", schoolName);
-                AddValue(name, "Licence", licenseName);
-                checks.Add(name);
-            }
+            AddValue(name, "Licence", licenseName);
+            checks.Add(name);
 
             checks.Add(ExpiryCheck(
                 key: "LicenseValidity",
@@ -191,64 +198,27 @@ namespace AimPark.API.Helpers
 
             var fromReceipt = IdentifierNormalizer.NormalizePlate(v.ExtractedPlateNumber);
             var committed = IdentifierNormalizer.NormalizePlate(v.ConfirmedPlateNumber);
+            var onFile = committed.Length == 0 ? fromReceipt : committed;
 
             var plate = new CheckItemResponse { Key = "PlateMatch", Label = "Plate on file" };
 
-            if (fromReceipt.Length == 0)
+            if (onFile.Length == 0)
             {
                 plate.State = NotChecked;
                 plate.Detail = "Could not read a plate number from the receipt.";
             }
-            else if (committed.Length != 0 && committed != fromReceipt)
-            {
-                plate.State = Failed;
-                plate.Detail =
-                    $"The plate submitted ({committed}) is not the plate read from the receipt ({fromReceipt}). " +
-                    "The app shows this value read-only, so it was not changed on the confirmation screen.";
-            }
             else
             {
+                // No corroborating photo any more — a difference from the OCR
+                // reading is a user correction, not a failure. It is surfaced
+                // separately, in Edits, where the reviewer can check it against the
+                // receipt image.
                 plate.State = v.PlateMatch == CheckResult.Passed ? Passed : NotChecked;
             }
 
             AddValue(plate, "Receipt", fromReceipt);
-            AddValue(plate, "On file", committed.Length == 0 ? fromReceipt : committed);
+            AddValue(plate, "On file", onFile);
             checks.Add(plate);
-
-            var expected = IdentifierNormalizer.NormalizePlate(v.ConfirmedPlateNumber ?? v.ExtractedPlateNumber);
-            var seen = IdentifierNormalizer.NormalizePlate(v.ExtractedPlatePhotoNumber);
-
-            var photo = new CheckItemResponse { Key = "PlatePhotoMatch", Label = "Plate photo" };
-
-            if (expected.Length == 0 || seen.Length == 0)
-            {
-                photo.State = NotChecked;
-                photo.Detail = "Could not read the plate in the photo of the vehicle.";
-            }
-            else if (v.PlatePhotoMatch == CheckResult.Passed)
-            {
-                photo.State = Passed;
-            }
-            else if (FuzzyText.EditDistance(seen, expected) == 1)
-            {
-                // Stored as NotChecked, same as PreScreeningService.CheckPlatePhoto: one
-                // character apart is neither agreement nor a mismatch, so it must not
-                // read as Failed here either — that would tell the reviewer the plate is
-                // wrong when it may just be an angle the camera caught badly.
-                photo.State = NotChecked;
-                photo.Detail = $"Plate needs a second look — the receipt reads {expected}, the photo of the "
-                    + $"vehicle reads {seen}. One character apart; confirm which is correct against the images "
-                    + "before approving.";
-            }
-            else
-            {
-                photo.State = Failed;
-                photo.Detail = $"The plate in the photo reads {seen}, but the receipt says {expected}.";
-            }
-
-            AddValue(photo, "Photo", seen);
-            AddValue(photo, "Receipt", expected);
-            checks.Add(photo);
 
             checks.Add(ExpiryCheck(
                 key: "RegistrationValidity",
@@ -332,8 +302,10 @@ namespace AimPark.API.Helpers
             Compare(v.ExtractedStudentName, v.ConfirmedStudentName, "Name", identity: true);
             Compare(v.ExtractedStudentNumber, v.ConfirmedStudentNumber, "Student number", identity: true);
             Compare(v.ExtractedLicenseName, v.ConfirmedLicenseName, "Licence name", identity: true);
-            // The plate is absent on purpose: it is read-only on the confirmation
-            // screen, so a difference is not an edit, and the plate check reports it.
+            // Identity-weight, matching PreScreeningService.NoteUserEdits: there is
+            // no plate photo left to corroborate the receipt reading, so an edit
+            // here is the sole evidence behind what the gate will match on.
+            Compare(v.ExtractedPlateNumber, v.ConfirmedPlateNumber, "Plate number", identity: true);
             Compare(v.ExtractedSection, v.ConfirmedSection, "Section", identity: false);
             Compare(v.ExtractedSemester, v.ConfirmedSemester, "Semester", identity: false);
 

@@ -14,8 +14,8 @@ part 'registration_provider.g.dart';
 
 /// One text recogniser for the whole registration flow.
 ///
-/// The documents are now captured on four separate screens, so a recogniser
-/// owned by a screen would load the model four times over. Kept alive across
+/// The documents are now captured on three separate screens, so a recogniser
+/// owned by a screen would load the model three times over. Kept alive across
 /// them and closed when the flow's providers go.
 @Riverpod(keepAlive: true)
 DocumentScanner documentScanner(Ref ref) {
@@ -58,7 +58,7 @@ class DocumentAgenda {
   bool get isRetake => reasons.isNotEmpty;
 }
 
-/// Which documents to ask for: all four, or only the ones sent back.
+/// Which documents to ask for: all three, or only the ones sent back.
 ///
 /// Asked of the server rather than inferred, because only the server knows a
 /// reviewer has been through the submission. Falling back to the full set on any
@@ -142,10 +142,10 @@ class RegistrationState {
 
   /// Photos taken so far, with what was read from each.
   ///
-  /// Held here because the four documents are captured on four screens but
+  /// Held here because the three documents are captured on three screens but
   /// uploaded in one call at the end. Keeping them on any single screen would
-  /// lose the earlier three the moment it was popped, and uploading each as it
-  /// is taken would mean four round trips before the user has finished.
+  /// lose the earlier ones the moment it was popped, and uploading each as it
+  /// is taken would mean three round trips before the user has finished.
   final Map<ScanDocumentType, CapturedDocument> captured;
 
   /// How many photographs have been taken of each document.
@@ -255,7 +255,7 @@ class RegistrationNotifier extends _$RegistrationNotifier {
   /// means "a registration is beginning" — a resumed one re-enters at the step
   /// its token names and never passes back through here.
   ///
-  /// Without this, someone who gave up at the document step would leave four
+  /// Without this, someone who gave up at the document step would leave three
   /// photographs and an affiliation on the phone, and the next person to
   /// register on it would find them restored into their own application. A
   /// shared phone is not the unusual case on a campus.

@@ -54,63 +54,13 @@ namespace AimPark.API.Services
                 .ToList());
         }
 
-        public async Task<ActionResult<object>> AddVehicleAsync(VehicleDTO dto, Guid userId, CancellationToken ct)
-        {
-            var user = await _users.FindAsync(u => u.Id == userId, ct);
-            if (user is null)
-                return new NotFoundObjectResult(new { message = "User not found." });
-
-            // Only an approved account may add vehicles. A pending applicant adding a
-            // second vehicle would sidestep the review their first one is waiting for.
-            if (user.AccountStatus != AccountStatus.Active)
-                return new BadRequestObjectResult(new { message = "Your account must be approved before adding a vehicle." });
-
-            // Brand and model are deliberately absent. Nothing reads them — the gate
-            // matches on the plate and allocation on the type — so requiring them
-            // only makes the form longer.
-            if (ValidationHelper.HasEmptyFields(dto.PlateNumber, dto.VehicleType, dto.Color))
-                return new BadRequestObjectResult(new { message = "Plate number, vehicle type and colour are required." });
-
-            if (!Enum.TryParse<VehicleType>(dto.VehicleType, true, out var vehicleType))
-                return new BadRequestObjectResult(new { message = "Invalid vehicle type." });
-
-            var plate = IdentifierNormalizer.NormalizePlate(dto.PlateNumber);
-            if (plate.Length is < 4 or > 10)
-                return new BadRequestObjectResult(new { message = "Plate number looks invalid." });
-
-            // The plate is globally unique: ALPR looks one up and must get exactly one
-            // vehicle back. Answered explicitly so the caller sees a message rather
-            // than a database constraint error.
-            if (await _vehicles.ExistsAsync(v => v.PlateNumber == plate, ct))
-                return new BadRequestObjectResult(new { message = "That plate number is already registered." });
-
-            var vehicle = new Vehicle
-            {
-                PlateNumber = plate,
-                VehicleType = vehicleType,
-                Brand = dto.Brand.Trim(),
-                Model = dto.Model.Trim(),
-                Color = dto.Color.Trim(),
-                UserId = userId
-            };
-
-            await _vehicles.AddAsync(vehicle, ct);
-            await _vehicles.SaveAsync(ct);
-
-            return new OkObjectResult(new
-            {
-                message = "Vehicle added.",
-                vehicle = Map(vehicle)
-            });
-        }
-
         /// <inheritdoc />
         /// <remarks>
         /// The same evidence registration demands, minus the documents that
-        /// describe the person. The plate is never typed here for the reason it is
-        /// never typed there: a typed plate proves nothing about a vehicle, and the
-        /// gate matches on the plate alone, so anything a user could type is
-        /// something they could type about somebody else's car.
+        /// describe the person: only the receipt, since it is the source of the
+        /// plate. The plate itself is confirmed, not typed from nothing — it is
+        /// pre-filled from the receipt's OCR reading and the user may correct it,
+        /// same as registration.
         /// </remarks>
         public async Task<ActionResult<ScanResultResponse>> ScanVehicleDocumentsAsync(
             VehicleDocumentUploadDto dto, Guid userId, CancellationToken ct)
@@ -127,8 +77,7 @@ namespace AimPark.API.Services
 
             var slots = new[]
             {
-                (File: dto.OfficialReceipt, Type: DocumentType.OfficialReceipt, Ocr: dto.OfficialReceiptOcr),
-                (File: dto.PlatePhoto, Type: DocumentType.PlatePhoto, Ocr: dto.PlatePhotoOcr)
+                (File: dto.OfficialReceipt, Type: DocumentType.OfficialReceipt, Ocr: dto.OfficialReceiptOcr)
             };
 
             var allowedExtensions = new[] { ".jpg", ".jpeg", ".png", ".pdf" };
@@ -193,14 +142,13 @@ namespace AimPark.API.Services
                 null,
                 null,
                 payloads[DocumentType.OfficialReceipt],
-                payloads[DocumentType.PlatePhoto]);
+                null);
 
             var verification = new DocumentVerification
             {
                 UserId = userId,
                 ExtractedPlateNumber = extracted.PlateNumber,
                 ExtractedRegistrationExpiry = extracted.RegistrationExpiry,
-                ExtractedPlatePhotoNumber = extracted.PlatePhotoNumber,
                 Result = VerificationStatus.NotStarted
             };
 
@@ -251,9 +199,14 @@ namespace AimPark.API.Services
             if (ValidationHelper.HasEmptyFields(dto.Color))
                 return new BadRequestObjectResult(new { message = "Choose the vehicle's colour." });
 
-            // Straight from the receipt the server read. Nothing the client sent can
-            // change it, which is the whole difference between this and typing it.
-            var plate = IdentifierNormalizer.NormalizePlate(verification.ExtractedPlateNumber);
+            // The user's confirmed value leads, same as registration — there is no
+            // plate photo to corroborate the OCR reading, so a typed correction is
+            // trusted and, if it differs from what was read, flagged to the reviewer
+            // by PreScreeningService.NoteUserEdits instead.
+            var plate = IdentifierNormalizer.NormalizePlate(dto.PlateNumber);
+
+            if (plate.Length == 0)
+                plate = IdentifierNormalizer.NormalizePlate(verification.ExtractedPlateNumber);
 
             if (plate.Length is < 4 or > 10)
                 return new BadRequestObjectResult(new
@@ -303,7 +256,6 @@ namespace AimPark.API.Services
         private static string Label(DocumentType type) => type switch
         {
             DocumentType.OfficialReceipt => "Official receipt",
-            DocumentType.PlatePhoto => "Plate photo",
             _ => type.ToString()
         };
 
@@ -320,8 +272,6 @@ namespace AimPark.API.Services
             Id = v.Id,
             PlateNumber = v.PlateNumber,
             VehicleType = v.VehicleType.ToString(),
-            Brand = v.Brand,
-            Model = v.Model,
             Color = v.Color,
             RegistrationValidThrough = v.RegistrationValidThrough,
             CreatedAt = v.CreatedAt
