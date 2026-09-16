@@ -50,7 +50,7 @@ class RegistrationActions extends _$RegistrationActions {
         data: {
           if (enrollmentValidUntil != null)
             'enrollmentValidUntil': enrollmentValidUntil.toIso8601String(),
-          if (overrideNote != null) 'overrideNote': overrideNote,
+          'overrideNote': ?overrideNote,
         },
       );
       state = const AsyncData(null);
