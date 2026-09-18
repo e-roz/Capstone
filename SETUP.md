@@ -67,7 +67,7 @@ API credentials are kept out of Git on purpose. They live in .NET *user
 secrets*, which is a file outside the project folder, so nothing sensitive can
 be committed by accident.
 
-### The two you actually have to have
+### The ones you actually have to have
 
 Start here, because the full list is longer than what it takes to get running.
 
@@ -75,10 +75,33 @@ Start here, because the full list is longer than what it takes to get running.
 |---|---|---|
 | `ConnectionStrings:DefaultConnection` | everything | No. Supabase dashboard. |
 | `Jwt:Key` | logging in | **Yes** — any long random string. |
+| `Authentication:Google:ClientId` / `ClientSecret` | **starting the API at all** | Placeholder only — see below. |
+| `Authentication:Microsoft:ClientId` / `ClientSecret` | **starting the API at all** | Placeholder only — see below. |
 
-With those two the API runs, the admin panel works, and you can log in. Add the
-rest when you need what they unlock: Brevo for registration emails, Supabase for
-document photos and backups, Firebase for push notifications.
+`Program.cs` registers Google and Microsoft auth unconditionally, and ASP.NET
+Core validates every registered scheme's options on every request (it's
+checking whether the request is an OAuth callback) — so with either pair
+unset, **every** API call throws, not just OAuth sign-in attempts. If you
+don't need real Google/Microsoft sign-in yet, any non-empty placeholder string
+satisfies the validation and unblocks everything else (JWT login, the admin
+panel, etc.); only the actual "Sign in with Google/Microsoft" buttons fail
+until you swap in real values from their respective developer consoles.
+
+With those six the API runs, the admin panel works, and you can log in. Add
+the rest when you need what they unlock: Brevo for registration emails,
+Supabase for document photos and backups, Firebase for push notifications.
+
+### If the database connection itself is flaky
+
+If you see `Npgsql.NpgsqlException: Received backend message RowDescription
+while expecting ParseCompleteMessage` — that's Supabase's **Transaction
+Pooler** (port `6543`) desyncing with Npgsql's prepared-statement handling.
+Transaction mode is built for short-lived, serverless-style connections; a
+normal long-running `dotnet run` process should use the **Session Pooler**
+instead, on port `5432` (same host, same credentials, just a different port —
+see the connection string example below). Session mode holds one dedicated
+backend connection for the app's whole lifetime, which avoids the desync
+entirely rather than just reducing how often it happens.
 
 ### Moving them without a USB stick
 
@@ -130,7 +153,10 @@ dotnet user-secrets set "Supabase:Url" "https://<project>.supabase.co"
 dotnet user-secrets set "Supabase:ServiceRoleKey" "<service role key>"
 dotnet user-secrets set "Brevo:ApiKey" "<brevo api key>"
 dotnet user-secrets set "Brevo:SenderEmail" "<verified sender>"
-dotnet user-secrets set "GoogleAuth:ClientId" "<web client id>.apps.googleusercontent.com"
+dotnet user-secrets set "Authentication:Google:ClientId" "<web client id>.apps.googleusercontent.com"
+dotnet user-secrets set "Authentication:Google:ClientSecret" "<web client secret>"
+dotnet user-secrets set "Authentication:Microsoft:ClientId" "<web client id>"
+dotnet user-secrets set "Authentication:Microsoft:ClientSecret" "<web client secret>"
 dotnet user-secrets set "Firebase:CredentialsPath" "C:\\path\\to\\firebase-adminsdk.json"
 ```
 
@@ -150,8 +176,13 @@ Where each one comes from:
   API. Used for document photos and database backups.
 - **Brevo** — sends the registration OTP emails. Without it, registration
   cannot get past the email step.
-- **GoogleAuth:ClientId** — Google Cloud console, the *Web* OAuth client. The
-  API verifies Google sign-in tokens against it.
+- **Authentication:Google:ClientId / ClientSecret** — Google Cloud console,
+  the *Web* OAuth client. The API verifies Google sign-in tokens against it.
+  Required at startup regardless (see above) — use a placeholder if you don't
+  have real values yet.
+- **Authentication:Microsoft:ClientId / ClientSecret** — Azure/Entra portal,
+  the app registration's *Web* client. Required at startup regardless (see
+  above) — use a placeholder if you don't have real values yet.
 - **Firebase:CredentialsPath** — see just below.
 
 ### The Firebase key file
