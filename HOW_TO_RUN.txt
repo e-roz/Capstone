@@ -127,7 +127,16 @@ The RC522 is a 3.3V part. 5V will kill it, usually not right away.
   Optional and safe to skip: green LED on GPIO 26, amber LED on
   GPIO 27, buzzer on GPIO 25 (LEDs through a 220 ohm resistor to GND).
 
-Step B -- one-time PC setup
+This reader has no WiFi and holds no secrets on the board itself -- a
+classic ESP32 (this board) can't emulate a USB keyboard, so instead it
+just prints the card UID over the same USB-serial cable used to flash
+it. A small Python script on whatever PC it's plugged into reads that
+UID and posts it to the cloud using THAT PC's internet connection.
+This is what makes it plug-and-play: move the reader to a different
+PC, and you only need that PC to have the script set up once -- no
+reflashing.
+
+Step B -- one-time PC setup (flashing the board itself)
   1. Install the "PlatformIO IDE" extension in VS Code. Its first
      launch downloads a toolchain; give it a few minutes.
   2. Open the firmware folder ITSELF in VS Code, not the repo root.
@@ -135,46 +144,12 @@ Step B -- one-time PC setup
      the folder you opened. ("Unknown environment" means you opened
      the wrong folder.)
   3. Nothing to install by hand -- platformio.ini already pins the
-     board (esp32dev) and pulls in MFRC522 and ArduinoJson.
+     board (esp32dev) and pulls in MFRC522.
   4. If no COM port appears when you plug the board in, install the
      CP210x or CH340 USB driver, whichever chip your board has. This
      board comes up as COM3 (CP210x).
 
-Step C -- secrets (once per machine)
-
-    cd firmware/aimpark_enroll_reader
-    cp secrets.example.h secrets.h
-
-  secrets.h is git-ignored, so a fresh clone doesn't have it and the
-  build fails on purpose until you make it. Fill in four values:
-
-    WIFI_SSID / WIFI_PASSWORD
-        2.4GHz networks only. The ESP32 cannot see a 5GHz network at
-        all, no matter how right the password is. Most phone hotspots
-        default to 5GHz.
-
-    API_BASE
-        Your PC's LAN IP plus port 5041 -- the same IP the mobile app
-        uses. Currently http://192.168.100.95:5041
-        Not localhost: to the board, "localhost" means the board.
-
-    API_KEY
-        Issued from the API once. See Step D.
-
-Step D -- device key (once, unless it gets revoked)
-With the API running and an admin JWT in hand:
-
-    curl -X POST http://<your-ip>:5041/api/admin/gate-devices \
-      -H "Authorization: Bearer <admin JWT>" \
-      -H "Content-Type: application/json" \
-      -d "{ \"name\": \"Enrollment Desk\", \"gate\": 0 }"
-
-  gate 0 means "not on a barrier". The entry and exit endpoints refuse
-  a key registered this way, so this reader sitting on an open desk
-  can't be used to open a gate. Copy apiKey out of the response
-  immediately -- only its hash is stored, it is never shown again.
-
-Step E -- build, flash, watch. From the firmware folder:
+Step C -- build, flash, watch. From the firmware folder:
 
     pio run -e enroll_reader -t upload     (build and flash)
     pio device monitor -e enroll_reader    (serial monitor, 115200)
@@ -191,18 +166,58 @@ Step E -- build, flash, watch. From the firmware folder:
   A healthy boot looks like:
     AimPark enrollment reader
     Firmware Version: 0x92 = v2.0
-    WiFi: joining ....
-    WiFi: up, this reader is 192.168.x.x
     Ready. Tap a card.
 
-  And a tap looks like:
+  There's nothing to configure here -- no secrets.h, no WiFi, no API
+  key on the board. Flash it once; it stays this way everywhere it
+  goes. Everything below is instead per-PC, in the host bridge script.
+
+Step D -- host bridge (once per PC the reader plugs into)
+
+    cd firmware/host_bridge
+    pip install -r requirements.txt
+    cp config.example.json config.json
+
+  config.json is git-ignored -- it holds the device API key. Fill in:
+
+    api_base
+        The deployed API's URL. If the API is running on this same PC
+        for dev, "http://localhost:5041" is correct (the bridge runs
+        here, not on the board). Otherwise use that machine's LAN IP,
+        e.g. http://192.168.100.95:5041.
+
+    api_key
+        Issued from the API once (below).
+
+    port
+        Leave null to auto-detect. Only set it (e.g. "COM3") if the
+        script reports more than one serial device plugged in.
+
+  Device key, with the API running and an admin JWT in hand:
+
+    curl -X POST http://<your-ip>:5041/api/admin/gate-devices \
+      -H "Authorization: Bearer <admin JWT>" \
+      -H "Content-Type: application/json" \
+      -d "{ \"name\": \"Enrollment Desk\", \"gate\": 0 }"
+
+  gate 0 means "not on a barrier". The entry and exit endpoints refuse
+  a key registered this way, so this reader sitting on an open desk
+  can't be used to open a gate. Copy apiKey out of the response
+  immediately -- only its hash is stored, it is never shown again.
+
+  Run it:
+
+    python bridge.py
+
+  A healthy start and tap look like:
+    Connecting to COM3 ...
+    Connected. Waiting for taps. Ctrl+C to stop.
     Card: 04A2B3C4D5
       -> FREE: Card read. Not yet assigned.
 
-Step F -- day to day
-  Once flashed, the reader doesn't need a PC. Give it USB power and it
-  joins WiFi and talks to the API by itself. You only need PlatformIO
-  again to change the firmware or the secrets.
+Step E -- day to day
+  Plug the reader into any PC that has bridge.py set up (Step D), keep
+  bridge.py running, and it works -- no reflashing when it moves.
 
   In the admin panel: open a user, click Assign RFID, THEN tap the
   card. The dialog only polls while it's open, so tapping first shows
@@ -212,15 +227,19 @@ Common hardware problems:
   "Firmware Version: 0x00" or "0xFF"
       RC522 isn't wired right or isn't powered. Recheck the SPI pins,
       confirm it's on 3.3V. 0x00 is usually a loose SDA or SCK.
-  WiFi dots that never stop
-      Wrong password, or a 5GHz network.
+  "Missing config.json"
+      cp config.example.json config.json in firmware/host_bridge, then
+      fill it in.
+  "No serial ports found"
+      Reader not plugged in, or the CP210x/CH340 driver is missing.
   "could not reach the API"
-      Same three causes as the mobile app: PC on a different network,
-      a stale IP in API_BASE, or Windows Firewall blocking inbound
-      5041.
+      Wrong api_base, no internet on this PC, or a firewall blocking
+      it. curl the same URL from this PC directly.
   "device key rejected" / "not allowed to enroll cards"
       The key is wrong, revoked, or belongs to a barrier reader. Check
       GET /api/admin/gate-devices and reissue with gate 0 if needed.
+  "no answer from the bridge script" (printed by the reader itself)
+      bridge.py isn't running, or is pointed at the wrong port.
   Same card fires over and over
       The card is resting on the reader. Lift it off; there's a 3s
       cooldown.
@@ -232,5 +251,8 @@ Quick order to start everything from scratch:
   3. flutter emulators --launch Pixel_6           (any folder)
      -- or -- adb connect <ip>:<port>             (for a real device)
   4. flutter run                                  (mobile folder)
-  5. plug the RFID reader into USB power          (only if you're
-     assigning cards -- it needs the API up first)
+  5. plug the RFID reader into a PC and run firmware/host_bridge/
+     bridge.py there                                (only if you're
+                                                      assigning cards --
+                                                      it needs the API
+                                                      up first)

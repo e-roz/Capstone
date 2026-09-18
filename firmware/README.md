@@ -12,6 +12,27 @@ The barrier readers are covered separately in
 
 ---
 
+## Why this reader has no WiFi
+
+Earlier versions of this sketch joined WiFi and POSTed straight to the cloud
+API, with the network's SSID/password and a device API key baked into
+`secrets.h` at flash time. That meant moving the reader to a different desk or
+site meant reflashing it with new credentials.
+
+The board is a classic ESP32, which has no native USB peripheral — it can only
+appear as a USB-serial adapter (CP210x/CH340), not a USB keyboard/HID device
+(that needs an ESP32-S2/S3). So instead, the reader now does the simplest
+thing it can do everywhere: it reads a card and prints the UID over the same
+USB-serial connection used to flash it. A small companion script —
+[`host_bridge/bridge.py`](host_bridge/bridge.py) — runs on whichever computer
+it's plugged into, reads that UID, and POSTs it to the cloud API using *that
+computer's* internet connection. The reader itself holds no WiFi credentials
+or API key at all now; the bridge script's `config.json` does.
+
+Plugging the reader into a new computer only requires that computer to have
+the bridge script's dependencies installed and its `config.json` filled in —
+no reflashing.
+
 ## 1. Wiring — ESP32 to RC522
 
 The RC522 is a **3.3 V** part. Its `3.3V` pin goes to the ESP32's `3V3`, never
@@ -42,7 +63,7 @@ out — comment out the `#define` and that code disappears:
 | Amber LED | `GPIO 27` | same |
 | Buzzer | `GPIO 25` | Active buzzer, `+` to the pin, `−` to `GND` |
 
-## 2. PlatformIO setup
+## 2. PlatformIO setup (flash once)
 
 1. **Extension** — install **PlatformIO IDE** from the VS Code extensions
    marketplace. First launch downloads its toolchain; give it a few minutes.
@@ -51,53 +72,12 @@ out — comment out the `#define` and that code disappears:
    ours lives in `firmware/`.
 3. **Board and libraries** — nothing to install by hand. `platformio.ini`
    already pins the board (`esp32dev`, the "ESP32 Dev Module" of the Arduino
-   world) and fetches `MFRC522` and `ArduinoJson` v7 on the first build.
+   world) and fetches `MFRC522` on the first build.
 4. **USB driver** — if no COM port appears when the board is plugged in,
    install the **CP210x** or **CH340** driver for your board's USB chip. Which
    one depends on the board, not on the ESP32 itself.
 
-## 3. Configure the sketch
-
-Credentials are not in the sketch. Copy the template next to it:
-
-```bash
-cd firmware/aimpark_enroll_reader
-cp secrets.example.h secrets.h
-```
-
-`secrets.h` is git-ignored — it holds a WiFi password and a device key, and this
-repository is public. Building without it fails with a message telling you to
-make it. Open it and set four values:
-
-```cpp
-#define WIFI_SSID     "your-ssid"
-#define WIFI_PASSWORD "your-password"
-#define API_BASE      "http://192.168.1.50:5041"
-#define API_KEY       "aimpark_..."
-```
-
-**`API_BASE`** is the LAN address of the machine running the API — `ipconfig` on
-that machine, take the IPv4 address. Not `localhost`, which from the ESP32's
-point of view means the ESP32. Port `5041` is what the API's `http` launch
-profile binds; it already listens on `0.0.0.0`, so it is reachable from the LAN.
-
-**`API_KEY`** is issued once, with `gate: 0`:
-
-```bash
-curl -X POST http://192.168.1.50:5041/api/admin/gate-devices \
-  -H "Authorization: Bearer <admin JWT>" \
-  -H "Content-Type: application/json" \
-  -d '{ "name": "Enrollment Desk", "gate": 0 }'
-```
-
-Gate `0` means "not on a barrier". The entry and exit endpoints refuse a key
-registered this way, so the reader sitting on an open desk cannot be used to
-open a gate. Copy the `apiKey` from the response immediately — only its hash is
-stored, and it is never shown again.
-
-## 4. Build, upload, watch
-
-From the PlatformIO toolbar, or from a terminal in `firmware/`:
+Build and upload:
 
 ```bash
 pio run -e enroll_reader -t upload   # build and flash
@@ -109,32 +89,108 @@ A healthy start looks like:
 ```
 AimPark enrollment reader
 Firmware Version: 0x92 = v2.0
-WiFi: joining STI-Baliuag....
-WiFi: up, this reader is 192.168.1.77
 Ready. Tap a card.
 ```
 
-Tap a card:
+There is nothing to configure on the board itself — no `secrets.h`, no WiFi,
+no API key. Once flashed, it stays flashed; only the bridge script below needs
+per-computer setup.
+
+## 3. Host bridge (once per computer the reader plugs into)
+
+This is what actually talks to the cloud. Everything under
+[`host_bridge/`](host_bridge/):
+
+```bash
+cd firmware/host_bridge
+pip install -r requirements.txt
+cp config.example.json config.json
+```
+
+Edit `config.json` — it's git-ignored, since it holds the device API key:
+
+```json
+{
+  "api_base": "https://your-api.onrender.com",
+  "api_key": "aimpark_PASTE_YOUR_KEY_HERE",
+  "port": null
+}
+```
+
+- **`api_base`** — the deployed API's URL. The bridge script runs on this
+  computer (not on the ESP32), so if the API is also running on this same
+  machine for dev, `"http://localhost:5041"` is correct here. If the API runs
+  on a different machine on the LAN, use that machine's IP instead (e.g.
+  `"http://192.168.1.50:5041"`).
+- **`api_key`** — issued once, with `gate: 0`:
+
+  ```bash
+  curl -X POST https://your-api.onrender.com/api/admin/gate-devices \
+    -H "Authorization: Bearer <admin JWT>" \
+    -H "Content-Type: application/json" \
+    -d '{ "name": "Enrollment Desk", "gate": 0 }'
+  ```
+
+  Gate `0` means "not on a barrier". The entry and exit endpoints refuse a key
+  registered this way, so this reader cannot be used to open a gate. Copy the
+  `apiKey` from the response immediately — only its hash is stored, and it is
+  never shown again.
+- **`port`** — leave `null` to auto-detect. Only set it if the script reports
+  more than one candidate serial device plugged in.
+
+Run it:
+
+```bash
+python bridge.py
+```
 
 ```
+Connecting to COM3 ...
+Connected. Waiting for taps. Ctrl+C to stop.
 Card: 04A2B3C4D5
   -> FREE: Card read. Not yet assigned.
 ```
 
-The panel side: open a user, choose **Assign RFID**, *then* tap. The dialog
-polls only while it is open, so tapping first shows nothing.
+Leave this running while the reader is in use — it's what turns a tap into a
+cloud call. The panel side: open a user, choose **Assign RFID**, *then* tap.
+The dialog polls only while it is open, so tapping first shows nothing.
 
-## 5. When it does not work
+### Standalone `.exe`, no Python required
+
+For a computer that shouldn't need Python installed at all, package the
+script once with [PyInstaller](https://pyinstaller.org/):
+
+```bash
+cd firmware/host_bridge
+pip install pyinstaller
+pyinstaller --onefile --name aimpark_rfid_bridge --console bridge.py
+```
+
+This produces `dist/aimpark_rfid_bridge.exe` — a single file with Python and
+every dependency bundled in (~10 MB). To deploy it to another computer, copy
+just two files next to each other anywhere on that machine:
+
+- `aimpark_rfid_bridge.exe`
+- `config.json` (copy `config.example.json` next to the `.exe` and fill it in
+  — same three fields as above)
+
+Double-click the `.exe` (or run it from a terminal) instead of `python
+bridge.py`; everything else about it is identical. It isn't committed to the
+repo — rebuild it with the command above whenever `bridge.py` changes.
+
+## 4. When it does not work
 
 | What you see | Cause | Fix |
 |---|---|---|
-| `#error` about `secrets.h` | Template never copied | `cp secrets.example.h secrets.h` in the sketch folder |
 | `Error: Unknown environment` | VS Code opened at the repo root | Open `firmware/` itself — that is where `platformio.ini` is |
 | Upload hangs at `Connecting....` | Board not in flash mode | Hold **BOOT** while it connects. A data-capable USB cable matters; some are charge-only |
 | `Firmware Version: 0x00` or `0xFF` | RC522 not wired or not powered | Recheck SPI pins; confirm `3.3V`, not 5 V. `0x00` is usually a loose `SDA`/`SCK` |
-| WiFi dots forever | Wrong password, or a 5 GHz network | ESP32 is 2.4 GHz only. Phone hotspots often default to 5 GHz |
-| `could not reach the API` | Wrong `API_BASE`, different network, or firewall | `curl` the same URL from a laptop on the reader's WiFi. Windows Firewall blocks inbound on new networks by default |
+| `Missing config.json` | Template never copied | `cp config.example.json config.json` in `host_bridge/`, then fill it in |
+| `No serial ports found` | Reader not plugged in, or driver missing | Install the CP210x/CH340 driver for the board |
+| `More than one candidate port` | Multiple serial devices plugged in | Set `"port"` in `config.json` to the right one (e.g. `"COM3"`) |
+| `could not reach the API` | Wrong `api_base`, no internet on this computer, or firewall | `curl` the same URL from this computer directly |
 | `device key rejected` | Key wrong or revoked | Check `GET /api/admin/gate-devices` for `isRevoked`. Reissue if lost |
 | `not allowed to enroll cards` | Key belongs to a barrier reader | Issue a separate key with `gate: 0` |
+| `no answer from the bridge script` (on the reader) | `bridge.py` isn't running, or is talking to the wrong port | Start it; check it printed "Connected" |
 | Card reads, panel shows nothing | Panel polls only while the Assign dialog is open | Open the dialog first, then tap |
 | Same card fires repeatedly | Card left resting on the reader | Expected up to the 3 s cooldown; lift the card off |

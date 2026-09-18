@@ -446,5 +446,15 @@ firebase-adminsdk*.json
 # committed template; the filled-in copy never goes near a commit.
 firmware/**/secrets.h
 
+# Enrollment reader host bridge — holds the cloud API URL and device key.
+# config.example.json is the committed template.
+firmware/host_bridge/config.json
+
+# PyInstaller build output for the host bridge .exe — rebuild with the
+# command in firmware/README.md rather than committing the binary.
+firmware/host_bridge/build/
+firmware/host_bridge/dist/
+firmware/host_bridge/*.spec
+
 # PlatformIO build output and local project state
 firmware/.pio/
