@@ -38,6 +38,11 @@ class _UserPickerDialog extends ConsumerStatefulWidget {
 }
 
 class _UserPickerDialogState extends ConsumerState<_UserPickerDialog> {
+  /// How long to wait after the last keystroke before firing the search —
+  /// short enough to feel live, long enough that a fast typist doesn't fire
+  /// one request per character.
+  static const _searchDebounce = Duration(milliseconds: 350);
+
   final _controller = TextEditingController();
   Timer? _debounce;
 
@@ -96,7 +101,7 @@ class _UserPickerDialogState extends ConsumerState<_UserPickerDialog> {
 
   void _onChanged(String value) {
     _debounce?.cancel();
-    _debounce = Timer(const Duration(milliseconds: 350), () => _search(value.trim()));
+    _debounce = Timer(_searchDebounce, () => _search(value.trim()));
   }
 
   @override

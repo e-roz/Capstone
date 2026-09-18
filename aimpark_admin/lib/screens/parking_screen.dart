@@ -123,6 +123,7 @@ class ParkingScreen extends ConsumerWidget {
             width: ctx.dialogWidth(380),
             child: Form(
               key: formKey,
+              autovalidateMode: AutovalidateMode.onUserInteraction,
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [

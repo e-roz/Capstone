@@ -73,12 +73,11 @@ Future<RevokeRfidResult?> showRevokeRfidDialog(
                             'anyone, even after this revoke.'
                         : 'This card goes back into the free pool and can be '
                             'reissued to a different user.',
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: blocks
-                          ? ctx.tokens.status.danger.fg
-                          : ctx.tokens.status.success.fg,
-                    ),
+                    style: Theme.of(ctx).textTheme.bodySmall?.copyWith(
+                          color: blocks
+                              ? ctx.tokens.status.danger.fg
+                              : ctx.tokens.status.success.fg,
+                        ),
                   ),
                 ),
               ],

@@ -128,9 +128,9 @@ class _AdminShellState extends ConsumerState<AdminShell> {
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('Log out'),
-        content: const SizedBox(
-          width: 360,
-          child: Text('You will need to sign in again to get back into the '
+        content: SizedBox(
+          width: ctx.dialogWidth(360),
+          child: const Text('You will need to sign in again to get back into the '
               'admin panel.'),
         ),
         actions: [

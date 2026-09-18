@@ -42,10 +42,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
     try {
       final dio = ref.read(dioProvider);
-      final res = await dio.post(ApiEndpoints.login, data: {
-        'email': _emailCtrl.text.trim(),
-        'password': _passCtrl.text,
-      });
+      final res = await dio.post(
+        ApiEndpoints.login,
+        data: {'email': _emailCtrl.text.trim(), 'password': _passCtrl.text},
+      );
 
       final data = res.data as Map<String, dynamic>;
       final token = data['token']?.toString();
@@ -56,8 +56,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       }
 
       if (JwtUtils.staffRole(token) == null) {
-        setState(() => _error =
-            'Access denied. This panel is for staff accounts only.');
+        setState(
+          () =>
+              _error = 'Access denied. This panel is for staff accounts only.',
+        );
         return;
       }
 
@@ -65,7 +67,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       if (mounted) context.go('/dashboard');
     } on DioException catch (e) {
       final data = e.response?.data;
-      final msg = (data is Map ? data['message']?.toString() : null) ??
+      final msg =
+          (data is Map ? data['message']?.toString() : null) ??
           'Login failed. Check your credentials.';
       setState(() => _error = msg);
     } finally {
@@ -127,8 +130,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                     TextFormField(
                       controller: newPassCtrl,
                       obscureText: true,
-                      decoration:
-                          const InputDecoration(labelText: 'New password'),
+                      decoration: const InputDecoration(
+                        labelText: 'New password',
+                      ),
                       validator: (v) => (v == null || v.length < 6)
                           ? 'At least 6 characters'
                           : null,
@@ -155,33 +159,45 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                       try {
                         final dio = ref.read(dioProvider);
                         if (!otpSent) {
-                          final res = await dio.post(ApiEndpoints.forgotPassword,
-                              data: {'email': emailCtrl.text.trim()});
+                          final res = await dio.post(
+                            ApiEndpoints.forgotPassword,
+                            data: {'email': emailCtrl.text.trim()},
+                          );
                           setState(() {
                             otpSent = true;
                             info = (res.data as Map<String, dynamic>)['message']
                                 ?.toString();
                           });
                         } else {
-                          final res = await dio.post(ApiEndpoints.resetPassword, data: {
-                            'email': emailCtrl.text.trim(),
-                            'otp': otpCtrl.text.trim(),
-                            'newPassword': newPassCtrl.text,
-                          });
+                          final res = await dio.post(
+                            ApiEndpoints.resetPassword,
+                            data: {
+                              'email': emailCtrl.text.trim(),
+                              'otp': otpCtrl.text.trim(),
+                              'newPassword': newPassCtrl.text,
+                            },
+                          );
                           if (!ctx.mounted) return;
                           Navigator.pop(ctx);
-                          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                            content: Text((res.data as Map<String, dynamic>)['message']
-                                    ?.toString() ??
-                                'Password reset successful.'),
-                          ));
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text(
+                                (res.data as Map<String, dynamic>)['message']
+                                        ?.toString() ??
+                                    'Password reset successful.',
+                              ),
+                            ),
+                          );
                         }
                       } on DioException catch (e) {
                         final data = e.response?.data;
-                        setState(() => error = (data is Map
-                                ? data['message']?.toString()
-                                : null) ??
-                            'Something went wrong.');
+                        setState(
+                          () => error =
+                              (data is Map
+                                  ? data['message']?.toString()
+                                  : null) ??
+                              'Something went wrong.',
+                        );
                       } finally {
                         setState(() => loading = false);
                       }
@@ -205,9 +221,19 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       // larger half of the screen rather than a logo above a form.
       body: LayoutBuilder(
         builder: (context, constraints) {
+          // A flat 32px gutter on both sides left a 400-wide form looking
+          // adrift in a much narrower phone viewport — halve it below the
+          // point where the two numbers actually collide.
+          final horizontalPadding = constraints.maxWidth < 480
+              ? AppSpacing.x4
+              : AppSpacing.x8;
+
           final form = Center(
             child: SingleChildScrollView(
-              padding: const EdgeInsets.all(AppSpacing.x8),
+              padding: EdgeInsets.symmetric(
+                horizontal: horizontalPadding,
+                vertical: AppSpacing.x8,
+              ),
               child: ConstrainedBox(
                 constraints: const BoxConstraints(maxWidth: 400),
                 child: _LoginForm(
@@ -263,88 +289,138 @@ class _BrandPanel extends StatelessWidget {
           colors: [t.brand.pressed, t.brand.primary],
         ),
       ),
-      child: Padding(
-        padding: const EdgeInsets.all(AppSpacing.x12),
-        // The block is centred in the panel and capped at a readable width.
-        // Left-aligned against a 48px edge it hugged one side and left a wide
-        // empty gutter on the other, which is what made the split look uneven
-        // even before the flex was corrected.
-        child: Center(
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 440),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisAlignment: MainAxisAlignment.center,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-            Row(
-              children: [
-                // Solid white plate rather than the 14%-white wash it had:
-                // against a blue gradient that tint was almost invisible, so
-                // the mark read as a smudge instead of a logo.
-                Container(
-                  width: 60,
-                  height: 60,
-                  decoration: BoxDecoration(
-                    color: t.text.onDark,
-                    borderRadius: AppRadii.lgAll,
-                  ),
-                  child: Icon(Icons.local_parking,
-                      size: 36, color: t.brand.primary),
-                ),
-                const SizedBox(width: AppSpacing.x4),
-                // The product name is the largest thing on the page. It used to
-                // sit at headlineSmall under a displaySmall tagline, so the
-                // strapline outshouted the name of the system.
-                Expanded(
-                  child: Text(
-                    'AimPark',
-                    style: text.displaySmall?.copyWith(
-                      color: t.text.onDark,
-                      fontWeight: FontWeight.w700,
-                      height: 1.1,
+      // A flat two-stop gradient is indistinguishable from any other SaaS
+      // login. The stripes underneath are the one piece of imagery in the
+      // whole panel, and they're drawn from the product itself — bay
+      // markings — rather than a decorative pattern with no reason to be here.
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          const Positioned.fill(
+            child: CustomPaint(painter: _BayStripesPainter()),
+          ),
+          Padding(
+            padding: const EdgeInsets.all(AppSpacing.x12),
+            // The block is centred in the panel and capped at a readable width.
+            // Left-aligned against a 48px edge it hugged one side and left a wide
+            // empty gutter on the other, which is what made the split look uneven
+            // even before the flex was corrected.
+            child: Center(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 440),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Row(
+                      children: [
+                        // Solid white plate rather than the 14%-white wash it had:
+                        // against the gradient that tint was almost invisible, so
+                        // the mark read as a smudge instead of a logo.
+                        Container(
+                          width: 60,
+                          height: 60,
+                          decoration: BoxDecoration(
+                            color: t.text.onDark,
+                            borderRadius: AppRadii.lgAll,
+                          ),
+                          child: Icon(
+                            Icons.local_parking,
+                            size: 36,
+                            color: t.brand.primary,
+                          ),
+                        ),
+                        const SizedBox(width: AppSpacing.x4),
+                        // The product name is the largest thing on the page. It used to
+                        // sit at headlineSmall under a displaySmall tagline, so the
+                        // strapline outshouted the name of the system.
+                        Expanded(
+                          child: Text(
+                            'AimPark',
+                            style: text.displaySmall?.copyWith(
+                              color: t.text.onDark,
+                              fontWeight: FontWeight.w700,
+                              height: 1.1,
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
-                  ),
+                    const SizedBox(height: AppSpacing.x3),
+                    Text(
+                      'STI College Baliuag',
+                      style: text.titleMedium?.copyWith(
+                        color: t.text.onDarkMuted,
+                      ),
+                    ),
+                    const SizedBox(height: AppSpacing.x10),
+                    Text(
+                      'RFID parking, run from one screen.',
+                      style: text.headlineSmall?.copyWith(
+                        color: t.text.onDark,
+                        height: 1.3,
+                      ),
+                    ),
+                    const SizedBox(height: AppSpacing.x4),
+                    Text(
+                      'Registrations, bay occupancy, payments and enforcement for '
+                      'STI Baliuag — live, in one place.',
+                      style: text.bodyLarge?.copyWith(
+                        color: t.text.onDarkMuted,
+                      ),
+                    ),
+                    const SizedBox(height: AppSpacing.x12),
+                    const _BrandPoint(
+                      icon: Icons.sensors,
+                      label: 'Gate readers report in real time',
+                    ),
+                    const SizedBox(height: AppSpacing.x4),
+                    const _BrandPoint(
+                      icon: Icons.fact_check_outlined,
+                      label: 'Documents verified before a card is issued',
+                    ),
+                    const SizedBox(height: AppSpacing.x4),
+                    const _BrandPoint(
+                      icon: Icons.receipt_long_outlined,
+                      label: 'Every charge traced to a session',
+                    ),
+                  ],
                 ),
-              ],
-            ),
-            const SizedBox(height: AppSpacing.x3),
-            Text(
-              'STI College Baliuag',
-              style: text.titleMedium?.copyWith(color: t.text.onDarkMuted),
-            ),
-            const SizedBox(height: AppSpacing.x10),
-            Text(
-              'RFID parking, run from one screen.',
-              style: text.headlineSmall?.copyWith(
-                color: t.text.onDark,
-                height: 1.3,
               ),
             ),
-            const SizedBox(height: AppSpacing.x4),
-            Text(
-              'Registrations, bay occupancy, payments and enforcement for '
-              'STI Baliuag — live, in one place.',
-              style: text.bodyLarge?.copyWith(color: t.text.onDarkMuted),
-            ),
-            const SizedBox(height: AppSpacing.x12),
-            const _BrandPoint(
-                icon: Icons.sensors, label: 'Gate readers report in real time'),
-            const SizedBox(height: AppSpacing.x4),
-            const _BrandPoint(
-                icon: Icons.fact_check_outlined,
-                label: 'Documents verified before a card is issued'),
-            const SizedBox(height: AppSpacing.x4),
-            const _BrandPoint(
-                icon: Icons.receipt_long_outlined,
-                label: 'Every charge traced to a session'),
-              ],
-            ),
           ),
-        ),
+        ],
       ),
     );
   }
+}
+
+/// Faint diagonal bay-line strokes — the one piece of imagery in the panel,
+/// drawn from what the product actually does rather than a decorative motif
+/// with no connection to it.
+class _BayStripesPainter extends CustomPainter {
+  const _BayStripesPainter();
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = const Color(0x14FFFFFF)
+      ..strokeWidth = 2;
+
+    const spacing = 56.0;
+    final span = size.width + size.height;
+    for (double x = -size.height; x < span; x += spacing) {
+      canvas.drawLine(
+        Offset(x, size.height),
+        Offset(x + size.height, 0),
+        paint,
+      );
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _BayStripesPainter oldDelegate) => false;
 }
 
 /// A tinted message block inside a dialog, replacing the bare red and green
@@ -391,10 +467,9 @@ class _BrandPoint extends StatelessWidget {
         Expanded(
           child: Text(
             label,
-            style: Theme.of(context)
-                .textTheme
-                .bodyMedium
-                ?.copyWith(color: t.text.onDarkMuted),
+            style: Theme.of(
+              context,
+            ).textTheme.bodyMedium?.copyWith(color: t.text.onDarkMuted),
           ),
         ),
       ],
@@ -454,13 +529,18 @@ class _LoginForm extends StatelessWidget {
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Icon(Icons.error_outline,
-                      size: AppSizes.iconSm, color: t.status.danger.fg),
+                  Icon(
+                    Icons.error_outline,
+                    size: AppSizes.iconSm,
+                    color: t.status.danger.fg,
+                  ),
                   const SizedBox(width: AppSpacing.x2),
                   Expanded(
                     child: Text(
                       error!,
-                      style: text.bodySmall?.copyWith(color: t.status.danger.fg),
+                      style: text.bodySmall?.copyWith(
+                        color: t.status.danger.fg,
+                      ),
                     ),
                   ),
                 ],

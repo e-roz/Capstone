@@ -121,6 +121,7 @@ class VisitorPassesScreen extends ConsumerWidget {
             width: context.dialogWidth(440),
             child: Form(
               key: formKey,
+              autovalidateMode: AutovalidateMode.onUserInteraction,
               child: SingleChildScrollView(
                 child: Column(
                   mainAxisSize: MainAxisSize.min,

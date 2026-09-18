@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../core/utils/responsive.dart';
+import '../theme/theme.dart';
+
 const _imageExtensions = ['.jpg', '.jpeg', '.png'];
 
 /// Opens a document for review: images are previewed inline, PDFs open in a
@@ -20,7 +23,7 @@ Future<void> viewDocument(
       context: context,
       builder: (ctx) => Dialog(
         child: Padding(
-          padding: const EdgeInsets.all(12),
+          padding: const EdgeInsets.all(AppSpacing.cardPadding),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -28,15 +31,20 @@ Future<void> viewDocument(
                 children: [
                   Expanded(
                       child: Text(title,
-                          style: const TextStyle(fontWeight: FontWeight.bold))),
+                          style: Theme.of(ctx).textTheme.titleSmall?.copyWith(
+                              color: ctx.tokens.text.primary))),
                   IconButton(
                       icon: const Icon(Icons.close),
+                      tooltip: 'Close',
                       onPressed: () => Navigator.pop(ctx)),
                 ],
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: AppSpacing.x2),
               ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 600, maxHeight: 600),
+                constraints: BoxConstraints(
+                  maxWidth: ctx.dialogWidth(600),
+                  maxHeight: ctx.dialogHeight(600),
+                ),
                 child: InteractiveViewer(
                   child: Image.network(
                     url,

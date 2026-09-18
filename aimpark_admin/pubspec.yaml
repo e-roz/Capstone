@@ -49,8 +49,8 @@ dev_dependencies:
 flutter:
   uses-material-design: true
 
-  # Inter is bundled rather than fetched, so the panel renders identically with
-  # no network — the defence demo cannot depend on Google's font CDN.
+  # Both bundled rather than fetched, so the panel renders identically with no
+  # network — the defence demo cannot depend on Google's font CDN.
   fonts:
     - family: Inter
       fonts:
@@ -61,4 +61,15 @@ flutter:
         - asset: assets/fonts/Inter-SemiBold.ttf
           weight: 600
         - asset: assets/fonts/Inter-Bold.ttf
+          weight: 700
+    # Display face for page titles and the login hero — Inter still carries
+    # every dense, small-size surface (tables, forms, labels). One variable
+    # file covers the weights the type scale uses.
+    - family: Plus Jakarta Sans
+      fonts:
+        - asset: assets/fonts/PlusJakartaSans-Variable.ttf
+          weight: 500
+        - asset: assets/fonts/PlusJakartaSans-Variable.ttf
+          weight: 600
+        - asset: assets/fonts/PlusJakartaSans-Variable.ttf
           weight: 700

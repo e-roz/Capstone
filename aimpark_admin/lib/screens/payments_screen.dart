@@ -380,6 +380,7 @@ class PaymentsScreen extends ConsumerWidget {
         title: const Text('Add / Update Rate'),
         content: Form(
           key: formKey,
+          autovalidateMode: AutovalidateMode.onUserInteraction,
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [

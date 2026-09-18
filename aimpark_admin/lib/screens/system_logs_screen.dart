@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
 import '../core/utils/csv_export.dart';
+import '../core/utils/responsive.dart';
 import '../models/audit_log_entry.dart';
 import '../models/rfid_access_log.dart';
 import '../models/system_log_entries.dart';
@@ -932,7 +933,7 @@ class _SystemErrorsTab extends ConsumerWidget {
         return AlertDialog(
           title: Text(entry.errorType),
           content: SizedBox(
-            width: 640,
+            width: ctx.dialogWidth(640),
             child: SingleChildScrollView(
               child: Column(
                 mainAxisSize: MainAxisSize.min,
@@ -1031,13 +1032,12 @@ class _CodeBlock extends StatelessWidget {
       ),
       child: SelectableText(
         content,
-        style: TextStyle(
-          fontFamily: 'monospace',
-          fontFamilyFallback: const ['Consolas', 'Menlo', 'Courier New'],
-          fontSize: 12,
-          height: 1.5,
-          color: t.text.secondary,
-        ),
+        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+              fontFamily: 'monospace',
+              fontFamilyFallback: const ['Consolas', 'Menlo', 'Courier New'],
+              height: 1.5,
+              color: t.text.secondary,
+            ),
       ),
     );
   }

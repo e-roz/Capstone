@@ -74,6 +74,7 @@ class ViolationsScreen extends ConsumerWidget {
             width: context.dialogWidth(420),
             child: Form(
               key: formKey,
+              autovalidateMode: AutovalidateMode.onUserInteraction,
               child: SingleChildScrollView(
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
@@ -372,7 +373,7 @@ class _ViolationsTab extends ConsumerWidget {
       builder: (ctx) => AlertDialog(
         title: const Text('Dismiss Violation'),
         content: SizedBox(
-          width: 420,
+          width: ctx.dialogWidth(420),
           child: Text(
               'Dismiss the "${v.policyRuleTitle}" violation? Any penalty and '
               'suspension it carries are lifted.'),
@@ -419,6 +420,7 @@ class _ViolationsTab extends ConsumerWidget {
             width: context.dialogWidth(420),
             child: Form(
               key: formKey,
+              autovalidateMode: AutovalidateMode.onUserInteraction,
               child: SingleChildScrollView(
                 child: Column(
                   mainAxisSize: MainAxisSize.min,

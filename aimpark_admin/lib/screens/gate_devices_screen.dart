@@ -162,6 +162,7 @@ class GateDevicesScreen extends ConsumerWidget {
             width: ctx.dialogWidth(420),
             child: Form(
               key: formKey,
+              autovalidateMode: AutovalidateMode.onUserInteraction,
               child: SingleChildScrollView(
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
@@ -268,10 +269,9 @@ class GateDevicesScreen extends ConsumerWidget {
                 ),
                 child: Text(
                   device.warning,
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: ctx.tokens.status.danger.fg,
-                  ),
+                  style: Theme.of(ctx).textTheme.bodySmall?.copyWith(
+                        color: ctx.tokens.status.danger.fg,
+                      ),
                 ),
               ),
               const SizedBox(height: AppSpacing.x4),
@@ -279,11 +279,14 @@ class GateDevicesScreen extends ConsumerWidget {
               const SizedBox(height: AppSpacing.x2),
               SelectableText(
                 device.apiKey,
-                style: const TextStyle(fontFamily: 'monospace', fontSize: 13),
+                style: Theme.of(ctx)
+                    .textTheme
+                    .bodySmall
+                    ?.copyWith(fontFamily: 'monospace'),
               ),
               const SizedBox(height: AppSpacing.x3),
               OutlinedButton.icon(
-                icon: const Icon(Icons.copy, size: 16),
+                icon: const Icon(Icons.copy, size: AppSizes.iconSm),
                 label: const Text('Copy key'),
                 onPressed: () async {
                   await Clipboard.setData(ClipboardData(text: device.apiKey));

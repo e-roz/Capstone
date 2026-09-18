@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
+import '../core/utils/responsive.dart';
 import '../models/registration_detail.dart';
 import '../providers/registrations_provider.dart';
 import '../providers/users_provider.dart';
@@ -298,9 +299,10 @@ class _UserActions {
       builder: (ctx) => AlertDialog(
         title: Text('Assign RFID to ${detail.fullName}'),
         content: SizedBox(
-          width: 420,
+          width: ctx.dialogWidth(420),
           child: Form(
             key: formKey,
+            autovalidateMode: AutovalidateMode.onUserInteraction,
             child: RfidScanField(controller: tagCtrl, userId: userId),
           ),
         ),
@@ -344,7 +346,7 @@ class _UserActions {
       builder: (ctx) => AlertDialog(
         title: Text('Suspend ${detail.fullName}'),
         content: SizedBox(
-          width: 400,
+          width: ctx.dialogWidth(400),
           child: TextField(
             controller: reasonCtrl,
             autofocus: true,
@@ -405,9 +407,10 @@ class _UserActions {
       builder: (ctx) => AlertDialog(
         title: const Text('Delete ID Documents'),
         content: SizedBox(
-          width: 420,
+          width: ctx.dialogWidth(420),
           child: Form(
             key: formKey,
+            autovalidateMode: AutovalidateMode.onUserInteraction,
             child: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -477,9 +480,10 @@ class _UserActions {
       builder: (ctx) => AlertDialog(
         title: const Text('Archive User'),
         content: SizedBox(
-          width: 420,
+          width: ctx.dialogWidth(420),
           child: Form(
             key: formKey,
+            autovalidateMode: AutovalidateMode.onUserInteraction,
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [

@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
 import '../core/utils/browser_files.dart';
+import '../core/utils/responsive.dart';
 import '../models/backup.dart';
 import '../providers/auth_provider.dart';
 import '../providers/backup_provider.dart';
@@ -422,7 +423,7 @@ class _BackupScreenState extends ConsumerState<BackupScreen> {
       builder: (ctx) => AlertDialog(
         title: const Text('Restore the database?'),
         content: SizedBox(
-          width: 460,
+          width: ctx.dialogWidth(460),
           child: Text(
             'This replaces all ${NumberFormat.decimalPattern().format(preview.currentTotalRows)} '
             'rows currently in the database with the '
@@ -477,7 +478,7 @@ class _BackupScreenState extends ConsumerState<BackupScreen> {
       builder: (ctx) => AlertDialog(
         title: const Text('Restore complete'),
         content: SizedBox(
-          width: 460,
+          width: ctx.dialogWidth(460),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,

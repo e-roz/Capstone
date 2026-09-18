@@ -56,7 +56,7 @@ LAYER 3  Component     AppTheme's DataTableThemeData, ButtonStyle, StatusPill
 LAYER 2  Semantic      t.surface.card, t.text.secondary, t.status.danger
               ↑        "secondary text is neutral-500 in light, neutral-400 in dark"
 LAYER 1  Primitive     AppPalette.neutral500, AppSpacing.x4
-                       "neutral-500 is #64748B"
+                       "neutral-500 is #78716C"
 ```
 
 Each layer only ever reads the one below it. That is what makes dark mode a
@@ -170,10 +170,16 @@ an admin than slightly roomier prose.
 **Numbers in columns must use tabular figures**, or they visibly wobble row to
 row: `AppTypography.tabular(text.bodyMedium!)`, or just use `AppNumericCell`.
 
-**Font:** Inter, fetched and cached at runtime by `google_fonts`. If the defence
-demo has to run offline, bundle the `.ttf` files under `assets/fonts/` and
-change `AppTypography._base` to `TextStyle(fontFamily: 'Inter')` — one line, and
-nothing else in the system moves.
+**Font:** two families, both bundled under `assets/fonts/` and declared in
+`pubspec.yaml` — no runtime fetch, so the panel renders identically offline.
+Inter (`AppTypography._base`) carries every dense, small-size slot: table
+cells, form values, labels, badges. Plus Jakarta Sans (`AppTypography._display`)
+carries the three slots that read as a title rather than as data —
+`displaySmall`, `headlineSmall`, `titleLarge` — because Inter's default
+weights go flat at 18px+ in a way that reads as generic-dashboard rather than
+as AimPark. A screen never sets `fontFamily` directly; the pairing is baked
+into the `TextTheme` slots, so `text.headlineSmall` and `text.bodyMedium` are
+already correct.
 
 ---
 

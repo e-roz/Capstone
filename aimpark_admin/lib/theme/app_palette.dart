@@ -14,35 +14,38 @@ class AppPalette {
   AppPalette._();
 
   // ── Brand ─────────────────────────────────────────────────────────────────
-  // Anchored on the indigo-800 the panel already shipped with, so the rebrand
-  // reads as a refinement of AimPark rather than a different product.
-  static const brand50 = Color(0xFFEFF6FF);
-  static const brand100 = Color(0xFFDBEAFE);
-  static const brand200 = Color(0xFFBFDBFE);
-  static const brand300 = Color(0xFF93C5FD);
-  static const brand400 = Color(0xFF60A5FA);
-  static const brand500 = Color(0xFF3B82F6);
-  static const brand600 = Color(0xFF2563EB);
-  static const brand700 = Color(0xFF1D4ED8);
-  static const brand800 = Color(0xFF1E40AF);
-  static const brand900 = Color(0xFF1E3A8A);
-  static const brand950 = Color(0xFF172554);
+  // A deep, warm teal replaces the stock indigo-blue the panel shipped with.
+  // Blue-on-slate is the default of nearly every admin template; teal on a warm
+  // neutral is not, and it still reads as trustworthy infrastructure rather
+  // than a mood swing — see docs/admin-design-system.md for the rationale.
+  static const brand50 = Color(0xFFF0FDFA);
+  static const brand100 = Color(0xFFCCFBF1);
+  static const brand200 = Color(0xFF99F6E4);
+  static const brand300 = Color(0xFF5EEAD4);
+  static const brand400 = Color(0xFF2DD4BF);
+  static const brand500 = Color(0xFF14B8A6);
+  static const brand600 = Color(0xFF0D9488);
+  static const brand700 = Color(0xFF0F766E);
+  static const brand800 = Color(0xFF115E59);
+  static const brand900 = Color(0xFF134E4A);
+  static const brand950 = Color(0xFF042F2E);
 
   // ── Neutral ───────────────────────────────────────────────────────────────
-  // Slate rather than pure grey: the faint blue cast keeps the neutrals from
-  // looking dirty next to the brand blue.
+  // Warm stone rather than slate: slate's blue undertone is what made the old
+  // panel read as cold and generic even where nothing was actually blue. Stone
+  // carries the same table-density job with a warmer, more approachable cast.
   static const neutral0 = Color(0xFFFFFFFF);
-  static const neutral50 = Color(0xFFF8FAFC);
-  static const neutral100 = Color(0xFFF1F5F9);
-  static const neutral200 = Color(0xFFE2E8F0);
-  static const neutral300 = Color(0xFFCBD5E1);
-  static const neutral400 = Color(0xFF94A3B8);
-  static const neutral500 = Color(0xFF64748B);
-  static const neutral600 = Color(0xFF475569);
-  static const neutral700 = Color(0xFF334155);
-  static const neutral800 = Color(0xFF1E293B);
-  static const neutral900 = Color(0xFF0F172A);
-  static const neutral950 = Color(0xFF020617);
+  static const neutral50 = Color(0xFFFAFAF9);
+  static const neutral100 = Color(0xFFF5F5F4);
+  static const neutral200 = Color(0xFFE7E5E4);
+  static const neutral300 = Color(0xFFD6D3D1);
+  static const neutral400 = Color(0xFFA8A29E);
+  static const neutral500 = Color(0xFF78716C);
+  static const neutral600 = Color(0xFF57534E);
+  static const neutral700 = Color(0xFF44403C);
+  static const neutral800 = Color(0xFF292524);
+  static const neutral900 = Color(0xFF1C1917);
+  static const neutral950 = Color(0xFF0C0A09);
 
   // ── Success ───────────────────────────────────────────────────────────────
   static const green50 = Color(0xFFECFDF5);
@@ -93,6 +96,8 @@ class AppPalette {
   static const violet600 = Color(0xFF7C3AED);
   static const violet700 = Color(0xFF6D28D9);
 
-  static const teal500 = Color(0xFF14B8A6);
-  static const teal600 = Color(0xFF0D9488);
+  // Chart-only: a warm fourth hue so a categorical series doesn't repeat the
+  // brand teal. Never used for status — danger already owns red.
+  static const rose400 = Color(0xFFFB7185);
+  static const rose500 = Color(0xFFF43F5E);
 }

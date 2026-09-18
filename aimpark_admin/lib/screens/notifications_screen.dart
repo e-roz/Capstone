@@ -270,6 +270,7 @@ Future<void> showBroadcastDialog(BuildContext context, WidgetRef ref) async {
             width: context.dialogWidth(400),
             child: Form(
               key: formKey,
+              autovalidateMode: AutovalidateMode.onUserInteraction,
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [

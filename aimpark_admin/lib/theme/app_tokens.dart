@@ -154,25 +154,28 @@ class AppSurfaceTokens {
     sidebarHover: Color(0x14FFFFFF),
     sidebarSelected: Color(0x24FFFFFF),
     overlay: AppPalette.neutral0,
-    scrim: Color(0x800F172A),
+    scrim: Color(0x801C1917),
   );
 
   static const dark = AppSurfaceTokens(
     canvas: AppPalette.neutral950,
     card: AppPalette.neutral900,
     muted: AppPalette.neutral800,
-    hover: Color(0xFF16233B),
-    selected: Color(0xFF1B2C4D),
+    hover: Color(0xFF17332E),
+    selected: Color(0xFF1B4A42),
     inverse: AppPalette.neutral100,
     sidebar: AppPalette.neutral900,
     sidebarHover: Color(0x14FFFFFF),
     sidebarSelected: Color(0x24FFFFFF),
     overlay: AppPalette.neutral800,
-    scrim: Color(0xB3020617),
+    scrim: Color(0xB30C0A09),
   );
 
   static AppSurfaceTokens lerp(
-      AppSurfaceTokens a, AppSurfaceTokens b, double t) {
+    AppSurfaceTokens a,
+    AppSurfaceTokens b,
+    double t,
+  ) {
     return AppSurfaceTokens(
       canvas: Color.lerp(a.canvas, b.canvas, t)!,
       card: Color.lerp(a.card, b.card, t)!,
@@ -334,7 +337,7 @@ class AppBorderTokens {
   );
 
   static const dark = AppBorderTokens(
-    subtle: Color(0xFF1B283F),
+    subtle: Color(0xFF241F1C),
     normal: AppPalette.neutral800,
     strong: AppPalette.neutral700,
     focus: AppPalette.brand400,
@@ -387,7 +390,7 @@ class AppBrandTokens {
     primary: AppPalette.brand500,
     hover: AppPalette.brand400,
     pressed: AppPalette.brand300,
-    subtle: Color(0xFF16294D),
+    subtle: Color(0xFF123B35),
     subtleText: AppPalette.brand200,
   );
 
@@ -460,13 +463,13 @@ class AppStatusTokens {
   final StatusColors accent;
 
   StatusColors of(StatusIntent intent) => switch (intent) {
-        StatusIntent.neutral => neutral,
-        StatusIntent.info => info,
-        StatusIntent.success => success,
-        StatusIntent.warning => warning,
-        StatusIntent.danger => danger,
-        StatusIntent.accent => accent,
-      };
+    StatusIntent.neutral => neutral,
+    StatusIntent.info => info,
+    StatusIntent.success => success,
+    StatusIntent.warning => warning,
+    StatusIntent.danger => danger,
+    StatusIntent.accent => accent,
+  };
 
   static const light = AppStatusTokens(
     neutral: StatusColors(
@@ -577,7 +580,7 @@ class AppChartTokens {
   static const light = AppChartTokens(
     categorical: [
       AppPalette.brand600,
-      AppPalette.teal500,
+      AppPalette.rose500,
       AppPalette.violet500,
       AppPalette.amber500,
       AppPalette.sky500,
@@ -591,7 +594,7 @@ class AppChartTokens {
   static const dark = AppChartTokens(
     categorical: [
       AppPalette.brand400,
-      AppPalette.teal500,
+      AppPalette.rose400,
       AppPalette.violet400,
       AppPalette.amber400,
       AppPalette.sky400,

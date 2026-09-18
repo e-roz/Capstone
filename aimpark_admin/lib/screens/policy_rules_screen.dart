@@ -103,6 +103,7 @@ class PolicyRulesScreen extends ConsumerWidget {
             width: context.dialogWidth(420),
             child: Form(
               key: formKey,
+              autovalidateMode: AutovalidateMode.onUserInteraction,
               child: SingleChildScrollView(
                 child: Column(
                   mainAxisSize: MainAxisSize.min,

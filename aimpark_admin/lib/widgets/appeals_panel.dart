@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
+import '../core/utils/responsive.dart';
 import '../models/violation.dart';
 import '../providers/violations_provider.dart';
 import '../theme/theme.dart';
@@ -212,7 +213,7 @@ class _AppealCard extends ConsumerWidget {
       builder: (ctx) => AlertDialog(
         title: Text(approve ? 'Approve Appeal' : 'Deny Appeal'),
         content: SizedBox(
-          width: 420,
+          width: ctx.dialogWidth(420),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,

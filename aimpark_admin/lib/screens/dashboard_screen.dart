@@ -138,8 +138,7 @@ class DashboardScreen extends ConsumerWidget {
                       AppChartDatum(
                         label: '${p.hour}',
                         value: p.count.toDouble(),
-                        tooltip:
-                            '${p.count} entries around ${_hour(p.hour)}',
+                        tooltip: '${p.count} entries around ${_hour(p.hour)}',
                       ),
                   ],
                 ),
@@ -174,8 +173,9 @@ class _ModuleShortcuts extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final t = context.tokens;
     final text = Theme.of(context).textTheme;
-    final shortcuts =
-        moduleShortcutsFor(ref.watch(staffRoleProvider) ?? StaffRole.admin);
+    final shortcuts = moduleShortcutsFor(
+      ref.watch(staffRoleProvider) ?? StaffRole.admin,
+    );
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -203,14 +203,18 @@ class _ModuleShortcuts extends ConsumerWidget {
             };
             final width =
                 (constraints.maxWidth - AppSpacing.gutter * (columns - 1)) /
-                    columns;
+                columns;
 
             return Wrap(
               spacing: AppSpacing.gutter,
               runSpacing: AppSpacing.gutter,
               children: [
                 for (final item in shortcuts)
-                  _ModuleTile(item: item, width: width),
+                  _ModuleTile(
+                    item: item,
+                    width: width,
+                    emphasized: _dailyDriverRoutes.contains(item.route),
+                  ),
               ],
             );
           },
@@ -220,11 +224,21 @@ class _ModuleShortcuts extends ConsumerWidget {
   }
 }
 
+/// The four modules an administrator opens every shift, not just when
+/// something needs attention — worth finding without reading ten identical
+/// tiles. Everything else on the grid is still one tap away, just quieter.
+const _dailyDriverRoutes = {'/pending', '/parking', '/payments', '/violations'};
+
 class _ModuleTile extends StatelessWidget {
-  const _ModuleTile({required this.item, required this.width});
+  const _ModuleTile({
+    required this.item,
+    required this.width,
+    required this.emphasized,
+  });
 
   final NavItem item;
   final double width;
+  final bool emphasized;
 
   @override
   Widget build(BuildContext context) {
@@ -234,6 +248,11 @@ class _ModuleTile extends StatelessWidget {
     return AppCard(
       width: width,
       onTap: () => context.go(item.route),
+      // The daily-driver four get the brand border and a solid icon chip;
+      // the rest keep the quiet tint. Ten identical cards is a wall, not a
+      // hierarchy — this is the one thing on the grid the eye should land on
+      // first.
+      selected: emphasized,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
@@ -244,11 +263,14 @@ class _ModuleTile extends StatelessWidget {
                 width: 34,
                 height: 34,
                 decoration: BoxDecoration(
-                  color: t.brand.subtle,
+                  color: emphasized ? t.brand.primary : t.brand.subtle,
                   borderRadius: AppRadii.mdAll,
                 ),
-                child: Icon(item.icon,
-                    size: AppSizes.iconMd, color: t.brand.subtleText),
+                child: Icon(
+                  item.icon,
+                  size: AppSizes.iconMd,
+                  color: emphasized ? t.text.onBrand : t.brand.subtleText,
+                ),
               ),
               const SizedBox(width: AppSpacing.x3),
               Expanded(
@@ -288,10 +310,10 @@ class _MetricRow extends StatelessWidget {
         final columns = constraints.maxWidth > 1000
             ? 4
             : constraints.maxWidth > 560
-                ? 2
-                : 1;
-        final width = (constraints.maxWidth -
-                AppSpacing.gutter * (columns - 1)) /
+            ? 2
+            : 1;
+        final width =
+            (constraints.maxWidth - AppSpacing.gutter * (columns - 1)) /
             columns;
 
         return Wrap(
@@ -419,11 +441,7 @@ class _OccupancyCard extends StatelessWidget {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                _Legend(
-                  intent: intent,
-                  label: 'Occupied',
-                  value: '$occupied',
-                ),
+                _Legend(intent: intent, label: 'Occupied', value: '$occupied'),
                 const SizedBox(height: AppSpacing.x3),
                 _Legend(
                   intent: StatusIntent.neutral,
@@ -484,8 +502,10 @@ class _Legend extends StatelessWidget {
         ),
         const SizedBox(width: AppSpacing.x3),
         Expanded(
-          child: Text(label,
-              style: text.bodyMedium?.copyWith(color: t.text.secondary)),
+          child: Text(
+            label,
+            style: text.bodyMedium?.copyWith(color: t.text.secondary),
+          ),
         ),
         Text(value, style: AppTypography.tabular(text.titleMedium!)),
       ],
@@ -515,8 +535,7 @@ class _AttentionCard extends ConsumerWidget {
         icon: Icons.report_outlined,
         label: 'Incidents still open',
         count: summary.openIncidents,
-        intent:
-            summary.openIncidents > 0 ? StatusIntent.danger : null,
+        intent: summary.openIncidents > 0 ? StatusIntent.danger : null,
         route: '/incidents',
       ),
       _AttentionRow(
@@ -574,7 +593,8 @@ class _AttentionRowState extends State<_AttentionRow> {
     final text = Theme.of(context).textTheme;
     final colors = widget.intent == null ? null : t.status.of(widget.intent!);
 
-    final value = widget.valueOverride ??
+    final value =
+        widget.valueOverride ??
         (widget.count == null ? '—' : '${widget.count}');
 
     return MouseRegion(
@@ -588,7 +608,9 @@ class _AttentionRowState extends State<_AttentionRow> {
           curve: AppMotion.standard,
           color: _hovered ? t.surface.hover : null,
           padding: const EdgeInsets.symmetric(
-              horizontal: AppSpacing.cardPadding, vertical: AppSpacing.x3),
+            horizontal: AppSpacing.cardPadding,
+            vertical: AppSpacing.x3,
+          ),
           child: Row(
             children: [
               Icon(
@@ -602,9 +624,9 @@ class _AttentionRowState extends State<_AttentionRow> {
               Expanded(child: Text(widget.label, style: text.bodyMedium)),
               Text(
                 value,
-                style: AppTypography.tabular(text.titleMedium!).copyWith(
-                  color: colors?.fg ?? t.text.tertiary,
-                ),
+                style: AppTypography.tabular(
+                  text.titleMedium!,
+                ).copyWith(color: colors?.fg ?? t.text.tertiary),
               ),
               const SizedBox(width: AppSpacing.x2),
               Icon(

@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
+import '../core/utils/responsive.dart';
 import '../models/audit_log_entry.dart';
 import '../models/registration_checks.dart';
 import '../models/registration_detail.dart';
@@ -105,9 +106,10 @@ class RegistrationDetailScreen extends ConsumerWidget {
         builder: (ctx, setState) => AlertDialog(
           title: const Text('Approve Registration'),
           content: SizedBox(
-            width: 420,
+            width: ctx.dialogWidth(420),
             child: Form(
               key: formKey,
+              autovalidateMode: AutovalidateMode.onUserInteraction,
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -262,7 +264,7 @@ class RegistrationDetailScreen extends ConsumerWidget {
           return AlertDialog(
             title: const Text('Ask for documents again'),
             content: SizedBox(
-              width: 520,
+              width: ctx.dialogWidth(520),
               child: SingleChildScrollView(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -443,9 +445,10 @@ class RegistrationDetailScreen extends ConsumerWidget {
         builder: (ctx, setState) => AlertDialog(
           title: const Text('Reject Registration'),
           content: SizedBox(
-            width: 420,
+            width: ctx.dialogWidth(420),
             child: Form(
               key: formKey,
+              autovalidateMode: AutovalidateMode.onUserInteraction,
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
