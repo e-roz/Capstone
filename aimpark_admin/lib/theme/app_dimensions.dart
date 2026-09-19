@@ -52,13 +52,17 @@ class AppSpacing {
 ///
 /// Three sizes, used consistently: [sm] for dense inline things, [md] for
 /// controls, [lg] for containers. A fourth value would only invite drift.
+///
+/// [lg] and [xl] moved from a Material-ish 12/16 to a much rounder 24/28 as
+/// part of the Claude Design re-skin — the reference dashboard's cards use a
+/// 26px radius and lean on [full] for nearly every pill, nav item and badge.
 class AppRadii {
   AppRadii._();
 
-  static const double sm = 6;
-  static const double md = 8;
-  static const double lg = 12;
-  static const double xl = 16;
+  static const double sm = 8;
+  static const double md = 12;
+  static const double lg = 24;
+  static const double xl = 28;
 
   /// Pill shape for status chips and avatars.
   static const double full = 999;
@@ -74,29 +78,19 @@ class AppRadii {
 /// elevation, because Material 3 renders elevation as a surface *tint* and the
 /// panel wants a genuine lift off the canvas.
 ///
-/// The recipe is a doubling ladder — each layer twice the blur and offset of
-/// the one before, pulled back by a negative spread of half its blur. That is
-/// what separates a modern SaaS surface from a Material one: instead of a
-/// single soft blob, the shadow is dense right under the edge and fades over a
-/// long tail, so a card reads as *lifted* rather than *smudged*. Taken from
-/// ClickUp's elevation tokens (`docs/clickup-skill/DESIGN.md` §6), whose own
-/// shadows are tinted blue rather than black.
-///
-/// Every layer below is `0x??0F172A` — the darkest slate neutral, never pure
-/// black. Black on a blue-slate canvas turns the shadow grey and slightly
-/// dirty. Only the alpha byte varies.
+/// [md] and [lg] keep the doubling-ladder recipe — each layer twice the blur
+/// and offset of the one before, pulled back by a negative spread of half its
+/// blur — for dialogs and slide-overs, which still need real lift off the
+/// page. [sm] instead matches the Claude Design reference: a single
+/// barely-there shadow under resting cards, tinted with the warm sand
+/// neutral rather than slate, since a card that never moves doesn't need to
+/// argue that it is floating.
 class AppElevation {
   AppElevation._();
 
   /// Resting state for cards and tables.
   static const List<BoxShadow> sm = [
-    BoxShadow(color: Color(0x0D0F172A), blurRadius: 2, offset: Offset(0, 1)),
-    BoxShadow(
-      color: Color(0x0D0F172A),
-      blurRadius: 3,
-      spreadRadius: -1.5,
-      offset: Offset(0, 3),
-    ),
+    BoxShadow(color: Color(0x14868073), blurRadius: 2, offset: Offset(0, 1)),
   ];
 
   /// Hovered cards and dropdown surfaces.

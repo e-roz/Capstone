@@ -26,6 +26,7 @@ class AppPage extends StatelessWidget {
     super.key,
     required this.title,
     required this.body,
+    this.eyebrow,
     this.subtitle,
     this.actions = const [],
     this.toolbar,
@@ -35,6 +36,13 @@ class AppPage extends StatelessWidget {
   });
 
   final String title;
+
+  /// A small caps label above the title — "STI BALIUAG · PARKING
+  /// OPERATIONS" rather than a sentence. Static text only: it renders before
+  /// any page data has loaded, so nothing here should depend on a value that
+  /// might still be in flight.
+  final String? eyebrow;
+
   final String? subtitle;
 
   /// Set on a detail screen reached from a list. The sidebar can get you back
@@ -63,6 +71,7 @@ class AppPage extends StatelessWidget {
 
     final header = AppPageHeader(
       title: title,
+      eyebrow: eyebrow,
       subtitle: subtitle,
       actions: actions,
       onBack: onBack,
@@ -111,12 +120,14 @@ class AppPageHeader extends StatelessWidget {
   const AppPageHeader({
     super.key,
     required this.title,
+    this.eyebrow,
     this.subtitle,
     this.actions = const [],
     this.onBack,
   });
 
   final String title;
+  final String? eyebrow;
   final String? subtitle;
   final List<Widget> actions;
 
@@ -148,6 +159,17 @@ class AppPageHeader extends StatelessWidget {
                 minimumSize: const Size(0, AppSizes.controlHeightSm),
                 tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                 textStyle: text.bodySmall,
+              ),
+            ),
+          ),
+        if (eyebrow != null)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 2),
+            child: Text(
+              eyebrow!,
+              style: text.labelSmall?.copyWith(
+                color: t.text.tertiary,
+                letterSpacing: 0.8,
               ),
             ),
           ),

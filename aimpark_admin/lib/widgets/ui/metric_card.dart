@@ -3,14 +3,16 @@ import 'package:flutter/material.dart';
 import '../../theme/theme.dart';
 import 'app_card.dart';
 
-/// A single headline number, for the Reports summary row.
+/// A single headline number, for the Reports summary row and the dashboard.
 ///
 /// The value uses tabular figures and the display size, so a row of tiles reads
 /// as a set of comparable numbers rather than as eight unrelated captions.
 ///
-/// Colour comes from a [StatusIntent] rather than a raw `Color`: "Open
-/// Incidents" is a *warning*, not "orange", and stating the intent means dark
-/// mode and future palette changes follow automatically.
+/// [intent] still drives the fallback dot colour and the caption's tint, for
+/// screens that mean "this number is a problem". [dotColor] overrides the dot
+/// alone, for a row of tiles that are simply *different metrics* rather than
+/// different severities — the reference dashboard gives each KPI tile its own
+/// hue (blue, teal, green, red) regardless of whether anything is wrong.
 class MetricCard extends StatelessWidget {
   const MetricCard({
     super.key,
@@ -18,7 +20,10 @@ class MetricCard extends StatelessWidget {
     required this.value,
     required this.icon,
     this.intent = StatusIntent.info,
+    this.dotColor,
     this.caption,
+    this.delta,
+    this.deltaPositive = true,
     this.onTap,
     this.width = AppSizes.metricCardWidth,
   });
@@ -28,8 +33,17 @@ class MetricCard extends StatelessWidget {
   final IconData icon;
   final StatusIntent intent;
 
+  /// Overrides the leading dot's colour; falls back to the intent's solid.
+  final Color? dotColor;
+
   /// Small line under the value — a comparison, a share, a rate.
   final String? caption;
+
+  /// A period-over-period change, already formatted (e.g. "+6.4%"). Shown as
+  /// a small pill beside the value. Omitted rather than guessed when the data
+  /// doesn't support a real comparison.
+  final String? delta;
+  final bool deltaPositive;
 
   final VoidCallback? onTap;
   final double width;
@@ -39,6 +53,8 @@ class MetricCard extends StatelessWidget {
     final t = context.tokens;
     final c = t.status.of(intent);
     final text = Theme.of(context).textTheme;
+    final dot = dotColor ?? c.solid;
+    final deltaColors = deltaPositive ? t.status.success : t.status.danger;
 
     return AppCard(
       width: width,
@@ -47,39 +63,58 @@ class MetricCard extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
         children: [
-          // Icon and value share the top line, with the number pushed right.
-          // Stacked under the icon, the value sat in the tile's dead centre-left
-          // and read as just another line of text; on its own end of the row it
-          // is unmistakably the thing the tile is about, and a row of tiles
-          // gives you a column of numbers to compare down.
+          // A dot rather than a filled icon square: the reference tile leads
+          // with a small colour indicator and lets the number carry the
+          // weight, instead of a coloured box competing with it for attention.
           Row(
-            crossAxisAlignment: CrossAxisAlignment.center,
             children: [
               Container(
-                width: 32,
-                height: 32,
-                decoration: BoxDecoration(
-                  color: c.bg,
-                  borderRadius: AppRadii.smAll,
-                ),
-                child: Icon(icon, size: AppSizes.iconMd, color: c.fg),
+                width: 10,
+                height: 10,
+                decoration: BoxDecoration(color: dot, shape: BoxShape.circle),
               ),
-              const SizedBox(width: AppSpacing.x3),
+              const SizedBox(width: AppSpacing.x2),
               Expanded(
                 child: Text(
-                  value,
-                  textAlign: TextAlign.right,
-                  style: AppTypography.tabular(text.displaySmall!),
+                  label,
+                  style: text.bodySmall?.copyWith(color: t.text.secondary),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                 ),
               ),
+              if (onTap != null)
+                Icon(Icons.arrow_outward, size: 14, color: t.text.tertiary)
+              else
+                Icon(icon, size: AppSizes.iconSm, color: t.text.tertiary),
             ],
           ),
-          const SizedBox(height: AppSpacing.x3),
-          Text(
-            label,
-            style: text.bodySmall?.copyWith(color: t.text.secondary),
+          const SizedBox(height: AppSpacing.x4),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              Text(
+                value,
+                style: AppTypography.tabular(text.displaySmall!),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+              if (delta != null) ...[
+                const SizedBox(width: AppSpacing.x2),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: AppSpacing.x2, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: deltaColors.bg,
+                    borderRadius: AppRadii.fullAll,
+                  ),
+                  child: Text(
+                    delta!,
+                    style:
+                        text.labelSmall?.copyWith(color: deltaColors.fg),
+                  ),
+                ),
+              ],
+            ],
           ),
           if (caption != null) ...[
             const SizedBox(height: AppSpacing.x1),

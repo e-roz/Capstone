@@ -154,7 +154,7 @@ class AppTheme {
         labelStyle: text.labelMedium!,
         secondaryLabelStyle: text.labelMedium!,
         side: BorderSide(color: t.border.normal),
-        shape: const RoundedRectangleBorder(borderRadius: AppRadii.smAll),
+        shape: const RoundedRectangleBorder(borderRadius: AppRadii.fullAll),
         padding: const EdgeInsets.symmetric(
             horizontal: AppSpacing.x2, vertical: AppSpacing.x1),
         showCheckmark: false,
@@ -293,7 +293,7 @@ class AppTheme {
           minimumSize:
               const WidgetStatePropertyAll(Size(0, AppSizes.controlHeight)),
           shape: const WidgetStatePropertyAll(
-              RoundedRectangleBorder(borderRadius: AppRadii.mdAll)),
+              RoundedRectangleBorder(borderRadius: AppRadii.fullAll)),
           elevation: const WidgetStatePropertyAll(0),
         ),
       ),
@@ -314,7 +314,7 @@ class AppTheme {
           minimumSize:
               const WidgetStatePropertyAll(Size(0, AppSizes.controlHeight)),
           shape: const WidgetStatePropertyAll(
-              RoundedRectangleBorder(borderRadius: AppRadii.mdAll)),
+              RoundedRectangleBorder(borderRadius: AppRadii.fullAll)),
         ),
       ),
 
@@ -329,7 +329,7 @@ class AppTheme {
             return Colors.transparent;
           }),
           shape: const WidgetStatePropertyAll(
-              RoundedRectangleBorder(borderRadius: AppRadii.mdAll)),
+              RoundedRectangleBorder(borderRadius: AppRadii.fullAll)),
         ),
       ),
     );
@@ -352,7 +352,7 @@ class AppTheme {
           horizontal: AppSpacing.x4, vertical: AppSpacing.x2)),
       minimumSize: const WidgetStatePropertyAll(Size(0, AppSizes.controlHeight)),
       shape: const WidgetStatePropertyAll(
-          RoundedRectangleBorder(borderRadius: AppRadii.mdAll)),
+          RoundedRectangleBorder(borderRadius: AppRadii.fullAll)),
       elevation: const WidgetStatePropertyAll(0),
       shadowColor: const WidgetStatePropertyAll(Colors.transparent),
     );

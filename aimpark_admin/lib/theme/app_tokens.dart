@@ -144,31 +144,35 @@ class AppSurfaceTokens {
   final Color scrim;
 
   static const light = AppSurfaceTokens(
-    canvas: Color(0xFFF5F7FA),
+    canvas: AppPalette.neutral100,
     card: AppPalette.neutral0,
-    muted: AppPalette.neutral100,
+    muted: AppPalette.neutral200,
     hover: AppPalette.neutral50,
     selected: AppPalette.brand50,
-    inverse: AppPalette.neutral800,
-    sidebar: AppPalette.neutral800,
+    // The sidebar and every "emphasis" fill read from the cool `ink` ramp
+    // rather than the warm `neutral` ramp — see AppPalette's note on the
+    // two-hue split. That keeps them a consistent cool-dark regardless of
+    // which theme's canvas they sit on.
+    inverse: AppPalette.ink700,
+    sidebar: AppPalette.ink700,
     sidebarHover: Color(0x14FFFFFF),
     sidebarSelected: Color(0x24FFFFFF),
     overlay: AppPalette.neutral0,
-    scrim: Color(0x801C1917),
+    scrim: Color(0x801C1F25),
   );
 
   static const dark = AppSurfaceTokens(
     canvas: AppPalette.neutral950,
     card: AppPalette.neutral900,
     muted: AppPalette.neutral800,
-    hover: Color(0xFF17332E),
-    selected: Color(0xFF1B4A42),
-    inverse: AppPalette.neutral100,
-    sidebar: AppPalette.neutral900,
+    hover: Color(0xFF0A152A),
+    selected: Color(0xFF0F2248),
+    inverse: AppPalette.ink100,
+    sidebar: AppPalette.ink800,
     sidebarHover: Color(0x14FFFFFF),
     sidebarSelected: Color(0x24FFFFFF),
     overlay: AppPalette.neutral800,
-    scrim: Color(0xB30C0A09),
+    scrim: Color(0xB3030305),
   );
 
   static AppSurfaceTokens lerp(
@@ -256,10 +260,10 @@ class AppTextTokens {
   final Color onBrand;
 
   static const light = AppTextTokens(
-    primary: AppPalette.neutral900,
-    secondary: AppPalette.neutral500,
-    tertiary: AppPalette.neutral400,
-    disabled: AppPalette.neutral300,
+    primary: AppPalette.ink700,
+    secondary: AppPalette.ink500,
+    tertiary: AppPalette.ink400,
+    disabled: AppPalette.ink300,
     inverse: AppPalette.neutral0,
     inverseMuted: Color(0xB3FFFFFF),
     onDark: AppPalette.neutral0,
@@ -270,11 +274,11 @@ class AppTextTokens {
   );
 
   static const dark = AppTextTokens(
-    primary: AppPalette.neutral50,
-    secondary: AppPalette.neutral400,
-    tertiary: AppPalette.neutral500,
-    disabled: AppPalette.neutral600,
-    inverse: AppPalette.neutral900,
+    primary: AppPalette.ink50,
+    secondary: AppPalette.ink300,
+    tertiary: AppPalette.ink400,
+    disabled: AppPalette.ink600,
+    inverse: AppPalette.ink800,
     inverseMuted: Color(0xB3FFFFFF),
     // Identical to the light theme on purpose: the surfaces these sit on do not
     // change between themes, so neither should the text.
@@ -337,7 +341,7 @@ class AppBorderTokens {
   );
 
   static const dark = AppBorderTokens(
-    subtle: Color(0xFF241F1C),
+    subtle: Color(0xFF181611),
     normal: AppPalette.neutral800,
     strong: AppPalette.neutral700,
     focus: AppPalette.brand400,
@@ -390,7 +394,7 @@ class AppBrandTokens {
     primary: AppPalette.brand500,
     hover: AppPalette.brand400,
     pressed: AppPalette.brand300,
-    subtle: Color(0xFF123B35),
+    subtle: Color(0xFF0C1D40),
     subtleText: AppPalette.brand200,
   );
 
@@ -479,10 +483,10 @@ class AppStatusTokens {
       solid: AppPalette.neutral500,
     ),
     info: StatusColors(
-      bg: AppPalette.sky50,
-      fg: AppPalette.sky700,
-      border: AppPalette.sky200,
-      solid: AppPalette.sky600,
+      bg: AppPalette.teal50,
+      fg: AppPalette.teal700,
+      border: AppPalette.teal200,
+      solid: AppPalette.teal600,
     ),
     success: StatusColors(
       bg: AppPalette.green50,
@@ -520,33 +524,33 @@ class AppStatusTokens {
       solid: AppPalette.neutral400,
     ),
     info: StatusColors(
-      bg: Color(0x2438BDF8),
-      fg: AppPalette.sky200,
-      border: Color(0x4D38BDF8),
-      solid: AppPalette.sky400,
+      bg: Color(0x24009E97),
+      fg: AppPalette.teal200,
+      border: Color(0x4D009E97),
+      solid: AppPalette.teal400,
     ),
     success: StatusColors(
-      bg: Color(0x2434D399),
+      bg: Color(0x24179765),
       fg: AppPalette.green200,
-      border: Color(0x4D34D399),
+      border: Color(0x4D179765),
       solid: AppPalette.green400,
     ),
     warning: StatusColors(
-      bg: Color(0x24FBBF24),
+      bg: Color(0x24DEA143),
       fg: AppPalette.amber200,
-      border: Color(0x4DFBBF24),
+      border: Color(0x4DDEA143),
       solid: AppPalette.amber400,
     ),
     danger: StatusColors(
-      bg: Color(0x24F87171),
+      bg: Color(0x24F2716A),
       fg: AppPalette.red200,
-      border: Color(0x4DF87171),
+      border: Color(0x4DF2716A),
       solid: AppPalette.red400,
     ),
     accent: StatusColors(
-      bg: Color(0x24A78BFA),
+      bg: Color(0x24B48DF4),
       fg: AppPalette.violet100,
-      border: Color(0x4DA78BFA),
+      border: Color(0x4DB48DF4),
       solid: AppPalette.violet400,
     ),
   );
@@ -583,7 +587,7 @@ class AppChartTokens {
       AppPalette.rose500,
       AppPalette.violet500,
       AppPalette.amber500,
-      AppPalette.sky500,
+      AppPalette.teal500,
       AppPalette.green500,
       AppPalette.red500,
       AppPalette.neutral400,
@@ -597,7 +601,7 @@ class AppChartTokens {
       AppPalette.rose400,
       AppPalette.violet400,
       AppPalette.amber400,
-      AppPalette.sky400,
+      AppPalette.teal400,
       AppPalette.green400,
       AppPalette.red400,
       AppPalette.neutral500,

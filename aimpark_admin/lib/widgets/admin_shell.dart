@@ -14,6 +14,15 @@ import '../providers/theme_provider.dart';
 import '../providers/violations_provider.dart';
 import '../theme/theme.dart';
 
+/// The panel's frame: a light top bar carrying the workspace mark, a
+/// segmented pill for the four destination groups, and the account menu —
+/// with a second row of pill tabs for whichever group is active.
+///
+/// Replaces the dark left rail. Seventeen destinations do not fit one row of
+/// pills, which is why the nav is two-tier rather than a literal copy of a
+/// five-tab reference: the top row picks a *group*, the second row picks a
+/// *screen* within it, and a badge on either tells you where the queued work
+/// is without opening it.
 class AdminShell extends ConsumerStatefulWidget {
   const AdminShell({super.key, required this.child});
 
@@ -24,10 +33,6 @@ class AdminShell extends ConsumerStatefulWidget {
 }
 
 class _AdminShellState extends ConsumerState<AdminShell> {
-  /// Manual collapse. Below the medium breakpoint the sidebar collapses
-  /// regardless, so this only decides the wide case.
-  bool _collapsed = false;
-
   @override
   Widget build(BuildContext context) {
     final t = context.tokens;
@@ -42,41 +47,33 @@ class _AdminShellState extends ConsumerState<AdminShell> {
         ? StaffRole.admin
         : JwtUtils.staffRole(token) ?? StaffRole.admin;
     final groups = navGroupsFor(role);
-    final items = [for (final g in groups) ...g.items];
-    final selected = _selectedIndex(location, items);
+    final activeGroup = _groupFor(location, groups);
 
-    // On a phone a sidebar would leave almost nothing for content, so
-    // navigation moves behind a hamburger instead.
     if (context.isCompact) {
+      final items = [for (final g in groups) ...g.items];
+      final selected = _flatIndex(location, items);
       return Scaffold(
         appBar: AppBar(
-          backgroundColor: t.surface.sidebar,
-          foregroundColor: t.text.onDark,
+          backgroundColor: t.surface.card,
+          foregroundColor: t.text.primary,
           elevation: 0,
           title: Text(
-            items[selected].label,
-            style: Theme.of(context)
-                .textTheme
-                .titleMedium
-                ?.copyWith(color: t.text.onDark),
+            items.isEmpty ? 'AimPark' : items[selected].label,
+            style: Theme.of(context).textTheme.titleMedium,
           ),
         ),
         drawer: Drawer(
-          backgroundColor: t.surface.sidebar,
+          backgroundColor: t.surface.card,
           child: SafeArea(
-            child: _SidebarBody(
-              collapsed: false,
-              selected: selected,
-              email: email,
+            child: _DrawerNav(
               groups: groups,
+              location: location,
+              email: email,
               onSelect: (route) {
                 Navigator.pop(context);
                 context.go(route);
               },
               onLogout: _logout,
-              // The drawer is already dismissible; a collapse toggle inside it
-              // would be a control with nothing to do.
-              onToggleCollapse: null,
             ),
           ),
         ),
@@ -84,43 +81,39 @@ class _AdminShellState extends ConsumerState<AdminShell> {
       );
     }
 
-    final collapsed = _collapsed || context.isMedium;
-
     return Scaffold(
-      body: Row(
+      body: Column(
         children: [
-          AnimatedContainer(
-            duration: AppMotion.normal,
-            curve: AppMotion.standard,
-            width: collapsed
-                ? AppSizes.sidebarCollapsed
-                : AppSizes.sidebarExpanded,
-            color: t.surface.sidebar,
-            child: _SidebarBody(
-              collapsed: collapsed,
-              selected: selected,
-              email: email,
-              groups: groups,
-              onSelect: context.go,
-              onLogout: _logout,
-              // Forced collapse isn't the admin's choice, so don't offer a
-              // toggle that the next resize would override.
-              onToggleCollapse: context.isMedium
-                  ? null
-                  : () => setState(() => _collapsed = !_collapsed),
-            ),
+          _TopBar(
+            groups: groups,
+            activeGroup: activeGroup,
+            location: location,
+            email: email,
+            onLogout: _logout,
           ),
+          if (activeGroup != null && activeGroup.items.length > 1)
+            _SubNav(group: activeGroup, location: location),
+          Divider(height: 1, color: t.border.normal),
           Expanded(child: widget.child),
         ],
       ),
     );
   }
 
-  /// Confirms before signing out.
-  ///
-  /// "Log out" sits one item below "Dark theme" in the same small menu, so a
-  /// mis-click ended the session and threw away whatever queue the reviewer was
-  /// part-way through. The dialog costs a keystroke and prevents that.
+  NavGroup? _groupFor(String location, List<NavGroup> groups) {
+    for (final g in groups) {
+      if (g.items.any((i) => location.startsWith(i.route))) return g;
+    }
+    return groups.isEmpty ? null : groups.first;
+  }
+
+  int _flatIndex(String location, List<NavItem> items) {
+    for (var i = 0; i < items.length; i++) {
+      if (location.startsWith(items[i].route)) return i;
+    }
+    return 0;
+  }
+
   Future<void> _logout() async {
     final t = context.tokens;
 
@@ -153,161 +146,185 @@ class _AdminShellState extends ConsumerState<AdminShell> {
     await ref.read(authNotifierProvider.notifier).logout();
     if (mounted) context.go('/login');
   }
+}
 
-  int _selectedIndex(String location, List<NavItem> items) {
-    // Longest-prefix first would matter if routes nested; they don't here.
-    for (var i = 0; i < items.length; i++) {
-      if (location.startsWith(items[i].route)) return i;
-    }
-    return 0; // default to the first destination this role has
+/// Work waiting behind a destination, or null if it does not track any. Kept
+/// as a hook widget rather than a plain function so each caller only watches
+/// the providers its own route needs.
+class _BadgeWatcher extends ConsumerWidget {
+  const _BadgeWatcher({required this.route, required this.builder});
+
+  final String route;
+  final Widget Function(BuildContext context, int? badge) builder;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final badge = switch (route) {
+      '/incidents' when ref.watch(staffRoleProvider) == StaffRole.security =>
+        ref.watch(openIncidentCountProvider).valueOrNull,
+      '/incidents' => switch ((
+          ref.watch(openIncidentCountProvider).valueOrNull,
+          ref.watch(pendingAppealCountProvider).valueOrNull,
+        )) {
+          (null, null) => null,
+          (final a, final b) => (a ?? 0) + (b ?? 0),
+        },
+      '/pending' => ref.watch(pendingRegistrationsProvider).valueOrNull?.length,
+      '/visitors' => ref.watch(visitorsOnSiteCountProvider).valueOrNull,
+      '/notifications' => ref.watch(unreadInboxCountProvider).valueOrNull,
+      _ => null,
+    };
+    return builder(context, badge);
   }
 }
 
-/// The sidebar's contents, independent of what is holding them — the wide
-/// layout puts this in a fixed-width column, the phone layout puts the very
-/// same widget in a `Drawer`. That sharing is why the two can never drift.
-class _SidebarBody extends StatelessWidget {
-  const _SidebarBody({
-    required this.collapsed,
-    required this.selected,
-    required this.email,
+int? _groupBadge(NavGroup group, WidgetRef ref) {
+  int? total;
+  for (final item in group.items) {
+    final b = switch (item.route) {
+      '/incidents' when ref.watch(staffRoleProvider) == StaffRole.security =>
+        ref.watch(openIncidentCountProvider).valueOrNull,
+      '/incidents' => switch ((
+          ref.watch(openIncidentCountProvider).valueOrNull,
+          ref.watch(pendingAppealCountProvider).valueOrNull,
+        )) {
+          (null, null) => null,
+          (final a, final b) => (a ?? 0) + (b ?? 0),
+        },
+      '/pending' => ref.watch(pendingRegistrationsProvider).valueOrNull?.length,
+      '/visitors' => ref.watch(visitorsOnSiteCountProvider).valueOrNull,
+      '/notifications' => ref.watch(unreadInboxCountProvider).valueOrNull,
+      _ => null,
+    };
+    if (b != null) total = (total ?? 0) + b;
+  }
+  return total;
+}
+
+// ── Top bar ─────────────────────────────────────────────────────────────────
+
+class _TopBar extends ConsumerWidget {
+  const _TopBar({
     required this.groups,
-    required this.onSelect,
+    required this.activeGroup,
+    required this.location,
+    required this.email,
     required this.onLogout,
-    required this.onToggleCollapse,
   });
 
-  final bool collapsed;
-  final int selected;
-  final String? email;
-
-  /// Already filtered to what this account may open — see `navGroupsFor`.
   final List<NavGroup> groups;
-  final ValueChanged<String> onSelect;
+  final NavGroup? activeGroup;
+  final String location;
+  final String? email;
   final Future<void> Function() onLogout;
 
-  /// Null hides the collapse control entirely.
-  final VoidCallback? onToggleCollapse;
-
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final t = context.tokens;
 
-    // The flat index the shell computed has to be matched back up with the
-    // grouped structure, counting destinations as they are laid out.
-    var index = 0;
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        _WorkspaceChip(collapsed: collapsed, onToggle: onToggleCollapse),
-        Expanded(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.only(bottom: AppSpacing.x2),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                for (final group in groups) ...[
-                  if (group.label case final label?)
-                    _GroupLabel(label: label, collapsed: collapsed)
-                  else
-                    const SizedBox(height: AppSpacing.x2),
-                  for (final item in group.items)
-                    _NavTile(
-                      item: item,
-                      selected: index++ == selected,
-                      collapsed: collapsed,
-                      onTap: () => onSelect(item.route),
-                    ),
-                ],
-              ],
+    return Container(
+      height: AppSizes.topBarHeight,
+      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.x4),
+      color: t.surface.card,
+      child: Row(
+        children: [
+          const _BrandMark(),
+          const SizedBox(width: AppSpacing.x6),
+          Expanded(
+            child: Center(
+              child: SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: _GroupPills(
+                  groups: groups,
+                  activeGroup: activeGroup,
+                  location: location,
+                ),
+              ),
             ),
           ),
-        ),
-        Divider(height: 1, thickness: 1, color: t.border.onSidebar),
-        _UserChip(collapsed: collapsed, email: email, onLogout: onLogout),
-      ],
+          const SizedBox(width: AppSpacing.x6),
+          _NotificationBell(active: location.startsWith('/notifications')),
+          const SizedBox(width: AppSpacing.x3),
+          _AccountChip(email: email, onLogout: onLogout),
+        ],
+      ),
     );
   }
 }
 
-/// The workspace identity block every workspace tool puts in the top-left: brand
-/// mark, who you are looking at, and the control that collapses the rail.
-class _WorkspaceChip extends StatelessWidget {
-  const _WorkspaceChip({required this.collapsed, required this.onToggle});
-
-  final bool collapsed;
-  final VoidCallback? onToggle;
+class _BrandMark extends StatelessWidget {
+  const _BrandMark();
 
   @override
   Widget build(BuildContext context) {
     final t = context.tokens;
     final text = Theme.of(context).textTheme;
 
-    final mark = Container(
-      width: 30,
-      height: 30,
-      decoration: BoxDecoration(
-        color: t.brand.primary,
-        borderRadius: AppRadii.smAll,
-      ),
-      alignment: Alignment.center,
-      child: Icon(
-        Icons.local_parking,
-        size: AppSizes.iconMd,
-        color: t.text.onBrand,
-      ),
-    );
-
-    if (collapsed) {
-      return Padding(
-        padding: const EdgeInsets.symmetric(vertical: AppSpacing.x4),
-        child: Column(
-          children: [
-            mark,
-            if (onToggle != null) ...[
-              const SizedBox(height: AppSpacing.x2),
-              _SidebarIconButton(
-                icon: Icons.chevron_right,
-                tooltip: 'Expand sidebar',
-                onTap: onToggle!,
+    return GestureDetector(
+      onTap: () => context.go('/dashboard'),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 30,
+            height: 30,
+            decoration: BoxDecoration(
+              color: t.brand.primary,
+              borderRadius: AppRadii.smAll,
+            ),
+            alignment: Alignment.center,
+            child: Icon(Icons.local_parking, size: AppSizes.iconMd, color: t.text.onBrand),
+          ),
+          const SizedBox(width: AppSpacing.x2),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text('AimPark', style: text.titleSmall),
+              Text(
+                'STI Baliuag',
+                style: text.labelSmall?.copyWith(color: t.text.tertiary),
               ),
             ],
-          ],
-        ),
-      );
-    }
-
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(
-          AppSpacing.x3, AppSpacing.x4, AppSpacing.x2, AppSpacing.x4),
-      child: Row(
-        children: [
-          mark,
-          const SizedBox(width: AppSpacing.x2),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  'AimPark',
-                  style: text.titleSmall?.copyWith(color: t.text.onDark),
-                  overflow: TextOverflow.ellipsis,
-                ),
-                Text(
-                  'STI Baliuag',
-                  style: text.labelSmall?.copyWith(color: t.text.onDarkMuted),
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ],
-            ),
           ),
-          if (onToggle != null)
-            _SidebarIconButton(
-              icon: Icons.chevron_left,
-              tooltip: 'Collapse sidebar',
-              onTap: onToggle!,
+        ],
+      ),
+    );
+  }
+}
+
+/// The primary segmented control: one pill per destination group. Selecting a
+/// multi-screen group jumps to its first destination and reveals [_SubNav];
+/// selecting a single-screen group (Overview) just navigates.
+class _GroupPills extends ConsumerWidget {
+  const _GroupPills({
+    required this.groups,
+    required this.activeGroup,
+    required this.location,
+  });
+
+  final List<NavGroup> groups;
+  final NavGroup? activeGroup;
+  final String location;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final t = context.tokens;
+
+    return Container(
+      padding: const EdgeInsets.all(4),
+      decoration: BoxDecoration(
+        color: t.surface.muted,
+        borderRadius: AppRadii.fullAll,
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          for (final group in groups)
+            _GroupPill(
+              group: group,
+              selected: identical(group, activeGroup),
+              badge: _groupBadge(group, ref),
             ),
         ],
       ),
@@ -315,209 +332,227 @@ class _WorkspaceChip extends StatelessWidget {
   }
 }
 
-/// Section heading above a run of destinations. Collapsed, there is no room for
-/// words, so the grouping is carried by a rule instead — losing the grouping
-/// entirely would leave ten identical icons in a stack.
-class _GroupLabel extends StatelessWidget {
-  const _GroupLabel({required this.label, required this.collapsed});
+class _GroupPill extends StatefulWidget {
+  const _GroupPill({required this.group, required this.selected, this.badge});
 
-  final String label;
-  final bool collapsed;
-
-  @override
-  Widget build(BuildContext context) {
-    final t = context.tokens;
-
-    if (collapsed) {
-      return Padding(
-        padding: const EdgeInsets.symmetric(
-            horizontal: AppSpacing.x4, vertical: AppSpacing.x2),
-        child: Divider(height: 1, thickness: 1, color: t.border.onSidebar),
-      );
-    }
-
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(
-          AppSpacing.x4, AppSpacing.x4, AppSpacing.x4, AppSpacing.x1),
-      child: Text(
-        label.toUpperCase(),
-        style: Theme.of(context).textTheme.labelSmall?.copyWith(
-              color: t.text.onDarkMuted,
-              fontWeight: FontWeight.w600,
-              letterSpacing: 0.8,
-            ),
-      ),
-    );
-  }
-}
-
-/// A destination. The selected state is an *inset* rounded block, not a
-/// full-bleed bar: the 8px of sidebar left showing on either side is what makes
-/// it read as a chip sitting in the rail rather than a highlighted table row.
-class _NavTile extends ConsumerStatefulWidget {
-  const _NavTile({
-    required this.item,
-    required this.selected,
-    required this.collapsed,
-    required this.onTap,
-  });
-
-  final NavItem item;
+  final NavGroup group;
   final bool selected;
-  final bool collapsed;
-  final VoidCallback onTap;
+  final int? badge;
 
   @override
-  ConsumerState<_NavTile> createState() => _NavTileState();
+  State<_GroupPill> createState() => _GroupPillState();
 }
 
-class _NavTileState extends ConsumerState<_NavTile> {
+class _GroupPillState extends State<_GroupPill> {
   bool _hovered = false;
-
-  /// Work waiting behind this destination, or null if it does not track any.
-  ///
-  /// Looked up by route inside the tile rather than passed in, so the sidebar's
-  /// builder stays a plain loop over [navGroups] and adding a badge to another
-  /// destination is one case here.
-  int? get _badge => switch (widget.item.route) {
-        // Appeals are only counted for somebody who may open them. Watching
-        // that provider as Security fired a request the API answers with 403,
-        // on every screen, because the sidebar is always mounted.
-        '/incidents' when ref.watch(staffRoleProvider) == StaffRole.security =>
-          ref.watch(openIncidentCountProvider).valueOrNull,
-        '/incidents' => switch ((
-            ref.watch(openIncidentCountProvider).valueOrNull,
-            ref.watch(pendingAppealCountProvider).valueOrNull,
-          )) {
-            (null, null) => null,
-            (final a, final b) => (a ?? 0) + (b ?? 0),
-          },
-        '/pending' => ref.watch(pendingRegistrationsProvider).valueOrNull?.length,
-        '/visitors' => ref.watch(visitorsOnSiteCountProvider).valueOrNull,
-        '/notifications' => ref.watch(unreadInboxCountProvider).valueOrNull,
-        _ => null,
-      };
 
   @override
   Widget build(BuildContext context) {
     final t = context.tokens;
     final text = Theme.of(context).textTheme;
-    final badge = _badge;
-    final hasWork = badge != null && badge > 0;
-
-    final background = widget.selected
-        ? t.surface.sidebarSelected
-        : _hovered
-            ? t.surface.sidebarHover
-            : const Color(0x00000000);
-
-    // Unselected labels sat at 70% white, which is where "barely noticeable"
-    // came from. Selected stays pure white so the current page still stands out.
-    final foreground =
-        widget.selected || _hovered ? t.text.onDark : t.text.onDarkSubtle;
-
-    final tile = AnimatedContainer(
-      duration: AppMotion.fast,
-      curve: AppMotion.standard,
-      // 40 rather than 36, with 2px between: the rail was legible but tiring
-      // to scan, and testers reported the destinations as "barely noticeable".
-      height: 40,
-      margin: const EdgeInsets.symmetric(
-          horizontal: AppSpacing.x2, vertical: 2),
-      padding: EdgeInsets.symmetric(
-          horizontal: widget.collapsed ? 0 : AppSpacing.x2),
-      decoration: BoxDecoration(
-        color: background,
-        borderRadius: AppRadii.mdAll,
-      ),
-      child: Row(
-        mainAxisAlignment: widget.collapsed
-            ? MainAxisAlignment.center
-            : MainAxisAlignment.start,
-        children: [
-          // Collapsed there is no room for a count, so the icon carries a dot
-          // instead — enough to say "something is here", which is the whole job
-          // of the rail in that state.
-          hasWork && widget.collapsed
-              ? Badge(
-                  smallSize: 8,
-                  backgroundColor: t.status.danger.solid,
-                  child: Icon(
-                    widget.selected
-                        ? widget.item.selectedIcon
-                        : widget.item.icon,
-                    size: AppSizes.iconMd,
-                    color: foreground,
-                  ),
-                )
-              : Icon(
-                  widget.selected ? widget.item.selectedIcon : widget.item.icon,
-                  size: AppSizes.iconMd,
-                  color: foreground,
-                ),
-          if (!widget.collapsed) ...[
-            const SizedBox(width: AppSpacing.x3),
-            Expanded(
-              child: Text(
-                widget.item.label,
-                overflow: TextOverflow.ellipsis,
-                style: text.bodyMedium?.copyWith(
-                  color: foreground,
-                  fontWeight:
-                      widget.selected ? FontWeight.w600 : FontWeight.w500,
-                ),
-              ),
-            ),
-            // The count, so the rail says where the work is without the admin
-            // opening each module to find out.
-            if (hasWork)
-              Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
-                decoration: BoxDecoration(
-                  color: t.status.danger.solid,
-                  borderRadius: AppRadii.fullAll,
-                ),
-                child: Text(
-                  badge > 99 ? '99+' : '$badge',
-                  style: text.labelSmall?.copyWith(color: t.text.onDark),
-                ),
-              ),
-          ],
-        ],
-      ),
-    );
+    final label = widget.group.label ?? widget.group.items.first.label;
+    final hasWork = (widget.badge ?? 0) > 0;
 
     return MouseRegion(
       cursor: SystemMouseCursors.click,
       onEnter: (_) => setState(() => _hovered = true),
       onExit: (_) => setState(() => _hovered = false),
       child: GestureDetector(
-        onTap: widget.onTap,
-        child: Semantics(
-          button: true,
-          selected: widget.selected,
-          label: widget.item.label,
-          child: widget.collapsed
-              // Collapsed, the icon is the only thing identifying the
-              // destination, so the label has to be recoverable on hover.
-              ? Tooltip(message: widget.item.label, child: tile)
-              : tile,
+        onTap: () => context.go(widget.group.items.first.route),
+        child: AnimatedContainer(
+          duration: AppMotion.fast,
+          curve: AppMotion.standard,
+          height: 36,
+          padding: const EdgeInsets.symmetric(horizontal: AppSpacing.x4),
+          decoration: BoxDecoration(
+            color: widget.selected
+                ? t.surface.card
+                : _hovered
+                    ? t.surface.hover
+                    : Colors.transparent,
+            borderRadius: AppRadii.fullAll,
+            boxShadow: widget.selected ? AppElevation.sm : null,
+          ),
+          alignment: Alignment.center,
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                label,
+                style: text.labelLarge?.copyWith(
+                  color: widget.selected ? t.text.primary : t.text.secondary,
+                  fontWeight:
+                      widget.selected ? FontWeight.w600 : FontWeight.w500,
+                ),
+              ),
+              if (hasWork) ...[
+                const SizedBox(width: AppSpacing.x1),
+                Container(
+                  width: 6,
+                  height: 6,
+                  decoration: BoxDecoration(
+                    color: t.status.danger.solid,
+                    shape: BoxShape.circle,
+                  ),
+                ),
+              ],
+            ],
+          ),
         ),
       ),
     );
   }
 }
 
-/// Who is signed in, pinned to the bottom, with the account menu behind it.
-class _UserChip extends ConsumerWidget {
-  const _UserChip({
-    required this.collapsed,
-    required this.email,
-    required this.onLogout,
-  });
+/// The second row: pill tabs for whichever group [_GroupPills] has selected.
+/// A plain underline rather than a filled pill, so the two rows read as
+/// primary/secondary rather than as two copies of the same control.
+class _SubNav extends ConsumerWidget {
+  const _SubNav({required this.group, required this.location});
 
-  final bool collapsed;
+  final NavGroup group;
+  final String location;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final t = context.tokens;
+
+    return Container(
+      height: 44,
+      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.pagePadding),
+      color: t.surface.canvas,
+      alignment: Alignment.centerLeft,
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: Row(
+          children: [
+            for (final item in group.items)
+              _BadgeWatcher(
+                route: item.route,
+                builder: (context, badge) => _SubTab(
+                  item: item,
+                  selected: location.startsWith(item.route),
+                  badge: badge,
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _SubTab extends StatefulWidget {
+  const _SubTab({required this.item, required this.selected, this.badge});
+
+  final NavItem item;
+  final bool selected;
+  final int? badge;
+
+  @override
+  State<_SubTab> createState() => _SubTabState();
+}
+
+class _SubTabState extends State<_SubTab> {
+  bool _hovered = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = context.tokens;
+    final text = Theme.of(context).textTheme;
+    final hasWork = (widget.badge ?? 0) > 0;
+    final color = widget.selected
+        ? t.text.primary
+        : _hovered
+            ? t.text.primary
+            : t.text.secondary;
+
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      onEnter: (_) => setState(() => _hovered = true),
+      onExit: (_) => setState(() => _hovered = false),
+      child: GestureDetector(
+        onTap: () => context.go(widget.item.route),
+        child: AnimatedContainer(
+          duration: AppMotion.fast,
+          curve: AppMotion.standard,
+          margin: const EdgeInsets.only(right: AppSpacing.x5),
+          padding: const EdgeInsets.symmetric(vertical: AppSpacing.x1),
+          decoration: BoxDecoration(
+            border: Border(
+              bottom: BorderSide(
+                color: widget.selected ? t.brand.primary : Colors.transparent,
+                width: 2,
+              ),
+            ),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                widget.selected ? widget.item.selectedIcon : widget.item.icon,
+                size: AppSizes.iconSm,
+                color: color,
+              ),
+              const SizedBox(width: AppSpacing.x2),
+              Text(
+                widget.item.label,
+                style: text.bodyMedium?.copyWith(
+                  color: color,
+                  fontWeight: widget.selected ? FontWeight.w600 : FontWeight.w500,
+                ),
+              ),
+              if (hasWork) ...[
+                const SizedBox(width: AppSpacing.x2),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+                  decoration: BoxDecoration(
+                    color: t.status.danger.bg,
+                    borderRadius: AppRadii.fullAll,
+                  ),
+                  child: Text(
+                    widget.badge! > 99 ? '99+' : '${widget.badge}',
+                    style: text.labelSmall?.copyWith(color: t.status.danger.fg),
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _NotificationBell extends ConsumerWidget {
+  const _NotificationBell({required this.active});
+
+  final bool active;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final t = context.tokens;
+    final unread = ref.watch(unreadInboxCountProvider).valueOrNull ?? 0;
+
+    return IconButton(
+      tooltip: 'Notifications',
+      onPressed: () => context.go('/notifications'),
+      icon: Badge(
+        isLabelVisible: unread > 0,
+        smallSize: 8,
+        backgroundColor: t.status.danger.solid,
+        child: Icon(
+          active ? Icons.notifications : Icons.notifications_outlined,
+          color: active ? t.text.primary : t.text.secondary,
+        ),
+      ),
+    );
+  }
+}
+
+class _AccountChip extends ConsumerWidget {
+  const _AccountChip({required this.email, required this.onLogout});
+
   final String? email;
   final Future<void> Function() onLogout;
 
@@ -526,26 +561,22 @@ class _UserChip extends ConsumerWidget {
     final t = context.tokens;
     final text = Theme.of(context).textTheme;
     final dark = ref.watch(themeModeProvider) == ThemeMode.dark;
+    final role = ref.watch(staffRoleProvider);
 
-    // The token carries an email and a role, never a display name, so the chip
-    // shows the part of the address before the @ and falls back to the role.
     final address = email ?? '';
     final handle = address.contains('@') ? address.split('@').first : address;
     final name = handle.isEmpty ? 'Administrator' : handle;
     final initial = name.substring(0, 1).toUpperCase();
 
     final avatar = Container(
-      width: 26,
-      height: 26,
-      decoration: BoxDecoration(
-        color: t.surface.sidebarSelected,
-        borderRadius: AppRadii.fullAll,
-      ),
+      width: 30,
+      height: 30,
+      decoration: BoxDecoration(color: t.brand.subtle, shape: BoxShape.circle),
       alignment: Alignment.center,
       child: Text(
         initial,
         style: text.labelSmall?.copyWith(
-          color: t.text.onDark,
+          color: t.brand.subtleText,
           fontWeight: FontWeight.w600,
         ),
       ),
@@ -553,12 +584,9 @@ class _UserChip extends ConsumerWidget {
 
     return PopupMenuButton<void>(
       tooltip: 'Account',
-      offset: const Offset(0, -8),
+      offset: const Offset(0, 8),
       color: t.surface.overlay,
-      position: PopupMenuPosition.over,
       itemBuilder: (context) => [
-        // An icon beside the address so the row reads as "this is your account"
-        // rather than as a stray line of grey text above the controls.
         if (address.isNotEmpty)
           PopupMenuItem<void>(
             enabled: false,
@@ -598,98 +626,114 @@ class _UserChip extends ConsumerWidget {
           onTap: onLogout,
           child: Row(
             children: [
-              Icon(Icons.logout,
-                  size: AppSizes.iconSm, color: t.status.danger.solid),
+              Icon(Icons.logout, size: AppSizes.iconSm, color: t.status.danger.solid),
               const SizedBox(width: AppSpacing.x2),
-              Text(
-                'Log out',
-                style: text.bodyMedium?.copyWith(color: t.status.danger.solid),
-              ),
+              Text('Log out', style: text.bodyMedium?.copyWith(color: t.status.danger.solid)),
             ],
           ),
         ),
       ],
-      child: Padding(
-        padding: EdgeInsets.symmetric(
-          horizontal: collapsed ? 0 : AppSpacing.x3,
-          vertical: AppSpacing.x3,
-        ),
-        child: collapsed
-            ? Center(child: Tooltip(message: name, child: avatar))
-            : Row(
-                children: [
-                  avatar,
-                  const SizedBox(width: AppSpacing.x2),
-                  Expanded(
-                    child: Text(
-                      name,
-                      overflow: TextOverflow.ellipsis,
-                      style: text.bodySmall?.copyWith(
-                        color: t.text.onDark,
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                  ),
-                  // A caret says "this opens a menu"; the ellipsis reads as
-                  // "there is more text here that did not fit".
-                  Icon(Icons.expand_less,
-                      size: AppSizes.iconMd, color: t.text.onDarkMuted),
-                ],
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          avatar,
+          const SizedBox(width: AppSpacing.x2),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(name, style: text.bodySmall?.copyWith(fontWeight: FontWeight.w600)),
+              Text(
+                role == StaffRole.security ? 'Security' : 'Administrator',
+                style: text.labelSmall?.copyWith(color: t.text.tertiary),
               ),
+            ],
+          ),
+          const SizedBox(width: AppSpacing.x1),
+          Icon(Icons.expand_more, size: AppSizes.iconSm, color: t.text.tertiary),
+        ],
       ),
     );
   }
 }
 
-/// A small ghost button that reads correctly on the sidebar's dark surface —
-/// `IconButton` would inherit the light theme's foreground and disappear.
-class _SidebarIconButton extends StatefulWidget {
-  const _SidebarIconButton({
-    required this.icon,
-    required this.tooltip,
-    required this.onTap,
+// ── Compact (phone) drawer ───────────────────────────────────────────────────
+
+class _DrawerNav extends StatelessWidget {
+  const _DrawerNav({
+    required this.groups,
+    required this.location,
+    required this.email,
+    required this.onSelect,
+    required this.onLogout,
   });
 
-  final IconData icon;
-  final String tooltip;
-  final VoidCallback onTap;
-
-  @override
-  State<_SidebarIconButton> createState() => _SidebarIconButtonState();
-}
-
-class _SidebarIconButtonState extends State<_SidebarIconButton> {
-  bool _hovered = false;
+  final List<NavGroup> groups;
+  final String location;
+  final String? email;
+  final ValueChanged<String> onSelect;
+  final Future<void> Function() onLogout;
 
   @override
   Widget build(BuildContext context) {
     final t = context.tokens;
+    final text = Theme.of(context).textTheme;
 
-    return MouseRegion(
-      cursor: SystemMouseCursors.click,
-      onEnter: (_) => setState(() => _hovered = true),
-      onExit: (_) => setState(() => _hovered = false),
-      child: GestureDetector(
-        onTap: widget.onTap,
-        child: Tooltip(
-          message: widget.tooltip,
-          child: AnimatedContainer(
-            duration: AppMotion.fast,
-            curve: AppMotion.standard,
-            width: 28,
-            height: 28,
-            decoration: BoxDecoration(
-              color: _hovered ? t.surface.sidebarHover : const Color(0x00000000),
-              borderRadius: AppRadii.smAll,
-            ),
-            child: Icon(
-              widget.icon,
-              size: AppSizes.iconSm,
-              color: _hovered ? t.text.onDark : t.text.onDarkMuted,
-            ),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const Padding(
+          padding: EdgeInsets.all(AppSpacing.x4),
+          child: _BrandMark(),
+        ),
+        Expanded(
+          child: ListView(
+            children: [
+              for (final group in groups) ...[
+                if (group.label case final label?)
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(
+                        AppSpacing.x4, AppSpacing.x4, AppSpacing.x4, AppSpacing.x1),
+                    child: Text(
+                      label.toUpperCase(),
+                      style: text.labelSmall?.copyWith(
+                        color: t.text.tertiary,
+                        fontWeight: FontWeight.w600,
+                        letterSpacing: 0.8,
+                      ),
+                    ),
+                  ),
+                for (final item in group.items)
+                  ListTile(
+                    leading: Icon(
+                      location.startsWith(item.route) ? item.selectedIcon : item.icon,
+                      color: location.startsWith(item.route)
+                          ? t.brand.primary
+                          : t.text.secondary,
+                    ),
+                    title: Text(
+                      item.label,
+                      style: text.bodyMedium?.copyWith(
+                        fontWeight: location.startsWith(item.route)
+                            ? FontWeight.w600
+                            : FontWeight.w400,
+                      ),
+                    ),
+                    selected: location.startsWith(item.route),
+                    selectedTileColor: t.brand.subtle,
+                    onTap: () => onSelect(item.route),
+                  ),
+              ],
+            ],
           ),
         ),
-      ),
+        Divider(height: 1, color: t.border.normal),
+        ListTile(
+          leading: Icon(Icons.logout, color: t.status.danger.solid),
+          title: Text('Log out', style: text.bodyMedium?.copyWith(color: t.status.danger.solid)),
+          onTap: onLogout,
+        ),
+      ],
     );
   }
 }

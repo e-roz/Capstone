@@ -15,6 +15,7 @@ class AppCard extends StatefulWidget {
     this.padding = const EdgeInsets.all(AppSpacing.cardPadding),
     this.onTap,
     this.selected = false,
+    this.accentColor,
     this.width,
     this.clip = true,
   });
@@ -26,6 +27,12 @@ class AppCard extends StatefulWidget {
   final VoidCallback? onTap;
 
   final bool selected;
+
+  /// Overrides [selected]'s border colour — brand blue by default, but a
+  /// grid of categorised tiles (the dashboard's Modules grid) wants each
+  /// card's own category hue instead of every card converging on one colour.
+  final Color? accentColor;
+
   final double? width;
   final bool clip;
 
@@ -51,7 +58,9 @@ class _AppCardState extends State<AppCard> {
         color: lifted ? t.surface.hover : t.surface.card,
         borderRadius: AppRadii.lgAll,
         border: Border.all(
-          color: widget.selected ? t.brand.primary : t.border.normal,
+          color: widget.selected
+              ? (widget.accentColor ?? t.brand.primary)
+              : t.border.normal,
           width: widget.selected ? 1.5 : 1,
         ),
         boxShadow: lifted ? AppElevation.md : AppElevation.sm,

@@ -137,8 +137,8 @@ Raw steps: `AppSpacing.x1`(4) `x2`(8) `x3`(12) `x4`(16) `x5`(20) `x6`(24)
 
 ### Radius, elevation, motion
 
-- **Radius** — `AppRadii.sm`(6) inline chips · `md`(8) controls · `lg`(12)
-  containers · `xl`(16) dialogs · `full` pills. `.smAll`/`.mdAll`/`.lgAll` are
+- **Radius** — `AppRadii.sm`(8) inline chips · `md`(12) controls · `lg`(24)
+  containers · `xl`(28) dialogs · `full` pills. `.smAll`/`.mdAll`/`.lgAll` are
   ready-made `BorderRadius` constants.
 - **Elevation** — `AppElevation.sm` resting cards · `md` hover · `lg` dialogs and
   slide-overs. These are real `BoxShadow` lists, because Material 3's numeric
@@ -170,16 +170,19 @@ an admin than slightly roomier prose.
 **Numbers in columns must use tabular figures**, or they visibly wobble row to
 row: `AppTypography.tabular(text.bodyMedium!)`, or just use `AppNumericCell`.
 
-**Font:** two families, both bundled under `assets/fonts/` and declared in
+**Font:** three families, all bundled under `assets/fonts/` and declared in
 `pubspec.yaml` — no runtime fetch, so the panel renders identically offline.
-Inter (`AppTypography._base`) carries every dense, small-size slot: table
-cells, form values, labels, badges. Plus Jakarta Sans (`AppTypography._display`)
+IBM Plex Sans (`AppTypography._base`) carries every dense, small-size slot:
+table cells, form values, labels, badges. Sora (`AppTypography._display`)
 carries the three slots that read as a title rather than as data —
-`displaySmall`, `headlineSmall`, `titleLarge` — because Inter's default
-weights go flat at 18px+ in a way that reads as generic-dashboard rather than
-as AimPark. A screen never sets `fontFamily` directly; the pairing is baked
-into the `TextTheme` slots, so `text.headlineSmall` and `text.bodyMedium` are
-already correct.
+`displaySmall`, `headlineSmall`, `titleLarge` — its tighter, slightly
+geometric letterforms give AimPark a title voice that still reads as a sans,
+not a display face. IBM Plex Mono (`AppTypography._mono`) carries anything
+that reads as data *about* the page rather than prose — eyebrow labels,
+timestamps, table column headers, status pills — which is what makes an
+eyebrow like "STI BALIUAG · 12 SLOTS" read as instrumentation. A screen never
+sets `fontFamily` directly; the pairing is baked into the `TextTheme` slots,
+so `text.headlineSmall` and `text.bodyMedium` are already correct.
 
 ---
 
@@ -377,23 +380,14 @@ Any screen built with tokens from day one needs no dark-mode work at all.
 
 ## 8. Status of the migration
 
-**Done** — the token layer, the Material component defaults, the component kit,
-and `main.dart` wired to `AppTheme`.
+**Done** — the token layer, the Material component defaults, the component
+kit, `main.dart` wired to `AppTheme`, and every screen and shared widget
+(including `widgets/admin_shell.dart` and `widgets/ui/app_page.dart`, which
+superseded the old `page_header.dart`). No screen names a raw colour, and the
+warm-sand / cool-ink palette, IBM Plex + Sora type, and 24/28px card radii
+from the reference dashboard read consistently across the panel in both
+themes.
 
-**Not yet** — the ten existing screens still carry their original hardcoded
-colours and private widgets; `widgets/admin_shell.dart` still hardcodes the
-sidebar; `widgets/page_header.dart` is superseded by `AppPageHeader` but is
-still what the screens import.
-
-None of that is broken — the old code renders fine under the new theme, it is
-just not yet reading tokens. The migration order is cheapest-first so the
-pattern is proven before the expensive screens:
-
-1. `pending_registrations` (134 lines — the template)
-2. `user_management`, `payments`, `audit_log` (same table shape)
-3. `admin_shell` (the sidebar — highest visual payoff)
-4. `violations` (728 lines), `parking` (586), `reports` (347)
-5. Detail screens, `policy_rules`, `incidents`, `notifications`, `login`
-
-**New features should use the system from the start**, regardless of where that
-migration has reached. There is no reason to write a screen twice.
+**New features should use the system from the start** — there is no
+un-migrated screen left to match, so there is no excuse to hardcode a colour
+in a new one either.

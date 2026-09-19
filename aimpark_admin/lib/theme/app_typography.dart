@@ -13,26 +13,28 @@ import 'package:flutter/material.dart';
 class AppTypography {
   AppTypography._();
 
-  /// Inter carries every dense, small-size surface: table cells, form values,
-  /// labels, badges. It was drawn for exactly this job — small sizes, tabular
-  /// data, tall x-height — and stays the workhorse for the eleven slots below
-  /// that read as data rather than as a title.
+  /// IBM Plex Sans carries the table cells, form values and paragraph text —
+  /// the surfaces that read as prose rather than as data or as a title.
   ///
   /// All bundled under `assets/fonts/` and declared in `pubspec.yaml`, not
   /// fetched from a CDN: the defence demo has to survive a room with no
   /// working Wi-Fi.
   static TextStyle _base(TextStyle style) =>
-      style.copyWith(fontFamily: 'Inter');
+      style.copyWith(fontFamily: 'IBM Plex Sans');
 
-  /// Plus Jakarta Sans carries the three slots that behave like a title
-  /// rather than like data: metric numerals, page titles, and dialog headers.
-  /// Inter is tuned for legibility at 12-14px in a table; at 18px+ in a
-  /// heading its default weights read as generic — the exact "Inter for
-  /// everything" flatness a template dashboard has. Jakarta's rounder,
-  /// warmer letterforms give AimPark a title voice that is still a sans, not
-  /// a display face, so it never fights the data underneath it.
+  /// Sora carries the three slots that behave like a title rather than like
+  /// data: metric numerals, page titles, and dialog headers. Its tight,
+  /// slightly geometric letterforms give AimPark a title voice that is still
+  /// a sans, not a display face, so it never fights the data underneath it.
   static TextStyle _display(TextStyle style) =>
-      style.copyWith(fontFamily: 'Plus Jakarta Sans');
+      style.copyWith(fontFamily: 'Sora');
+
+  /// IBM Plex Mono carries anything that reads as *data about the page*
+  /// rather than as prose: eyebrow labels, timestamps, table column headers
+  /// and status pills. A monospaced eyebrow is what makes "HOLLOWAY RIDGE ·
+  /// 12 UNITS" read as instrumentation rather than as a sentence.
+  static TextStyle _mono(TextStyle style) =>
+      style.copyWith(fontFamily: 'IBM Plex Mono');
 
   /// Digits that line up in a column. Use for money, counts, IDs and any
   /// numeric table cell, otherwise the columns visibly wobble row to row.
@@ -49,7 +51,7 @@ class AppTypography {
       // Oversized figures — metric tiles and empty-state numerals.
       displaySmall: _display(
         TextStyle(
-          fontSize: 28,
+          fontSize: 32,
           fontWeight: FontWeight.w700,
           height: _tight,
           letterSpacing: -0.4,
@@ -119,7 +121,7 @@ class AppTypography {
       ),
 
       // Secondary metadata: timestamps, helper text, captions.
-      bodySmall: _base(
+      bodySmall: _mono(
         TextStyle(
           fontSize: 12,
           fontWeight: FontWeight.w400,
@@ -140,7 +142,7 @@ class AppTypography {
       ),
 
       // Table column headers and status pills.
-      labelMedium: _base(
+      labelMedium: _mono(
         TextStyle(
           fontSize: 12,
           fontWeight: FontWeight.w600,
@@ -151,7 +153,7 @@ class AppTypography {
       ),
 
       // Micro-labels: badge counts, legend keys.
-      labelSmall: _base(
+      labelSmall: _mono(
         TextStyle(
           fontSize: 11,
           fontWeight: FontWeight.w500,
