@@ -13,6 +13,7 @@ library;
 
 export 'app_avatar.dart';
 export 'app_bottom_nav.dart';
+export 'app_brand_mark.dart';
 export 'app_button.dart';
 export 'app_card.dart';
 export 'app_list_row.dart';

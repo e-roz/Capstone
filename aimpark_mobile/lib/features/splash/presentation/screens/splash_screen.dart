@@ -24,8 +24,8 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
   static const _storage = FlutterSecureStorage();
   static const _minDisplayDuration = Duration(milliseconds: 1700);
 
-  /// Width the comp draws the mascot at, on a 390pt-wide frame.
-  static const _mascotMaxWidth = 260.0;
+  /// Size of the brand mark at its largest, on a 390pt-wide frame.
+  static const _markMaxSize = 132.0;
 
   late final AnimationController _controller;
   late final Animation<double> _mascotScale;
@@ -121,12 +121,11 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
 
   @override
   Widget build(BuildContext context) {
-    // 260 / 390 in the comp, capped so it never overscales on large phones.
-    final mascotWidth =
-        (MediaQuery.sizeOf(context).width * 0.667).clamp(160.0, _mascotMaxWidth);
+    final markSize =
+        (MediaQuery.sizeOf(context).width * 0.34).clamp(96.0, _markMaxSize);
 
     return AnnotatedRegion<SystemUiOverlayStyle>(
-      // Light status/nav icons over the full-bleed orange canvas.
+      // Light status/nav icons over the full-bleed indigo canvas.
       value: SystemUiOverlayStyle.light.copyWith(
         statusBarColor: Colors.transparent,
         systemNavigationBarColor: AppFixedColors.splashBackground,
@@ -136,20 +135,20 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
         body: SafeArea(
           child: Column(
             children: [
-              // The comp centres the mascot within the space above the
-              // wordmark rather than within the whole screen.
+              // Centred within the space above the wordmark rather than
+              // within the whole screen, matching the previous layout.
               Expanded(
                 child: Center(
                   child: FadeTransition(
                     opacity: _mascotOpacity,
                     child: ScaleTransition(
                       scale: _mascotScale,
-                      // Head crop, not the full-body owl used elsewhere: the
-                      // comp frames the face, and the shared asset carries a
-                      // baked-in cream outline that only shows on orange.
-                      child: Image.asset(
-                        'assets/images/owl_mascot_head.png',
-                        width: mascotWidth,
+                      // White on the fixed indigo canvas rather than the
+                      // brand token, which would disappear into it.
+                      child: AppBrandMark(
+                        size: markSize,
+                        color: Colors.white,
+                        iconColor: AppFixedColors.splashBackground,
                       ),
                     ),
                   ),
@@ -161,10 +160,8 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
                   position: _wordmarkSlide,
                   child: Text(
                     'aimpark',
-                    // Baloo 2, bundled under assets/fonts/. The wordmark is
-                    // the one place in the app that uses it.
                     style: const TextStyle(
-                      fontFamily: 'Baloo2',
+                      fontFamily: AppTypography.display,
                       fontSize: 42,
                       fontWeight: FontWeight.w800,
                       letterSpacing: -0.5,

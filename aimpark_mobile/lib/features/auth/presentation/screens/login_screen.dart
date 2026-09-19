@@ -133,9 +133,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       onBack: isAnyLoading ? null : () => context.go('/login'),
       body: AppFormBody(
         children: [
-          Center(
-            child: Image.asset('assets/images/owl_mascot_head.png', width: 96),
-          ),
+          const Center(child: AppBrandMark(size: 72)),
           const SizedBox(height: AppSpacing.lg),
           Text(
             'Welcome back',

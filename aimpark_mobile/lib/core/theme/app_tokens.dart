@@ -17,12 +17,6 @@ import 'app_palette.dart';
 /// final t = context.tokens;
 /// AppCard(color: t.surface.card, child: Text('Hi', style: TextStyle(color: t.text.primary)));
 /// ```
-///
-/// The names here match `aimpark_admin/lib/theme/app_tokens.dart` deliberately.
-/// The two apps look different on purpose — this one is a phone app with a
-/// playful register, that one is a dense desk tool — but `t.surface.canvas`,
-/// `t.text.secondary` and `t.status.of(intent)` mean the same thing in both, so
-/// moving between the codebases costs nothing.
 @immutable
 class AppTokens extends ThemeExtension<AppTokens> {
   const AppTokens({
@@ -39,14 +33,15 @@ class AppTokens extends ThemeExtension<AppTokens> {
   final AppTextTokens text;
   final AppBorderTokens border;
 
-  /// Orange. Primary actions, the active nav pill, the points counter.
+  /// Indigo. Primary actions, the active nav pill, the ID card header.
   final AppAccentTokens brand;
 
   /// Sky blue. Secondary actions and anything informational.
   final AppAccentTokens accent;
 
-  /// Amber. The streak hue — deliberately a third colour rather than a second
-  /// brand, so "you have a streak" never reads as "this is a button".
+  /// Mint. The app's soft/welcoming hue — onboarding washes and rewarding or
+  /// celebratory actions. Deliberately a third colour rather than a second
+  /// brand, so a mint tag never reads as "this is a button".
   final AppAccentTokens tertiary;
 
   final AppStatusTokens status;
@@ -137,7 +132,7 @@ abstract class AppFixedColors {
   /// The launch canvas. Matched by the native Android splash and by the
   /// adaptive icon's background, neither of which knows what a theme is, so a
   /// dark-mode variant here would show as a colour flash on cold start.
-  static const splashBackground = AppPalette.splashOrange;
+  static const splashBackground = AppPalette.splashIndigo;
 }
 
 // ── Surfaces ────────────────────────────────────────────────────────────────
@@ -186,7 +181,7 @@ class AppSurfaceTokens {
     pressed: AppPalette.neutral100,
     inverse: AppPalette.neutral900,
     overlay: AppPalette.neutral0,
-    scrim: Color(0x800A0A0A),
+    scrim: Color(0x800B0A07),
   );
 
   static const dark = AppSurfaceTokens(
@@ -296,9 +291,10 @@ class AppBorderTokens {
   /// Dividers — barely there on purpose.
   final Color subtle;
 
-  /// Card and input outlines. These carry real weight in this app: cards are
-  /// drawn with a 1.5px border and no shadow, so this token is the only thing
-  /// separating a card from the canvas.
+  /// Card and input outlines. Kept light: the reference separates cards with
+  /// tinted fill and whitespace more than with a drawn line, so this is a
+  /// finishing hairline rather than the primary separator [AppCard] used to
+  /// lean on.
   final Color normal;
 
   /// A pressed card, an emphasised separator.
@@ -311,14 +307,14 @@ class AppBorderTokens {
     subtle: AppPalette.neutral100,
     normal: AppPalette.neutral200,
     strong: AppPalette.neutral400,
-    focus: AppPalette.orange500,
+    focus: AppPalette.indigo500,
   );
 
   static const dark = AppBorderTokens(
     subtle: AppPalette.neutral800,
     normal: AppPalette.neutral700,
     strong: AppPalette.neutral500,
-    focus: AppPalette.orange400,
+    focus: AppPalette.indigo400,
   );
 
   static AppBorderTokens lerp(AppBorderTokens a, AppBorderTokens b, double t) {
@@ -338,10 +334,7 @@ class AppBorderTokens {
 ///
 /// Three instances of this class carry the app's three hues ([AppTokens.brand],
 /// [AppTokens.accent], [AppTokens.tertiary]) so a component can be handed "the
-/// amber one" without knowing which hue that is.
-///
-/// The admin panel's equivalent has a `hover` role. There is no hover on a
-/// phone, so it is deliberately absent here rather than defined and unused.
+/// mint one" without knowing which hue that is.
 @immutable
 class AppAccentTokens {
   const AppAccentTokens({
@@ -352,12 +345,12 @@ class AppAccentTokens {
     required this.onSolid,
   });
 
-  /// The solid fill: a primary button, the parking status card.
+  /// The solid fill: a primary button, the live-session card.
   final Color primary;
 
-  /// The layer sitting behind [primary] in the two-layer button press, and the
-  /// fill once the thumb is down. Must be darker than [primary] or the button
-  /// reads as lit rather than as pushed.
+  /// The layer a pressed fill settles into, and the darker of a two-tone
+  /// pairing. Must be darker than [primary] or a press reads as lit rather
+  /// than as pushed.
   final Color pressed;
 
   /// Tinted background for chips, badges and selected states.
@@ -368,59 +361,57 @@ class AppAccentTokens {
 
   /// Text and icons sitting on [primary]. Per-hue rather than one global
   /// "on brand" colour, because white on amber fails contrast where white on
-  /// orange passes.
+  /// indigo passes.
   final Color onSolid;
 
   static const brandLight = AppAccentTokens(
-    primary: AppPalette.orange500,
-    pressed: AppPalette.orange600,
-    subtle: AppPalette.orange100,
-    subtleText: AppPalette.orange700,
+    primary: AppPalette.indigo500,
+    pressed: AppPalette.indigo700,
+    subtle: AppPalette.indigo100,
+    subtleText: AppPalette.indigo700,
     onSolid: AppPalette.neutral0,
   );
 
   static const brandDark = AppAccentTokens(
-    primary: AppPalette.orange500,
-    pressed: AppPalette.orange700,
-    // A low-alpha wash of the hue rather than a tint from the ramp: orange-100
+    primary: AppPalette.indigo400,
+    pressed: AppPalette.indigo600,
+    // A low-alpha wash of the hue rather than a tint from the ramp: indigo-100
     // on a near-black canvas is a glowing slab, and every chip on the screen
     // becomes the brightest thing on it.
-    subtle: Color(0x33F97316),
-    subtleText: AppPalette.orange300,
+    subtle: Color(0x333C46AE),
+    subtleText: AppPalette.indigo200,
     onSolid: AppPalette.neutral0,
   );
 
   static const accentLight = AppAccentTokens(
     primary: AppPalette.sky500,
-    pressed: AppPalette.sky600,
+    pressed: AppPalette.sky700,
     subtle: AppPalette.sky100,
     subtleText: AppPalette.sky700,
     onSolid: AppPalette.neutral0,
   );
 
   static const accentDark = AppAccentTokens(
-    primary: AppPalette.sky500,
-    pressed: AppPalette.sky700,
-    subtle: Color(0x330EA5E9),
-    subtleText: AppPalette.sky300,
+    primary: AppPalette.sky400,
+    pressed: AppPalette.sky600,
+    subtle: Color(0x331E86C8),
+    subtleText: AppPalette.sky200,
     onSolid: AppPalette.neutral0,
   );
 
   static const tertiaryLight = AppAccentTokens(
-    primary: AppPalette.amber500,
-    pressed: AppPalette.amber600,
-    subtle: AppPalette.amber100,
-    subtleText: AppPalette.amber700,
-    // Dark, unlike the other two: amber-500 is bright enough that white on it
-    // fails contrast at label sizes.
-    onSolid: AppPalette.neutral900,
+    primary: AppPalette.mint500,
+    pressed: AppPalette.mint700,
+    subtle: AppPalette.mint100,
+    subtleText: AppPalette.mint700,
+    onSolid: AppPalette.neutral0,
   );
 
   static const tertiaryDark = AppAccentTokens(
-    primary: AppPalette.amber500,
-    pressed: AppPalette.amber700,
-    subtle: Color(0x33F59E0B),
-    subtleText: AppPalette.amber300,
+    primary: AppPalette.mint400,
+    pressed: AppPalette.mint600,
+    subtle: Color(0x3322A67E),
+    subtleText: AppPalette.mint200,
     onSolid: AppPalette.neutral900,
   );
 
@@ -533,10 +524,10 @@ class AppStatusTokens {
       solid: AppPalette.red500,
     ),
     brand: StatusColors(
-      bg: AppPalette.orange100,
-      fg: AppPalette.orange700,
-      border: AppPalette.orange200,
-      solid: AppPalette.orange500,
+      bg: AppPalette.indigo100,
+      fg: AppPalette.indigo700,
+      border: AppPalette.indigo200,
+      solid: AppPalette.indigo500,
     ),
   );
 
@@ -544,40 +535,40 @@ class AppStatusTokens {
   // light end of the ramp carrying the text.
   static const dark = AppStatusTokens(
     neutral: StatusColors(
-      bg: Color(0x1FA3A3A3),
+      bg: Color(0x1F9E9A8C),
       fg: AppPalette.neutral300,
-      border: Color(0x3DA3A3A3),
+      border: Color(0x3D9E9A8C),
       solid: AppPalette.neutral400,
     ),
     info: StatusColors(
-      bg: Color(0x2438BDF8),
+      bg: Color(0x243FA0DE),
       fg: AppPalette.sky200,
-      border: Color(0x4D38BDF8),
+      border: Color(0x4D3FA0DE),
       solid: AppPalette.sky400,
     ),
     success: StatusColors(
-      bg: Color(0x244ADE80),
+      bg: Color(0x243FB166),
       fg: AppPalette.green200,
-      border: Color(0x4D4ADE80),
+      border: Color(0x4D3FB166),
       solid: AppPalette.green400,
     ),
     warning: StatusColors(
-      bg: Color(0x24FBBF24),
+      bg: Color(0x24E7A83B),
       fg: AppPalette.amber200,
-      border: Color(0x4DFBBF24),
+      border: Color(0x4DE7A83B),
       solid: AppPalette.amber400,
     ),
     danger: StatusColors(
-      bg: Color(0x24F87171),
+      bg: Color(0x24E66950),
       fg: AppPalette.red200,
-      border: Color(0x4DF87171),
+      border: Color(0x4DE66950),
       solid: AppPalette.red400,
     ),
     brand: StatusColors(
-      bg: Color(0x24FB923C),
-      fg: AppPalette.orange200,
-      border: Color(0x4DFB923C),
-      solid: AppPalette.orange400,
+      bg: Color(0x246169C7),
+      fg: AppPalette.indigo200,
+      border: Color(0x4D6169C7),
+      solid: AppPalette.indigo400,
     ),
   );
 

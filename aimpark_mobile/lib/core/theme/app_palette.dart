@@ -4,105 +4,116 @@ import 'package:flutter/material.dart';
 ///
 /// Raw colour ramps with no meaning attached. A primitive says *what a colour
 /// is*, never *what it is for*, which is why nothing outside [AppTokens] may
-/// import this file: the moment a screen reaches for `AppPalette.orange500` it
+/// import this file: the moment a screen reaches for `AppPalette.indigo500` it
 /// has hardcoded a decision that dark mode and future rebrands can no longer
 /// reach.
 ///
-/// Ramps follow the conventional 50–950 lightness scale, so "500 is the solid
-/// one, 50 is the tint, 700 is the text on the tint" holds for every hue and
-/// you never have to eyeball a pairing.
+/// Ramps follow the conventional 50–900 lightness scale, so "500 is the solid
+/// one, 50 is the tint, 700 is the text on the tint" holds for every hue.
 ///
-/// This file is the mobile app's half of a shared system. `aimpark_admin` has
-/// the same three layers with the same class and token names; only the hues
-/// and the type differ, because the panel is a dense desk tool and this is a
-/// phone app people are meant to enjoy opening. Structure is shared, face is
-/// not — see `app_tokens.dart` for the vocabulary the two have in common.
+/// This is the second identity the app has shipped with. The first was a warm
+/// orange, Duolingo-register palette; this one is drawn from a clean,
+/// map-first campus-parking reference — a deep indigo brand against a mint
+/// and cream canvas, flat rather than tactile. See `app_theme.dart` for how
+/// that flatness carries into component shape.
 class AppPalette {
   AppPalette._();
 
-  // ── Brand — orange ────────────────────────────────────────────────────────
-  // Anchored on the orange-500/600 pair the app already shipped with, so this
-  // reads as the same product refined rather than a rebrand.
-  static const orange50 = Color(0xFFFFF7ED);
-  static const orange100 = Color(0xFFFFEDD5);
-  static const orange200 = Color(0xFFFED7AA);
-  static const orange300 = Color(0xFFFDBA74);
-  static const orange400 = Color(0xFFFB923C);
-  static const orange500 = Color(0xFFF97316);
-  static const orange600 = Color(0xFFEA580C);
-  static const orange700 = Color(0xFFC2410C);
-  static const orange800 = Color(0xFF9A3412);
-  static const orange900 = Color(0xFF7C2D12);
+  // ── Brand — indigo ──────────────────────────────────────────────────────
+  // The reference's one strong colour: primary CTAs, the live-session card,
+  // the ID card header, the active nav state.
+  static const indigo50 = Color(0xFFF1F2FA);
+  static const indigo100 = Color(0xFFDEE1F4);
+  static const indigo200 = Color(0xFFBCC1E8);
+  static const indigo300 = Color(0xFF8F97D8);
+  static const indigo400 = Color(0xFF6169C7);
+  static const indigo500 = Color(0xFF3C46AE);
+  static const indigo600 = Color(0xFF2E3688);
+  static const indigo700 = Color(0xFF232967);
+  static const indigo800 = Color(0xFF191E4A);
+  static const indigo900 = Color(0xFF10132F);
 
-  // ── Neutral ───────────────────────────────────────────────────────────────
-  // Warm grey, not the admin panel's blue-cast slate. Slate next to orange
-  // reads as a colour clash rather than as a neutral; warm greys let the brand
-  // hue sit on them without arguing.
+  // ── Neutral ──────────────────────────────────────────────────────────────
+  // A cream/paper cast rather than the old warm grey or the admin panel's
+  // sand — pale enough that white cards still read as a step up from it.
   static const neutral0 = Color(0xFFFFFFFF);
-  static const neutral50 = Color(0xFFFAFAFA);
-  static const neutral100 = Color(0xFFF5F5F5);
-  static const neutral200 = Color(0xFFE5E5E5);
-  static const neutral300 = Color(0xFFD4D4D4);
-  static const neutral400 = Color(0xFFA3A3A3);
-  static const neutral500 = Color(0xFF737373);
-  static const neutral600 = Color(0xFF525252);
-  static const neutral700 = Color(0xFF404040);
-  static const neutral800 = Color(0xFF262626);
-  static const neutral900 = Color(0xFF171717);
-  static const neutral950 = Color(0xFF0A0A0A);
+  static const neutral50 = Color(0xFFF7F7F3);
+  static const neutral100 = Color(0xFFF0EFE9);
+  static const neutral200 = Color(0xFFE2E0D7);
+  static const neutral300 = Color(0xFFCBC8BB);
+  static const neutral400 = Color(0xFF9E9A8C);
+  static const neutral500 = Color(0xFF74705F);
+  static const neutral600 = Color(0xFF54503F);
+  static const neutral700 = Color(0xFF3A3728);
+  static const neutral800 = Color(0xFF24221A);
+  static const neutral900 = Color(0xFF161510);
+  static const neutral950 = Color(0xFF0B0A07);
 
-  // ── Accent — sky ──────────────────────────────────────────────────────────
-  // Secondary actions and the "informational" status tone. Shared with the
-  // admin panel's `sky` ramp so an info pill means the same thing in both.
-  static const sky50 = Color(0xFFF0F9FF);
-  static const sky100 = Color(0xFFE0F2FE);
-  static const sky200 = Color(0xFFBAE6FD);
-  static const sky300 = Color(0xFF7DD3FC);
-  static const sky400 = Color(0xFF38BDF8);
-  static const sky500 = Color(0xFF0EA5E9);
-  static const sky600 = Color(0xFF0284C7);
-  static const sky700 = Color(0xFF0369A1);
+  // ── Accent — sky ─────────────────────────────────────────────────────────
+  // Secondary actions and the "informational" status tone — lighter and
+  // cooler than the indigo brand so the two never get mistaken for one hue.
+  static const sky50 = Color(0xFFEAF5FC);
+  static const sky100 = Color(0xFFD2EAF9);
+  static const sky200 = Color(0xFFA6D5F3);
+  static const sky300 = Color(0xFF72BBEA);
+  static const sky400 = Color(0xFF3FA0DE);
+  static const sky500 = Color(0xFF1E86C8);
+  static const sky600 = Color(0xFF1569A0);
+  static const sky700 = Color(0xFF114F79);
 
-  // ── Tertiary — amber ──────────────────────────────────────────────────────
-  // The streak hue, and the "warning" status tone.
-  static const amber50 = Color(0xFFFFFBEB);
-  static const amber100 = Color(0xFFFEF3C7);
-  static const amber200 = Color(0xFFFDE68A);
-  static const amber300 = Color(0xFFFCD34D);
-  static const amber400 = Color(0xFFFBBF24);
-  static const amber500 = Color(0xFFF59E0B);
-  static const amber600 = Color(0xFFD97706);
-  static const amber700 = Color(0xFFB45309);
+  // ── Tertiary — mint ──────────────────────────────────────────────────────
+  // The reference's other recurring hue — the hero/onboarding wash, and the
+  // "available" tag. A third colour rather than a second brand, kept out of
+  // any button role so "this space is free" never reads as "tap here".
+  static const mint50 = Color(0xFFEAF8F3);
+  static const mint100 = Color(0xFFD3F1E6);
+  static const mint200 = Color(0xFFA8E3CE);
+  static const mint300 = Color(0xFF77D1B3);
+  static const mint400 = Color(0xFF45BB97);
+  static const mint500 = Color(0xFF22A67E);
+  static const mint600 = Color(0xFF178A69);
+  static const mint700 = Color(0xFF106B52);
 
-  // ── Success — green ───────────────────────────────────────────────────────
-  // Tailwind `green`, not the panel's `emerald`. The brighter green is the one
-  // the gamified surfaces were drawn against, and it holds up better beside
-  // orange than emerald's blue lean does.
-  static const green50 = Color(0xFFF0FDF4);
-  static const green100 = Color(0xFFDCFCE7);
-  static const green200 = Color(0xFFBBF7D0);
-  static const green300 = Color(0xFF86EFAC);
-  static const green400 = Color(0xFF4ADE80);
-  static const green500 = Color(0xFF22C55E);
-  static const green600 = Color(0xFF16A34A);
-  static const green700 = Color(0xFF15803D);
+  // ── Success — green ──────────────────────────────────────────────────────
+  // Kept distinct from [mint] even though the two sit close: mint is a brand
+  // wash that shows up on chrome that carries no status meaning (the hero
+  // background), and reusing it for "success" would make that chrome read as
+  // a state. A dedicated green removes the ambiguity.
+  static const green50 = Color(0xFFEAF7EE);
+  static const green100 = Color(0xFFD1EEDA);
+  static const green200 = Color(0xFFA3DDB5);
+  static const green300 = Color(0xFF6FC98A);
+  static const green400 = Color(0xFF3FB166);
+  static const green500 = Color(0xFF249349);
+  static const green600 = Color(0xFF19753A);
+  static const green700 = Color(0xFF14582C);
 
-  // ── Danger — red ──────────────────────────────────────────────────────────
-  static const red50 = Color(0xFFFEF2F2);
-  static const red100 = Color(0xFFFEE2E2);
-  static const red200 = Color(0xFFFECACA);
-  static const red300 = Color(0xFFFCA5A5);
-  static const red400 = Color(0xFFF87171);
-  static const red500 = Color(0xFFEF4444);
-  static const red600 = Color(0xFFDC2626);
-  static const red700 = Color(0xFFB91C1C);
+  // ── Warning — amber ──────────────────────────────────────────────────────
+  static const amber50 = Color(0xFFFEF6E7);
+  static const amber100 = Color(0xFFFCEACB);
+  static const amber200 = Color(0xFFF7D592);
+  static const amber300 = Color(0xFFF0BC5D);
+  static const amber400 = Color(0xFFE7A83B);
+  static const amber500 = Color(0xFFD6931F);
+  static const amber600 = Color(0xFFAD7315);
+  static const amber700 = Color(0xFF7D530F);
 
-  /// Full-bleed orange canvas behind the launch/splash screen. Taken verbatim
-  /// from the splash comp, which sits a touch warmer than [orange500] — keep
-  /// them separate so retuning the button orange never shifts the very first
-  /// frame of the app (and vice versa).
-  ///
-  /// Fixed in both themes: it is painted before any theme exists, and it is
-  /// matched by the native launch screen and the adaptive icon background.
-  static const splashOrange = Color(0xFFF3821F);
+  // ── Danger — coral ───────────────────────────────────────────────────────
+  // Warmer and less saturated than a pure stop-sign red, matching the
+  // reference's "Pay now" / "Delete account" tone.
+  static const red50 = Color(0xFFFDEDEB);
+  static const red100 = Color(0xFFFBDAD5);
+  static const red200 = Color(0xFFF5B3A8);
+  static const red300 = Color(0xFFEE8A78);
+  static const red400 = Color(0xFFE66950);
+  static const red500 = Color(0xFFDC5138);
+  static const red600 = Color(0xFFB93F29);
+  static const red700 = Color(0xFF8F311F);
+
+  /// Full-bleed canvas behind the launch/splash screen. Kept separate from
+  /// [indigo500] for the same reason the previous identity kept its splash
+  /// orange separate: matched by the native launch screen and the adaptive
+  /// icon background, so retuning the brand tone should never shift the very
+  /// first frame of the app without a deliberate asset update alongside it.
+  static const splashIndigo = Color(0xFF2E3688);
 }

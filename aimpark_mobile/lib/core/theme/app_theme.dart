@@ -109,7 +109,7 @@ abstract class AppTheme {
       // Flat and canvas-coloured, so a screen's title reads as part of the page
       // rather than as a bar bolted above it. Material 3 would otherwise tint
       // the bar with the primary colour the moment content scrolled under it,
-      // which on an orange-branded app looks like a rendering fault.
+      // which on a brand-coloured app looks like a rendering fault.
       appBarTheme: AppBarTheme(
         backgroundColor: t.surface.canvas,
         foregroundColor: t.text.primary,
@@ -368,7 +368,7 @@ abstract class AppTheme {
           minimumSize:
               const WidgetStatePropertyAll(Size(0, AppSizes.controlHeight)),
           shape: const WidgetStatePropertyAll(
-            RoundedRectangleBorder(borderRadius: AppRadius.lgAll),
+            RoundedRectangleBorder(borderRadius: AppRadius.fullAll),
           ),
           elevation: const WidgetStatePropertyAll(0),
         ),
@@ -414,7 +414,9 @@ abstract class AppTheme {
         hoverElevation: 2,
         highlightElevation: 1,
         extendedTextStyle: text.labelLarge?.copyWith(color: t.brand.onSolid),
-        shape: const RoundedRectangleBorder(borderRadius: AppRadius.lgAll),
+        // A full circle, matching the reference's floating centre-of-nav
+        // action button rather than the previous identity's rounded square.
+        shape: const CircleBorder(),
       ),
     );
   }
@@ -436,7 +438,7 @@ abstract class AppTheme {
       ),
       minimumSize: const WidgetStatePropertyAll(Size(0, AppSizes.controlHeight)),
       shape: const WidgetStatePropertyAll(
-        RoundedRectangleBorder(borderRadius: AppRadius.lgAll),
+        RoundedRectangleBorder(borderRadius: AppRadius.fullAll),
       ),
       elevation: const WidgetStatePropertyAll(0),
       shadowColor: const WidgetStatePropertyAll(Colors.transparent),

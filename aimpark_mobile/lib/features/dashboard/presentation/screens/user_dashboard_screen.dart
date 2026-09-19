@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
@@ -18,11 +19,28 @@ import '../../../violations/presentation/providers/violations_provider.dart';
 /// client-side from real parking history and violation data — there's no
 /// dedicated Points/Streak entity in the backend, so these are honest
 /// computations over real rows rather than a stored game-score.
+///
+/// Visually this screen deliberately breaks from the rest of the app's flat,
+/// bordered-card system: gradient hero card, soft tinted stat cards, a mascot
+/// illustration. That is scoped to Home on purpose — every other screen keeps
+/// the app-wide token system unchanged.
 class UserDashboardScreen extends ConsumerWidget {
-  const UserDashboardScreen({super.key, required this.onNavigateToHistory});
+  const UserDashboardScreen({
+    super.key,
+    required this.onNavigateToHistory,
+    required this.onNavigateToAlerts,
+    this.unreadCount = 0,
+  });
 
   /// Switches the parent [UserShell] to the History tab.
   final VoidCallback onNavigateToHistory;
+
+  /// Switches the parent [UserShell] to the Alerts tab.
+  final VoidCallback onNavigateToAlerts;
+
+  /// Drives the header bell's unread dot. Computed once in [UserShell] from
+  /// the same provider the Alerts tab reads, so the two never disagree.
+  final int unreadCount;
 
   /// Whether a violation still counts against the user.
   ///
@@ -170,6 +188,13 @@ class UserDashboardScreen extends ConsumerWidget {
         .toList();
     final balance = unpaid.fold<double>(0, (sum, p) => sum + p.amountDue);
     final overdueCount = unpaid.where((p) => p.isOverdue).length;
+    // The one to name on the dashboard card — "you parked at B-14, here's
+    // what that costs" is a claim a bare total can't make on its own.
+    final mostRecentUnpaid = unpaid.isEmpty
+        ? null
+        : (List<Payment>.from(unpaid)
+            ..sort((a, b) => b.createdAt.compareTo(a.createdAt)))
+            .first;
 
     final recentLogs =
         history?.logs.take(3).toList() ?? const <ParkingHistoryEntry>[];
@@ -183,54 +208,54 @@ class UserDashboardScreen extends ConsumerWidget {
             if (isFirstLoad) ...[
               const _HeaderSkeleton(),
               const SizedBox(height: AppSpacing.lg),
-              const AppSkeleton.block(height: 92),
+              const AppSkeleton.block(height: 152),
               const SizedBox(height: AppSpacing.md),
-              const AppSkeleton.block(height: 72),
+              const AppSkeleton.block(height: 116),
             ] else ...[
               _Header(
                 name: profileAsync.valueOrNull?.fullName ?? 'there',
-                streakDays: streakDays,
-                points: points,
+                unreadCount: unreadCount,
+                onNavigateToAlerts: onNavigateToAlerts,
               ),
               const SizedBox(height: AppSpacing.lg),
-              _ParkingStatusCard(
+              _ParkingHeroCard(
                 entry: history?.currentlyParked,
                 availability: availability,
                 onTap: () => context.push('/home/user/parking-slots'),
               ),
-              const SizedBox(height: AppSpacing.md),
-              AppCard(
-                child: GoodStandingMeter(
-                  level: standing.level,
-                  tierLabel: standing.tier,
+              // A second hero card, only when money is actually owed — this is
+              // the thing testers wanted answered the moment the app opens
+              // ("did my last session cost me anything"), not three taps into
+              // Payments. It replaces what used to be a quiet list row here.
+              if (balance > 0) ...[
+                const SizedBox(height: AppSpacing.lg),
+                _PaymentDueCard(
+                  balance: balance,
+                  overdueCount: overdueCount,
+                  pendingCount: unpaid.length,
+                  mostRecent: mostRecentUnpaid,
+                  onTap: () => context.push('/home/user/payments'),
                 ),
+              ],
+              const SizedBox(height: AppSpacing.lg),
+              const AppSectionHeader(title: 'Your week at a glance'),
+              _WeekAtAGlance(
+                standing: standing,
+                streakDays: streakDays,
+                points: points,
               ),
-              if (openViolations > 0 || balance > 0) ...[
+              if (openViolations > 0) ...[
                 const SizedBox(height: AppSpacing.lg),
                 const AppSectionHeader(title: 'Needs your attention'),
-                if (openViolations > 0)
-                  AppListRow(
-                    icon: Icons.gavel_rounded,
-                    intent: StatusIntent.warning,
-                    title: openViolations == 1
-                        ? '1 open violation'
-                        : '$openViolations open violations',
-                    subtitle: 'Tap to read it or file an appeal.',
-                    onTap: () => context.push('/home/user/violations'),
-                  ),
-                if (openViolations > 0 && balance > 0) const AppRowGap(),
-                if (balance > 0)
-                  AppListRow(
-                    icon: Icons.payments_rounded,
-                    intent: overdueCount > 0
-                        ? StatusIntent.danger
-                        : StatusIntent.warning,
-                    title: '${Formatters.peso(balance)} unpaid',
-                    subtitle: overdueCount > 0
-                        ? '$overdueCount overdue'
-                        : '${unpaid.length} pending payment(s)',
-                    onTap: () => context.push('/home/user/payments'),
-                  ),
+                AppListRow(
+                  icon: Icons.gavel_rounded,
+                  intent: StatusIntent.warning,
+                  title: openViolations == 1
+                      ? '1 open violation'
+                      : '$openViolations open violations',
+                  subtitle: 'Tap to read it or file an appeal.',
+                  onTap: () => context.push('/home/user/violations'),
+                ),
               ],
             ],
             const SizedBox(height: AppSpacing.lg),
@@ -340,8 +365,8 @@ class UserDashboardScreen extends ConsumerWidget {
   }
 }
 
-/// Mirrors [_Header]'s layout so the row doesn't jump when the real name,
-/// streak and points land.
+/// Mirrors [_Header]'s layout so the row doesn't jump when the real name and
+/// avatar land.
 class _HeaderSkeleton extends StatelessWidget {
   const _HeaderSkeleton();
 
@@ -361,9 +386,7 @@ class _HeaderSkeleton extends StatelessWidget {
             ],
           ),
         ),
-        AppSkeleton(width: 52, height: 30, radius: AppRadius.full),
-        SizedBox(width: AppSpacing.sm),
-        AppSkeleton(width: 52, height: 30, radius: AppRadius.full),
+        AppSkeleton(width: 44, height: 44, radius: AppRadius.full),
       ],
     );
   }
@@ -372,13 +395,13 @@ class _HeaderSkeleton extends StatelessWidget {
 class _Header extends StatelessWidget {
   const _Header({
     required this.name,
-    required this.streakDays,
-    required this.points,
+    required this.unreadCount,
+    required this.onNavigateToAlerts,
   });
 
   final String name;
-  final int streakDays;
-  final int points;
+  final int unreadCount;
+  final VoidCallback onNavigateToAlerts;
 
   @override
   Widget build(BuildContext context) {
@@ -400,25 +423,78 @@ class _Header extends StatelessWidget {
             ],
           ),
         ),
-        // Hidden at zero rather than shown as "0". Two chips reading nought is
-        // a greeting that tells a new user they have achieved nothing, and it
-        // was the first thing on the screen.
-        if (streakDays > 0) ...[
-          StreakBadge(days: streakDays),
-          const SizedBox(width: AppSpacing.sm),
-        ],
-        if (points > 0) PointsCounter(points: points),
+        const SizedBox(width: AppSpacing.sm),
+        _RoundIconButton(
+          icon: Icons.notifications_rounded,
+          showDot: unreadCount > 0,
+          onTap: onNavigateToAlerts,
+        ),
       ],
     );
   }
 }
 
-/// The one full-bleed brand surface on the screen. Everything inside it reads
-/// from `brand.onSolid` rather than the ordinary text tokens — on an orange
-/// card those would be near-black in light mode and near-white in dark, and
-/// only one of those is readable.
-class _ParkingStatusCard extends StatelessWidget {
-  const _ParkingStatusCard({
+/// A tinted circular icon button, used for the header's bell — the reference's
+/// icon-button treatment, in place of the app-wide flat [AppButton].
+class _RoundIconButton extends StatelessWidget {
+  const _RoundIconButton({
+    required this.icon,
+    required this.onTap,
+    this.showDot = false,
+  });
+
+  final IconData icon;
+  final VoidCallback onTap;
+  final bool showDot;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = context.tokens;
+
+    return GestureDetector(
+      onTap: () {
+        HapticFeedback.selectionClick();
+        onTap();
+      },
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          Container(
+            width: 44,
+            height: 44,
+            decoration: BoxDecoration(color: t.brand.subtle, shape: BoxShape.circle),
+            child: Icon(icon, color: t.brand.subtleText, size: AppSizes.iconMd),
+          ),
+          if (showDot)
+            Positioned(
+              top: 1,
+              right: 1,
+              child: Container(
+                width: 12,
+                height: 12,
+                decoration: BoxDecoration(
+                  color: t.status.danger.solid,
+                  shape: BoxShape.circle,
+                  border: Border.all(color: t.surface.canvas, width: 2),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+/// The hero card — the one full-bleed brand surface on the screen, restyled
+/// after the soft-gradient reference: rounded 28, indigo-to-mint gradient, a
+/// tag pill, the brand mascot, and a circular arrow CTA in place of the
+/// app-wide flat [AppCard]/[AppButton] pairing.
+///
+/// Everything inside reads from `brand.onSolid` rather than the ordinary text
+/// tokens — on a colour-fill card those would be near-black in light mode and
+/// near-white in dark, and only one of those is readable.
+class _ParkingHeroCard extends StatefulWidget {
+  const _ParkingHeroCard({
     required this.entry,
     required this.availability,
     required this.onTap,
@@ -433,58 +509,458 @@ class _ParkingStatusCard extends StatelessWidget {
   final VoidCallback onTap;
 
   @override
+  State<_ParkingHeroCard> createState() => _ParkingHeroCardState();
+}
+
+class _ParkingHeroCardState extends State<_ParkingHeroCard> {
+  bool _isPressed = false;
+
+  @override
   Widget build(BuildContext context) {
     final t = context.tokens;
-    final isParked = entry != null;
-    final free = availability?.availableSlots;
+    final isParked = widget.entry != null;
+    final free = widget.availability?.availableSlots;
 
-    return AppCard(
-      onTap: onTap,
-      color: t.brand.primary,
-      borderColor: t.brand.pressed,
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTapDown: (_) => setState(() => _isPressed = true),
+      onTapUp: (_) => setState(() => _isPressed = false),
+      onTapCancel: () => setState(() => _isPressed = false),
+      onTap: () {
+        HapticFeedback.selectionClick();
+        widget.onTap();
+      },
+      child: AnimatedScale(
+        scale: _isPressed ? 0.98 : 1.0,
+        duration: AppMotion.press,
+        curve: AppMotion.standard,
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(28),
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [t.brand.primary, t.tertiary.primary],
+              ),
+            ),
+            child: Stack(
+              children: [
+                // The mascot bleeds off the bottom-right corner, matching the
+                // reference's hero card illustration treatment.
+                Positioned(
+                  right: -16,
+                  bottom: -18,
+                  child: Opacity(
+                    opacity: 0.95,
+                    child: Image.asset(
+                      'assets/images/mascot_wave.png',
+                      height: 132,
+                    ),
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.all(AppSpacing.lg),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          _Tag(label: isParked ? 'Live' : 'Parking'),
+                          if (widget.entry?.slotCode != null)
+                            AppStatusBadge(
+                              label: widget.entry!.slotCode!,
+                              intent: StatusIntent.success,
+                            ),
+                        ],
+                      ),
+                      const SizedBox(height: AppSpacing.xl),
+                      Text(
+                        isParked
+                            ? 'Currently Parked'
+                            : free == null
+                                ? 'Checking availability…'
+                                : free == 0
+                                    ? 'Lot is full'
+                                    : free == 1
+                                        ? '1 slot free'
+                                        : '$free slots free',
+                        style: context.text.headlineLarge
+                            ?.copyWith(color: t.brand.onSolid, fontSize: 25),
+                      ),
+                      const SizedBox(height: AppSpacing.xs),
+                      Text(
+                        isParked
+                            ? Formatters.sessionRange(
+                                widget.entry!.entryTime,
+                                null,
+                                widget.entry!.duration,
+                              )
+                            : widget.availability == null
+                                ? 'Tap to check live availability'
+                                : 'of ${widget.availability!.totalSlots} · tap to find yours',
+                        style: context.text.bodyMedium
+                            ?.copyWith(color: t.text.onDarkMuted),
+                      ),
+                      const SizedBox(height: AppSpacing.md),
+                      _ArrowButton(background: t.brand.onSolid, iconColor: t.brand.primary),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// A small solid pill, matching the reference's "Self Care"-style corner tag.
+class _Tag extends StatelessWidget {
+  const _Tag({required this.label});
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = context.tokens;
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.sm, vertical: 6),
+      decoration: BoxDecoration(color: t.brand.onSolid, borderRadius: AppRadius.fullAll),
+      child: Text(
+        label,
+        style: context.text.labelSmall?.copyWith(color: t.brand.primary, letterSpacing: 0.3),
+      ),
+    );
+  }
+}
+
+/// The hero card's circular CTA, matching the reference's arrow-in-a-circle
+/// button in place of the app-wide [AppButton].
+class _ArrowButton extends StatelessWidget {
+  const _ArrowButton({required this.background, required this.iconColor});
+
+  final Color background;
+  final Color iconColor;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 40,
+      height: 40,
+      decoration: BoxDecoration(color: background, shape: BoxShape.circle),
+      child: Icon(Icons.arrow_forward_rounded, color: iconColor, size: 20),
+    );
+  }
+}
+
+/// A second hero card, shown only when something is actually owed. Warm
+/// (amber to coral) rather than the parking card's cool indigo-to-mint, so
+/// the two read as "all clear" and "needs attention" at a glance without
+/// either having to say so directly.
+///
+/// This is not a stored account balance — AimPark doesn't hold money — it's
+/// the live sum of unpaid [Payment] rows, the same number Payments itself
+/// shows. Naming the most recent one ("from your session at B-14") is what
+/// makes it read as an answer to "did that trip just now cost me anything"
+/// rather than an unexplained total.
+class _PaymentDueCard extends StatefulWidget {
+  const _PaymentDueCard({
+    required this.balance,
+    required this.overdueCount,
+    required this.pendingCount,
+    required this.mostRecent,
+    required this.onTap,
+  });
+
+  final double balance;
+  final int overdueCount;
+  final int pendingCount;
+
+  /// The most recently created unpaid payment, if any — used only to name a
+  /// session or say "violation fee"; the headline amount is always the full
+  /// [balance], never just this one payment's.
+  final Payment? mostRecent;
+
+  final VoidCallback onTap;
+
+  @override
+  State<_PaymentDueCard> createState() => _PaymentDueCardState();
+}
+
+class _PaymentDueCardState extends State<_PaymentDueCard> {
+  bool _isPressed = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = context.tokens;
+    final overdue = widget.overdueCount > 0;
+    final recent = widget.mostRecent;
+    // The API serializes the enum name verbatim ("ParkingFee",
+    // "ViolationPenalty"), not a friendlier label — matched against the full
+    // name here rather than payments_list_screen.dart's `== 'violation'`,
+    // which never matches it.
+    final isViolationFee = recent?.source.toLowerCase() == 'violationpenalty';
+
+    final subtitle = overdue
+        ? (widget.overdueCount == 1
+            ? '1 overdue · tap to settle up'
+            : '${widget.overdueCount} overdue · tap to settle up')
+        : (recent?.slotCode != null && !isViolationFee)
+            ? 'From your session at ${recent!.slotCode} · ${Formatters.relativeDay(recent.createdAt)}'
+            : (widget.pendingCount == 1
+                ? '1 pending payment'
+                : '${widget.pendingCount} pending payments');
+
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTapDown: (_) => setState(() => _isPressed = true),
+      onTapUp: (_) => setState(() => _isPressed = false),
+      onTapCancel: () => setState(() => _isPressed = false),
+      onTap: () {
+        HapticFeedback.selectionClick();
+        widget.onTap();
+      },
+      child: AnimatedScale(
+        scale: _isPressed ? 0.98 : 1.0,
+        duration: AppMotion.press,
+        curve: AppMotion.standard,
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(28),
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [t.status.warning.solid, t.status.danger.solid],
+              ),
+            ),
+            child: Stack(
+              children: [
+                Positioned(
+                  right: -16,
+                  bottom: -18,
+                  child: Opacity(
+                    opacity: 0.95,
+                    child: Image.asset(
+                      'assets/images/mascot_wave.png',
+                      height: 120,
+                    ),
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.all(AppSpacing.lg),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      _Tag(label: overdue ? 'Overdue' : 'Payment due'),
+                      const SizedBox(height: AppSpacing.xl),
+                      Text(
+                        '${Formatters.peso(widget.balance)} to settle',
+                        style: context.text.headlineLarge
+                            ?.copyWith(color: t.text.onDark, fontSize: 25),
+                      ),
+                      const SizedBox(height: AppSpacing.xs),
+                      Text(
+                        subtitle,
+                        style: context.text.bodyMedium
+                            ?.copyWith(color: t.text.onDarkMuted),
+                      ),
+                      const SizedBox(height: AppSpacing.md),
+                      _ArrowButton(
+                        background: t.text.onDark,
+                        iconColor: t.status.danger.solid,
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// "Your week at a glance": a big illustrated standing card beside two
+/// tinted ring-stat cards, replacing the plain [GoodStandingMeter] card the
+/// rest of the app still uses on its own.
+class _WeekAtAGlance extends StatelessWidget {
+  const _WeekAtAGlance({
+    required this.standing,
+    required this.streakDays,
+    required this.points,
+  });
+
+  final ({double level, String tier}) standing;
+  final int streakDays;
+  final int points;
+
+  @override
+  Widget build(BuildContext context) {
+    return IntrinsicHeight(
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Expanded(flex: 5, child: _StandingCard(standing: standing)),
+          const SizedBox(width: AppSpacing.md),
+          Expanded(
+            flex: 4,
+            child: Column(
+              children: [
+                Expanded(
+                  child: _RingStatCard(
+                    icon: Icons.local_fire_department_rounded,
+                    label: 'Streak',
+                    value: streakDays == 1 ? '1 day' : '$streakDays days',
+                    ratio: (streakDays / 7).clamp(0.0, 1.0),
+                    accent: context.tokens.tertiary,
+                  ),
+                ),
+                const SizedBox(height: AppSpacing.md),
+                Expanded(
+                  child: _RingStatCard(
+                    icon: Icons.star_rounded,
+                    label: 'Points',
+                    value: '$points',
+                    ratio: (points / 300).clamp(0.0, 1.0),
+                    accent: context.tokens.brand,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _StandingCard extends StatelessWidget {
+  const _StandingCard({required this.standing});
+
+  final ({double level, String tier}) standing;
+
+  StatusIntent get _intent => switch (standing.tier) {
+        'Gold' => StatusIntent.success,
+        'Silver' => StatusIntent.info,
+        _ => StatusIntent.warning,
+      };
+
+  @override
+  Widget build(BuildContext context) {
+    final t = context.tokens;
+    final status = t.status.of(_intent);
+
+    return Container(
+      padding: const EdgeInsets.all(AppSpacing.lg),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(24),
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [t.tertiary.subtle, t.surface.card],
+        ),
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              // Not "Not Parked". This is the loudest surface on the screen,
-              // and it was spending that on a fact the user already knew. When
-              // they are not parked, the thing they came to find out is how
-              // many slots are free.
-              Text(
-                isParked
-                    ? 'Currently Parked'
-                    : free == null
-                        ? 'Parking'
-                        : free == 0
-                            ? 'Lot is full'
-                            : free == 1
-                                ? '1 slot free'
-                                : '$free slots free',
-                style: context.text.labelLarge
-                    ?.copyWith(color: t.brand.onSolid),
+              Expanded(
+                child: Text('Good Standing', style: context.text.labelSmall),
               ),
-              if (entry?.slotCode != null)
-                AppStatusBadge(
-                  label: entry!.slotCode!,
-                  intent: StatusIntent.success,
+              AppStatusBadge(label: standing.tier.toUpperCase(), intent: _intent),
+            ],
+          ),
+          const Spacer(),
+          Stack(
+            alignment: Alignment.center,
+            children: [
+              SizedBox(
+                width: 60,
+                height: 60,
+                child: CircularProgressIndicator(
+                  value: standing.level,
+                  strokeWidth: 6,
+                  backgroundColor: t.surface.muted,
+                  valueColor: AlwaysStoppedAnimation(status.solid),
                 ),
+              ),
+              Icon(Icons.shield_rounded, color: status.solid, size: 24),
             ],
           ),
           const SizedBox(height: AppSpacing.sm),
-          Text(
-            isParked
-                ? Formatters.sessionRange(
-                    entry!.entryTime,
-                    null,
-                    entry!.duration,
-                  )
-                : availability == null
-                    ? 'Tap to check live availability'
-                    : 'of ${availability!.totalSlots} · tap to find yours',
-            style: context.text.bodyMedium
-                ?.copyWith(color: t.text.onDarkMuted),
+          Text(standing.tier, style: context.text.headlineSmall),
+        ],
+      ),
+    );
+  }
+}
+
+/// One of the two small tinted cards to the standing card's right: an icon
+/// ring showing progress toward a soft weekly goal, a label, and the value.
+class _RingStatCard extends StatelessWidget {
+  const _RingStatCard({
+    required this.icon,
+    required this.label,
+    required this.value,
+    required this.ratio,
+    required this.accent,
+  });
+
+  final IconData icon;
+  final String label;
+  final String value;
+  final double ratio;
+  final AppAccentTokens accent;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md),
+      decoration: BoxDecoration(
+        color: accent.subtle,
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Text(label, style: context.text.labelSmall),
+                const SizedBox(height: 2),
+                Text(
+                  value,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: context.text.titleMedium,
+                ),
+              ],
+            ),
+          ),
+          SizedBox(
+            width: 36,
+            height: 36,
+            child: Stack(
+              alignment: Alignment.center,
+              children: [
+                CircularProgressIndicator(
+                  value: ratio == 0 ? null : ratio,
+                  strokeWidth: 4,
+                  backgroundColor: accent.primary.withValues(alpha: 0.18),
+                  valueColor: AlwaysStoppedAnimation(accent.primary),
+                ),
+                Icon(icon, size: 15, color: accent.primary),
+              ],
+            ),
           ),
         ],
       ),

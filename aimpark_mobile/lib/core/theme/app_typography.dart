@@ -8,19 +8,19 @@ import 'package:flutter/material.dart';
 /// `SnackBar` or a `DatePicker` comes out correct without anyone passing a
 /// `TextStyle`.
 ///
-/// The scale is the one the app already had. What changed is where the colour
-/// comes from: these used to be `static final` styles that baked in
-/// `AppColors.textPrimary`, which is the single reason dark mode was
-/// impossible — every heading in the app was hardcoded near-black. Colour is
-/// now applied once, here, from the active theme's tokens.
+/// The scale is the one the app already had. What changed is the face: Inter
+/// replaces the previous identity's Fredoka/Nunito pairing, with tighter
+/// tracking on headlines and a heavier weight on the one-per-screen hero
+/// number, matching the reference's clean, flat-fintech register rather than
+/// the rounded, tactile one it replaces. Colour still comes from the active
+/// theme's tokens, never baked into the style.
 abstract class AppTypography {
-  /// Fredoka for display and headings — chunky, rounded, the closest
-  /// freely-licensed match to Duolingo's proprietary Feather.
-  static const String display = 'Fredoka';
+  /// Inter Display for the hero number and screen titles — the optical-size
+  /// cut, tuned to stay crisp at the sizes this app actually uses it at.
+  static const String display = 'InterDisplay';
 
-  /// Nunito for body and labels — rounded to match, but drawn to stay legible
-  /// at 12px where Fredoka starts to lose its counters.
-  static const String body = 'Nunito';
+  /// Inter for body, labels and everything read in a paragraph or a row.
+  static const String body = 'Inter';
 
   /// Both families are bundled under `assets/fonts/` and declared in
   /// `pubspec.yaml` rather than fetched at runtime by `google_fonts`.
@@ -52,20 +52,22 @@ abstract class AppTypography {
     required Color secondary,
   }) {
     return TextTheme(
-      // The one-per-screen hero number: the splash wordmark, an availability
-      // count, a plate number.
+      // The one-per-screen hero number: the splash wordmark, a spend total, a
+      // plate number.
       displayLarge: _display(TextStyle(
-        fontSize: 32,
-        height: 40 / 32,
-        fontWeight: FontWeight.w700,
+        fontSize: 34,
+        height: 40 / 34,
+        fontWeight: FontWeight.w800,
+        letterSpacing: -0.6,
         color: primary,
       )),
 
       // Screen titles.
       headlineLarge: _display(TextStyle(
         fontSize: 28,
-        height: 36 / 28,
+        height: 34 / 28,
         fontWeight: FontWeight.w700,
+        letterSpacing: -0.4,
         color: primary,
       )),
 
@@ -73,7 +75,8 @@ abstract class AppTypography {
       headlineMedium: _display(TextStyle(
         fontSize: 22,
         height: 28 / 22,
-        fontWeight: FontWeight.w600,
+        fontWeight: FontWeight.w700,
+        letterSpacing: -0.3,
         color: primary,
       )),
 
@@ -82,6 +85,7 @@ abstract class AppTypography {
         fontSize: 18,
         height: 24 / 18,
         fontWeight: FontWeight.w600,
+        letterSpacing: -0.2,
         color: primary,
       )),
 
@@ -95,6 +99,7 @@ abstract class AppTypography {
         fontSize: 20,
         height: 26 / 20,
         fontWeight: FontWeight.w600,
+        letterSpacing: -0.2,
         color: primary,
       )),
 
@@ -140,26 +145,29 @@ abstract class AppTypography {
       labelLarge: _body(TextStyle(
         fontSize: 14,
         height: 20 / 14,
-        fontWeight: FontWeight.w700,
-        letterSpacing: 0.2,
+        fontWeight: FontWeight.w600,
+        letterSpacing: 0.1,
         color: primary,
       )),
 
       // Badges and status pills.
       labelMedium: _body(TextStyle(
-        fontSize: 13,
-        height: 18 / 13,
+        fontSize: 12,
+        height: 16 / 12,
         fontWeight: FontWeight.w700,
-        letterSpacing: 0.2,
+        letterSpacing: 0.3,
         color: primary,
       )),
 
-      // Field labels, captions, legend keys.
+      // Field labels, captions, and the small tracked eyebrow text above a
+      // section ("STEP 2 OF 3", "LOT C · NORTH GATE") that the reference
+      // reaches for constantly — the wider tracking is what reads as a label
+      // rather than as undersized body copy.
       labelSmall: _body(TextStyle(
-        fontSize: 12,
-        height: 16 / 12,
-        fontWeight: FontWeight.w600,
-        letterSpacing: 0.2,
+        fontSize: 11,
+        height: 14 / 11,
+        fontWeight: FontWeight.w700,
+        letterSpacing: 0.6,
         color: secondary,
       )),
     );

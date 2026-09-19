@@ -63,13 +63,13 @@ abstract class AppSpacing {
 
 /// LAYER 1 + 2 — Corner radii.
 ///
-/// Generous by design: the rounded geometry is half of what makes the app read
-/// as friendly rather than administrative, and it is the one place the mobile
-/// and desk products deliberately diverge (the panel tops out at 16).
+/// Larger than the previous identity's, matching the reference's soft, almost
+/// stadium-shaped cards and pills — and still the one place the mobile and
+/// desk products deliberately diverge (the panel tops out at 16).
 abstract class AppRadius {
   static const double sm = 12.0;
-  static const double md = 16.0;
-  static const double lg = 20.0;
+  static const double md = 18.0;
+  static const double lg = 24.0;
   static const double full = 9999.0;
 
   static const BorderRadius smAll = BorderRadius.all(Radius.circular(sm));
@@ -78,36 +78,32 @@ abstract class AppRadius {
   static const BorderRadius fullAll = BorderRadius.all(Radius.circular(full));
 }
 
-/// Vertical offset of the pressed-shadow layer behind buttons that use the
-/// two-layer tactile depth effect. See `AppButton`.
-const double kPressedShadowOffset = 5.0;
-
 /// LAYER 2 — Elevation.
 ///
-/// Used sparingly. This app separates surfaces with a 1.5px border rather than
-/// a shadow — a flat card with a crisp edge is the register the component set
-/// was drawn in, and it survives dark mode, where shadows are close to
-/// invisible. These exist for the two things that genuinely float above the
-/// page: dialogs, and the bottom nav.
+/// Used sparingly. This app separates surfaces with a hairline border or a
+/// tinted fill rather than a shadow — flat, borderless-reading cards are the
+/// register the reference is drawn in, and flat survives dark mode, where
+/// shadows are close to invisible. These exist for the two things that
+/// genuinely float above the page: dialogs, and the bottom nav.
 abstract class AppElevation {
   static const List<BoxShadow> none = [];
 
   /// Bottom nav and sticky footers — a hairline of lift so content scrolling
   /// underneath is visibly behind rather than merged with it.
   static const List<BoxShadow> sm = [
-    BoxShadow(color: Color(0x0F0A0A0A), blurRadius: 8, offset: Offset(0, -2)),
+    BoxShadow(color: Color(0x0F0B0A07), blurRadius: 8, offset: Offset(0, -2)),
   ];
 
   /// Dialogs and bottom sheets.
   static const List<BoxShadow> lg = [
     BoxShadow(
-      color: Color(0x1A0A0A0A),
+      color: Color(0x1A0B0A07),
       blurRadius: 24,
       spreadRadius: -8,
       offset: Offset(0, 12),
     ),
     BoxShadow(
-      color: Color(0x140A0A0A),
+      color: Color(0x140B0A07),
       blurRadius: 48,
       spreadRadius: -24,
       offset: Offset(0, 24),
@@ -121,7 +117,7 @@ abstract class AppElevation {
 /// a phone app people open several times a day can afford the extra frames that
 /// make a press feel physical.
 abstract class AppMotion {
-  /// A press: the button collapsing onto its shadow layer, a card scaling down.
+  /// A press: a button or card settling under the thumb.
   static const Duration press = Duration(milliseconds: 100);
 
   /// Focus rings, chip selection, nav pill.

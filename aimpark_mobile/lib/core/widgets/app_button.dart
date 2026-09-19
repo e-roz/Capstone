@@ -22,14 +22,9 @@ enum AppButtonStyle {
   danger,
 }
 
-/// AimPark button using the Duolingo-style two-layer pressed effect: a solid
-/// "shadow" layer sits behind the fill layer, offset down. On press, the fill
-/// layer collapses onto the shadow layer, reading as physically pushed.
-///
-/// The press is what makes the app feel like a phone app rather than a form,
-/// so it survives dark mode intact — the two layers come from
-/// `t.<accent>.primary` and `t.<accent>.pressed`, which stay a matched pair in
-/// both themes.
+/// AimPark's button: a flat, fully-rounded pill that scales down slightly
+/// under the thumb, matching the reference's clean CTA style — no drawn depth,
+/// no offset shadow layer, just fill, motion and a haptic tick.
 class AppButton extends StatefulWidget {
   const AppButton({
     super.key,
@@ -59,49 +54,36 @@ class _AppButtonState extends State<AppButton> {
 
   bool get _isDisabled => widget.onPressed == null || widget.isLoading;
 
-  ({Color fill, Color? shadow, Color text, Color? border}) _colorsFor(
-    AppTokens t,
-  ) {
+  ({Color fill, Color text, Color? border}) _colorsFor(AppTokens t) {
     if (_isDisabled) {
-      return (
-        fill: t.surface.muted,
-        shadow: null,
-        text: t.text.disabled,
-        border: null,
-      );
+      return (fill: t.surface.muted, text: t.text.disabled, border: null);
     }
 
     return switch (widget.style) {
       AppButtonStyle.primary => (
-          fill: t.brand.primary,
-          shadow: t.brand.pressed,
+          fill: _isPressed ? t.brand.pressed : t.brand.primary,
           text: t.brand.onSolid,
           border: null,
         ),
       AppButtonStyle.secondary => (
-          fill: t.accent.primary,
-          shadow: t.accent.pressed,
+          fill: _isPressed ? t.accent.pressed : t.accent.primary,
           text: t.accent.onSolid,
           border: null,
         ),
       AppButtonStyle.tertiary => (
-          fill: t.tertiary.primary,
-          shadow: t.tertiary.pressed,
+          fill: _isPressed ? t.tertiary.pressed : t.tertiary.primary,
           text: t.tertiary.onSolid,
           border: null,
         ),
-      // No shadow layer: a ghost button sitting next to a primary one should
-      // read as the quieter of the two, and giving it the same tactile depth
-      // makes them compete.
+      // No fill: a ghost button sitting next to a primary one should read as
+      // the quieter of the two.
       AppButtonStyle.ghost => (
-          fill: t.surface.card,
-          shadow: null,
+          fill: _isPressed ? t.surface.pressed : t.surface.card,
           text: t.text.primary,
           border: t.border.normal,
         ),
       AppButtonStyle.danger => (
-          fill: t.status.danger.solid,
-          shadow: t.status.danger.fg,
+          fill: _isPressed ? t.status.danger.fg : t.status.danger.solid,
           text: t.text.onDark,
           border: null,
         ),
@@ -111,7 +93,6 @@ class _AppButtonState extends State<AppButton> {
   @override
   Widget build(BuildContext context) {
     final colors = _colorsFor(context.tokens);
-    final hasShadow = colors.shadow != null;
     const height = AppSizes.controlHeight;
 
     return Semantics(
@@ -129,83 +110,63 @@ class _AppButtonState extends State<AppButton> {
                 HapticFeedback.lightImpact();
                 widget.onPressed!();
               },
-        child: SizedBox(
-          height: height + kPressedShadowOffset,
-          child: Stack(
-            children: [
-              if (hasShadow)
-                Positioned(
-                  left: 0,
-                  right: 0,
-                  top: kPressedShadowOffset,
-                  height: height,
-                  child: DecoratedBox(
-                    decoration: BoxDecoration(
-                      color: colors.shadow,
-                      borderRadius: AppRadius.lgAll,
-                    ),
-                  ),
-                ),
-              AnimatedPositioned(
-                duration: AppMotion.press,
-                curve: AppMotion.standard,
-                left: 0,
-                right: 0,
-                top: (_isPressed && hasShadow) ? kPressedShadowOffset : 0,
-                height: height,
-                child: DecoratedBox(
-                  decoration: BoxDecoration(
-                    color: colors.fill,
-                    borderRadius: AppRadius.lgAll,
-                    border: colors.border != null
-                        ? Border.all(color: colors.border!, width: 2)
-                        : null,
-                  ),
-                  child: Center(
-                    child: widget.isLoading
-                        ? SizedBox(
-                            height: 20,
-                            width: 20,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2.5,
-                              valueColor: AlwaysStoppedAnimation(colors.text),
+        child: AnimatedScale(
+          scale: _isPressed ? 0.97 : 1.0,
+          duration: AppMotion.press,
+          curve: AppMotion.standard,
+          child: AnimatedContainer(
+            duration: AppMotion.fast,
+            curve: AppMotion.standard,
+            height: height,
+            decoration: BoxDecoration(
+              color: colors.fill,
+              borderRadius: AppRadius.fullAll,
+              border: colors.border != null
+                  ? Border.all(color: colors.border!, width: 1.5)
+                  : null,
+            ),
+            child: Center(
+              child: widget.isLoading
+                  ? SizedBox(
+                      height: 20,
+                      width: 20,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2.5,
+                        valueColor: AlwaysStoppedAnimation(colors.text),
+                      ),
+                    )
+                  : Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: AppSpacing.lg,
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          if (widget.icon != null) ...[
+                            IconTheme(
+                              data: IconThemeData(
+                                color: colors.text,
+                                size: AppSizes.iconMd,
+                              ),
+                              child: widget.icon!,
                             ),
-                          )
-                        : Padding(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: AppSpacing.md,
-                            ),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                if (widget.icon != null) ...[
-                                  IconTheme(
-                                    data: IconThemeData(
-                                      color: colors.text,
-                                      size: AppSizes.iconMd,
-                                    ),
-                                    child: widget.icon!,
-                                  ),
-                                  const SizedBox(width: AppSpacing.xs + 2),
-                                ],
-                                Flexible(
-                                  child: Text(
-                                    widget.label,
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: context.text.labelLarge?.copyWith(
-                                      fontSize: 16,
-                                      color: colors.text,
-                                    ),
-                                  ),
-                                ),
-                              ],
+                            const SizedBox(width: AppSpacing.xs + 2),
+                          ],
+                          Flexible(
+                            child: Text(
+                              widget.label,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: context.text.labelLarge?.copyWith(
+                                fontSize: 16,
+                                color: colors.text,
+                              ),
                             ),
                           ),
-                  ),
-                ),
-              ),
-            ],
+                        ],
+                      ),
+                    ),
+            ),
           ),
         ),
       ),

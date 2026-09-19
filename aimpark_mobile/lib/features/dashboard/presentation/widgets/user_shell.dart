@@ -58,7 +58,11 @@ class _UserShellState extends ConsumerState<UserShell> with WidgetsBindingObserv
         0;
 
     final tabs = [
-      UserDashboardScreen(onNavigateToHistory: () => _goToTab(1)),
+      UserDashboardScreen(
+        onNavigateToHistory: () => _goToTab(1),
+        onNavigateToAlerts: () => _goToTab(2),
+        unreadCount: unreadCount,
+      ),
       const ParkingHistoryScreen(),
       const NotificationsScreen(),
       const AccountScreen(),

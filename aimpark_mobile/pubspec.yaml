@@ -96,47 +96,28 @@ flutter:
   # variable font's weight axis when the call site passes `fontVariations`, and
   # this codebase says `fontWeight: FontWeight.w700` in a hundred places.
   fonts:
-    - family: Fredoka
+    - family: Inter
       fonts:
-        - asset: assets/fonts/Fredoka-Regular.ttf
+        - asset: assets/fonts/Inter-Regular.ttf
           weight: 400
-        - asset: assets/fonts/Fredoka-Medium.ttf
+        - asset: assets/fonts/Inter-Medium.ttf
           weight: 500
-        - asset: assets/fonts/Fredoka-SemiBold.ttf
+        - asset: assets/fonts/Inter-SemiBold.ttf
           weight: 600
-        - asset: assets/fonts/Fredoka-Bold.ttf
+        - asset: assets/fonts/Inter-Bold.ttf
           weight: 700
-    # The wordmark only. Baloo 2's extra-bold is a shade wider and rounder than
-    # Fredoka's, and the splash is the first frame anyone sees of the product —
-    # not the place to substitute a near-match.
-    - family: Baloo2
+    # Inter's display-optical-size cut — heavier and slightly tighter at large
+    # sizes than the text cut. Used only for the splash wordmark and one-per-
+    # screen hero numbers; everything else reads at text size and stays on
+    # `Inter` above.
+    - family: InterDisplay
       fonts:
-        - asset: assets/fonts/Baloo2-ExtraBold.ttf
+        - asset: assets/fonts/InterDisplay-SemiBold.ttf
+          weight: 600
+        - asset: assets/fonts/InterDisplay-Bold.ttf
+          weight: 700
+        - asset: assets/fonts/InterDisplay-ExtraBold.ttf
           weight: 800
-    - family: Nunito
-      fonts:
-        - asset: assets/fonts/Nunito-Regular.ttf
-          weight: 400
-        - asset: assets/fonts/Nunito-Medium.ttf
-          weight: 500
-        - asset: assets/fonts/Nunito-SemiBold.ttf
-          weight: 600
-        - asset: assets/fonts/Nunito-Bold.ttf
-          weight: 700
-    # The emotional design system's typeface (see core/theme/emotion/). Kept
-    # separate from the families above: those belong to the app's existing
-    # gamified theme, this belongs to the calm/outdoor one, and the two are
-    # deliberately not meant to blend on one screen.
-    - family: Barlow
-      fonts:
-        - asset: assets/fonts/Barlow-Regular.ttf
-          weight: 400
-        - asset: assets/fonts/Barlow-SemiBold.ttf
-          weight: 600
-    - family: BarlowSemiCondensed
-      fonts:
-        - asset: assets/fonts/BarlowSemiCondensed-SemiBold.ttf
-          weight: 600
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images

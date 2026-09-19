@@ -4,8 +4,8 @@ import '../../../../core/theme/theme.dart';
 import '../../../../core/widgets/widgets.dart';
 import '../../../../router/registration_back_stack.dart';
 
-/// The frame every registration step sits in: the mascot, where you are in the
-/// five steps, and the step's own content beneath.
+/// The frame every registration step sits in: the brand mark, where you are in
+/// the five steps, and the step's own content beneath.
 class RegistrationStepScaffold extends StatelessWidget {
   const RegistrationStepScaffold({
     super.key,
@@ -52,9 +52,7 @@ class RegistrationStepScaffold extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Center(
-              child: Image.asset('assets/images/owl_mascot.png', width: 64),
-            ),
+            const Center(child: AppBrandMark(size: 56)),
             const SizedBox(height: AppSpacing.md),
             StepProgressBar(currentStep: step, totalSteps: _totalSteps),
             const SizedBox(height: AppSpacing.lg),
