@@ -1413,22 +1413,22 @@ class _TwoUp extends StatelessWidget {
   const _TwoUp({
     required this.left,
     required this.right,
-    this.breakpoint = 1000,
     this.leftFlex = 1,
     this.rightFlex = 1,
   });
 
   final Widget left;
   final Widget right;
-  final double breakpoint;
   final int leftFlex;
   final int rightFlex;
+
+  static const _breakpoint = 1000.0;
 
   @override
   Widget build(BuildContext context) {
     return LayoutBuilder(
       builder: (context, constraints) {
-        if (constraints.maxWidth < breakpoint) {
+        if (constraints.maxWidth < _breakpoint) {
           return Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
