@@ -61,13 +61,18 @@ var jwtKey = builder.Configuration["Jwt:Key"]!;
 
 // Origins allowed to call the API from a browser. The deployed admin app's URL is
 // added via configuration (Cors__AllowedOrigins__0, ...) so a new deployment doesn't
-// need a code change. Localhost stays allowed so local dev keeps working.
+// need a code change. Localhost stays allowed so local dev keeps working — 5000 for
+// the admin panel's usual dev port, 8091 for `flutter run -d web-server` previews of
+// the mobile app (which otherwise only ever runs natively, where CORS never applies).
 var allowedOrigins = builder.Configuration
     .GetSection("Cors:AllowedOrigins")
     .Get<string[]>() ?? [];
 
 allowedOrigins = allowedOrigins
-    .Concat(["http://localhost:5000", "http://127.0.0.1:5000"])
+    .Concat([
+        "http://localhost:5000", "http://127.0.0.1:5000",
+        "http://localhost:8091", "http://127.0.0.1:8091",
+    ])
     .Distinct()
     .ToArray();
 
