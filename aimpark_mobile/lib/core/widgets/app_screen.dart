@@ -105,7 +105,23 @@ class AppScreen extends StatelessWidget {
         // The app bar already consumed the top inset; consuming it twice adds a
         // visible gap under the bar on notched phones.
         top: _inline,
-        child: body,
+        child: Align(
+          alignment: Alignment.topCenter,
+          // The design is drawn at 412dp. Left unbounded, every card stretches
+          // to whatever the window happens to be — on a desktop build a payment
+          // row becomes a metre of white with an amount marooned at the far
+          // right. [AppSizes.contentMaxWidth] was defined for exactly this and
+          // had never been applied anywhere; this is the one place that reaches
+          // every screen at once.
+          //
+          // It is a no-op on a phone, where the viewport is already narrower.
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(
+              maxWidth: AppSizes.contentMaxWidth,
+            ),
+            child: body,
+          ),
+        ),
       ),
     );
   }
@@ -234,10 +250,73 @@ class AppSectionHeader extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
       children: [
-        Text(title, style: context.text.headlineSmall),
+        // An eyebrow, not a heading. A section header's job is to separate two
+        // groups of cards, and at 18px semibold it was competing with the card
+        // titles inside the group it was meant to be labelling — so "Recent
+        // activity" read louder than the sessions underneath it.
+        Text(title.toUpperCase(), style: context.text.labelSmall),
         if (subtitle != null) ...[
           const SizedBox(height: AppSpacing.labelGap),
           Text(subtitle!, style: context.text.bodySmall),
+        ],
+      ],
+    );
+
+    return Padding(
+      padding: padding,
+      child: action == null
+          ? titleBlock
+          : Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(child: titleBlock),
+                const SizedBox(width: AppSpacing.sm),
+                action!,
+              ],
+            ),
+    );
+  }
+}
+
+/// A screen's own heading, rendered inline at the top of its content.
+///
+/// Distinct from [AppSectionHeader], which is an eyebrow that separates groups
+/// *within* a screen. Both used to be the same widget, so shrinking section
+/// headers to 11px uppercase also shrank "History" and "Alerts" — the titles of
+/// two whole tabs — into captions.
+///
+/// Inline rather than in an [AppBar] because a tab has no app bar to put it in,
+/// and because the design scrolls the title away with the content instead of
+/// pinning it.
+class AppScreenTitle extends StatelessWidget {
+  const AppScreenTitle({
+    super.key,
+    required this.title,
+    this.subtitle,
+    this.action,
+    this.padding = const EdgeInsets.only(bottom: AppSpacing.md),
+  });
+
+  final String title;
+  final String? subtitle;
+
+  /// Sits to the trailing side of the title — an avatar button, a refresh.
+  final Widget? action;
+
+  final EdgeInsets padding;
+
+  @override
+  Widget build(BuildContext context) {
+    final titleBlock = Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(title, style: context.text.headlineLarge),
+        if (subtitle != null) ...[
+          const SizedBox(height: AppSpacing.labelGap),
+          Text(subtitle!, style: context.text.bodyMedium?.copyWith(
+            color: context.tokens.text.secondary,
+          )),
         ],
       ],
     );

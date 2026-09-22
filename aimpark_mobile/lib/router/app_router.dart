@@ -23,7 +23,15 @@ import '../features/dashboard/presentation/widgets/user_shell.dart';
 import '../features/incidents/presentation/screens/incident_detail_screen.dart';
 import '../features/incidents/presentation/screens/incidents_list_screen.dart';
 import '../features/incidents/presentation/screens/report_incident_screen.dart';
+import '../features/auth/presentation/screens/registration_submitted_screen.dart';
+import '../features/dashboard/presentation/screens/standing_screen.dart';
+import '../features/notifications/presentation/screens/notifications_screen.dart';
+import '../features/parking/presentation/screens/parking_history_screen.dart';
 import '../features/parking/presentation/screens/parking_slots_screen.dart';
+import '../features/support/presentation/screens/support_screen.dart';
+import '../features/violations/presentation/screens/appeal_screen.dart';
+import '../features/violations/presentation/screens/appeal_sent_screen.dart';
+import '../features/violations/presentation/screens/policy_screen.dart';
 import '../features/payments/presentation/screens/payment_detail_screen.dart';
 import '../features/payments/presentation/screens/payments_list_screen.dart';
 import '../features/vehicles/presentation/screens/add_vehicle_screen.dart';
@@ -185,6 +193,14 @@ GoRouter appRouter(Ref ref) {
       // here, so the route exists to tell them where to go rather than to
       // leave them on a dead end.
       GoRoute(
+        path: '/register/submitted',
+        builder: (context, state) => RegistrationSubmittedScreen(
+          summary: state.extra is RegistrationSummary
+              ? state.extra! as RegistrationSummary
+              : null,
+        ),
+      ),
+      GoRoute(
         path: '/home/admin',
         builder: (context, state) => const AdminOnWebScreen(),
       ),
@@ -232,6 +248,45 @@ GoRouter appRouter(Ref ref) {
         path: '/home/user/payments/:paymentId',
         builder: (context, state) =>
             PaymentDetailScreen(paymentId: state.pathParameters['paymentId']!),
+      ),
+      // Both of these were tabs until the nav dropped to Home / Parking /
+      // Payments / Account. They are reached from Account now, so they need
+      // routes of their own for the first time.
+      GoRoute(
+        path: '/home/user/parking-history',
+        builder: (context, state) => const ParkingHistoryScreen(),
+      ),
+      GoRoute(
+        path: '/home/user/notifications',
+        builder: (context, state) => const NotificationsScreen(),
+      ),
+      // The cited rule rides as a query parameter rather than in `extra` so
+      // the screen survives a deep link and a process restore — `extra` does
+      // not, and this is a page someone may well return to.
+      GoRoute(
+        path: '/home/user/violations/:violationId/appeal',
+        builder: (context, state) => AppealScreen(
+          violationId: state.pathParameters['violationId']!,
+        ),
+      ),
+      GoRoute(
+        path: '/home/user/violations/:violationId/appeal-sent',
+        builder: (context, state) => AppealSentScreen(
+          violationId: state.pathParameters['violationId']!,
+        ),
+      ),
+      GoRoute(
+        path: '/home/user/policy',
+        builder: (context, state) =>
+            PolicyScreen(ruleTitle: state.uri.queryParameters['rule']),
+      ),
+      GoRoute(
+        path: '/home/user/standing',
+        builder: (context, state) => const StandingScreen(),
+      ),
+      GoRoute(
+        path: '/home/user/support',
+        builder: (context, state) => const SupportScreen(),
       ),
       GoRoute(
         path: '/home/user/parking-slots',

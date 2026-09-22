@@ -50,20 +50,23 @@ class IncidentsListScreen extends ConsumerWidget {
         data: (result) => ListView(
           padding: kScreenListPadding,
           children: [
-            for (final incident in result.incidents) ...[
-              AppListRow(
-                icon: Icons.report_rounded,
-                title: incident.category,
-                subtitle: Formatters.date(incident.createdAt),
-                trailing: AppStatusBadge(
-                  label: incident.status,
-                  intent: StatusIntents.incident(incident.status),
-                ),
-                onTap: () => context
-                    .push('/home/user/incidents/${incident.incidentId}'),
-              ),
-              if (incident != result.incidents.last) const AppRowGap(),
-            ],
+            AppRowGroup(
+              children: [
+                for (final incident in result.incidents)
+                  AppListRow(
+                    icon: Icons.report_rounded,
+                    title: incident.category,
+                    subtitle: Formatters.date(incident.createdAt),
+                    trailing: AppStatusBadge(
+                      label: incident.status,
+                      intent: StatusIntents.incident(incident.status),
+                    ),
+                    onTap: () => context.push(
+                      '/home/user/incidents/${incident.incidentId}',
+                    ),
+                  ),
+              ],
+            ),
           ],
         ),
       ),

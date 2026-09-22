@@ -5,11 +5,11 @@ import 'package:go_router/go_router.dart';
 import '../../../../core/theme/theme.dart';
 import '../../../../core/utils/app_flushbar.dart';
 import '../../../../core/widgets/widgets.dart';
-import '../../../../router/registration_back_stack.dart';
 import '../../data/models/scan_result.dart';
 import '../../data/registration_preflight.dart';
 import '../providers/auth_provider.dart';
 import '../providers/registration_provider.dart';
+import 'registration_submitted_screen.dart';
 import '../widgets/registration_step_scaffold.dart';
 import '../widgets/scanned_field.dart';
 
@@ -206,15 +206,25 @@ class _RegisterConfirmScreenState extends ConsumerState<RegisterConfirmScreen> {
       // through the flow re-uploading this attempt's images.
       ref.read(registrationNotifierProvider.notifier).clearCaptured();
 
-      await CelebrationDialog.show(
-        context,
-        title: "You're all set!",
-        message: 'Registration submitted — your account is pending review.',
+      // A receipt screen rather than a dialog. The dialog said "You're all
+      // set!", which was not true — nothing is set up until a reviewer
+      // approves it — and it vanished on tap, leaving no record of what had
+      // just been sent after a five-minute flow.
+      //
+      // The back stack is cleared on that screen's own way out rather than
+      // here, so a user who backgrounds the app on the receipt still finds it
+      // when they return.
+      context.go(
+        '/register/submitted',
+        extra: RegistrationSummary(
+          name: _studentName.text.trim().isEmpty
+              ? _licenseName.text.trim()
+              : _studentName.text.trim(),
+          email: ref.read(registrationNotifierProvider).email,
+          affiliation: ref.read(registrationNotifierProvider).affiliation.label,
+          plateNumber: _plateNumber.text.trim(),
+        ),
       );
-      // Nothing behind this to go back to any more — the account is submitted
-      // and the flow's history describes a registration that is over.
-      registrationBackStack.clear();
-      if (mounted) context.go('/login/sign-in');
     } catch (e) {
       if (mounted) showApiError(context, e);
     } finally {
@@ -246,7 +256,7 @@ class _RegisterConfirmScreenState extends ConsumerState<RegisterConfirmScreen> {
         title: 'Before you submit',
         subtitle: findings.any((f) => f.isBlocking)
             ? 'These are the things a reviewer usually rejects. Worth sorting '
-                'out now rather than after the wait.'
+                  'out now rather than after the wait.'
             : 'Nothing here stops you submitting — just worth a look.',
         padding: const EdgeInsets.only(bottom: AppSpacing.sm),
       ),
@@ -261,7 +271,7 @@ class _RegisterConfirmScreenState extends ConsumerState<RegisterConfirmScreen> {
   Widget build(BuildContext context) {
     final isStudent =
         ref.watch(registrationNotifierProvider.select((s) => s.affiliation)) ==
-            Affiliation.student;
+        Affiliation.student;
     final live = !_isSubmitting;
 
     return RegistrationStepScaffold(
@@ -273,7 +283,8 @@ class _RegisterConfirmScreenState extends ConsumerState<RegisterConfirmScreen> {
         children: [
           AppNotice(
             title: 'Is this right?',
-            message: 'This is what we read from your documents. Fix anything '
+            message:
+                'This is what we read from your documents. Fix anything '
                 'that looks wrong — it goes to the admin exactly as you leave '
                 'it.',
             intent: StatusIntent.info,
@@ -282,7 +293,8 @@ class _RegisterConfirmScreenState extends ConsumerState<RegisterConfirmScreen> {
 
           AppSectionHeader(
             title: 'Your vehicle',
-            subtitle: 'Read from your receipt — check they match before you '
+            subtitle:
+                'Read from your receipt — check they match before you '
                 'submit.',
             padding: const EdgeInsets.only(bottom: AppSpacing.md),
           ),
@@ -392,4 +404,3 @@ class _RegisterConfirmScreenState extends ConsumerState<RegisterConfirmScreen> {
     );
   }
 }
-

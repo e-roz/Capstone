@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../theme/theme.dart';
 import 'app_button.dart';
+import 'app_card.dart';
 
 /// The "nothing here yet" view. Five screens each declared their own private
 /// `_EmptyState` with this exact shape; this is that shape, once.
@@ -39,44 +40,16 @@ class AppEmptyState extends StatelessWidget {
     final t = context.tokens;
     final c = intent == null ? null : t.status.of(intent!);
 
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(AppSpacing.lg),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              width: 88,
-              height: 88,
-              decoration: BoxDecoration(
-                color: c?.bg ?? t.surface.muted,
-                shape: BoxShape.circle,
-              ),
-              child: Icon(
-                icon,
-                size: AppSizes.iconHero,
-                color: c?.fg ?? t.text.disabled,
-              ),
-            ),
-            const SizedBox(height: AppSpacing.md),
-            Text(
-              title,
-              style: context.text.headlineMedium,
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: AppSpacing.xs),
-            Text(
-              message,
-              textAlign: TextAlign.center,
-              style: context.text.bodyMedium?.copyWith(color: t.text.secondary),
-            ),
-            if (actionLabel != null && onAction != null) ...[
-              const SizedBox(height: AppSpacing.lg),
-              AppButton(label: actionLabel!, onPressed: onAction),
-            ],
-          ],
-        ),
-      ),
+    return _StateCard(
+      borderColor: c?.border,
+      iconColor: c?.fg ?? t.text.disabled,
+      iconBackground: c?.bg ?? t.surface.muted,
+      icon: icon,
+      title: title,
+      message: message,
+      action: actionLabel != null && onAction != null
+          ? AppButton(label: actionLabel!, onPressed: onAction)
+          : null,
     );
   }
 }
@@ -106,50 +79,97 @@ class AppErrorState extends StatelessWidget {
   Widget build(BuildContext context) {
     final t = context.tokens;
 
+    final c = t.status.danger;
+
+    return _StateCard(
+      borderColor: c.border,
+      iconColor: c.fg,
+      iconBackground: c.bg,
+      icon: Icons.cloud_off_rounded,
+      title: title,
+      message: message,
+      // Primary, not ghost. Retrying is the only thing this screen is for, and
+      // a quiet outlined button on a screen with nothing else on it was reading
+      // as disabled.
+      action: onRetry == null
+          ? null
+          : SizedBox(
+              width: 180,
+              child: AppButton(label: 'Try again', onPressed: onRetry),
+            ),
+    );
+  }
+}
+
+/// The shared shape behind [AppEmptyState] and [AppErrorState]: a centred card
+/// carrying a tinted icon disc, a title, a sentence and an optional action.
+///
+/// These used to be bare columns floating on the canvas, which left them as the
+/// only full-screen surfaces in the app with no card under them — a blank page
+/// with a picture in the middle reads as a crash more than as a state.
+class _StateCard extends StatelessWidget {
+  const _StateCard({
+    required this.icon,
+    required this.iconColor,
+    required this.iconBackground,
+    required this.title,
+    required this.message,
+    this.borderColor,
+    this.action,
+  });
+
+  final IconData icon;
+  final Color iconColor;
+  final Color iconBackground;
+  final String title;
+  final String message;
+  final Color? borderColor;
+  final Widget? action;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = context.tokens;
+
     return Center(
       child: Padding(
-        padding: const EdgeInsets.all(AppSpacing.lg),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              width: 88,
-              height: 88,
-              decoration: BoxDecoration(
-                color: t.status.danger.bg,
-                shape: BoxShape.circle,
-              ),
-              child: Icon(
-                Icons.cloud_off_rounded,
-                size: AppSizes.iconHero,
-                color: t.status.danger.fg,
-              ),
-            ),
-            const SizedBox(height: AppSpacing.md),
-            Text(
-              title,
-              style: context.text.headlineMedium,
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: AppSpacing.xs),
-            Text(
-              message,
-              textAlign: TextAlign.center,
-              style: context.text.bodyMedium?.copyWith(color: t.text.secondary),
-            ),
-            if (onRetry != null) ...[
-              const SizedBox(height: AppSpacing.lg),
-              SizedBox(
-                width: 180,
-                child: AppButton(
-                  label: 'Try Again',
-                  icon: const Icon(Icons.refresh_rounded),
-                  style: AppButtonStyle.ghost,
-                  onPressed: onRetry,
+        padding: const EdgeInsets.all(AppSpacing.md),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: AppSizes.contentMaxWidth),
+          child: AppCard(
+            borderColor: borderColor,
+            padding: const EdgeInsets.all(AppSpacing.lg),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: AppSizes.iconHero,
+                  height: AppSizes.iconHero,
+                  decoration: BoxDecoration(
+                    color: iconBackground,
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(icon, size: AppSizes.iconLg, color: iconColor),
                 ),
-              ),
-            ],
-          ],
+                const SizedBox(height: AppSpacing.sm + 4),
+                Text(
+                  title,
+                  style: context.text.headlineSmall,
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  message,
+                  textAlign: TextAlign.center,
+                  style: context.text.bodyMedium
+                      ?.copyWith(color: t.text.secondary),
+                ),
+                if (action != null) ...[
+                  const SizedBox(height: AppSpacing.md),
+                  action!,
+                ],
+              ],
+            ),
+          ),
         ),
       ),
     );

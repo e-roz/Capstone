@@ -84,9 +84,9 @@ class AppListRow extends StatelessWidget {
     final t = context.tokens;
     final c = intent == null ? null : t.status.of(intent!);
     final tappable = onTap != null;
+    final grouped = _RowGrouping.of(context);
 
-    return AppCard(
-      onTap: onTap,
+    final body = Padding(
       padding: EdgeInsets.symmetric(
         horizontal: AppSpacing.md,
         vertical: dense ? AppSpacing.sm : AppSpacing.md,
@@ -107,7 +107,14 @@ class AppListRow extends StatelessWidget {
               children: [
                 Text(
                   title,
-                  style: context.text.labelLarge?.copyWith(color: tone),
+                  // bodyMedium at 600, not labelLarge: the design names
+                  // bodyMedium as the role for row titles, and labelLarge's
+                  // 14/20 made a row's first line smaller than the paragraph
+                  // text on the screen above it.
+                  style: context.text.bodyMedium?.copyWith(
+                    color: tone,
+                    fontWeight: FontWeight.w600,
+                  ),
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                 ),
@@ -145,7 +152,84 @@ class AppListRow extends StatelessWidget {
         ],
       ),
     );
+
+    // Inside an AppRowGroup the surrounding card, border and radius belong to
+    // the group, so the row contributes only its own content and press fill.
+    if (grouped) {
+      if (!tappable) return body;
+      return Material(
+        type: MaterialType.transparency,
+        child: InkWell(
+          onTap: onTap,
+          // The canvas step rather than surface.pressed: a grouped row sits on
+          // a white card whose dividers are already surface.muted, so pressing
+          // one would otherwise flash it the exact colour of the line above it.
+          highlightColor: t.surface.canvas,
+          splashColor: t.surface.canvas,
+          child: body,
+        ),
+      );
+    }
+
+    return AppCard(onTap: onTap, padding: EdgeInsets.zero, child: body);
   }
+}
+
+/// Collects [AppListRow]s into a single bordered card, divided by hairlines
+/// rather than by gaps.
+///
+/// Rows used to be a card each, which read as a stack of unrelated objects: a
+/// six-item account menu became six bordered boxes and six shadows' worth of
+/// visual noise. Grouping is what makes "Activity" and "Settings" read as two
+/// lists instead of twelve tiles.
+///
+/// A row still works outside a group — a single standalone row keeps its own
+/// card, which is right when it is the only thing in its section.
+class AppRowGroup extends StatelessWidget {
+  const AppRowGroup({super.key, required this.children});
+
+  final List<Widget> children;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = context.tokens;
+
+    return _RowGrouping(
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: t.surface.card,
+          borderRadius: AppRadius.mdAll,
+          border: Border.all(color: t.border.normal),
+        ),
+        // Clipped so a pressed row's fill stops at the card's corner curve
+        // instead of squaring it off.
+        child: ClipRRect(
+          borderRadius: AppRadius.mdAll,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              for (var i = 0; i < children.length; i++) ...[
+                if (i > 0)
+                  Divider(height: 1, thickness: 1, color: t.border.subtle),
+                children[i],
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Tells an [AppListRow] that an [AppRowGroup] is already drawing its chrome.
+class _RowGrouping extends InheritedWidget {
+  const _RowGrouping({required super.child});
+
+  static bool of(BuildContext context) =>
+      context.dependOnInheritedWidgetOfExactType<_RowGrouping>() != null;
+
+  @override
+  bool updateShouldNotify(_RowGrouping oldWidget) => false;
 }
 
 /// The rounded well behind a row's leading icon. Also used on its own by the

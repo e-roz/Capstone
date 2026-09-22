@@ -5,8 +5,8 @@ import '../../../../core/widgets/app_bottom_nav.dart';
 import '../../../account/presentation/screens/account_screen.dart';
 import '../../../notifications/presentation/providers/notifications_provider.dart';
 import '../../../notifications/presentation/providers/push_registration_provider.dart';
-import '../../../notifications/presentation/screens/notifications_screen.dart';
-import '../../../parking/presentation/screens/parking_history_screen.dart';
+import '../../../payments/presentation/screens/payments_list_screen.dart';
+import '../../../parking/presentation/screens/parking_screen.dart';
 import '../screens/user_dashboard_screen.dart';
 
 /// Bottom-nav shell for the User role. Owns the active tab index and keeps
@@ -49,7 +49,7 @@ class _UserShellState extends ConsumerState<UserShell> with WidgetsBindingObserv
 
   @override
   Widget build(BuildContext context) {
-    // Drives the Alerts badge. Watched here rather than inside the tab so the
+    // Drives the Account badge. Watched here rather than inside the tab so the
     // count is visible from any tab — a violation is no use sitting unseen
     // behind a screen the user has no reason to open.
     final unreadCount = ref.watch(notificationsNotifierProvider)
@@ -59,12 +59,12 @@ class _UserShellState extends ConsumerState<UserShell> with WidgetsBindingObserv
 
     final tabs = [
       UserDashboardScreen(
-        onNavigateToHistory: () => _goToTab(1),
-        onNavigateToAlerts: () => _goToTab(2),
-        unreadCount: unreadCount,
+        onNavigateToParking: () => _goToTab(1),
+        onNavigateToPayments: () => _goToTab(2),
+        onNavigateToAccount: () => _goToTab(3),
       ),
-      const ParkingHistoryScreen(),
-      const NotificationsScreen(),
+      const ParkingScreen(),
+      const PaymentsListScreen.tab(),
       const AccountScreen(),
     ];
 
@@ -75,13 +75,17 @@ class _UserShellState extends ConsumerState<UserShell> with WidgetsBindingObserv
         onTap: _goToTab,
         items: [
           const AppNavItem(icon: Icons.home_rounded, label: 'Home'),
-          const AppNavItem(icon: Icons.history_rounded, label: 'History'),
+          const AppNavItem(icon: Icons.local_parking_rounded, label: 'Parking'),
+          const AppNavItem(icon: Icons.credit_card_rounded, label: 'Payments'),
+          // Alerts lost its tab, so the unread count rides here instead. It has
+          // to live on a *tab* rather than only inside Account: the whole point
+          // of watching it at shell level is that an unseen violation is no use
+          // sitting behind a screen the user has no reason to open.
           AppNavItem(
-            icon: Icons.notifications_rounded,
-            label: 'Alerts',
+            icon: Icons.person_rounded,
+            label: 'Account',
             badgeCount: unreadCount,
           ),
-          const AppNavItem(icon: Icons.person_rounded, label: 'Profile'),
         ],
       ),
     );

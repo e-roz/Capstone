@@ -74,7 +74,8 @@ class _RegisterProfileScreenState extends ConsumerState<RegisterProfileScreen> {
     final repo = ref.read(authRepositoryProvider);
     final token = await repo.getToken();
 
-    final revisit = token != null &&
+    final revisit =
+        token != null &&
         JwtUtils.isValid(token) &&
         JwtUtils.isRegistrationOnly(token) &&
         JwtUtils.getRegistrationStep(token) == 'DocumentUpload';
@@ -100,7 +101,8 @@ class _RegisterProfileScreenState extends ConsumerState<RegisterProfileScreen> {
           _firstNameController.text = parts.first;
           _lastNameController.text = parts.sublist(1).join(' ');
         }
-        _affiliation = Affiliation.fromWire(data['affiliation']?.toString()) ??
+        _affiliation =
+            Affiliation.fromWire(data['affiliation']?.toString()) ??
             ref.read(registrationNotifierProvider).affiliation;
         // Accepted once already, and the server has the timestamp. Shown ticked
         // rather than hidden so the link to read them again stays where it was.
@@ -153,8 +155,8 @@ class _RegisterProfileScreenState extends ConsumerState<RegisterProfileScreen> {
       _passwordError = noPassword
           ? null
           : password.length < 8
-              ? 'Use at least 8 characters.'
-              : null;
+          ? 'Use at least 8 characters.'
+          : null;
 
       // Only worth raising once the password itself is acceptable — telling
       // someone their confirmation does not match a password that is too short
@@ -162,13 +164,14 @@ class _RegisterProfileScreenState extends ConsumerState<RegisterProfileScreen> {
       _confirmPasswordError = noPassword || password.length < 8
           ? null
           : password != confirmPassword
-              ? 'This does not match the password above.'
-              : null;
+          ? 'This does not match the password above.'
+          : null;
 
       // The server rejects this too — checked here so the user is told before
       // filling in a form and losing it to a 400.
-      _termsError =
-          _acceptedTerms ? null : 'Accept the Terms & Conditions to continue.';
+      _termsError = _acceptedTerms
+          ? null
+          : 'Accept the Terms & Conditions to continue.';
     });
 
     return _firstNameError == null &&
@@ -196,7 +199,9 @@ class _RegisterProfileScreenState extends ConsumerState<RegisterProfileScreen> {
         body['password'] = _passwordController.text;
       }
 
-      ref.read(registrationNotifierProvider.notifier).setAffiliation(_affiliation);
+      ref
+          .read(registrationNotifierProvider.notifier)
+          .setAffiliation(_affiliation);
 
       final repo = ref.read(authRepositoryProvider);
       final response = await repo.completeProfile(body);
@@ -265,10 +270,10 @@ class _RegisterProfileScreenState extends ConsumerState<RegisterProfileScreen> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           RegistrationStepHeading(
-            title: _isRevisit ? 'Edit your profile' : 'Complete your profile',
+            title: _isRevisit ? 'Edit your profile' : 'Tell us about yourself',
             subtitle: _isRevisit
                 ? 'Changing what you are here changes which documents we ask '
-                    'for on the next screen.'
+                      'for on the next screen.'
                 : null,
           ),
           AppTextField(
@@ -327,11 +332,12 @@ class _RegisterProfileScreenState extends ConsumerState<RegisterProfileScreen> {
               helperText: 'At least 8 characters.',
               errorText: _passwordError,
               onChanged: (_) {
-                if (_passwordError != null) {
-                  setState(() => _passwordError = null);
-                }
+                // Rebuilds unconditionally now, because the meter below reads
+                // the controller on every keystroke.
+                setState(() => _passwordError = null);
               },
             ),
+            PasswordStrengthMeter(password: _passwordController.text),
             const SizedBox(height: AppSpacing.md),
             AppPasswordField(
               label: 'Confirm Password',
@@ -356,9 +362,9 @@ class _RegisterProfileScreenState extends ConsumerState<RegisterProfileScreen> {
               _acceptedTerms = v;
               if (v) _termsError = null;
             }),
-            onReadTerms: () => Navigator.of(context).push(
-              MaterialPageRoute(builder: (_) => const TermsScreen()),
-            ),
+            onReadTerms: () => Navigator.of(
+              context,
+            ).push(MaterialPageRoute(builder: (_) => const TermsScreen())),
           ),
           const SizedBox(height: AppSpacing.lg),
           AppButton(

@@ -32,7 +32,9 @@ class AppAvatar extends StatelessWidget {
       decoration: BoxDecoration(
         shape: BoxShape.circle,
         color: t.brand.subtle,
-        border: Border.all(color: t.brand.primary, width: 2),
+        // No ring. The 2px brand outline made a 48px avatar read as a selected
+        // control rather than as a picture of a person, and it was the only
+        // circle in the app with a border that thick.
         image: imageUrl != null
             ? DecorationImage(image: NetworkImage(imageUrl!), fit: BoxFit.cover)
             : null,

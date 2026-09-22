@@ -111,7 +111,7 @@ class _AppButtonState extends State<AppButton> {
                 widget.onPressed!();
               },
         child: AnimatedScale(
-          scale: _isPressed ? 0.97 : 1.0,
+          scale: _isPressed ? 0.985 : 1.0,
           duration: AppMotion.press,
           curve: AppMotion.standard,
           child: AnimatedContainer(
@@ -122,7 +122,7 @@ class _AppButtonState extends State<AppButton> {
               color: colors.fill,
               borderRadius: AppRadius.fullAll,
               border: colors.border != null
-                  ? Border.all(color: colors.border!, width: 1.5)
+                  ? Border.all(color: colors.border!)
                   : null,
             ),
             child: Center(
@@ -158,7 +158,6 @@ class _AppButtonState extends State<AppButton> {
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                               style: context.text.labelLarge?.copyWith(
-                                fontSize: 16,
                                 color: colors.text,
                               ),
                             ),

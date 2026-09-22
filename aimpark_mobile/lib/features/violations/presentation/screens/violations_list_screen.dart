@@ -35,7 +35,7 @@ class ViolationsListScreen extends ConsumerWidget {
         ref.read(violationsNotifierProvider.notifier).refresh();
 
     return AppScreen(
-      title: 'My Violations',
+      title: 'Violations',
       body: AsyncView(
         value: ref.watch(violationsNotifierProvider),
         onRefresh: refresh,
@@ -60,19 +60,20 @@ class ViolationsListScreen extends ConsumerWidget {
           return ListView(
             padding: kScreenListPadding,
             children: [
-              for (final v in open) ...[
-                _ViolationRow(violation: v),
-                if (v != open.last) const AppRowGap(),
-              ],
+              if (open.isNotEmpty)
+                AppRowGroup(
+                  children: [for (final v in open) _ViolationRow(violation: v)],
+                ),
               // Only announced when there is both something settled to head and
               // something open above it to separate it from.
               if (settled.isNotEmpty) ...[
                 if (open.isNotEmpty) const SizedBox(height: AppSpacing.lg),
                 const AppSectionHeader(title: 'Settled'),
-                for (final v in settled) ...[
-                  _ViolationRow(violation: v),
-                  if (v != settled.last) const AppRowGap(),
-                ],
+                AppRowGroup(
+                  children: [
+                    for (final v in settled) _ViolationRow(violation: v),
+                  ],
+                ),
               ],
             ],
           );
@@ -92,7 +93,8 @@ class _ViolationRow extends StatelessWidget {
     return AppListRow(
       icon: Icons.gavel_rounded,
       title: violation.policyRuleTitle,
-      subtitle: '${Formatters.peso(violation.penaltyAmount)} · '
+      subtitle:
+          '${Formatters.peso(violation.penaltyAmount)} · '
           '${Formatters.date(violation.createdAt)}',
       trailing: AppStatusBadge(
         label: violation.displayStatus,

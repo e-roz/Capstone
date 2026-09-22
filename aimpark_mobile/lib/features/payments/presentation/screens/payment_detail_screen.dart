@@ -58,7 +58,9 @@ class _PaymentDetailScreenState extends ConsumerState<PaymentDetailScreen>
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state != AppLifecycleState.resumed) return;
 
-    final payment = ref.read(paymentDetailProvider(widget.paymentId)).valueOrNull;
+    final payment = ref
+        .read(paymentDetailProvider(widget.paymentId))
+        .valueOrNull;
     if (payment == null || payment.isPaid) return;
     if (!_sentToProvider && !payment.isProcessing) return;
 
@@ -68,8 +70,9 @@ class _PaymentDetailScreenState extends ConsumerState<PaymentDetailScreen>
   Future<void> _pay() async {
     setState(() => _isStarting = true);
     try {
-      final checkout =
-          await ref.read(paymentsRepositoryProvider).startCheckout(widget.paymentId);
+      final checkout = await ref
+          .read(paymentsRepositoryProvider)
+          .startCheckout(widget.paymentId);
 
       final opened = await launchUrl(
         Uri.parse(checkout.checkoutUrl),
@@ -109,7 +112,9 @@ class _PaymentDetailScreenState extends ConsumerState<PaymentDetailScreen>
 
         Payment payment;
         try {
-          payment = await ref.read(paymentDetailProvider(widget.paymentId).future);
+          payment = await ref.read(
+            paymentDetailProvider(widget.paymentId).future,
+          );
         } catch (_) {
           // A failed read here is not worth a red bar: the screen is already
           // showing the bill, and the next attempt or a pull-to-refresh will
@@ -157,11 +162,13 @@ class _PaymentDetailScreenState extends ConsumerState<PaymentDetailScreen>
     if (!mounted || !_sentToProvider) return;
     _sentToProvider = false;
 
-    unawaited(CelebrationDialog.show(
-      context,
-      title: 'Payment Complete',
-      message: 'Thanks for settling up!',
-    ));
+    unawaited(
+      CelebrationDialog.show(
+        context,
+        title: 'Payment Complete',
+        message: 'Thanks for settling up!',
+      ),
+    );
   }
 
   @override
@@ -180,62 +187,40 @@ class _PaymentDetailScreenState extends ConsumerState<PaymentDetailScreen>
           children: [
             _AmountCard(payment: payment),
             const SizedBox(height: AppSpacing.md),
-            AppCard(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(payment.source, style: context.text.headlineSmall),
-                      AppStatusBadge(
-                        label: payment.status,
-                        intent: StatusIntents.payment(payment.status),
-                      ),
-                    ],
+            AppFactsCard(
+              title: 'How this was calculated',
+              facts: [
+                if (payment.slotCode != null)
+                  AppFact('Slot', payment.slotCode!),
+                AppFact(
+                  'Duration',
+                  Formatters.duration(
+                    Duration(minutes: payment.durationMinutes),
                   ),
-                  const SizedBox(height: AppSpacing.sm),
-                  if (payment.slotCode != null)
-                    AppDetailRow(label: 'Slot', value: payment.slotCode!),
-                  AppDetailRow(
-                    label: 'Duration',
-                    value: Formatters.duration(
-                      Duration(minutes: payment.durationMinutes),
-                    ),
+                ),
+                AppFact(
+                  'Rate',
+                  '${Formatters.peso(payment.ratePerHourApplied)}/hr',
+                ),
+                AppFact('Created', Formatters.date(payment.createdAt)),
+                if (payment.dueAt != null)
+                  AppFact(
+                    'Due by',
+                    Formatters.date(payment.dueAt!),
+                    intent: payment.isOverdue ? StatusIntent.danger : null,
                   ),
-                  AppDetailRow(
-                    label: 'Rate',
-                    value:
-                        '${Formatters.peso(payment.ratePerHourApplied)}/hr',
+                if (payment.paidAt != null)
+                  AppFact(
+                    'Paid',
+                    Formatters.date(payment.paidAt!),
+                    intent: StatusIntent.success,
                   ),
-                  AppDetailRow(
-                    label: 'Created',
-                    value: Formatters.date(payment.createdAt),
-                  ),
-                  if (payment.dueAt != null)
-                    AppDetailRow(
-                      label: 'Due by',
-                      value: Formatters.date(payment.dueAt!),
-                      intent:
-                          payment.isOverdue ? StatusIntent.danger : null,
-                    ),
-                  if (payment.paidAt != null)
-                    AppDetailRow(
-                      label: 'Paid',
-                      value: Formatters.date(payment.paidAt!),
-                      intent: StatusIntent.success,
-                    ),
-                  if (payment.method != null)
-                    AppDetailRow(label: 'Method', value: payment.method!),
-                  // The half of a receipt that is worth having: the number both
-                  // sides can look the payment up by if it is ever disputed.
-                  if (payment.referenceNumber != null)
-                    AppDetailRow(
-                      label: 'Reference',
-                      value: payment.referenceNumber!,
-                    ),
-                ],
-              ),
+                if (payment.method != null) AppFact('Method', payment.method!),
+                // The half of a receipt that is worth having: the number both
+                // sides can look the payment up by if it is ever disputed.
+                if (payment.referenceNumber != null)
+                  AppFact('Reference', payment.referenceNumber!),
+              ],
             ),
             const SizedBox(height: AppSpacing.lg),
             if (payment.isProcessing) ...[
@@ -243,9 +228,9 @@ class _PaymentDetailScreenState extends ConsumerState<PaymentDetailScreen>
                 title: 'Waiting for confirmation',
                 message: payment.provider?.toLowerCase() == 'simulated'
                     ? 'This is a test payment — no real money moves. Finish it '
-                        'on the payment page, then check again.'
+                          'on the payment page, then check again.'
                     : 'Finish the payment on the provider page. This bill '
-                        'settles as soon as they confirm it.',
+                          'settles as soon as they confirm it.',
                 intent: StatusIntent.info,
               ),
               const SizedBox(height: AppSpacing.md),
@@ -284,22 +269,35 @@ class _AmountCard extends StatelessWidget {
     final t = context.tokens;
 
     return AppCard(
-      color: t.brand.primary,
-      borderColor: t.brand.pressed,
+      padding: const EdgeInsets.all(AppSpacing.x5),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            'Amount Due',
-            style: context.text.labelLarge?.copyWith(color: t.brand.onSolid),
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  payment.isPaid ? 'AMOUNT PAID' : 'AMOUNT DUE',
+                  style: context.text.labelSmall,
+                ),
+              ),
+              AppStatusBadge(
+                label: payment.status,
+                intent: StatusIntents.payment(payment.status),
+              ),
+            ],
           ),
-          const SizedBox(height: 4),
+          const SizedBox(height: 6),
+          // White card, black figure. This was a solid indigo panel with the
+          // amount reversed out of it, which made the one number on the screen
+          // the user might dispute the hardest thing on it to read — and put a
+          // brand colour behind a charge, which reads as a promotion.
           Text(
             Formatters.peso(payment.amountDue),
-            style: AppTypography.tabular(
-              context.text.displayLarge!.copyWith(color: t.brand.onSolid),
-            ),
+            style: AppTypography.tabular(context.text.displayLarge!),
           ),
+          const SizedBox(height: 2),
+          Text(payment.source, style: context.text.bodySmall),
           if (payment.dueLabel != null) ...[
             const SizedBox(height: 6),
             Row(
@@ -309,19 +307,22 @@ class _AmountCard extends StatelessWidget {
                       ? Icons.warning_amber_rounded
                       : Icons.schedule_rounded,
                   size: AppSizes.iconSm,
-                  color: t.brand.onSolid,
+                  color: payment.isOverdue
+                      ? t.status.danger.fg
+                      : t.text.secondary,
                 ),
                 const SizedBox(width: 6),
-                Text(
-                  payment.dueLabel!,
-                  style: context.text.labelLarge?.copyWith(
-                    // Overdue reads at full strength on the card; a deadline
-                    // still ahead sits quieter than the amount above it.
-                    color: payment.isOverdue
-                        ? t.brand.onSolid
-                        : t.text.onDarkMuted,
-                    fontWeight:
-                        payment.isOverdue ? FontWeight.w800 : FontWeight.w600,
+                Flexible(
+                  child: Text(
+                    payment.dueLabel!,
+                    style: context.text.bodySmall?.copyWith(
+                      // Overdue reads at full strength; a deadline still ahead
+                      // sits quieter than the amount above it.
+                      color: payment.isOverdue
+                          ? t.status.danger.fg
+                          : t.text.secondary,
+                      fontWeight: payment.isOverdue ? FontWeight.w700 : null,
+                    ),
                   ),
                 ),
               ],

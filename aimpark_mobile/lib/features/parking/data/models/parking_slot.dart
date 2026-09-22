@@ -81,15 +81,17 @@ class SlotRecommendation {
 }
 
 class ParkingAvailability {
-  const ParkingAvailability({
+  ParkingAvailability({
     required this.slots,
     required this.totalSlots,
     required this.availableSlots,
-  });
+    DateTime? fetchedAt,
+  }) : fetchedAt = fetchedAt ?? DateTime.now();
 
   final List<ParkingSlot> slots;
   final int totalSlots;
   final int availableSlots;
+  final DateTime fetchedAt;
 
   factory ParkingAvailability.fromJson(Map<String, dynamic> json) {
     return ParkingAvailability(
@@ -98,6 +100,7 @@ class ParkingAvailability {
           .toList(),
       totalSlots: json['totalSlots'] as int,
       availableSlots: json['availableSlots'] as int,
+      fetchedAt: DateTime.now(),
     );
   }
 }

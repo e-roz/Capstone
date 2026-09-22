@@ -18,12 +18,18 @@ class AppNavItem {
   final int badgeCount;
 }
 
-/// Bottom nav as a dark capsule with a rounded bump rising above the bar at
-/// each icon — a fixed-size shape, not one derived from screen width, so it
-/// stays the same size on every phone rather than inflating on a wide one.
+/// Bottom nav as a flat white bar: a hairline top border, a whisper of lift,
+/// and a filled pill behind the active tab's icon.
 ///
-/// [AppNavItem.label] still drives each item's [Semantics] announcement —
-/// there is no visible caption under the icon, by design.
+/// This replaced a dark capsule with circular bumps rising out of it, drawn by
+/// a `CustomPainter`. The bumps were the app's one piece of drawn chrome, and
+/// they cost more than they returned: a painted silhouette cannot take a
+/// [Semantics] node, cannot grow with the text scale, and had to be told its
+/// own height as a pair of magic constants that no other component shared.
+///
+/// The pill does the same job — say which tab you are on — out of a container,
+/// a radius and two tokens. It also freed the captions: the capsule had no room
+/// for them, so labels existed only for screen readers. They are now on screen.
 class AppBottomNav extends StatelessWidget {
   const AppBottomNav({
     super.key,
@@ -36,183 +42,107 @@ class AppBottomNav extends StatelessWidget {
   final int currentIndex;
   final ValueChanged<int> onTap;
 
-  /// The capsule's own height, excluding the bumps. Fixed regardless of how
-  /// wide the bar ends up — only the *gaps* between icons grow on a wider
-  /// phone, never the icons themselves.
-  static const double _coreHeight = 60;
+  /// Width and height of the pill behind an active icon. Wider than it is tall
+  /// so it reads as a lozenge under the caption rather than a second avatar.
+  static const double _pillWidth = 56;
+  static const double _pillHeight = 28;
 
-  /// Radius of each bump, centred on the capsule's top edge so half pokes
-  /// above it. Also fixed.
-  static const double _bumpRadius = 27;
-
-  static const double _iconSize = 22;
+  /// Comfortably past the 48dp minimum, because the whole column — pill and
+  /// caption together — is the tap target, not just the icon.
+  static const double _itemHeight = 56;
 
   @override
   Widget build(BuildContext context) {
     final t = context.tokens;
-    final totalHeight = _coreHeight + _bumpRadius;
 
-    return ColoredBox(
-      // The canvas colour, not the card colour: it has to match whatever the
-      // active screen is drawn on so the capsule reads as floating above it.
-      color: t.surface.canvas,
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: t.surface.card,
+        border: Border(top: BorderSide(color: t.border.normal)),
+        boxShadow: AppElevation.sm,
+      ),
       child: SafeArea(
         top: false,
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(
-            AppSpacing.lg,
-            0,
-            AppSpacing.lg,
-            AppSpacing.sm,
-          ),
-          child: SizedBox(
-            height: totalHeight,
-            child: LayoutBuilder(
-              builder: (context, constraints) {
-                final width = constraints.maxWidth;
-                final slot = width / items.length;
+          padding: const EdgeInsets.fromLTRB(8, 6, 8, 10),
+          child: Row(
+            children: List.generate(items.length, (i) {
+              final selected = i == currentIndex;
+              final item = items[i];
+              final fg = selected ? t.brand.subtleText : t.text.secondary;
 
-                return Stack(
-                  clipBehavior: Clip.none,
-                  children: [
-                    CustomPaint(
-                      size: Size(width, totalHeight),
-                      painter: _NavBlobPainter(
-                        itemCount: items.length,
-                        color: t.surface.inverse,
-                        coreHeight: _coreHeight,
-                        bumpRadius: _bumpRadius,
-                      ),
-                    ),
-                    Row(
-                      children: List.generate(items.length, (i) {
-                        final selected = i == currentIndex;
-                        final item = items[i];
-                        final fg =
-                            selected ? t.brand.primary : t.text.onDarkMuted;
-
-                        return SizedBox(
-                          width: slot,
-                          height: totalHeight,
-                          child: Semantics(
-                            button: true,
-                            selected: selected,
-                            label: item.badgeCount > 0
-                                ? '${item.label}, ${item.badgeCount} unread'
-                                : item.label,
-                            child: GestureDetector(
-                              behavior: HitTestBehavior.opaque,
-                              onTap: () {
-                                // Skipped when the tab is already active — a
-                                // haptic that fires on a tap that changes
-                                // nothing trains the user to distrust it.
-                                if (selected) return;
-                                HapticFeedback.selectionClick();
-                                onTap(i);
-                              },
-                              child: Align(
-                                // Pulled up toward the bump's apex rather than
-                                // centred in the full (bump-height-inclusive)
-                                // box, so the icon actually sits inside the
-                                // bump instead of in the capsule below it.
-                                alignment: const Alignment(0, -0.5),
-                                child: Stack(
-                                  clipBehavior: Clip.none,
-                                  alignment: Alignment.center,
-                                  children: [
-                                    AnimatedContainer(
-                                      duration: AppMotion.fast,
-                                      curve: AppMotion.standard,
-                                      width: 40,
-                                      height: 40,
-                                      decoration: BoxDecoration(
-                                        color: selected
-                                            ? t.surface.card
-                                            : Colors.transparent,
-                                        shape: BoxShape.circle,
-                                      ),
-                                      alignment: Alignment.center,
-                                      child: Icon(
-                                        item.icon,
-                                        color: fg,
-                                        size: _iconSize,
-                                      ),
-                                    ),
-                                    if (item.badgeCount > 0)
-                                      Positioned(
-                                        top: -2,
-                                        right: -2,
-                                        child: _Badge(count: item.badgeCount),
-                                      ),
-                                  ],
+              return Expanded(
+                child: Semantics(
+                  button: true,
+                  selected: selected,
+                  label: item.badgeCount > 0
+                      ? '${item.label}, ${item.badgeCount} unread'
+                      : item.label,
+                  child: InkWell(
+                    borderRadius: AppRadius.smAll,
+                    onTap: () {
+                      // Skipped when the tab is already active — a haptic that
+                      // fires on a tap that changes nothing trains the user to
+                      // distrust it.
+                      if (selected) return;
+                      HapticFeedback.selectionClick();
+                      onTap(i);
+                    },
+                    child: SizedBox(
+                      height: _itemHeight,
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Stack(
+                            clipBehavior: Clip.none,
+                            children: [
+                              AnimatedContainer(
+                                duration: AppMotion.fast,
+                                curve: AppMotion.standard,
+                                width: _pillWidth,
+                                height: _pillHeight,
+                                alignment: Alignment.center,
+                                decoration: BoxDecoration(
+                                  color: selected
+                                      ? t.brand.subtle
+                                      : Colors.transparent,
+                                  borderRadius: AppRadius.fullAll,
+                                ),
+                                child: Icon(
+                                  item.icon,
+                                  color: fg,
+                                  size: AppSizes.iconMd,
                                 ),
                               ),
+                              if (item.badgeCount > 0)
+                                PositionedDirectional(
+                                  top: -4,
+                                  end: 4,
+                                  child: _Badge(count: item.badgeCount),
+                                ),
+                            ],
+                          ),
+                          const SizedBox(height: AppSpacing.labelGap),
+                          Text(
+                            item.label,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: context.text.labelSmall?.copyWith(
+                              color: fg,
+                              letterSpacing: 0.3,
                             ),
                           ),
-                        );
-                      }),
+                        ],
+                      ),
                     ),
-                  ],
-                );
-              },
-            ),
+                  ),
+                ),
+              );
+            }),
           ),
         ),
       ),
     );
-  }
-}
-
-/// Draws the capsule plus one circular bump per item, unioned into a single
-/// silhouette. Every dimension comes from the caller as a fixed constant —
-/// this painter never derives a size from [Size.width] itself, which is the
-/// mistake that made an earlier version of this bar fill the whole screen.
-class _NavBlobPainter extends CustomPainter {
-  const _NavBlobPainter({
-    required this.itemCount,
-    required this.color,
-    required this.coreHeight,
-    required this.bumpRadius,
-  });
-
-  final int itemCount;
-  final Color color;
-  final double coreHeight;
-  final double bumpRadius;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..color = color
-      ..isAntiAlias = true;
-
-    final coreTop = size.height - coreHeight;
-    var path = Path()
-      ..addRRect(RRect.fromLTRBR(
-        0,
-        coreTop,
-        size.width,
-        size.height,
-        Radius.circular(coreHeight / 2),
-      ));
-
-    final slot = size.width / itemCount;
-    for (var i = 0; i < itemCount; i++) {
-      final cx = slot * (i + 0.5);
-      final bump = Path()
-        ..addOval(Rect.fromCircle(center: Offset(cx, coreTop), radius: bumpRadius));
-      path = Path.combine(PathOperation.union, path, bump);
-    }
-
-    canvas.drawPath(path, paint);
-  }
-
-  @override
-  bool shouldRepaint(covariant _NavBlobPainter oldDelegate) {
-    return oldDelegate.itemCount != itemCount ||
-        oldDelegate.color != color ||
-        oldDelegate.coreHeight != coreHeight ||
-        oldDelegate.bumpRadius != bumpRadius;
   }
 }
 
@@ -231,10 +161,10 @@ class _Badge extends StatelessWidget {
       decoration: BoxDecoration(
         color: t.status.danger.solid,
         borderRadius: AppRadius.fullAll,
-        // Keeps the badge legible where it overlaps the icon beneath it. Reads
-        // from the nav's own inverse surface rather than a fixed white, or the
-        // ring becomes a bright halo in dark mode.
-        border: Border.all(color: t.surface.inverse, width: 1.5),
+        // Keeps the badge legible where it overlaps the pill beneath it. Reads
+        // the bar's own surface rather than a fixed white so the ring stays
+        // invisible against whatever the bar is filled with.
+        border: Border.all(color: t.surface.card, width: 1.5),
       ),
       child: Text(
         count > 99 ? '99+' : '$count',
