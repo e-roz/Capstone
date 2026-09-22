@@ -10,8 +10,8 @@ String _$documentScannerHash() => r'ddda45704ed8db1a6201a76704e7066fff965802';
 
 /// One text recogniser for the whole registration flow.
 ///
-/// The documents are now captured on four separate screens, so a recogniser
-/// owned by a screen would load the model four times over. Kept alive across
+/// The documents are now captured on three separate screens, so a recogniser
+/// owned by a screen would load the model three times over. Kept alive across
 /// them and closed when the flow's providers go.
 ///
 /// Copied from [documentScanner].
@@ -31,7 +31,7 @@ final documentScannerProvider = Provider<DocumentScanner>.internal(
 typedef DocumentScannerRef = ProviderRef<DocumentScanner>;
 String _$documentAgendaHash() => r'a192f740daaf3c10e6b00b167228288fc3209efe';
 
-/// Which documents to ask for: all four, or only the ones sent back.
+/// Which documents to ask for: all three, or only the ones sent back.
 ///
 /// Asked of the server rather than inferred, because only the server knows a
 /// reviewer has been through the submission. Falling back to the full set on any
