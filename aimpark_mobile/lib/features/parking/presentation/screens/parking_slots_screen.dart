@@ -108,49 +108,95 @@ class _ParkingSlotsScreenState extends ConsumerState<ParkingSlotsScreen> {
   }
 }
 
-class _AvailabilityCard extends StatelessWidget {
+class _AvailabilityCard extends ConsumerWidget {
   const _AvailabilityCard({required this.available, required this.total});
 
   final int available;
   final int total;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final t = context.tokens;
+    final availability = ref.watch(parkingAvailabilityProvider).valueOrNull;
+    final updatedAt = availability?.fetchedAt;
 
     return AppCard(
       color: t.brand.primary,
       borderColor: t.brand.pressed,
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text(
-                'Available Now',
-                style:
-                    context.text.labelLarge?.copyWith(color: t.brand.onSolid),
-              ),
-              Text(
-                '$available of $total',
-                style: AppTypography.tabular(
-                  context.text.displayLarge!.copyWith(
-                    color: t.brand.onSolid,
-                    fontSize: 28,
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Available Now',
+                    style:
+                        context.text.labelLarge?.copyWith(color: t.brand.onSolid),
                   ),
-                ),
+                  Text(
+                    '$available of $total',
+                    style: AppTypography.tabular(
+                      context.text.displayLarge!.copyWith(
+                        color: t.brand.onSolid,
+                        fontSize: 28,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              Icon(
+                Icons.local_parking_rounded,
+                color: t.brand.onSolid,
+                size: 40,
               ),
             ],
           ),
-          Icon(
-            Icons.local_parking_rounded,
-            color: t.brand.onSolid,
-            size: 40,
-          ),
+          if (updatedAt != null) ...[
+            const SizedBox(height: AppSpacing.sm),
+            Row(
+              children: [
+                Text(
+                  'Updated ${_getRelativeTime(updatedAt)}',
+                  style: context.text.labelSmall?.copyWith(
+                    color: t.text.onDarkMuted,
+                  ),
+                ),
+                const Spacer(),
+                GestureDetector(
+                  onTap: () {
+                    ref.invalidate(parkingAvailabilityProvider);
+                  },
+                  child: Icon(
+                    Icons.refresh_rounded,
+                    size: 16,
+                    color: t.brand.onSolid.withValues(alpha: 0.7),
+                  ),
+                ),
+              ],
+            ),
+          ],
         ],
       ),
     );
+  }
+
+  String _getRelativeTime(DateTime time) {
+    final now = DateTime.now();
+    final diff = now.difference(time);
+
+    if (diff.inSeconds < 60) {
+      return '${diff.inSeconds}s ago';
+    } else if (diff.inMinutes < 60) {
+      return '${diff.inMinutes}m ago';
+    } else if (diff.inHours < 24) {
+      return '${diff.inHours}h ago';
+    } else {
+      return '${diff.inDays}d ago';
+    }
   }
 }
 
