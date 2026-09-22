@@ -35,27 +35,47 @@ class AppStatusBadge extends StatelessWidget {
   Widget build(BuildContext context) {
     final c = context.tokens.status.of(intent);
 
+    // Two treatments, and which one you get follows from whether the badge has
+    // a dot. A plain badge sits inline beside an amount or at the end of a row,
+    // where a border would add a second hairline right next to the row divider
+    // — so it is bare, tight and small. A dotted badge is the standalone,
+    // legend-style form that has to hold its own on open ground, so it is a
+    // step larger and carries the border.
+    //
+    // The odd 3/5px vertical padding is deliberate: these are the one component
+    // small enough that the 4px grid would visibly round the pill's height off.
+    final marked = showDot || icon != null;
+
     return Container(
-      padding: const EdgeInsets.symmetric(
-        horizontal: AppSpacing.sm,
-        vertical: AppSpacing.xs,
-      ),
+      padding: marked
+          ? const EdgeInsets.symmetric(horizontal: 11, vertical: 5)
+          : const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
       decoration: BoxDecoration(
         color: c.bg,
         borderRadius: AppRadius.fullAll,
-        border: Border.all(color: c.border),
+        border: marked ? Border.all(color: c.border) : null,
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
           if (icon != null) ...[
             Icon(icon, size: 13, color: c.fg),
-            const SizedBox(width: AppSpacing.xs),
+            const SizedBox(width: AppSpacing.xs + 2),
           ] else if (showDot) ...[
-            StatusDot(intent: intent),
+            // The badge's own dot reads the foreground, not the solid: inside a
+            // tinted pill the solid tone is close enough to the fill to vanish.
+            Container(
+              width: 7,
+              height: 7,
+              decoration: BoxDecoration(color: c.fg, shape: BoxShape.circle),
+            ),
             const SizedBox(width: AppSpacing.xs + 2),
           ],
-          Text(label, style: context.text.labelSmall?.copyWith(color: c.fg)),
+          Text(
+            label,
+            style: (marked ? context.text.labelMedium : context.text.labelSmall)
+                ?.copyWith(color: c.fg),
+          ),
         ],
       ),
     );

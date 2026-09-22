@@ -14,7 +14,7 @@ class ParkingHistoryScreen extends ConsumerWidget {
     Future<void> refresh() =>
         ref.read(parkingHistoryNotifierProvider.notifier).refresh();
 
-    return AppScreen.tab(
+    return AppScreen(
       body: AsyncView(
         value: ref.watch(parkingHistoryNotifierProvider),
         onRefresh: refresh,
@@ -32,29 +32,33 @@ class ParkingHistoryScreen extends ConsumerWidget {
         data: (result) => ListView(
           padding: kScreenListPadding,
           children: [
-            const AppSectionHeader(
+            const AppScreenTitle(
               title: 'History',
               padding: EdgeInsets.only(bottom: AppSpacing.lg),
             ),
-            for (final log in result.logs) ...[
-              AppListRow(
-                icon: log.isOpen ? Icons.login_rounded : Icons.logout_rounded,
-                intent: log.isOpen ? StatusIntent.success : null,
-                title: log.slotCode ?? 'Unassigned slot',
-                subtitle: Formatters.sessionRange(
-                  log.entryTime,
-                  log.exitTime,
-                  log.duration,
-                ),
-                trailing: log.isOpen
-                    ? const AppStatusBadge(
-                        label: 'Parked now',
-                        intent: StatusIntent.success,
-                      )
-                    : null,
-              ),
-              if (log != result.logs.last) const AppRowGap(),
-            ],
+            AppRowGroup(
+              children: [
+                for (final log in result.logs)
+                  AppListRow(
+                    icon: log.isOpen
+                        ? Icons.login_rounded
+                        : Icons.logout_rounded,
+                    intent: log.isOpen ? StatusIntent.success : null,
+                    title: log.slotCode ?? 'Unassigned slot',
+                    subtitle: Formatters.sessionRange(
+                      log.entryTime,
+                      log.exitTime,
+                      log.duration,
+                    ),
+                    trailing: log.isOpen
+                        ? const AppStatusBadge(
+                            label: 'Parked now',
+                            intent: StatusIntent.success,
+                          )
+                        : null,
+                  ),
+              ],
+            ),
           ],
         ),
       ),

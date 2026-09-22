@@ -30,11 +30,14 @@ class SelectableChip extends StatelessWidget {
     final t = context.tokens;
     final enabled = onTap != null;
 
+    // A selected chip is filled solid, not tinted. The tinted version read as
+    // "slightly emphasised" rather than "chosen", which matters most on the
+    // slot-filter row, where the whole point is knowing which filter is on.
     final fg = !enabled
         ? t.text.disabled
         : selected
-            ? t.brand.subtleText
-            : t.text.primary;
+            ? t.brand.onSolid
+            : t.text.secondary;
 
     return Semantics(
       button: true,
@@ -50,12 +53,11 @@ class SelectableChip extends StatelessWidget {
         child: AnimatedContainer(
           duration: AppMotion.fast,
           curve: AppMotion.standard,
-          padding: const EdgeInsets.symmetric(
-            horizontal: AppSpacing.md,
-            vertical: AppSpacing.sm,
-          ),
+          height: 36,
+          alignment: Alignment.center,
+          padding: const EdgeInsets.symmetric(horizontal: 14),
           decoration: BoxDecoration(
-            color: selected ? t.brand.subtle : t.surface.card,
+            color: selected ? t.brand.primary : t.surface.card,
             borderRadius: AppRadius.fullAll,
             border: Border.all(
               color: !enabled
@@ -63,23 +65,18 @@ class SelectableChip extends StatelessWidget {
                   : selected
                       ? t.brand.primary
                       : t.border.normal,
-              width: 2,
             ),
           ),
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
               if (icon != null) ...[
-                Icon(
-                  icon,
-                  size: 18,
-                  color: selected ? t.brand.subtleText : t.text.secondary,
-                ),
+                Icon(icon, size: AppSizes.iconSm, color: fg),
                 const SizedBox(width: 6),
               ],
               Text(
                 label,
-                style: context.text.labelLarge?.copyWith(color: fg),
+                style: context.text.labelMedium?.copyWith(color: fg),
               ),
             ],
           ),

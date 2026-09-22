@@ -4,7 +4,6 @@ import 'package:flutter/services.dart';
 import 'app_dimensions.dart';
 import 'app_tokens.dart';
 import 'app_typography.dart';
-import 'emotion/emotion_tokens.dart';
 
 /// LAYER 3 — Component defaults.
 ///
@@ -86,11 +85,7 @@ abstract class AppTheme {
       useMaterial3: true,
       brightness: brightness,
       colorScheme: scheme,
-      // EmotionTokens is a second, additive extension for the emotional
-      // design system's own screens (see core/theme/emotion/). It carries a
-      // single fixed palette — the same instance regardless of light/dark —
-      // so it is registered once here rather than switching with brightness.
-      extensions: [t, EmotionTokens.instance],
+      extensions: [t],
       scaffoldBackgroundColor: t.surface.canvas,
       canvasColor: t.surface.card,
       textTheme: text,

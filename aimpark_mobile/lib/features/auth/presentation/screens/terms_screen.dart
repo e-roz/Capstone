@@ -85,7 +85,7 @@ class TermsScreen extends StatelessWidget {
       body: ListView(
         padding: kScreenListPadding,
         children: [
-          AppSectionHeader(
+          AppScreenTitle(
             title: 'AimPark Parking Terms',
             subtitle: 'Please read these before completing your registration.',
             padding: const EdgeInsets.only(bottom: AppSpacing.lg),

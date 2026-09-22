@@ -62,7 +62,19 @@ class AppFieldShell extends StatelessWidget {
           decoration: BoxDecoration(
             color: enabled ? t.surface.card : t.surface.muted,
             borderRadius: AppRadius.mdAll,
-            border: Border.all(color: borderColor, width: focused ? 2 : 1.5),
+            border: Border.all(color: borderColor, width: 1.5),
+            // Focus is a ring outside the border, not a thicker border. Growing
+            // 1.5 → 2 moved the field's contents half a pixel on every focus
+            // change, which showed up as a shimmer when tabbing through the
+            // registration form.
+            boxShadow: focused && enabled
+                ? [
+                    BoxShadow(
+                      color: borderColor.withValues(alpha: 0.16),
+                      spreadRadius: 3,
+                    ),
+                  ]
+                : null,
           ),
           child: child,
         ),

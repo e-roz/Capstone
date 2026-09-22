@@ -88,10 +88,12 @@ class _ResetPasswordScreenState extends ConsumerState<ResetPasswordScreen> {
 
     setState(() {
       _otpError = otp.length != 6 ? 'Enter all six digits.' : null;
-      _newError =
-          newPassword.length < 8 ? 'Must be at least 8 characters.' : null;
-      _confirmError =
-          newPassword != _confirmPassword.text ? 'These do not match.' : null;
+      _newError = newPassword.length < 8
+          ? 'Must be at least 8 characters.'
+          : null;
+      _confirmError = newPassword != _confirmPassword.text
+          ? 'These do not match.'
+          : null;
     });
 
     if (_otpError != null || _newError != null || _confirmError != null) return;
@@ -99,7 +101,9 @@ class _ResetPasswordScreenState extends ConsumerState<ResetPasswordScreen> {
     setState(() => _isSubmitting = true);
 
     try {
-      await ref.read(authRepositoryProvider).resetPassword(
+      await ref
+          .read(authRepositoryProvider)
+          .resetPassword(
             email: widget.email,
             otp: otp,
             newPassword: newPassword,
@@ -210,8 +214,9 @@ class _ResetPasswordScreenState extends ConsumerState<ResetPasswordScreen> {
             const SizedBox(height: AppSpacing.xs),
             Text(
               _otpError!,
-              style:
-                  context.text.labelSmall?.copyWith(color: t.status.danger.fg),
+              style: context.text.labelSmall?.copyWith(
+                color: t.status.danger.fg,
+              ),
             ),
           ],
           const SizedBox(height: AppSpacing.md),
@@ -223,7 +228,10 @@ class _ResetPasswordScreenState extends ConsumerState<ResetPasswordScreen> {
             autofillHints: const [AutofillHints.newPassword],
             errorText: _newError,
             helperText: 'At least 8 characters.',
+            // Rebuilds so the meter below sees each keystroke.
+            onChanged: (_) => setState(() {}),
           ),
+          PasswordStrengthMeter(password: _newPassword.text),
           const SizedBox(height: AppSpacing.md),
           AppPasswordField(
             label: 'Confirm New Password',

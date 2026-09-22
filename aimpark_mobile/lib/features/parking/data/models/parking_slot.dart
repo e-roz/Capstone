@@ -81,14 +81,12 @@ class SlotRecommendation {
 }
 
 class ParkingAvailability {
-  const ParkingAvailability({
+  ParkingAvailability({
     required this.slots,
     required this.totalSlots,
     required this.availableSlots,
     DateTime? fetchedAt,
-  }) : fetchedAt = fetchedAt ?? _now;
-
-  static DateTime get _now => DateTime.now();
+  }) : fetchedAt = fetchedAt ?? DateTime.now();
 
   final List<ParkingSlot> slots;
   final int totalSlots;

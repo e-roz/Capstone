@@ -34,6 +34,15 @@ class _RegisterEmailScreenState extends ConsumerState<RegisterEmailScreen> {
   bool _isGoogleLoading = false;
   String? _emailError;
 
+  /// Whether they have tried and failed once already.
+  ///
+  /// Live validation from the first keystroke means showing "that doesn't look
+  /// like an email address" to someone who has typed "m" and is not finished.
+  /// Validating only on submit means the first feedback arrives after a tap.
+  /// So: quiet until the first failure, live from then on — the point at which
+  /// the user has demonstrated they want help.
+  bool _hasTriedOnce = false;
+
   @override
   void dispose() {
     _emailController.dispose();
@@ -51,10 +60,13 @@ class _RegisterEmailScreenState extends ConsumerState<RegisterEmailScreen> {
     final error = email.isEmpty
         ? 'Enter the email address to register with.'
         : !isValidEmail(email)
-            ? "That doesn't look like an email address."
-            : null;
+        ? "That doesn't look like an email address."
+        : null;
 
-    setState(() => _emailError = error);
+    setState(() {
+      _emailError = error;
+      if (error != null) _hasTriedOnce = true;
+    });
     return error == null;
   }
 
@@ -107,7 +119,7 @@ class _RegisterEmailScreenState extends ConsumerState<RegisterEmailScreen> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           const RegistrationStepHeading(
-            title: 'Enter your email',
+            title: "What's your email?",
             subtitle:
                 'We will send a one-time password to verify your email address.',
           ),
@@ -124,17 +136,30 @@ class _RegisterEmailScreenState extends ConsumerState<RegisterEmailScreen> {
             autofillHints: const [AutofillHints.email],
             prefixIcon: Icons.email_outlined,
             errorText: _emailError,
-            // Clears the moment they start fixing it. Leaving the error up
-            // while someone corrects the address makes the screen look like it
-            // has stopped listening.
+            // Before the first failed attempt: clear the error the moment they
+            // start fixing it, so the screen does not look like it has stopped
+            // listening. After it: re-check on every keystroke, so the error
+            // disappears the instant the address becomes valid rather than
+            // waiting for another tap to find out.
             onChanged: (_) {
-              if (_emailError != null) setState(() => _emailError = null);
+              if (_hasTriedOnce) {
+                final email = _emailController.text.trim();
+                final error = email.isEmpty || !isValidEmail(email)
+                    ? "That doesn't look like an email address."
+                    : null;
+                if (error != _emailError) setState(() => _emailError = error);
+              } else if (_emailError != null) {
+                setState(() => _emailError = null);
+              }
             },
             onSubmitted: (_) => _isLoading ? null : _sendOtp(),
           ),
           const SizedBox(height: AppSpacing.lg),
           AppButton(
-            label: 'Send OTP',
+            // Stays enabled even when the address is wrong. A greyed-out button
+            // with no message leaves the user tapping something dead with no
+            // idea why — the tap is what produces the explanation.
+            label: 'Continue',
             isLoading: _isLoading,
             onPressed: _isLoading || _isGoogleLoading ? null : _sendOtp,
           ),

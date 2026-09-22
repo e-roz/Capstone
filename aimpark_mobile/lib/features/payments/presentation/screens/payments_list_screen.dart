@@ -9,40 +9,53 @@ import '../../data/models/payment.dart';
 import '../providers/payments_provider.dart';
 
 class PaymentsListScreen extends ConsumerWidget {
-  const PaymentsListScreen({super.key});
+  const PaymentsListScreen({super.key}) : _inline = false;
+
+  /// The bottom-nav destination: an inline title and no back arrow.
+  ///
+  /// This screen is reached two ways — as the Payments tab, and as
+  /// `/home/user/payments` pushed from Account or from a payment's detail
+  /// screen. The two need different chrome, and getting it wrong is not
+  /// cosmetic: a pushed screen built as a tab has no way back out.
+  const PaymentsListScreen.tab({super.key}) : _inline = true;
+
+  final bool _inline;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     Future<void> refresh() =>
         ref.read(paymentsNotifierProvider.notifier).refresh();
 
-    return AppScreen(
-      title: 'My Payments',
-      body: AsyncView(
-        value: ref.watch(paymentsNotifierProvider),
-        onRefresh: refresh,
-        errorTitle: "Couldn't load your payments",
-        loading: const Padding(
-          padding: kScreenListPadding,
-          child: AppRowSkeleton(),
-        ),
-        isEmpty: (result) => result.payments.isEmpty,
-        empty: const AppEmptyState(
-          icon: Icons.payments_rounded,
-          title: 'No payments yet',
-          message: 'Parking fees and penalties will show up here.',
-        ),
-        data: (result) => ListView(
-          padding: kScreenListPadding,
-          children: [
-            for (final p in result.payments) ...[
-              _PaymentRow(payment: p),
-              if (p != result.payments.last) const AppRowGap(),
+    final body = AsyncView(
+      value: ref.watch(paymentsNotifierProvider),
+      onRefresh: refresh,
+      errorTitle: "Couldn't load your payments",
+      loading: const Padding(
+        padding: kScreenListPadding,
+        child: AppRowSkeleton(),
+      ),
+      isEmpty: (result) => result.payments.isEmpty,
+      empty: const AppEmptyState(
+        icon: Icons.payments_rounded,
+        title: 'No payments yet',
+        message: 'Parking fees and penalties will show up here.',
+      ),
+      data: (result) => ListView(
+        padding: kScreenListPadding,
+        children: [
+          if (_inline) const AppScreenTitle(title: 'Payments'),
+          AppRowGroup(
+            children: [
+              for (final p in result.payments) _PaymentRow(payment: p),
             ],
-          ],
-        ),
+          ),
+        ],
       ),
     );
+
+    return _inline
+        ? AppScreen.tab(body: body)
+        : AppScreen(title: 'Payments', body: body);
   }
 }
 

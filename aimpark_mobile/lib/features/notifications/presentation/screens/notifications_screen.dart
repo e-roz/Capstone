@@ -15,7 +15,7 @@ class NotificationsScreen extends ConsumerWidget {
     Future<void> refresh() =>
         ref.read(notificationsNotifierProvider.notifier).refresh();
 
-    return AppScreen.tab(
+    return AppScreen(
       body: AsyncView(
         value: ref.watch(notificationsNotifierProvider),
         onRefresh: refresh,
@@ -33,7 +33,7 @@ class NotificationsScreen extends ConsumerWidget {
         data: (result) => ListView(
           padding: kScreenListPadding,
           children: [
-            AppSectionHeader(
+            AppScreenTitle(
               title: 'Alerts',
               padding: const EdgeInsets.only(bottom: AppSpacing.lg),
               action: result.unreadCount > 0

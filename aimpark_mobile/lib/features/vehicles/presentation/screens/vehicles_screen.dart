@@ -56,10 +56,8 @@ class VehiclesScreen extends ConsumerWidget {
               style: context.text.bodySmall,
             ),
             const SizedBox(height: AppSpacing.md),
-            AppButton(
-              label: 'Add a vehicle',
-              icon: const Icon(Icons.add),
-              onPressed: () => context.push('/home/user/vehicles/add'),
+            _AddVehicleButton(
+              onTap: () => context.push('/home/user/vehicles/add'),
             ),
           ],
         ),
@@ -77,6 +75,7 @@ class _VehicleCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final t = context.tokens;
     final expired = vehicle.isRegistrationExpired;
+    final validThrough = vehicle.registrationValidThrough;
 
     return AppCard(
       child: Column(
@@ -84,36 +83,33 @@ class _VehicleCard extends StatelessWidget {
         children: [
           Row(
             children: [
-              Icon(
-                vehicle.vehicleType == 'Motorcycle'
-                    ? Icons.two_wheeler_rounded
-                    : Icons.directions_car_rounded,
-                color: t.brand.primary,
-              ),
-              const SizedBox(width: AppSpacing.sm),
               Expanded(
+                // The plate is the headline. It is what the gate matches on and
+                // what the owner recognises the row by — the vehicle type was
+                // taking the badge slot to say "Car" next to a picture of a car.
                 child: Text(
                   vehicle.plateNumber,
-                  style: context.text.headlineSmall,
+                  style: AppTypography.tabular(context.text.headlineMedium!),
                 ),
               ),
+              const SizedBox(width: AppSpacing.sm),
               AppStatusBadge(
-                label: expired ? 'Expired' : vehicle.vehicleType,
-                intent: expired ? StatusIntent.danger : StatusIntent.neutral,
+                label: expired ? 'Expired' : 'Active',
+                intent: expired ? StatusIntent.danger : StatusIntent.success,
               ),
             ],
           ),
-          const SizedBox(height: AppSpacing.sm),
+          const SizedBox(height: AppSpacing.labelGap),
           Text(
-            vehicle.color,
+            '${vehicle.color} · ${vehicle.vehicleType}',
             style: context.text.bodyMedium?.copyWith(color: t.text.secondary),
           ),
-          if (vehicle.registrationValidThrough != null) ...[
-            const SizedBox(height: AppSpacing.xs),
+          if (validThrough != null) ...[
+            const SizedBox(height: 2),
             Text(
               expired
-                  ? 'Registration expired ${Formatters.date(vehicle.registrationValidThrough!)}'
-                  : 'Registration valid through ${Formatters.date(vehicle.registrationValidThrough!)}',
+                  ? 'Registration expired ${Formatters.date(validThrough)}'
+                  : 'Registration valid to ${Formatters.date(validThrough)}',
               style: context.text.bodySmall,
             ),
           ],
@@ -121,4 +117,100 @@ class _VehicleCard extends StatelessWidget {
       ),
     );
   }
+}
+
+/// The "add another" affordance, drawn as an outline waiting to be filled.
+///
+/// A dashed border rather than a solid one because this button is not an action
+/// on the list above it — it is an empty slot in that list. A solid primary
+/// button here competed with the vehicle cards for attention on a screen whose
+/// whole job is showing you the vehicles.
+class _AddVehicleButton extends StatelessWidget {
+  const _AddVehicleButton({required this.onTap});
+
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = context.tokens;
+
+    return Semantics(
+      button: true,
+      label: 'Register a vehicle',
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: AppRadius.mdAll,
+        child: CustomPaint(
+          painter: _DashedBorderPainter(
+            color: t.border.strong,
+            radius: AppRadius.md,
+          ),
+          child: SizedBox(
+            height: AppSizes.controlHeight,
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(Icons.add_rounded, size: 18, color: t.brand.subtleText),
+                const SizedBox(width: AppSpacing.xs + 4),
+                Text(
+                  'Register a vehicle',
+                  style: context.text.labelLarge?.copyWith(
+                    color: t.brand.subtleText,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Flutter has no dashed [BorderSide], so the outline is stroked by hand.
+///
+/// Walks the rounded rectangle's path with a [PathMetric] and emits alternating
+/// on/off segments, which keeps the dashes even around the corners — stroking
+/// four straight edges separately leaves the curves either solid or bare.
+class _DashedBorderPainter extends CustomPainter {
+  const _DashedBorderPainter({required this.color, required this.radius});
+
+  final Color color;
+  final double radius;
+
+  /// Dash and gap are fixed rather than parameters: there is one dashed outline
+  /// in the app, and a second one that did not match it would be worse than
+  /// either.
+  static const double _dash = 6;
+  static const double _gap = 4;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = color
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1
+      ..isAntiAlias = true;
+
+    final path = Path()
+      ..addRRect(
+        RRect.fromRectAndRadius(Offset.zero & size, Radius.circular(radius)),
+      );
+
+    for (final metric in path.computeMetrics()) {
+      var distance = 0.0;
+      while (distance < metric.length) {
+        final next = distance + _dash;
+        canvas.drawPath(
+          metric.extractPath(distance, next.clamp(0.0, metric.length)),
+          paint,
+        );
+        distance = next + _gap;
+      }
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _DashedBorderPainter old) =>
+      old.color != color || old.radius != radius;
 }

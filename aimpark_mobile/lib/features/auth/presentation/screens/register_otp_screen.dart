@@ -159,7 +159,7 @@ class _RegisterOtpScreenState extends ConsumerState<RegisterOtpScreen> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           RegistrationStepHeading(
-            title: 'Enter OTP',
+            title: 'Verify your email',
             subtitle: email.isEmpty ? null : 'OTP sent to $email',
           ),
           PinCodeTextField(
@@ -196,8 +196,9 @@ class _RegisterOtpScreenState extends ConsumerState<RegisterOtpScreen> {
             const SizedBox(height: AppSpacing.xs),
             Text(
               _otpError!,
-              style: context.text.labelSmall
-                  ?.copyWith(color: t.status.danger.fg),
+              style: context.text.labelSmall?.copyWith(
+                color: t.status.danger.fg,
+              ),
             ),
           ],
           const SizedBox(height: AppSpacing.lg),

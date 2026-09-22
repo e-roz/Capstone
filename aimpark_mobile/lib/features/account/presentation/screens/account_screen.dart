@@ -6,6 +6,7 @@ import '../../../../core/theme/theme.dart';
 import '../../../../core/utils/formatters.dart';
 import '../../../../core/widgets/widgets.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
+import '../../../notifications/presentation/providers/notifications_provider.dart';
 import '../../../notifications/presentation/providers/push_registration_provider.dart';
 import '../../../payments/data/models/payment.dart';
 import '../../../payments/presentation/providers/payments_provider.dart';
@@ -64,6 +65,13 @@ class AccountScreen extends ConsumerWidget {
             .where((p) => !p.isPaid && p.status.toLowerCase() != 'waived')
             .fold<double>(0, (sum, p) => sum + p.amountDue);
 
+    // Notifications lost its tab in the nav change, so this row is now the only
+    // place inside Account that can show the count. The shell still badges the
+    // Account tab itself, which is what keeps unread alerts visible from the
+    // other three tabs.
+    final unreadCount =
+        ref.watch(notificationsNotifierProvider).valueOrNull?.unreadCount ?? 0;
+
     return AppScreen.tab(
       body: AsyncView(
         value: ref.watch(profileNotifierProvider),
@@ -72,8 +80,8 @@ class AccountScreen extends ConsumerWidget {
         data: (profile) => ListView(
           padding: kScreenListPadding,
           children: [
-            const AppSectionHeader(
-              title: 'Profile',
+            const AppScreenTitle(
+              title: 'Account',
               padding: EdgeInsets.only(bottom: AppSpacing.lg),
             ),
             _ProfileCard(profile: profile),
@@ -90,68 +98,86 @@ class AccountScreen extends ConsumerWidget {
               orElse: () => const SizedBox.shrink(),
             ),
 
+            // Activity before Settings: the two things a user can owe — an open
+            // violation and an unpaid fee — are the reason they opened this
+            // screen. Editing a profile is not.
             const SizedBox(height: AppSpacing.md),
-            const AppSectionHeader(title: 'Account'),
-            AppListRow(
-              icon: Icons.edit_rounded,
-              title: 'Edit Profile',
-              onTap: () => context.push('/home/user/profile/edit'),
-            ),
-            const AppRowGap(),
-            AppListRow(
-              icon: Icons.lock_rounded,
-              title: 'Change Password',
-              onTap: () => context.push('/home/user/profile/change-password'),
-            ),
-            const AppRowGap(),
-            AppListRow(
-              icon: Icons.directions_car_rounded,
-              title: 'My Vehicles',
-              onTap: () => context.push('/home/user/vehicles'),
-            ),
-            const SizedBox(height: AppSpacing.lg),
-
-            const AppSectionHeader(title: 'My Activity'),
-            AppListRow(
-              icon: Icons.gavel_rounded,
-              title: 'My Violations',
-              trailing: openViolations == 0
-                  ? null
-                  : AppStatusBadge(
-                      label: '$openViolations open',
-                      intent: StatusIntent.warning,
-                    ),
-              onTap: () => context.push('/home/user/violations'),
-            ),
-            const AppRowGap(),
-            AppListRow(
-              icon: Icons.payments_rounded,
-              title: 'My Payments',
-              trailing: balance <= 0
-                  ? null
-                  : AppStatusBadge(
-                      label: '${Formatters.peso(balance)} due',
-                      intent: StatusIntent.warning,
-                    ),
-              onTap: () => context.push('/home/user/payments'),
-            ),
-            const AppRowGap(),
-            AppListRow(
-              icon: Icons.report_rounded,
-              title: 'My Incident Reports',
-              onTap: () => context.push('/home/user/incidents'),
+            const AppSectionHeader(title: 'Activity'),
+            AppRowGroup(
+              children: [
+                AppListRow(
+                  title: 'Violations',
+                  trailing: openViolations == 0
+                      ? null
+                      : AppStatusBadge(
+                          label: '$openViolations open',
+                          intent: StatusIntent.danger,
+                        ),
+                  onTap: () => context.push('/home/user/violations'),
+                ),
+                AppListRow(
+                  title: 'Parking history',
+                  onTap: () => context.push('/home/user/parking-history'),
+                ),
+                AppListRow(
+                  title: 'Payments',
+                  trailing: balance <= 0
+                      ? null
+                      : AppStatusBadge(
+                          label: '${Formatters.peso(balance)} due',
+                          intent: StatusIntent.warning,
+                        ),
+                  onTap: () => context.push('/home/user/payments'),
+                ),
+                AppListRow(
+                  title: 'Incident reports',
+                  onTap: () => context.push('/home/user/incidents'),
+                ),
+              ],
             ),
             const SizedBox(height: AppSpacing.lg),
 
-            const AppSectionHeader(title: 'Appearance'),
-            const _AppearancePicker(),
+            const AppSectionHeader(title: 'Settings'),
+            AppRowGroup(
+              children: [
+                AppListRow(
+                  title: 'Edit profile',
+                  onTap: () => context.push('/home/user/profile/edit'),
+                ),
+                AppListRow(
+                  title: 'Change password',
+                  onTap: () => context.push('/home/user/profile/change-password'),
+                ),
+                AppListRow(
+                  title: 'My vehicles',
+                  onTap: () => context.push('/home/user/vehicles'),
+                ),
+                AppListRow(
+                  title: 'How standing works',
+                  onTap: () => context.push('/home/user/standing'),
+                ),
+                AppListRow(
+                  title: 'Help & support',
+                  onTap: () => context.push('/home/user/support'),
+                ),
+                AppListRow(
+                  title: 'Notifications',
+                  trailing: unreadCount == 0
+                      ? null
+                      : AppStatusBadge(
+                          label: '$unreadCount new',
+                          intent: StatusIntent.brand,
+                        ),
+                  onTap: () => context.push('/home/user/notifications'),
+                ),
+              ],
+            ),
             const SizedBox(height: AppSpacing.lg),
 
-            AppListRow(
-              icon: Icons.logout_rounded,
-              title: 'Log Out',
-              tone: context.tokens.status.danger.fg,
-              onTap: () => _logout(ref, context),
+            AppButton(
+              label: 'Sign out',
+              style: AppButtonStyle.ghost,
+              onPressed: () => _logout(ref, context),
             ),
           ],
         ),
@@ -239,85 +265,3 @@ class _AccessStatusCard extends StatelessWidget {
   }
 }
 
-/// System / Light / Dark, as a segmented row.
-///
-/// A three-way choice rather than a switch, because "follow my phone" is a
-/// distinct answer from "always light" and a two-state toggle cannot express
-/// it — which is how apps end up ignoring a system-wide dark preference the
-/// user already set.
-class _AppearancePicker extends ConsumerWidget {
-  const _AppearancePicker();
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final current = ref.watch(appThemeModeProvider);
-
-    return AppCard(
-      padding: const EdgeInsets.all(AppSpacing.sm),
-      child: Row(
-        children: [
-          for (final mode in ThemeMode.values)
-            Expanded(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 2),
-                child: _AppearanceOption(
-                  mode: mode,
-                  selected: mode == current,
-                  onTap: () =>
-                      ref.read(appThemeModeProvider.notifier).set(mode),
-                ),
-              ),
-            ),
-        ],
-      ),
-    );
-  }
-}
-
-class _AppearanceOption extends StatelessWidget {
-  const _AppearanceOption({
-    required this.mode,
-    required this.selected,
-    required this.onTap,
-  });
-
-  final ThemeMode mode;
-  final bool selected;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final t = context.tokens;
-    final fg = selected ? t.brand.subtleText : t.text.secondary;
-
-    return Semantics(
-      button: true,
-      selected: selected,
-      label: mode.label,
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTap: onTap,
-        child: AnimatedContainer(
-          duration: AppMotion.fast,
-          curve: AppMotion.standard,
-          padding: const EdgeInsets.symmetric(vertical: AppSpacing.sm),
-          decoration: BoxDecoration(
-            color: selected ? t.brand.subtle : Colors.transparent,
-            borderRadius: AppRadius.smAll,
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(mode.icon, color: fg, size: AppSizes.iconMd),
-              const SizedBox(height: 2),
-              Text(
-                mode.label,
-                style: context.text.labelSmall?.copyWith(color: fg),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
