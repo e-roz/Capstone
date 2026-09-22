@@ -85,11 +85,15 @@ class ParkingAvailability {
     required this.slots,
     required this.totalSlots,
     required this.availableSlots,
-  });
+    DateTime? fetchedAt,
+  }) : fetchedAt = fetchedAt ?? _now;
+
+  static DateTime get _now => DateTime.now();
 
   final List<ParkingSlot> slots;
   final int totalSlots;
   final int availableSlots;
+  final DateTime fetchedAt;
 
   factory ParkingAvailability.fromJson(Map<String, dynamic> json) {
     return ParkingAvailability(
@@ -98,6 +102,7 @@ class ParkingAvailability {
           .toList(),
       totalSlots: json['totalSlots'] as int,
       availableSlots: json['availableSlots'] as int,
+      fetchedAt: DateTime.now(),
     );
   }
 }

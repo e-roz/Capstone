@@ -235,6 +235,7 @@ class UserDashboardScreen extends ConsumerWidget {
                   pendingCount: unpaid.length,
                   mostRecent: mostRecentUnpaid,
                   onTap: () => context.push('/home/user/payments'),
+                  onPayNow: () => context.push('/home/user/payments/checkout'),
                 ),
               ],
               const SizedBox(height: AppSpacing.lg),
@@ -247,14 +248,43 @@ class UserDashboardScreen extends ConsumerWidget {
               if (openViolations > 0) ...[
                 const SizedBox(height: AppSpacing.lg),
                 const AppSectionHeader(title: 'Needs your attention'),
-                AppListRow(
-                  icon: Icons.gavel_rounded,
-                  intent: StatusIntent.warning,
-                  title: openViolations == 1
-                      ? '1 open violation'
-                      : '$openViolations open violations',
-                  subtitle: 'Tap to read it or file an appeal.',
+                AppCard(
                   onTap: () => context.push('/home/user/violations'),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Icon(
+                            Icons.gavel_rounded,
+                            color: context.tokens.status.warning.fg,
+                            size: AppSizes.iconMd,
+                          ),
+                          const SizedBox(width: AppSpacing.sm),
+                          Expanded(
+                            child: Text(
+                              openViolations == 1
+                                  ? '1 open violation'
+                                  : '$openViolations open violations',
+                              style: context.text.bodyMedium,
+                            ),
+                          ),
+                          Icon(
+                            Icons.chevron_right_rounded,
+                            color: context.tokens.text.secondary,
+                            size: AppSizes.iconMd,
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: AppSpacing.sm),
+                      Text(
+                        'Review and file an appeal if needed.',
+                        style: context.text.bodySmall?.copyWith(
+                          color: context.tokens.text.secondary,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ],
             ],
@@ -514,12 +544,14 @@ class _ParkingHeroCard extends StatefulWidget {
 
 class _ParkingHeroCardState extends State<_ParkingHeroCard> {
   bool _isPressed = false;
+  bool _isRefreshing = false;
 
   @override
   Widget build(BuildContext context) {
     final t = context.tokens;
     final isParked = widget.entry != null;
     final free = widget.availability?.availableSlots;
+    final updatedAt = widget.availability?.fetchedAt;
 
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
@@ -590,19 +622,49 @@ class _ParkingHeroCardState extends State<_ParkingHeroCard> {
                             ?.copyWith(color: t.brand.onSolid, fontSize: 25),
                       ),
                       const SizedBox(height: AppSpacing.xs),
-                      Text(
-                        isParked
-                            ? Formatters.sessionRange(
-                                widget.entry!.entryTime,
-                                null,
-                                widget.entry!.duration,
-                              )
-                            : widget.availability == null
-                                ? 'Tap to check live availability'
-                                : 'of ${widget.availability!.totalSlots} · tap to find yours',
-                        style: context.text.bodyMedium
-                            ?.copyWith(color: t.text.onDarkMuted),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              isParked
+                                  ? Formatters.sessionRange(
+                                      widget.entry!.entryTime,
+                                      null,
+                                      widget.entry!.duration,
+                                    )
+                                  : widget.availability == null
+                                      ? 'Tap to check live availability'
+                                      : 'of ${widget.availability!.totalSlots} · tap to find yours',
+                              style: context.text.bodyMedium
+                                  ?.copyWith(color: t.text.onDarkMuted),
+                            ),
+                          ),
+                          if (!isParked && updatedAt != null)
+                            Padding(
+                              padding: const EdgeInsets.only(left: AppSpacing.sm),
+                              child: _RefreshButton(
+                                isRefreshing: _isRefreshing,
+                                timestamp: updatedAt,
+                                onTap: () async {
+                                  setState(() => _isRefreshing = true);
+                                  await Future.delayed(const Duration(seconds: 1));
+                                  setState(() => _isRefreshing = false);
+                                },
+                              ),
+                            ),
+                        ],
                       ),
+                      // Show freshness timestamp below the main text
+                      if (!isParked && updatedAt != null)
+                        Padding(
+                          padding: const EdgeInsets.only(top: AppSpacing.xs),
+                          child: Text(
+                            'Updated ${_getRelativeTime(updatedAt)}',
+                            style: context.text.labelSmall?.copyWith(
+                              color: t.text.onDarkMuted,
+                            ),
+                          ),
+                        ),
                       const SizedBox(height: AppSpacing.md),
                       _ArrowButton(background: t.brand.onSolid, iconColor: t.brand.primary),
                     ],
@@ -614,6 +676,22 @@ class _ParkingHeroCardState extends State<_ParkingHeroCard> {
         ),
       ),
     );
+  }
+
+  /// Format time as "30s ago", "2m ago", etc.
+  String _getRelativeTime(DateTime time) {
+    final now = DateTime.now();
+    final diff = now.difference(time);
+
+    if (diff.inSeconds < 60) {
+      return '${diff.inSeconds}s ago';
+    } else if (diff.inMinutes < 60) {
+      return '${diff.inMinutes}m ago';
+    } else if (diff.inHours < 24) {
+      return '${diff.inHours}h ago';
+    } else {
+      return '${diff.inDays}d ago';
+    }
   }
 }
 
@@ -657,6 +735,53 @@ class _ArrowButton extends StatelessWidget {
   }
 }
 
+/// A small refresh button on the parking hero card showing freshness timestamp
+/// and allowing manual refresh of availability data.
+class _RefreshButton extends StatelessWidget {
+  const _RefreshButton({
+    required this.isRefreshing,
+    required this.timestamp,
+    required this.onTap,
+  });
+
+  final bool isRefreshing;
+  final DateTime timestamp;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: isRefreshing ? null : onTap,
+      child: Container(
+        width: 28,
+        height: 28,
+        decoration: BoxDecoration(
+          color: context.tokens.brand.onSolid.withValues(alpha: 0.2),
+          shape: BoxShape.circle,
+        ),
+        child: Center(
+          child: isRefreshing
+              ? SizedBox(
+                  width: 14,
+                  height: 14,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    valueColor: AlwaysStoppedAnimation(
+                      context.tokens.brand.onSolid,
+                    ),
+                  ),
+                )
+              : Icon(
+                  Icons.refresh_rounded,
+                  size: 14,
+                  color: context.tokens.brand.onSolid,
+                ),
+        ),
+      ),
+    );
+  }
+}
+
 /// A second hero card, shown only when something is actually owed. Warm
 /// (amber to coral) rather than the parking card's cool indigo-to-mint, so
 /// the two read as "all clear" and "needs attention" at a glance without
@@ -674,6 +799,7 @@ class _PaymentDueCard extends StatefulWidget {
     required this.pendingCount,
     required this.mostRecent,
     required this.onTap,
+    required this.onPayNow,
   });
 
   final double balance;
@@ -686,6 +812,7 @@ class _PaymentDueCard extends StatefulWidget {
   final Payment? mostRecent;
 
   final VoidCallback onTap;
+  final VoidCallback onPayNow;
 
   @override
   State<_PaymentDueCard> createState() => _PaymentDueCardState();
@@ -759,7 +886,7 @@ class _PaymentDueCardState extends State<_PaymentDueCard> {
                       _Tag(label: overdue ? 'Overdue' : 'Payment due'),
                       const SizedBox(height: AppSpacing.xl),
                       Text(
-                        '${Formatters.peso(widget.balance)} to settle',
+                        '₱${(widget.balance).toStringAsFixed(0)} to settle',
                         style: context.text.headlineLarge
                             ?.copyWith(color: t.text.onDark, fontSize: 25),
                       ),
@@ -770,9 +897,13 @@ class _PaymentDueCardState extends State<_PaymentDueCard> {
                             ?.copyWith(color: t.text.onDarkMuted),
                       ),
                       const SizedBox(height: AppSpacing.md),
-                      _ArrowButton(
-                        background: t.text.onDark,
-                        iconColor: t.status.danger.solid,
+                      AppButton(
+                        label: 'Pay Now',
+                        style: AppButtonStyle.primary,
+                        onTap: () {
+                          HapticFeedback.selectionClick();
+                          widget.onPayNow();
+                        },
                       ),
                     ],
                   ),
@@ -873,7 +1004,22 @@ class _StandingCard extends StatelessWidget {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Expanded(
-                child: Text('Good Standing', style: context.text.labelSmall),
+                child: Row(
+                  children: [
+                    Text('Good Standing', style: context.text.labelSmall),
+                    const SizedBox(width: 4),
+                    GestureDetector(
+                      onTap: () => _showStandingHelp(context),
+                      child: Text(
+                        '?',
+                        style: context.text.labelSmall?.copyWith(
+                          color: context.tokens.brand.primary,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
               ),
               AppStatusBadge(label: standing.tier.toUpperCase(), intent: _intent),
             ],
@@ -899,6 +1045,69 @@ class _StandingCard extends StatelessWidget {
           Text(standing.tier, style: context.text.headlineSmall),
         ],
       ),
+    );
+  }
+
+  void _showStandingHelp(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('How Standing Works'),
+        content: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              _buildStandingTier('Gold', '✓', 'No violations. Full access to parking.'),
+              const SizedBox(height: AppSpacing.lg),
+              _buildStandingTier(
+                'Silver',
+                '◐',
+                '1 open violation. Access monitored, may be restricted if not resolved.',
+              ),
+              const SizedBox(height: AppSpacing.lg),
+              _buildStandingTier(
+                'Bronze',
+                '●',
+                '2+ violations. Limited access. Possible suspension if not resolved.',
+              ),
+              const SizedBox(height: AppSpacing.lg),
+              Text(
+                'You earn +10 points per parking session, and +50 bonus points per full week of streak.',
+                style: context.text.bodySmall,
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Got it'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildStandingTier(String tier, String symbol, String description) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(symbol, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+        const SizedBox(width: AppSpacing.sm),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                tier,
+                style: const TextStyle(fontWeight: FontWeight.bold),
+              ),
+              Text(description, style: const TextStyle(fontSize: 12)),
+            ],
+          ),
+        ),
+      ],
     );
   }
 }
