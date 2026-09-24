@@ -1,4 +1,4 @@
-using AimPark.API.Entities;
+﻿using AimPark.API.Entities;
 using Microsoft.EntityFrameworkCore;
 
 namespace AimPark.API.Data
@@ -34,6 +34,7 @@ namespace AimPark.API.Data
         public DbSet<RfidCard> RfidCards { get; set; }
         public DbSet<AlprReading> AlprReadings { get; set; }
         public DbSet<GateAccessAttempt> GateAccessAttempts { get; set; }
+        public DbSet<SyncOutboxEntry> SyncOutbox { get; set; }
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -658,6 +659,13 @@ namespace AimPark.API.Data
                       .WithMany()
                       .HasForeignKey(a => a.ViolationId)
                       .OnDelete(DeleteBehavior.Cascade);
+            });
+
+            modelBuilder.Entity<SyncOutboxEntry>(entity =>
+            {
+                entity.HasKey(o => o.Id);
+
+                entity.Property(o => o.Kind).IsRequired().HasMaxLength(40);
             });
         }
     }

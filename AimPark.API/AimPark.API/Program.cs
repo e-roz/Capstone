@@ -1,9 +1,10 @@
-using AimPark.API.Auth;
+﻿using AimPark.API.Auth;
 using AimPark.API.Data;
 using AimPark.API.Middleware;
 using AimPark.API.Interfaces;
 using AimPark.API.Services;
 using AimPark.API.Services.Payments;
+using AimPark.API.Sync;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authentication.Google;
@@ -15,14 +16,20 @@ using System.Text;
 
 var builder = WebApplication.CreateBuilder(args);
 
-builder.Services.AddDbContext<AppDbContext>(options =>
-    options.UseNpgsql(
+// Cloud (the hosted API) or Site (the server at the guard post). Defaults to
+// Cloud, which behaves exactly as before the site server existed.
+var siteOptions = builder.AddAimParkSync();
+
+builder.Services.AddDbContext<AppDbContext>((sp, options) => options
+    .UseNpgsql(
         builder.Configuration.GetConnectionString("DefaultConnection"),
         npgsqlOptions => npgsqlOptions.EnableRetryOnFailure(
             maxRetryCount: 3,
             maxRetryDelay: TimeSpan.FromSeconds(5),
-            errorCodesToAdd: null)
-    ));
+            errorCodesToAdd: null))
+    // The sync hooks: on the cloud, tell the site when gate data changes; on
+    // the site, put every gate record in the outbox. See SyncSetup.
+    .AddInterceptors(sp.GetServices<Microsoft.EntityFrameworkCore.Diagnostics.ISaveChangesInterceptor>()));
 
 // Hosts like Render assign a port at runtime via $PORT rather than letting the app
 // pick one. Locally there's no PORT set, so launchSettings/appsettings still apply.
@@ -193,7 +200,12 @@ builder.Services.AddScoped<IVisitorPassService, VisitorPassService>();
 builder.Services.AddScoped<IReportService, ReportService>();
 builder.Services.AddScoped<IBackupService, BackupService>();
 builder.Services.AddScoped<IDeviceTokenService, DeviceTokenService>();
-builder.Services.AddScoped<IPushSender, FcmPushSender>();
+// The site server hands pushes to the cloud instead of calling Firebase itself
+// — it may have no internet, and a barrier must never wait on a phone.
+if (siteOptions.IsSite)
+    builder.Services.AddScoped<IPushSender, AimPark.API.Sync.Site.OutboxPushSender>();
+else
+    builder.Services.AddScoped<IPushSender, FcmPushSender>();
 builder.Services.AddScoped(typeof(IRepository<>), typeof(Repository<>));
 
 builder.Services.AddControllers();
@@ -254,7 +266,12 @@ app.UseCors("AllowAdminWeb");
 // phantom CORS failure.
 app.UseGlobalExceptionHandler();
 
+// Site: gate work answered here, the rest passed to the cloud. Cloud: once
+// switched over, gate traffic refused here. See SyncSetup.
+app.UseAimParkSyncRouting(siteOptions);
+
 app.UseAuthentication();
 app.UseAuthorization();
 app.MapControllers();
+app.MapAimParkSync(siteOptions);
 app.Run();
