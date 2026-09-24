@@ -8,6 +8,14 @@ namespace AimPark.API.Enums
     public enum GateDeviceType
     {
         RfidReader,
-        AlprCamera
+        AlprCamera,
+
+        /// <summary>
+        /// The on-site server, not a piece of gate hardware. Its key reaches
+        /// the site-sync endpoints and nothing else — entry and exit only take
+        /// an <see cref="RfidReader"/>, and plate reads only an
+        /// <see cref="AlprCamera"/>. Issue it with gate 0.
+        /// </summary>
+        SiteServer
     }
 }
