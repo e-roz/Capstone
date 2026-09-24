@@ -3,6 +3,7 @@ using AimPark.API.Entities;
 using AimPark.API.Enums;
 using AimPark.API.Helpers;
 using AimPark.API.Interfaces;
+using AimPark.API.Sync.Cloud;
 using Microsoft.AspNetCore.Mvc;
 using System.Security.Cryptography;
 using System.Text.Json;
@@ -30,6 +31,7 @@ namespace AimPark.API.Services
         private readonly ITokenService _tokenService;
         private readonly IDocumentExtractionService _extraction;
         private readonly IPreScreeningService _preScreening;
+        private readonly GuardPostSignIn _guardPost;
 
         public RegistrationService(
             IRepository<User> users,
@@ -42,8 +44,10 @@ namespace AimPark.API.Services
             IFileStorageService fileStorage,
             ITokenService tokenService,
             IDocumentExtractionService extraction,
-            IPreScreeningService preScreening)
+            IPreScreeningService preScreening,
+            GuardPostSignIn guardPost)
         {
+            _guardPost = guardPost;
             _users = users;
             _vehicles = vehicles;
             _documents = documents;
@@ -983,6 +987,9 @@ namespace AimPark.API.Services
 
                 if (existing.RegistrationStep == RegistrationStep.Completed && existing.AccountStatus == AccountStatus.Active)
                 {
+                    if (_guardPost.RefuseIfGuard(existing) is { } guardPost)
+                        return guardPost;
+
                     return new OkObjectResult(new OAuthCallbackResponse
                     {
                         Message = "Login successful.",

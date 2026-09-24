@@ -14,17 +14,19 @@ Every gate decision runs on a server at the school. It checks the card, suspensi
 
 | Direction | What | When |
 |---|---|---|
-| Cloud → site | Users, cards, suspensions, plates, visitor passes, device keys, slots, rates | **Instantly.** The site keeps a live connection open to the cloud. When the cloud says "changed", the site downloads a fresh full copy. It also downloads on reconnect and every 5 minutes. |
-| Site → cloud | Entry/exit logs, plate reads, gate attempts, slot occupancy, exit fees, notifications | **Right after each car moves.** They go through an outbox. If the internet is down they wait and are sent when it's back. |
+| Cloud → site | Users, cards, suspensions, plates, visitor passes, device keys, slots, rates, incidents | **Instantly.** The site keeps a live connection open to the cloud. When the cloud says "changed", the site downloads a fresh full copy. It also downloads on reconnect and every 5 minutes. |
+| Site → cloud | Entry/exit logs, plate reads, gate attempts, slot occupancy, exit fees, notifications, incidents reported by guards | **Right after each car moves.** They go through an outbox. If the internet is down they wait and are sent when it's back. |
 
 **When the internet is down**
 - Gates keep working from the last copy.
 - A suspension made in the cloud during the outage takes effect when the line comes back.
-- The guard's gate screens keep working. Other screens (incidents, notifications) show "needs the internet".
+- The guard's gate screens and the **incident queue** keep working. Guards can report incidents and read the queue offline, and reports are sent when the internet is back.
+- These need the internet: attaching photos to a report, and opening photos drivers attached. Offline, a report says how many attachments "can be viewed when the internet is back".
+- The Gate Devices and Notifications screens show "needs the internet".
 
 **Who owns what**
 - The cloud decides whether a bay is **in service**. The site decides whether a **car is in it**.
-- For visitor passes, the newer edit wins.
+- For visitor passes and incidents, the newer edit wins. A guard edits a report while it's still *Submitted*; an admin reviews it in the cloud.
 - Payments are created at the site on exit, then settled in the cloud.
 
 ## Where the data lives
@@ -125,9 +127,16 @@ After **every** reader points at the site, set this in Render → Environment:
 
 ```
 Site__CloudGateEndpointsEnabled=false
+Site__GuardPanelUrl=http://192.168.1.10:5041/
 ```
 
-From then on the cloud refuses entry, exit and plate reads with a message saying to use the guard post's server. Before that switch, both places accept gate traffic, so nothing breaks while you move devices over one by one.
+From then on the cloud:
+- refuses entry, exit and plate reads, with a message saying to use the guard post's server;
+- refuses **Security** sign-ins on the Firebase admin panel, with the message "Security accounts sign in at the guard post: http://192.168.1.10:5041/". Admin sign-in is unchanged.
+
+Before that switch, both places accept gate traffic, so nothing breaks while you move devices over one by one.
+
+**If the guard PC is down:** set `Site__CloudGateEndpointsEnabled=true` again. Guards can then sign in on the Firebase panel and the cloud takes gate traffic until the guard PC is back.
 
 ## Migration note
 

@@ -7,9 +7,9 @@ namespace AimPark.API.Sync.Site
     /// </summary>
     /// <remarks>
     /// This is what lets the guard post run the one admin panel it already
-    /// knows. Its gate screens hit this server; its incidents, notifications
-    /// and the rest go on to the cloud, and simply fail with a clear message
-    /// while the internet is down.
+    /// knows. Its gate screens and the incident queue hit this server; its
+    /// notifications and the rest go on to the cloud, and simply fail with a
+    /// clear message while the internet is down.
     ///
     /// A token issued here is accepted by the cloud because both are
     /// configured with the same JWT key, issuer and audience, and the user ids
@@ -31,6 +31,11 @@ namespace AimPark.API.Sync.Site
             ("GET", "/api/admin/parking/active-sessions", false),
             ("GET", "/api/admin/parking/slots", false),
             ("GET", "/api/admin/logs/rfid-access", false),
+            // Security reports and follows up incidents from the guard post.
+            // Kept in step with the cloud both ways — see SnapshotApplier and
+            // SiteOutboxInterceptor.
+            ("*", "/api/incidents", true),
+            ("*", "/api/admin/incidents", true),
         ];
 
         // Connection-level headers belong to one hop, not the whole trip.

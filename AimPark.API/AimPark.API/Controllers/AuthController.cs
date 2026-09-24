@@ -3,6 +3,7 @@ using AimPark.API.Entities;
 using AimPark.API.Enums;
 using AimPark.API.Helpers;
 using AimPark.API.Interfaces;
+using AimPark.API.Sync.Cloud;
 using Google.Apis.Auth;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Google;
@@ -24,6 +25,7 @@ namespace AimPark.API.Controllers
         private readonly IOtpService _otpService;
         private readonly IEmailService _emailService;
         private readonly IUserActivityLogger _activity;
+        private readonly GuardPostSignIn _guardPost;
 
         public AuthController(
             IRepository<User> users,
@@ -32,9 +34,11 @@ namespace AimPark.API.Controllers
             IConfiguration config,
             IOtpService otpService,
             IEmailService emailService,
-            IUserActivityLogger activity)
+            IUserActivityLogger activity,
+            GuardPostSignIn guardPost)
         {
             _activity = activity;
+            _guardPost = guardPost;
             _tokenService = tokenService;
             _users = users;
             _registrationService = registrationService;
@@ -119,6 +123,9 @@ namespace AimPark.API.Controllers
                         RegistrationStatus = MapStatus(user)
                     });
             }
+
+            if (_guardPost.RefuseIfGuard(user) is { } guardPost)
+                return guardPost;
 
             await _activity.LogAsync(
                 user.Id, user.Email, UserActivities.Login, $"Role: {user.Role}", ct);
@@ -262,6 +269,9 @@ namespace AimPark.API.Controllers
                         RegistrationStatus = MapStatus(user)
                     });
                 }
+
+                if (_guardPost.RefuseIfGuard(user) is { } guardPost)
+                    return guardPost;
 
                 // Fully registered & active — issue full JWT
                 return Ok(new LoginResponse

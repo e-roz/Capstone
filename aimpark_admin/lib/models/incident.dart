@@ -55,6 +55,10 @@ class IncidentDetail {
   final DateTime updatedAt;
   final List<String> evidenceUrls;
 
+  /// Attachments that exist but could not be opened just now - the guard
+  /// post's server with no internet cannot reach the files.
+  final int evidenceUnavailable;
+
   const IncidentDetail({
     required this.incidentId,
     required this.category,
@@ -65,6 +69,7 @@ class IncidentDetail {
     required this.createdAt,
     required this.updatedAt,
     required this.evidenceUrls,
+    this.evidenceUnavailable = 0,
   });
 
   factory IncidentDetail.fromJson(Map<String, dynamic> json) =>
@@ -80,5 +85,6 @@ class IncidentDetail {
         evidenceUrls: (json['evidenceUrls'] as List<dynamic>? ?? [])
             .map((e) => e.toString())
             .toList(),
+        evidenceUnavailable: (json['evidenceUnavailable'] as num?)?.toInt() ?? 0,
       );
 }
