@@ -185,7 +185,8 @@ class GateDevicesScreen extends ConsumerWidget {
                       keyboardType: TextInputType.number,
                       decoration: const InputDecoration(
                         label: AppFieldLabel('Gate number', isRequired: true),
-                        helperText: 'Use 0 for the enrollment desk reader.',
+                        helperText:
+                            'Use 0 for the enrollment desk reader or the site server.',
                       ),
                       validator: (v) {
                         final n = int.tryParse(v?.trim() ?? '');

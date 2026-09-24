@@ -10,6 +10,19 @@ up and beep.
 Config (api_base, api_key) lives in config.json next to this script (or next
 to aimpark_rfid_bridge.exe, when running as the packaged build), which is
 git-ignored — copy config.example.json and fill it in once per computer.
+
+"mode" in config.json picks what a tap means:
+  "enroll" (default) — the admin's desk: the UID goes to the Assign RFID
+                       dialog. Needs a gate-0 RFID Reader key.
+  "entry" / "exit"   — the same reader standing in for a barrier reader, until
+                       the real gate firmware exists. The tap is logged as an
+                       entry or exit, normally against the guard post's site
+                       server (SITE_SERVER.md). Needs an RFID Reader key for
+                       gate 1 or higher.
+
+The reader's firmware only knows FREE / IN_USE (success) and anything else
+(failure), so gate mode answers FREE when the barrier would open — one beep —
+and ERROR when it stays shut — three beeps. No reflashing needed.
 """
 
 import json
@@ -50,6 +63,11 @@ def load_config():
     for key in ("api_base", "api_key"):
         if not config.get(key):
             sys.exit(f'config.json is missing "{key}"')
+
+    mode = config.get("mode") or "enroll"
+    if mode not in GATE_PATHS and mode != "enroll":
+        sys.exit('"mode" in config.json must be "enroll", "entry" or "exit"')
+    config["mode"] = mode
     return config
 
 
@@ -116,6 +134,50 @@ def scan_card(api_base, api_key, uid):
     return result
 
 
+# Where a tap goes in gate mode. The gate number comes from the device key,
+# not from anything sent here — see ESP32_Gate_Integration.md.
+GATE_PATHS = {
+    "entry": "/api/admin/parking/log-entry",
+    "exit": "/api/admin/parking/log-exit",
+}
+
+
+def gate_tap(api_base, api_key, mode, uid):
+    """Logs one tap as an entry or exit. Returns FREE when the barrier would
+    open, ERROR when it stays shut or the server can't be reached."""
+    try:
+        response = requests.post(
+            f"{api_base}{GATE_PATHS[mode]}",
+            json={"rfidTagId": uid},
+            headers={"X-Api-Key": api_key},
+            timeout=10,
+        )
+    except requests.RequestException as exc:
+        print(f"  -> could not reach the server: {exc}")
+        return "ERROR"
+
+    try:
+        body = response.json()
+    except ValueError:
+        body = {}
+
+    message = body.get("message", "")
+
+    if response.status_code == 401:
+        print("  -> device key rejected (wrong, or revoked)")
+        return "ERROR"
+    if response.status_code == 403:
+        print(f"  -> this key can't be used at a gate: {message}")
+        return "ERROR"
+    if not response.ok:
+        print(f"  -> SHUT (HTTP {response.status_code}): {message}")
+        return "ERROR"
+
+    slot = body.get("slotCode")
+    print(f"  -> OPEN: {message}" + (f" Slot {slot}." if slot else ""))
+    return "FREE"
+
+
 def run(config):
     port = find_port(config.get("port"))
     print(f"Connecting to {port} ...")
@@ -125,7 +187,7 @@ def run(config):
         # so its startup banner doesn't get mistaken for a stale UID line.
         time.sleep(2)
         ser.reset_input_buffer()
-        print("Connected. Waiting for taps. Ctrl+C to stop.")
+        print(f"Connected in {config['mode']} mode. Waiting for taps. Ctrl+C to stop.")
 
         while True:
             line = ser.readline().decode("utf-8", errors="replace").strip()
@@ -138,7 +200,10 @@ def run(config):
 
             uid = line[len("UID:"):]
             print(f"Card: {uid}")
-            result = scan_card(config["api_base"], config["api_key"], uid)
+            if config["mode"] == "enroll":
+                result = scan_card(config["api_base"], config["api_key"], uid)
+            else:
+                result = gate_tap(config["api_base"], config["api_key"], config["mode"], uid)
             ser.write(f"RESULT:{result}\n".encode("utf-8"))
 
 
