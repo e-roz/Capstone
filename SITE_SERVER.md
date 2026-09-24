@@ -27,6 +27,18 @@ Every gate decision runs on a server at the school. It checks the card, suspensi
 - For visitor passes, the newer edit wins.
 - Payments are created at the site on exit, then settled in the cloud.
 
+## Where the data lives
+
+| | Supabase (cloud) | Local Postgres (guard PC) |
+|---|---|---|
+| Role | **The main record.** Everything, kept long-term. | **The gate's working copy.** Just what a gate decision needs. |
+| People data | Users, registrations, documents, vehicles, violations, payments, notifications | A copy of users, cards, suspensions, plates, visitor passes, slots, rates |
+| Gate history | A full copy, arriving from the guard PC right after each car moves | Where it is first written |
+| Read by | Mobile app, admin panel, reports | Gate readers, ALPR PC, guard screens |
+| If lost | Serious. Restore from backup. | Minor. Reinstall and it downloads everything again. Only records not yet sent are lost, and `/api/site/status` shows how many are waiting. |
+
+Supabase Storage (document and photo files) is unchanged.
+
 ## One-time setup
 
 ### 1. Issue the site server's key (from the cloud)
@@ -66,16 +78,36 @@ flutter build web --dart-define=API_BASE_URL=http://192.168.1.10:5041
 
 Copy `build/web` to the folder named in `Site:AdminWebPath`.
 
-### 4. Run it
+### 4. Run it (it starts by itself with the PC)
+
+Open PowerShell with **Run as administrator**, then:
 
 ```
-cd AimPark.API/AimPark.API
+powershell -ExecutionPolicy Bypass -File C:\AimPark\site-server\install-service.ps1
+```
+
+The script:
+- builds the server into `C:\AimPark\site-server-app`;
+- installs it as the Windows service **AimPark Site Server**. The service starts when the PC turns on, even if nobody logs in, starts after PostgreSQL, and restarts itself 5 seconds after a crash;
+- allows port 5041 on **private** networks only, so the readers can reach it;
+- starts it and checks the status page.
+
+Run the same script again after pulling new code or changing `appsettings.Site.json`; it updates in place. To remove the service, run `site-server\uninstall-service.ps1`.
+
+Open `http://192.168.1.10:5041/api/site/status`. After a few seconds it should show `cloudConnected: true` and a `lastSnapshotAt` time.
+
+**If something is wrong, look here:**
+- the status page above;
+- **services.msc** → *AimPark Site Server* (see if it's running, start or stop it);
+- **Event Viewer** → Windows Logs → Application → source *AimParkSite*.
+
+**To run it by hand instead**, stop the service first, then run this inside `AimPark.API/AimPark.API`:
+
+```
 dotnet run --no-launch-profile --environment Site --urls http://0.0.0.0:5041
 ```
 
 `--no-launch-profile` matters: without it the Development profile loads `appsettings.Development.json`, which points at Supabase, not the local database.
-
-Open `http://192.168.1.10:5041/api/site/status`. After a few seconds it should show `cloudConnected: true` and a `lastSnapshotAt` time.
 
 The guard's admin panel is at `http://192.168.1.10:5041/`.
 

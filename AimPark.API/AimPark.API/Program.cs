@@ -14,11 +14,24 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using System.Text;
 
-var builder = WebApplication.CreateBuilder(args);
+var builder = WebApplication.CreateBuilder(new WebApplicationOptions
+{
+    Args = args,
+    // A Windows service starts in C:\Windows\System32, where it would look for
+    // appsettings files and find none. Everywhere else: unchanged.
+    ContentRootPath = Microsoft.Extensions.Hosting.WindowsServices.WindowsServiceHelpers.IsWindowsService()
+        ? AppContext.BaseDirectory
+        : null
+});
 
 // Cloud (the hosted API) or Site (the server at the guard post). Defaults to
 // Cloud, which behaves exactly as before the site server existed.
 var siteOptions = builder.AddAimParkSync();
+
+// Lets the guard post's server run as a Windows service, so it comes up with
+// the PC and restarts if it falls over (site-server/install-service.ps1).
+// Does nothing when started any other way — Render, `dotnet run`, tests.
+builder.Services.AddWindowsService(o => o.ServiceName = "AimParkSite");
 
 builder.Services.AddDbContext<AppDbContext>((sp, options) => options
     .UseNpgsql(
