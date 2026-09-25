@@ -135,6 +135,17 @@ const navGroups = <NavGroup>[
           'and the keys they use to connect.',
       roles: {StaffRole.admin, StaffRole.security},
     ),
+    NavItem(
+      icon: Icons.usb_outlined,
+      selectedIcon: Icons.usb,
+      label: 'Gate Readers',
+      route: '/gate-readers',
+      description: 'Link the card readers plugged into this PC to their gates, '
+          'watch taps, and open a gate by hand.',
+      // Security only: the readers are cabled to the guard post's PC, and the
+      // screen only works on the panel that PC serves.
+      roles: {StaffRole.security},
+    ),
   ]),
   NavGroup('Operations', [
     NavItem(

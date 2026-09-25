@@ -8,6 +8,7 @@ import 'destinations.dart';
 import '../screens/system_logs_screen.dart';
 import '../screens/backup_screen.dart';
 import '../screens/gate_devices_screen.dart';
+import '../screens/gate_readers_screen.dart';
 import '../screens/incidents_screen.dart';
 import '../screens/login_screen.dart';
 import '../screens/notifications_screen.dart';
@@ -83,6 +84,10 @@ GoRouter appRouter(Ref ref) {
           GoRoute(
             path: '/gate-devices',
             builder: (context, state) => const GateDevicesScreen(),
+          ),
+          GoRoute(
+            path: '/gate-readers',
+            builder: (context, state) => const GateReadersScreen(),
           ),
           GoRoute(
             path: '/pending',

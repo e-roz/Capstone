@@ -6,12 +6,14 @@ The **site server** is the AimPark API running on a PC at the school, in *Site m
 - **The cloud (Render + Supabase) keeps everything else:** registration, user data, the mobile app, the admin panel, payments, email and push notifications.
 
 ```
- SCHOOL (one PC for the Comlab test)             INTERNET
- ESP32 card reader ──┐                          ┌──────────────────────┐
- ALPR camera app ────┼──► SITE SERVER ◄────────►│ CLOUD API (Render)   │
- Guard's browser ────┘    + local Postgres      │ + Supabase           │
-                                                └──────────────────────┘
+ SCHOOL (one PC for the Comlab test)                  INTERNET
+ ESP32 gate reader ─USB─┐                          ┌──────────────────────┐
+ ALPR camera app ───────┼──► SITE SERVER ◄────────►│ CLOUD API (Render)   │
+ Guard's browser ───────┘    + local Postgres      │ + Supabase           │
+                                                   └──────────────────────┘
 ```
+
+The gate reader is plugged into the guard PC by USB, and the site server reads it directly. There is no bridge script and no key to paste for it. Each gate is **both entry and exit**: if the card's car is outside, a tap lets it in; if it's inside, a tap lets it out.
 
 **Contents**
 - [Part 1 — Set up and test at the Comlab](#part-1--set-up-and-test-at-the-comlab) ← start here
@@ -84,19 +86,24 @@ Leave it empty. Step 6 creates the tables.
 
 Sign in to the normal admin panel (Firebase) with an **Admin** account.
 
-### 4a. Create three device keys
+### 4a. Create the Site Server key (Admin)
 
-Go to **Gate Devices → Add device**. Create these three, one at a time:
+Go to **Gate Devices → Register a device**:
 
-| Name | Gate number | Device type | Used by |
-|---|---|---|---|
-| `Comlab Site Server` | `0` | **Site Server** | The site server (Step 5) |
-| `Comlab Gate 1 Reader` | `1` | **RFID Reader** | The ESP32 bridge (Step 10) |
-| `Comlab Gate 1 Camera` | `1` | **ALPR Camera** | The ALPR app (Step 9) |
+| Name | Device type | Used by |
+|---|---|---|
+| `Comlab Site Server` | **Site Server** | The site server (Step 5) |
 
-> ⚠️ **Each key is shown only once.** Copy it into Notepad right away, labelled. If you lose one, revoke it and create a new one.
+> ⚠️ **The key is shown only once.** Copy it into Notepad right away. If you lose it, revoke it and create a new one.
 
-The reader and the camera **must both be gate 1.** At entry, a card is only accepted if the camera at the *same gate* saw a matching plate in the last 8 seconds.
+**Who registers what:**
+
+| Device | Registered by |
+|---|---|
+| Site Server, enrollment desk reader (both gate 0) | **Admin**, in the online panel |
+| Gate readers and ALPR cameras (gate 1 and up) | **Security**, in the guard post's panel (Step 8b) |
+
+Both can **revoke** any device, so the admin can still cut off one a guard shouldn't have made. The gate reader and the camera are created *after* the site server is running, in Step 8b.
 
 ### 4b. Prepare the test accounts
 
@@ -105,7 +112,7 @@ The reader and the camera **must both be gate 1.** At entry, a card is only acce
 | **A Security account** | A normal staff login with an email and password. The guard post signs in with it, and so does the ALPR app. |
 | **A driver (User) account** | Registration approved (*Active*). Has a **vehicle** whose plate matches the photo on your phone, and the **test RFID card** assigned. |
 
-**To get the card's number:** do Step 10 first. It prints `Card: 04A1B2C3` in the window when you tap. Then, in **User Management → the driver → Assign RFID**, **type** that number in and save.
+**To get the card's number:** do Step 10 first, then tap the card. The **Gate Readers** screen's *Recent taps* shows it (e.g. `04A1B2C3`, refused because nobody holds it yet). Then, in the **online** panel, **User Management → the driver → Assign RFID**, **type** that number in and save.
 
 ## Step 5 — Fill in the settings file
 
@@ -199,6 +206,19 @@ If `cloudConnected` stays `false` for over a minute, see [Troubleshooting](#trou
 
 Then open **http://localhost:5041/** and sign in with the **Security** account. This is the guard's admin panel, running from the site server.
 
+## Step 8b — Register the gate's reader and camera (Security, in the guard panel)
+
+Still signed in as **Security** at http://localhost:5041/, go to **Gate Devices → Register a device** and create:
+
+| Name | Gate number | Device type | Used by |
+|---|---|---|---|
+| `Comlab Gate 1 Reader` | `1` | **RFID Reader** | The USB gate reader (Step 10). **Its key isn't needed**: just close the dialog. |
+| `Comlab Gate 1 Camera` | `1` | **ALPR Camera** | The ALPR app (Step 9). **Copy this key.** |
+
+This screen needs the internet (the device is created in the cloud, then copied down to this server within a few seconds).
+
+The reader and the camera **must both be gate 1.** At entry, a card is only accepted if the camera at the *same gate* saw a matching plate in the last 8 seconds.
+
 ## Step 9 — Start the ALPR camera app
 
 1. Copy the `AimParkALPR` folder from your USB drive to `C:\AimParkALPR` and run **`AimParkALPR.exe`**.
@@ -212,49 +232,39 @@ Then open **http://localhost:5041/** and sign in with the **Security** account. 
 - **Run it while online the first time.** It may download its plate-reading model.
 - **If it opens straight to sign-in with the wrong server** (it was set up on this PC before), delete `%LOCALAPPDATA%\AimParkAlpr\config.json` and start it again.
 
-## Step 10 — Start the ESP32 bridge (the card reader)
+## Step 10 — Connect the gate reader (ESP32 + RC522 + servo)
 
-Plug in the ESP32. In a **new** PowerShell window:
+### 10a. Upload the gate program to the ESP32 (once per board)
 
-```bash
-cd C:\AimPark\firmware\host_bridge
-```
+The board runs `firmware/aimpark_gate_reader`. It holds no card list and no settings, so it only needs uploading once. After that, any PC's site server can use it.
 
-```bash
-pip install -r requirements.txt
-```
-
-Copy `config.example.json` to **`config.json`**, open it in Notepad and set:
-
-```json
-{
-  "api_base": "http://localhost:5041",
-  "api_key": "<the Comlab Gate 1 Reader key>",
-  "port": null,
-  "mode": "entry"
-}
-```
-
-Then start it:
+With PlatformIO (VS Code, `firmware/` folder open, or its terminal):
 
 ```bash
-python bridge.py
+pio run -e gate_reader -t upload
 ```
 
-**Check:** it says `Connected in entry mode. Waiting for taps.`
+If the upload hangs at `Connecting....`, hold the board's **BOOT** button until it starts writing.
 
-- If it says **more than one port**, set `"port"` to the right one, e.g. `"COM5"`. Device Manager → *Ports (COM & LPT)* shows which one is the ESP32.
-- Close the Arduino or PlatformIO serial monitor first. Only one program can use the port at a time.
+**Check:** open the serial monitor (`pio device monitor -e gate_reader`). It prints `AimPark barrier reader` … `Ready. Tap a card.` **Close the monitor afterwards**: only one program can use the port at a time, and the site server needs it.
 
-`"mode"` decides what a tap means. The same ESP32 stands in for a barrier reader until the real gate firmware exists:
+Wiring: RC522 as in `firmware/README.md`; servo signal on **GPIO 13** (a second arm on GPIO 12). Put a 470–1000 µF capacitor across the servo's 5V/GND.
 
-| `mode` | A tap means | Needs a key that is |
-|---|---|---|
-| `"entry"` | a car entering | RFID Reader, gate 1 or higher |
-| `"exit"` | a car leaving | RFID Reader, gate 1 or higher |
-| `"enroll"` | the admin's registration desk | RFID Reader, gate 0, with `api_base` set to Render |
+### 10b. Link it to its gate (Security, in the guard panel)
 
-The reader answers with **1 beep/green = barrier opens** and **3 beeps/red = stays shut**. The bridge window prints why.
+1. Plug the ESP32 into the guard PC by USB.
+2. Guard panel → **Gate Readers**. Its port appears, e.g. `COM4 · USB-SERIAL CH340`.
+3. In the **Reader** column, choose **Comlab Gate 1 Reader (Gate 1)**.
+4. **Check:** the status turns **Connected** within a few seconds.
+
+The link is saved on the PC (`C:\ProgramData\AimPark\gate-readers.json`), so it survives restarts. Unplugging and replugging the reader reconnects on its own.
+
+**What the barrier does:**
+- **Opens** for 3 seconds: entry or exit accepted.
+- **Shakes** and stays shut: refused. *Recent taps* on the Gate Readers screen says why.
+- **Open gate** button on that screen: opens it by hand (nothing is logged, so use Gate Check if the car needs a record).
+
+A tap within **20 seconds of entering** is treated as a double tap, not as leaving, and stays shut.
 
 ---
 
@@ -271,21 +281,22 @@ In the guard panel at http://localhost:5041/, signed in as Security:
 - [ ] **Incidents:** report an incident → it appears in the list, and the **Overview** incident count goes up.
 - [ ] Within a few seconds, the entry, exit, visitor pass and incident also appear in the **Firebase** admin panel.
 
-### Test 2 — Camera + card at the "gate"
+### Test 2 — Camera + card at the gate
 
-The bridge is in `"mode": "entry"`.
+Keep the **Gate Readers** screen open: *Recent taps* shows each tap and why it went that way.
 
-- [ ] Show the plate photo to the camera, then **tap the card within 8 seconds** → **1 beep**, and the bridge prints `OPEN: Entry logged. Slot …`.
-- [ ] Tap again without showing the plate → **3 beeps**, `SHUT … already inside` (the car is already in).
-- [ ] Change `"mode"` to `"exit"` in `config.json`, restart `python bridge.py`, and tap → **1 beep**, exit logged. Within a few seconds, the driver's **mobile app → history** shows the session and its fee.
-- [ ] Back in `"entry"` mode, tap **without** showing the plate → **3 beeps**. That's correct: no plate read, no entry. The guard panel's **Gate Check** shows the flagged attempt.
+- [ ] Show the plate photo to the camera, then **tap the card within 8 seconds** → the barrier **opens**. Recent taps: *Entry · Opened · Entry logged. Slot …*
+- [ ] Tap again straight away → it **shakes**: *Just entered. Tap again in …s to leave.*
+- [ ] Wait 20 seconds and tap → it **opens**: *Exit · Opened · Exit logged. ₱… due.* Within a few seconds, the driver's **mobile app → history** shows the session and its fee.
+- [ ] Tap **without** showing the plate → it **shakes**. That's correct: no plate read, no entry. The guard panel's **Gate Check** shows the flagged attempt.
+- [ ] Press **Open gate** on the Gate Readers screen → the barrier opens with no card.
 
 ### Test 3 — A card change in the cloud reaches the gate instantly
 
 - [ ] In the **Firebase** admin panel: **User Management → the test driver → Revoke RFID**, reason **No longer needed**.
   > ⚠️ Don't pick *Lost* or *Stolen*. Those block the card for good, and you couldn't assign it again.
-- [ ] Within about 2 seconds, plate + tap at the "gate" → **3 beeps**, `This card is not registered to an account or a visitor.`
-- [ ] **Assign RFID** the same card number to the driver again → the next plate + tap gives **1 beep**.
+- [ ] Within about 2 seconds, plate + tap at the gate → it **shakes**, `This card is not registered to an account or a visitor.`
+- [ ] **Assign RFID** the same card number to the driver again → the next plate + tap **opens** it.
 
 > The **Suspend** button in User Management blocks the driver's *login*, not their card. The gate only checks the card's own suspension, which comes from violations and starts after the appeal window. So Suspend is not an instant gate test.
 
@@ -295,8 +306,8 @@ The bridge is in `"mode": "entry"`.
 2. [ ] Refresh http://localhost:5041/api/site/status → `cloudConnected` becomes `false`.
 3. [ ] With the internet off, do all of these. **Each one works.** (The test car is still inside from Test 3.)
    - In the guard panel's **Gate Check**, log a manual **exit** for the test driver.
-   - In the bridge's `"entry"` mode, plate + tap → **1 beep** (the car enters again).
-   - Set `"mode": "exit"`, restart the bridge, tap → **1 beep** (the car leaves).
+   - Plate + tap → the barrier **opens** (the car enters again).
+   - Wait 20 seconds, tap → it **opens** (the car leaves).
    - In the guard panel, report an incident.
 4. [ ] The status page's `waitingToSend` goes **up**. In pgAdmin, the `SyncOutbox` table has rows.
 5. [ ] Open **Notifications** in the guard panel → it says it needs the internet. That's expected.
@@ -305,7 +316,7 @@ The bridge is in `"mode": "entry"`.
 
 ## After the test
 
-- **Stop everything:** press `Ctrl+C` in the server window and the bridge window, and close the ALPR app.
+- **Stop everything:** press `Ctrl+C` in the server window, and close the ALPR app.
 - The **test entries, exits and incidents are real records in the cloud** now. Dismiss or clean up the test incident and fee in the Firebase panel if you don't want them in reports.
 - **Optional:** to see it start with Windows, do [Part 2, step 1](#1-make-it-start-with-windows).
 
@@ -321,10 +332,12 @@ The bridge is in `"mode": "entry"`.
 | Notifications / Gate Devices screen fails **while online** | The `Jwt` values in the settings file don't match Render's exactly. |
 | `dotnet ef` says *password authentication failed* | The Postgres password in `appsettings.Site.json` is wrong. |
 | `dotnet ef` says *Site mode needs Site:CloudBaseUrl…* | `appsettings.Site.json` is missing or misnamed. It must be exactly that name, in `AimPark.API\AimPark.API`. |
-| Bridge: *device key rejected* | Wrong key, or the key was made a few seconds ago and hasn't been copied down yet. Wait and tap again. |
-| Bridge: *this key can't be used at a gate* | It's the gate-0 key or the camera key. Use the **Comlab Gate 1 Reader** key. |
-| Entry always gives 3 beeps (*plate* or *ALPR* in the message) | Show the plate first, then tap within 8 seconds. The camera key and the reader key must both be **gate 1**, and the plate must be registered to the driver who holds the card. |
-| Bridge: *No serial ports found* | Install the USB driver (Step 1) and replug. Try another cable, since some are power-only. |
+| Gate Readers: *No serial ports found*, or only `COM1` | Install the USB driver (Step 1) and replug. Try another cable, since some are power-only. |
+| Gate Readers: the reader isn't in the **Reader** list | Register it in Gate Devices first (Step 8b): type **RFID Reader**, gate 1 or higher. It appears a few seconds later. |
+| Gate Readers: stays **Disconnected** | Another program has the port: close the Arduino/PlatformIO serial monitor, and stop `bridge.py`. Hover the status for the exact error. |
+| Taps don't appear at all | The board isn't running the gate program. Upload it (Step 10a); the serial monitor should say `AimPark barrier reader`. |
+| Every entry is refused (*plate* or *ALPR* in the message) | Show the plate first, then tap within 8 seconds. The camera and the reader must both be **gate 1**, and the plate must be registered to the driver who holds the card. |
+| The servo twitches or the board restarts when it moves | Not enough power. Add the capacitor across the servo, or power the servo from its own 5V supply (shared GND). |
 | The guard panel at localhost is blank or 404 | Step 7 wasn't done, or `AdminWebPath` is wrong. Check the folder exists and restart the server. |
 
 ---
@@ -362,9 +375,7 @@ The readers, the camera PC and other browsers reach the guard PC over the school
 
 1. Run `ipconfig` and note the **IPv4 Address**, e.g. `192.168.1.10`. Ask whoever runs the network to **reserve** that address for this PC, so it never changes.
 2. Build the admin web with that address: `flutter build web --dart-define=API_BASE_URL=http://192.168.1.10:5041`
-3. Point each device at `http://192.168.1.10:5041`:
-   - the ALPR app's *Server address*;
-   - the bridge's `api_base`, or the gate readers' URL once their firmware exists.
+3. Point each network device at `http://192.168.1.10:5041`: the ALPR app's *Server address*. USB gate readers plug into the guard PC and need nothing; link them in **Gate Readers** again on the new PC.
 4. The guard panel is at `http://192.168.1.10:5041/`.
 
 The **enrollment desk reader** stays pointed at Render (`"mode": "enroll"`). Enrollment is registration, so it belongs to the cloud.
