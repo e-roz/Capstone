@@ -26,11 +26,13 @@ namespace AimPark.API.Controllers
         /// <summary>
         /// Registers a device and returns its key. The key is shown once and
         /// never stored in clear — copy it straight into the firmware.
+        /// Admin registers the site server and the enrollment desk reader;
+        /// Security registers everything on a gate.
         /// </summary>
         [HttpPost]
         public Task<ActionResult<CreatedGateDeviceResponse>> Create(
             [FromBody] CreateGateDeviceDto dto, CancellationToken ct)
-            => _gateDevices.CreateAsync(dto, ct);
+            => _gateDevices.CreateAsync(dto, User.IsInRole("Admin"), ct);
 
         [HttpGet]
         public Task<ActionResult<List<GateDeviceResponse>>> List(CancellationToken ct)

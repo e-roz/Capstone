@@ -5,7 +5,9 @@ import 'package:intl/intl.dart';
 
 import '../core/utils/responsive.dart';
 import '../models/gate_device.dart';
+import '../providers/auth_provider.dart';
 import '../providers/gate_device_provider.dart';
+import '../router/destinations.dart';
 import '../theme/theme.dart';
 import '../widgets/ui/ui.dart';
 
@@ -148,9 +150,17 @@ class GateDevicesScreen extends ConsumerWidget {
   }
 
   Future<void> _showRegisterDialog(BuildContext context, WidgetRef ref) async {
+    // Admin registers what lives off the gates — the site server and the
+    // enrollment desk reader, both gate 0. Security registers what is on a
+    // gate. The API enforces the same split; this only keeps the form honest.
+    final isAdmin = ref.read(staffRoleProvider) != StaffRole.security;
+    final types = isAdmin
+        ? const [GateDeviceType.siteServer, GateDeviceType.rfidReader]
+        : const [GateDeviceType.rfidReader, GateDeviceType.alprCamera];
+
     final nameCtrl = TextEditingController();
-    final gateCtrl = TextEditingController();
-    var deviceType = GateDeviceType.rfidReader;
+    final gateCtrl = TextEditingController(text: isAdmin ? '0' : '1');
+    var deviceType = types.first;
     final formKey = GlobalKey<FormState>();
 
     final confirmed = await showDialog<bool>(
@@ -179,31 +189,43 @@ class GateDevicesScreen extends ConsumerWidget {
                           ? 'A name is required'
                           : null,
                     ),
-                    const SizedBox(height: AppSpacing.x3),
-                    TextFormField(
-                      controller: gateCtrl,
-                      keyboardType: TextInputType.number,
-                      decoration: const InputDecoration(
-                        label: AppFieldLabel('Gate number', isRequired: true),
-                        helperText:
-                            'Use 0 for the enrollment desk reader or the site server.',
+                    // Everything the admin registers is gate 0, so there is
+                    // nothing to ask.
+                    if (!isAdmin) ...[
+                      const SizedBox(height: AppSpacing.x3),
+                      TextFormField(
+                        controller: gateCtrl,
+                        keyboardType: TextInputType.number,
+                        decoration: const InputDecoration(
+                          label: AppFieldLabel('Gate number', isRequired: true),
+                          helperText: 'The gate it is mounted at: 1, 2, …',
+                        ),
+                        validator: (v) {
+                          final n = int.tryParse(v?.trim() ?? '');
+                          return (n == null || n < 1)
+                              ? 'Enter a gate number of 1 or more'
+                              : null;
+                        },
                       ),
-                      validator: (v) {
-                        final n = int.tryParse(v?.trim() ?? '');
-                        return (n == null || n < 0)
-                            ? 'Enter a gate number of 0 or more'
-                            : null;
-                      },
-                    ),
+                    ],
                     const SizedBox(height: AppSpacing.x3),
                     DropdownButtonFormField<GateDeviceType>(
                       initialValue: deviceType,
-                      decoration: const InputDecoration(
-                        label: AppFieldLabel('Device type', isRequired: true),
+                      decoration: InputDecoration(
+                        label: const AppFieldLabel('Device type', isRequired: true),
+                        helperText: isAdmin
+                            ? 'Gate readers and cameras are registered by Security.'
+                            : 'The site server and the enrollment desk reader '
+                                'are registered by an administrator.',
                       ),
                       items: [
-                        for (final t in GateDeviceType.values)
-                          DropdownMenuItem(value: t, child: Text(t.label)),
+                        for (final t in types)
+                          DropdownMenuItem(
+                            value: t,
+                            child: Text(isAdmin && t == GateDeviceType.rfidReader
+                                ? 'RFID Reader (enrollment desk)'
+                                : t.label),
+                          ),
                       ],
                       onChanged: (v) => setState(() => deviceType = v!),
                     ),
@@ -276,6 +298,14 @@ class GateDevicesScreen extends ConsumerWidget {
                 ),
               ),
               const SizedBox(height: AppSpacing.x4),
+              if (device.deviceType == GateDeviceType.rfidReader &&
+                  device.gate > 0) ...[
+                const Text(
+                  'A reader plugged into this PC by USB doesn\'t need this key. '
+                  'Link it to its port in Gate Readers instead.',
+                ),
+                const SizedBox(height: AppSpacing.x3),
+              ],
               const Text('Paste this into the device\'s config exactly as shown:'),
               const SizedBox(height: AppSpacing.x2),
               SelectableText(

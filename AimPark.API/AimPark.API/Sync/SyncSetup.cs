@@ -2,6 +2,7 @@ using AimPark.API.Auth;
 using AimPark.API.Enums;
 using AimPark.API.Sync.Cloud;
 using AimPark.API.Sync.Site;
+using AimPark.API.Sync.Site.GateReaders;
 using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.Extensions.FileProviders;
 
@@ -72,6 +73,13 @@ namespace AimPark.API.Sync
             services.AddScoped<SnapshotApplier>();
             services.AddHostedService<SiteOutboxPusher>();
             services.AddHostedService<SiteMasterDataSync>();
+
+            // Barrier readers plugged into this PC by USB. One instance, since
+            // the Gate Readers screen reads and changes the same connections
+            // the background loop holds open.
+            services.AddScoped<GateTapHandler>();
+            services.AddSingleton<UsbGateReaders>();
+            services.AddHostedService(sp => sp.GetRequiredService<UsbGateReaders>());
         }
 
         private static void AddCloud(IServiceCollection services)

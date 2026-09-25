@@ -6,7 +6,12 @@ namespace AimPark.API.Interfaces
 {
     public interface IGateDeviceService
     {
-        Task<ActionResult<CreatedGateDeviceResponse>> CreateAsync(CreateGateDeviceDto dto, CancellationToken ct);
+        /// <summary>
+        /// Registers a device. <paramref name="callerIsAdmin"/> decides which
+        /// kinds the caller may register — see GateDeviceService.WhoMayRegister.
+        /// </summary>
+        Task<ActionResult<CreatedGateDeviceResponse>> CreateAsync(
+            CreateGateDeviceDto dto, bool callerIsAdmin, CancellationToken ct);
 
         Task<ActionResult<List<GateDeviceResponse>>> ListAsync(CancellationToken ct);
 

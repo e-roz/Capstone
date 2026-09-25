@@ -6,6 +6,7 @@ in VS Code. One folder per unit, one `[env:...]` in `platformio.ini` per folder.
 | Sketch | PlatformIO env | Job |
 |---|---|---|
 | `aimpark_enroll_reader/` | `enroll_reader` | The reader on the admin's desk. Reads a card during registration so the UID is never typed by hand. |
+| `aimpark_gate_reader/` | `gate_reader` | A barrier: RC522 + SG90 servo, plugged by USB into the site server's PC. The server reads it directly (Gate Readers screen) and answers open or shut. See [`../SITE_SERVER.md`](../SITE_SERVER.md) Step 10. |
 
 The barrier readers are covered separately in
 [`../MD files/ESP32_Gate_Integration.md`](../MD%20files/ESP32_Gate_Integration.md).

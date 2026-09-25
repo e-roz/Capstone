@@ -4,6 +4,7 @@ using AimPark.API.Auth;
 using AimPark.API.Data;
 using AimPark.API.DTOs;
 using AimPark.API.Entities;
+using AimPark.API.Enums;
 using AimPark.API.Interfaces;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -26,7 +27,7 @@ namespace AimPark.API.Services
         }
 
         public async Task<ActionResult<CreatedGateDeviceResponse>> CreateAsync(
-            CreateGateDeviceDto dto, CancellationToken ct)
+            CreateGateDeviceDto dto, bool callerIsAdmin, CancellationToken ct)
         {
             if (string.IsNullOrWhiteSpace(dto.Name))
                 return new BadRequestObjectResult(new { message = "Device name is required." });
@@ -38,6 +39,9 @@ namespace AimPark.API.Services
                 {
                     message = "Gate must be 1 or greater, or 0 for an enrollment desk reader."
                 });
+
+            if (WhoMayRegister(dto, callerIsAdmin) is { } refusal)
+                return new ObjectResult(new { message = refusal }) { StatusCode = StatusCodes.Status403Forbidden };
 
             var apiKey = GenerateKey();
 
@@ -122,6 +126,37 @@ namespace AimPark.API.Services
             }
 
             return device;
+        }
+
+        /// <summary>
+        /// Who registers what. Returns why this caller may not, or null.
+        /// </summary>
+        /// <remarks>
+        /// The admin registers the two devices that live off the gates: the
+        /// site server, whose key has to exist before the guard post can sign
+        /// anyone in at all, and the enrollment desk reader in their own
+        /// office. Everything on a gate is Security's — they install it and
+        /// work next to it. Both may revoke anything, so the admin can still
+        /// cut off a device a guard should not have made.
+        /// </remarks>
+        private static string? WhoMayRegister(CreateGateDeviceDto dto, bool callerIsAdmin)
+        {
+            var offGate = dto.DeviceType == GateDeviceType.SiteServer
+                          || (dto.DeviceType == GateDeviceType.RfidReader && dto.Gate == ApiKeyDefaults.EnrollmentGate);
+
+            if (dto.DeviceType == GateDeviceType.SiteServer && dto.Gate != ApiKeyDefaults.EnrollmentGate)
+                return "The site server is registered with gate 0.";
+
+            if (dto.DeviceType == GateDeviceType.AlprCamera && dto.Gate < 1)
+                return "A camera watches a gate. Use gate 1 or higher.";
+
+            if (callerIsAdmin && !offGate)
+                return "Gate readers and cameras are registered by Security at the guard post.";
+
+            if (!callerIsAdmin && offGate)
+                return "Only an administrator can register the site server or the enrollment desk reader.";
+
+            return null;
         }
 
         private static string GenerateKey()

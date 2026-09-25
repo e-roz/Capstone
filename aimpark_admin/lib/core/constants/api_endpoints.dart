@@ -83,6 +83,13 @@ class ApiEndpoints {
   static String revokeGateDevice(String deviceId) =>
       '/api/admin/gate-devices/$deviceId/revoke';
 
+  // Security – USB gate readers plugged into the guard post's PC. Only the
+  // site server answers these; the cloud says to use the guard post's panel.
+  static const gateReaders = '/api/site/gate-readers';
+  static String gateReader(String port) => '/api/site/gate-readers/$port';
+  static String openGateReader(String port) =>
+      '/api/site/gate-readers/$port/open';
+
   // Admin – Payments
   static const payments = '/api/admin/payments';
   static const paymentsExport = '/api/admin/payments/export';
