@@ -19,14 +19,17 @@ namespace AimPark.API.Services
         private readonly IFileStorageService _fileStorage;
         private readonly INotificationService _notificationService;
         private readonly AppDbContext _db;
+        private readonly ILogger<IncidentService> _logger;
 
         public IncidentService(
             IRepository<Incident> incidents,
             IRepository<IncidentEvidence> evidence,
             IFileStorageService fileStorage,
             INotificationService notificationService,
-            AppDbContext db)
+            AppDbContext db,
+            ILogger<IncidentService> logger)
         {
+            _logger = logger;
             _incidents = incidents;
             _evidence = evidence;
             _fileStorage = fileStorage;
@@ -70,26 +73,45 @@ namespace AimPark.API.Services
                 UpdatedAt = now
             };
 
-            await _incidents.AddAsync(incident, ct);
-            await _incidents.SaveAsync(ct);
-
-            foreach (var file in files)
+            // Files first, report second. The other way round, a failed upload
+            // left a report saved without the photos it was filed with. At the
+            // guard post an upload needs the internet, so this is a real case
+            // there, not a rare one.
+            var stored = new List<IncidentEvidence>();
+            try
             {
-                var ext = Path.GetExtension(file.FileName).ToLowerInvariant();
-                var objectPath = $"incident-evidence/{incident.Id}/{Guid.NewGuid()}{ext}";
-                await _fileStorage.SaveFileAsync(objectPath, file, ct);
-
-                await _evidence.AddAsync(new IncidentEvidence
+                foreach (var file in files)
                 {
-                    Id = Guid.NewGuid(),
-                    IncidentId = incident.Id,
-                    StoragePath = objectPath,
-                    FileName = file.FileName,
-                    UploadedAt = DateTime.UtcNow
-                }, ct);
+                    var ext = Path.GetExtension(file.FileName).ToLowerInvariant();
+                    var objectPath = $"incident-evidence/{incident.Id}/{Guid.NewGuid()}{ext}";
+                    await _fileStorage.SaveFileAsync(objectPath, file, ct);
+
+                    stored.Add(new IncidentEvidence
+                    {
+                        Id = Guid.NewGuid(),
+                        IncidentId = incident.Id,
+                        StoragePath = objectPath,
+                        FileName = file.FileName,
+                        UploadedAt = DateTime.UtcNow
+                    });
+                }
+            }
+            catch (Exception ex) when (!ct.IsCancellationRequested)
+            {
+                _logger.LogWarning(ex, "Incident attachments could not be stored; the report was not saved.");
+                return new ObjectResult(new
+                {
+                    message = "The photos could not be uploaded, so the report was not saved. " +
+                              "Try again, or send the report without photos."
+                })
+                { StatusCode = StatusCodes.Status503ServiceUnavailable };
             }
 
-            await _evidence.SaveAsync(ct);
+            await _incidents.AddAsync(incident, ct);
+            foreach (var evidence in stored)
+                await _evidence.AddAsync(evidence, ct);
+
+            await _incidents.SaveAsync(ct);
 
             return new OkObjectResult(new { message = "Incident reported.", incidentId = incident.Id });
         }
@@ -278,9 +300,22 @@ namespace AimPark.API.Services
                 .Where(e => e.IncidentId == incident.Id)
                 .ToListAsync(ct);
 
+            // One attachment out of reach — the guard post with no internet —
+            // should cost that attachment, not the whole report.
             var evidenceUrls = new List<string>();
+            var unavailable = 0;
             foreach (var e in evidence)
-                evidenceUrls.Add(await _fileStorage.GetFileUrlAsync(e.StoragePath, ct));
+            {
+                try
+                {
+                    evidenceUrls.Add(await _fileStorage.GetFileUrlAsync(e.StoragePath, ct));
+                }
+                catch (Exception ex) when (!ct.IsCancellationRequested)
+                {
+                    unavailable++;
+                    _logger.LogWarning(ex, "Could not open incident attachment {Path}.", e.StoragePath);
+                }
+            }
 
             return new OkObjectResult(new IncidentDetailResponse
             {
@@ -292,7 +327,8 @@ namespace AimPark.API.Services
                 AdminNotes = incident.AdminNotes,
                 CreatedAt = incident.CreatedAt,
                 UpdatedAt = incident.UpdatedAt,
-                EvidenceUrls = evidenceUrls
+                EvidenceUrls = evidenceUrls,
+                EvidenceUnavailable = unavailable
             });
         }
     }

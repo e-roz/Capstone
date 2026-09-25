@@ -87,6 +87,11 @@ namespace AimPark.API.Sync.Cloud
         {
             User or Vehicle or VisitorPass or ParkingSlot or ParkingRate => true,
 
+            // Not read by a gate decision, but Security works the incident
+            // queue at the guard post: a driver's report and an admin's
+            // review both need to show there straight away.
+            Incident or IncidentEvidence => true,
+
             // Every authenticated device request moves LastSeenAt, the site's
             // own included. Counting that would have the site re-download on
             // a loop driven by its own requests.

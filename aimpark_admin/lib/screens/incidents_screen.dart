@@ -448,7 +448,8 @@ class _IncidentsTab extends ConsumerWidget {
                         ],
                       ),
                     ),
-                    if (detail.evidenceUrls.isNotEmpty) ...[
+                    if (detail.evidenceUrls.isNotEmpty ||
+                        detail.evidenceUnavailable > 0) ...[
                       const SizedBox(height: AppSpacing.x4),
                       Text('Evidence', style: text.titleSmall),
                       const SizedBox(height: AppSpacing.x2),
@@ -471,6 +472,17 @@ class _IncidentsTab extends ConsumerWidget {
                               url: url,
                             ),
                           ),
+                        ),
+                      // At the guard post with no internet the files are out
+                      // of reach. Saying so beats listing fewer attachments
+                      // than the reporter sent.
+                      if (detail.evidenceUnavailable > 0)
+                        Text(
+                          detail.evidenceUnavailable == 1
+                              ? '1 attachment can be viewed when the internet is back.'
+                              : '${detail.evidenceUnavailable} attachments can be viewed when the internet is back.',
+                          style: text.bodySmall
+                              ?.copyWith(color: t.text.tertiary),
                         ),
                     ],
                     const SizedBox(height: AppSpacing.x4),

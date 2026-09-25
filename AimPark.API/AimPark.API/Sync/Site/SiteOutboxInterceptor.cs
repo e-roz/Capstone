@@ -110,6 +110,14 @@ namespace AimPark.API.Sync.Site
                         Add(SyncKinds.VisitorPass, v.Id);
                         break;
 
+                    case Incident i:
+                        Add(SyncKinds.Incident, i.Id);
+                        break;
+
+                    case IncidentEvidence e:
+                        Add(SyncKinds.IncidentEvidence, e.Id);
+                        break;
+
                     case GateDevice d when entry.State == EntityState.Modified:
                         Add(SyncKinds.GateDevice, d.Id);
                         break;

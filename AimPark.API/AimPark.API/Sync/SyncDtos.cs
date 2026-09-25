@@ -15,6 +15,8 @@ namespace AimPark.API.Sync
         public const string Notification = nameof(Entities.Notification);
         public const string VisitorPass = nameof(Entities.VisitorPass);
         public const string GateDevice = nameof(Entities.GateDevice);
+        public const string Incident = nameof(Entities.Incident);
+        public const string IncidentEvidence = nameof(Entities.IncidentEvidence);
         public const string Push = "Push";
     }
 
@@ -32,6 +34,16 @@ namespace AimPark.API.Sync
         public List<GateDevice> GateDevices { get; set; } = [];
         public List<ParkingSlot> ParkingSlots { get; set; } = [];
         public List<ParkingRate> ParkingRates { get; set; } = [];
+
+        /// <summary>
+        /// Every incident, so the guard post's queue includes what drivers
+        /// report from their phones and shows the admin's review as soon as it
+        /// is made.
+        /// </summary>
+        public List<Incident> Incidents { get; set; } = [];
+
+        /// <summary>Attachment records only. The files themselves stay in cloud storage.</summary>
+        public List<IncidentEvidence> IncidentEvidence { get; set; } = [];
     }
 
     /// <summary>
@@ -91,6 +103,8 @@ namespace AimPark.API.Sync
     public class SiteEventBatch
     {
         public List<VisitorPass> VisitorPasses { get; set; } = [];
+        public List<Incident> Incidents { get; set; } = [];
+        public List<IncidentEvidence> IncidentEvidence { get; set; } = [];
         public List<AlprReading> AlprReadings { get; set; } = [];
         public List<ParkingLog> ParkingLogs { get; set; } = [];
         public List<SlotStatusUpdate> SlotStatuses { get; set; } = [];
@@ -101,7 +115,8 @@ namespace AimPark.API.Sync
         public List<PushRequest> Pushes { get; set; } = [];
 
         public bool IsEmpty =>
-            VisitorPasses.Count == 0 && AlprReadings.Count == 0 && ParkingLogs.Count == 0 &&
+            VisitorPasses.Count == 0 && Incidents.Count == 0 && IncidentEvidence.Count == 0 &&
+            AlprReadings.Count == 0 && ParkingLogs.Count == 0 &&
             SlotStatuses.Count == 0 && GateAccessAttempts.Count == 0 &&
             PaymentTransactions.Count == 0 && Notifications.Count == 0 &&
             DevicesSeen.Count == 0 && Pushes.Count == 0;

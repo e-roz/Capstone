@@ -70,7 +70,9 @@ namespace AimPark.API.Sync.Cloud
                 VisitorPasses = await _db.Set<VisitorPass>().AsNoTracking().ToListAsync(ct),
                 GateDevices = await _db.Set<GateDevice>().AsNoTracking().ToListAsync(ct),
                 ParkingSlots = await _db.Set<ParkingSlot>().AsNoTracking().ToListAsync(ct),
-                ParkingRates = await _db.Set<ParkingRate>().AsNoTracking().ToListAsync(ct)
+                ParkingRates = await _db.Set<ParkingRate>().AsNoTracking().ToListAsync(ct),
+                Incidents = await _db.Set<Incident>().AsNoTracking().ToListAsync(ct),
+                IncidentEvidence = await _db.Set<IncidentEvidence>().AsNoTracking().ToListAsync(ct)
             };
         }
     }

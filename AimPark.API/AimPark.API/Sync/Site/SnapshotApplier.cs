@@ -37,6 +37,7 @@ namespace AimPark.API.Sync.Site
             await ApplyRatesAsync(snapshot.ParkingRates, ct);
             await ApplySlotsAsync(snapshot.ParkingSlots, ct);
             await ApplyVisitorPassesAsync(snapshot.VisitorPasses, ct);
+            await ApplyIncidentsAsync(snapshot.Incidents, snapshot.IncidentEvidence, ct);
         }
 
         private async Task ApplyUsersAsync(List<SyncUser> users, CancellationToken ct)
@@ -287,6 +288,40 @@ namespace AimPark.API.Sync.Site
             }
 
             await _db.SaveChangesAsync(ct);
+        }
+
+        private async Task ApplyIncidentsAsync(
+            List<Incident> incidents, List<IncidentEvidence> evidence, CancellationToken ct)
+        {
+            var local = await _db.Set<Incident>().ToDictionaryAsync(i => i.Id, ct);
+
+            foreach (var source in incidents)
+            {
+                if (!local.TryGetValue(source.Id, out var incident))
+                    _db.Set<Incident>().Add(source);
+                // A guard edits here, an admin reviews in the cloud. Newer wins.
+                else if (source.UpdatedAt > incident.UpdatedAt)
+                    _db.Entry(incident).CurrentValues.SetValues(source);
+            }
+
+            await _db.SaveChangesAsync(ct);
+
+            // Nothing is deleted: a report made here while offline is not in
+            // the cloud's copy yet, and must survive until it has been sent.
+            var knownEvidence = (await _db.Set<IncidentEvidence>().AsNoTracking()
+                    .Select(e => e.Id)
+                    .ToListAsync(ct))
+                .ToHashSet();
+
+            var added = false;
+            foreach (var source in evidence.Where(e => !knownEvidence.Contains(e.Id)))
+            {
+                _db.Set<IncidentEvidence>().Add(source);
+                added = true;
+            }
+
+            if (added)
+                await _db.SaveChangesAsync(ct);
         }
 
         private async Task ApplyVisitorPassesAsync(List<VisitorPass> passes, CancellationToken ct)

@@ -1,5 +1,6 @@
 {
   "api_base": "https://your-api.onrender.com",
   "api_key": "aimpark_PASTE_YOUR_KEY_HERE",
-  "port": null
+  "port": null,
+  "mode": "enroll"
 }

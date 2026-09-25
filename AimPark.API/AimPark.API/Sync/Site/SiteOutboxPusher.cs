@@ -123,6 +123,8 @@ namespace AimPark.API.Sync.Site
             var slotIds = Ids(SyncKinds.ParkingSlot);
             var deviceIds = Ids(SyncKinds.GateDevice);
             var passIds = Ids(SyncKinds.VisitorPass);
+            var incidentIds = Ids(SyncKinds.Incident);
+            var evidenceIds = Ids(SyncKinds.IncidentEvidence);
             var readingIds = Ids(SyncKinds.AlprReading);
             var logIds = Ids(SyncKinds.ParkingLog);
             var attemptIds = Ids(SyncKinds.GateAccessAttempt);
@@ -135,6 +137,12 @@ namespace AimPark.API.Sync.Site
                 // SyncOutboxEntry. A row deleted since simply isn't found.
                 VisitorPasses = await db.Set<VisitorPass>().AsNoTracking()
                     .Where(p => passIds.Contains(p.Id)).ToListAsync(ct),
+
+                Incidents = await db.Set<Incident>().AsNoTracking()
+                    .Where(i => incidentIds.Contains(i.Id)).ToListAsync(ct),
+
+                IncidentEvidence = await db.Set<IncidentEvidence>().AsNoTracking()
+                    .Where(e => evidenceIds.Contains(e.Id)).ToListAsync(ct),
 
                 AlprReadings = await db.Set<AlprReading>().AsNoTracking()
                     .Where(r => readingIds.Contains(r.Id)).ToListAsync(ct),

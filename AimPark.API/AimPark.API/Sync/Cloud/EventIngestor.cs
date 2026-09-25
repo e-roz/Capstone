@@ -56,6 +56,8 @@ namespace AimPark.API.Sync.Cloud
             // Parents before children, so a foreign key always finds its row.
             var steps = new List<(string What, Func<CancellationToken, Task> Stage)>();
             steps.AddRange(batch.VisitorPasses.Select(p => ($"visitor pass {p.Id}", (Func<CancellationToken, Task>)(c => StageVisitorPassAsync(p, c)))));
+            steps.AddRange(batch.Incidents.Select(i => ($"incident {i.Id}", (Func<CancellationToken, Task>)(c => StageIncidentAsync(i, c)))));
+            steps.AddRange(batch.IncidentEvidence.Select(e => ($"incident attachment {e.Id}", (Func<CancellationToken, Task>)(c => InsertOnceAsync(e, e.Id, c)))));
             steps.AddRange(batch.AlprReadings.Select(r => ($"plate read {r.Id}", (Func<CancellationToken, Task>)(c => UpsertAsync(r, r.Id, c)))));
             steps.AddRange(batch.ParkingLogs.Select(l => ($"parking log {l.Id}", (Func<CancellationToken, Task>)(c => UpsertAsync(l, l.Id, c)))));
             steps.AddRange(batch.SlotStatuses.Select(s => ($"slot {s.Id}", (Func<CancellationToken, Task>)(c => StageSlotStatusAsync(s, c)))));
@@ -130,6 +132,20 @@ namespace AimPark.API.Sync.Cloud
             var existing = await _db.Set<VisitorPass>().FindAsync([incoming.Id], ct);
             if (existing is null)
                 _db.Set<VisitorPass>().Add(incoming);
+            else if (incoming.UpdatedAt >= existing.UpdatedAt)
+                _db.Entry(existing).CurrentValues.SetValues(incoming);
+        }
+
+        /// <summary>
+        /// A guard can edit or withdraw their report at the guard post while an
+        /// admin reviews it here; the two never touch a report at the same
+        /// stage, so the newer edit wins.
+        /// </summary>
+        private async Task StageIncidentAsync(Incident incoming, CancellationToken ct)
+        {
+            var existing = await _db.Set<Incident>().FindAsync([incoming.Id], ct);
+            if (existing is null)
+                _db.Set<Incident>().Add(incoming);
             else if (incoming.UpdatedAt >= existing.UpdatedAt)
                 _db.Entry(existing).CurrentValues.SetValues(incoming);
         }

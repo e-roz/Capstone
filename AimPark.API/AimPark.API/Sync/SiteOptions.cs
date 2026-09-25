@@ -55,6 +55,14 @@ namespace AimPark.API.Sync
         /// </summary>
         public bool CloudGateEndpointsEnabled { get; set; } = true;
 
+        /// <summary>
+        /// Cloud mode: the guard post panel's address, e.g.
+        /// http://192.168.1.10:5041/. Shown to a Security account that tries
+        /// to sign in on the cloud after the switch-over — see
+        /// <see cref="Cloud.GuardPostSignIn"/>.
+        /// </summary>
+        public string GuardPanelUrl { get; set; } = string.Empty;
+
         public bool IsSite => Mode == SiteMode.Site;
 
         public bool IsCloud => Mode == SiteMode.Cloud;

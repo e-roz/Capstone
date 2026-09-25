@@ -1,20 +1,31 @@
-/// Hardware at a gate — an RFID reader or an ALPR camera — identified to the
-/// API by a long-lived key instead of a staff login.
+/// Hardware at a gate — an RFID reader or an ALPR camera — or the guard
+/// post's own server, identified to the API by a long-lived key instead of a
+/// staff login.
 enum GateDeviceType {
   rfidReader,
-  alprCamera;
+  alprCamera,
+
+  /// The guard post's server (SITE_SERVER.md). Its key only reaches the
+  /// sync endpoints, never a barrier. Issue it with gate 0.
+  siteServer;
 
   /// The API has no `JsonStringEnumConverter` registered, so this crosses the
-  /// wire as the enum's raw index (0/1), not its name.
-  static GateDeviceType fromJson(dynamic value) =>
-      (value as num?)?.toInt() == 1
-          ? GateDeviceType.alprCamera
-          : GateDeviceType.rfidReader;
+  /// wire as the enum's raw index (0/1/2), not its name. Declaration order
+  /// matches the API's GateDeviceType, so the index is the wire value.
+  static GateDeviceType fromJson(dynamic value) {
+    final index = (value as num?)?.toInt() ?? 0;
+    return index >= 0 && index < GateDeviceType.values.length
+        ? GateDeviceType.values[index]
+        : GateDeviceType.rfidReader;
+  }
 
-  int toJson() => this == GateDeviceType.alprCamera ? 1 : 0;
+  int toJson() => index;
 
-  String get label =>
-      this == GateDeviceType.alprCamera ? 'ALPR Camera' : 'RFID Reader';
+  String get label => switch (this) {
+        GateDeviceType.rfidReader => 'RFID Reader',
+        GateDeviceType.alprCamera => 'ALPR Camera',
+        GateDeviceType.siteServer => 'Site Server',
+      };
 }
 
 class GateDevice {

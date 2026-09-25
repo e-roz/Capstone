@@ -27,5 +27,12 @@ namespace AimPark.API.DTOs
         public DateTime CreatedAt { get; set; }
         public DateTime UpdatedAt { get; set; }
         public List<string> EvidenceUrls { get; set; } = [];
+
+        /// <summary>
+        /// Attachments that exist but could not be opened just now — at the
+        /// guard post with no internet, the files are out of reach. Zero
+        /// everywhere else.
+        /// </summary>
+        public int EvidenceUnavailable { get; set; }
     }
 }

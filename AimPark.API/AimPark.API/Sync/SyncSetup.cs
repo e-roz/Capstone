@@ -22,6 +22,7 @@ namespace AimPark.API.Sync
 
             services.Configure<SiteOptions>(section);
             services.AddScoped<SyncSuppression>();
+            services.AddSingleton<GuardPostSignIn>();
 
             services.AddAuthorization(o => o.AddPolicy(SitePolicies.SiteServer, p => p
                 .RequireRole(ApiKeyDefaults.DeviceRole)

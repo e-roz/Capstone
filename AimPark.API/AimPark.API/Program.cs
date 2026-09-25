@@ -162,7 +162,11 @@ builder.Services.AddAuthorization();
 builder.Services.AddScoped<ITokenService, TokenService>();
 builder.Services.AddScoped<IOtpService, OtpService>();
 builder.Services.AddHttpClient<IEmailService, EmailService>();
-builder.Services.AddHttpClient<IFileStorageService, FileStorageService>();
+// The site server has no storage credentials; it asks the cloud instead.
+if (siteOptions.IsSite)
+    builder.Services.AddScoped<IFileStorageService, AimPark.API.Sync.Site.CloudFileStorage>();
+else
+    builder.Services.AddHttpClient<IFileStorageService, FileStorageService>();
 builder.Services.AddScoped<IRegistrationService, RegistrationService>();
 builder.Services.AddScoped<IAdminRegistrationService, AdminRegistrationService>();
 builder.Services.AddScoped<IAdminUserService, AdminUserService>();
