@@ -186,10 +186,10 @@ cd C:\AimPark\AimPark.API\AimPark.API
 ```
 
 ```bash
-dotnet run --no-launch-profile --environment Site --urls http://0.0.0.0:5041
+dotnet run --no-launch-profile -- --environment Site --urls http://0.0.0.0:5041
 ```
 
-- Wait for `Now listening on: http://0.0.0.0:5041`.
+- Wait for `Now listening on: http://0.0.0.0:5041`, then check the next lines say `Hosting environment: Site`. If they say `Production`, the `--` before `--environment` is missing: on .NET SDK 9 and newer, `dotnet run --environment` means something else and the server falls back to the cloud settings.
 - Keep `--no-launch-profile`. Without it, the server can load developer settings that point at Supabase.
 - If Windows Firewall asks, click **Allow** for **private networks**.
 
@@ -228,6 +228,9 @@ The reader and the camera **must both be gate 1.** At entry, a card is only acce
    - **Server address:** change it to **`http://localhost:5041`**
 3. Sign in with the **Security** account.
 4. Point the camera at the plate photo on your phone. The app should show the plate, and its status should say readings are reaching the server.
+5. The app also sends its live picture to the site server for the guard's **Overview**. Its window says **Live video: sending to the guard panel**.
+
+- **Rebuild the app after pulling new code.** A copy built before the live video was added never sends a picture, so the Overview camera stays on "Camera offline". In `alpr-service`, with its `venv` active: `pyinstaller app.spec`. The new app is in `dist\AimParkALPR`.
 
 - **Run it while online the first time.** It may download its plate-reading model.
 - **If it opens straight to sign-in with the wrong server** (it was set up on this PC before), delete `%LOCALAPPDATA%\AimParkAlpr\config.json` and start it again.
@@ -283,7 +286,10 @@ In the guard panel at http://localhost:5041/, signed in as Security:
 
 ### Test 2 — Camera + card at the gate
 
-Keep the **Gate Readers** screen open: *Recent taps* shows each tap and why it went that way.
+Keep the guard panel's **Overview** open. The camera box shows the live picture, and the **Live gate log** shows each tap within a second: the person, card UID, camera plate vs registered plate, the reason, and a photo. Click **Turn on alert sound** once, so a refused tap beeps. (The **Gate Readers** screen's *Recent taps* shows the same taps, without the names and photos.)
+
+- [ ] Each tap below appears on the Live gate log: green when the gate opened, red when it stayed shut. Click a row to see its photo large.
+- [ ] Restart the server: today's rows are still there, with their photos.
 
 - [ ] Show the plate photo to the camera, then **tap the card within 8 seconds** → the barrier **opens**. Recent taps: *Entry · Opened · Entry logged. Slot …*
 - [ ] Tap again straight away → it **shakes**: *Just entered. Tap again in …s to leave.*
@@ -404,7 +410,7 @@ From then on, the cloud:
 | Direction | What | When |
 |---|---|---|
 | Cloud → site | Users, cards, suspensions, plates, visitor passes, device keys, slots, rates, incidents | **Instantly.** The site keeps a live connection open to the cloud. When the cloud says "changed", the site downloads a fresh full copy. It also downloads on reconnect and every 5 minutes. |
-| Site → cloud | Entry/exit logs, plate reads, gate attempts, slot occupancy, exit fees, notifications, incidents reported by guards | **Right after each car moves.** They go through an outbox. If the internet is down, they wait and are sent when it's back. |
+| Site → cloud | Entry/exit logs, plate reads, gate attempts, **every gate tap** (including denied ones), slot occupancy, exit fees, notifications, incidents reported by guards | **Right after each car moves.** They go through an outbox. If the internet is down, they wait and are sent when it's back. |
 
 ## When the internet is down
 
@@ -431,7 +437,9 @@ From then on, the cloud:
 | Read by | Mobile app, admin panel, reports | Gate readers, ALPR app, guard screens |
 | If lost | Serious. Restore from backup. | Minor. Reinstall and it downloads everything again. Only records not yet sent are lost, and `/api/site/status` shows how many are waiting. |
 
-Supabase Storage (document and photo files) is unchanged.
+Supabase Storage (document and photo files) is unchanged. Gate tap photos stay on the guard PC (`C:\ProgramData\AimPark\tap-photos`) and are deleted after **30 days**; the tap rows go to the cloud without them.
+
+The live camera picture never leaves the guard PC. The Overview's live log and camera only work in the guard post's panel. The full **Gate taps** list (System Logs) works in both panels, but only the guard post's panel shows the photos.
 
 ## Migration note
 

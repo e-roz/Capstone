@@ -7,6 +7,7 @@ capture.py/detect.py with something a guard can actually read.
 from __future__ import annotations
 
 import sys
+import threading
 import time
 from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
@@ -31,7 +32,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from api_client import ApiClient, SendResult, login
+from api_client import ApiClient, FrameClient, SendResult, login
 from capture import Camera
 from config import Config, DEFAULT_API_BASE, load_config_or_none, save_config
 from plate_reader import CONFIDENCE_THRESHOLD, PlateReader
@@ -52,10 +53,81 @@ CONFIRM_FRAMES = 5
 # same as no plate in frame, so it can't even start a confirm streak.
 MIN_CONFIDENCE_TO_CONSIDER = 0.5
 
+# The live picture for the guard's Overview. Small and a few times a second is
+# enough to see the car; more would only load the guard PC and its network.
+FRAME_SEND_INTERVAL_SECONDS = 0.2
+FRAME_SEND_WIDTH = 640
+FRAME_JPEG_QUALITY = 70
+
 GREEN = QColor("#2e7d32")
 AMBER = QColor("#b26a00")
 RED = QColor("#c62828")
 GRAY = QColor("#666666")
+
+
+class FrameSender(threading.Thread):
+    """Sends the newest camera frame to the site server, at most
+    ``1 / FRAME_SEND_INTERVAL_SECONDS`` times a second.
+
+    Holds one frame only: if the network is slow, older frames are simply
+    replaced and never sent, so the video lags at most one frame and plate
+    reading on the capture thread never waits on it.
+    """
+
+    def __init__(self, config: Config) -> None:
+        super().__init__(daemon=True)
+        self._client = FrameClient(config.api_base, config.api_key)
+        self._lock = threading.Lock()
+        self._frame = None
+        self._has_frame = threading.Event()
+        self._running = True
+
+        # Read by the window's clock tick.
+        self.last_result: SendResult | None = None
+        self.unsupported = False
+
+    def offer(self, frame) -> None:
+        with self._lock:
+            self._frame = frame
+        self._has_frame.set()
+
+    def stop(self) -> None:
+        self._running = False
+        self._has_frame.set()
+
+    def run(self) -> None:
+        while self._running:
+            self._has_frame.wait()
+            self._has_frame.clear()
+            if not self._running:
+                return
+
+            with self._lock:
+                frame, self._frame = self._frame, None
+            if frame is None:
+                continue
+
+            started = time.monotonic()
+            jpeg = self._encode(frame)
+            if jpeg is not None:
+                self.last_result = self._client.post_frame(jpeg)
+                # The cloud doesn't take video. Pointed at it, there is nobody
+                # to send the picture to, so stop rather than fail 5x a second.
+                if self.last_result.error == "HTTP 404":
+                    self.unsupported = True
+                    return
+
+            spare = FRAME_SEND_INTERVAL_SECONDS - (time.monotonic() - started)
+            if spare > 0:
+                time.sleep(spare)
+
+    @staticmethod
+    def _encode(frame) -> bytes | None:
+        h, w = frame.shape[:2]
+        if w > FRAME_SEND_WIDTH:
+            frame = cv2.resize(frame, (FRAME_SEND_WIDTH, int(h * FRAME_SEND_WIDTH / w)))
+        ok, buffer = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, FRAME_JPEG_QUALITY])
+        return buffer.tobytes() if ok else None
 
 
 class CaptureWorker(QThread):
@@ -75,6 +147,7 @@ class CaptureWorker(QThread):
         super().__init__()
         self._config = config
         self._api = ApiClient(config.api_base, config.api_key)
+        self.frames = FrameSender(config)
         self._running = True
 
         self._last_sent_plate: str | None = None
@@ -85,9 +158,11 @@ class CaptureWorker(QThread):
 
     def stop(self) -> None:
         self._running = False
+        self.frames.stop()
 
     def run(self) -> None:
         reader = PlateReader()
+        self.frames.start()
 
         while self._running:
             camera = self._open_camera()
@@ -129,6 +204,7 @@ class CaptureWorker(QThread):
 
             result = reader.read(frame)
             self.frame_ready.emit(self._to_qimage(result.frame))
+            self.frames.offer(result.frame)
 
             plate = result.plate if result.confidence >= MIN_CONFIDENCE_TO_CONSIDER else None
             confirmed_plate = self._confirm(plate)
@@ -239,6 +315,10 @@ class AlprWindow(QMainWindow):
         self._connection_label.setStyleSheet(f"color: {GRAY.name()};")
         sidebar.addWidget(self._connection_label)
 
+        self._video_status_label = QLabel("")
+        self._video_status_label.setStyleSheet(f"color: {GRAY.name()}; font-size: 12px;")
+        sidebar.addWidget(self._video_status_label)
+
         self._reading_label = QLabel("No plate read yet")
         self._reading_label.setStyleSheet("font-size: 28px; font-weight: bold; padding: 8px 0;")
         sidebar.addWidget(self._reading_label)
@@ -306,6 +386,7 @@ class AlprWindow(QMainWindow):
         self._clock_label.setText(now.strftime("%A, %B %d, %Y — %I:%M:%S %p"))
 
         self._render_connection_status()
+        self._render_video_status()
 
         if self._camera_down_since is not None:
             elapsed = int(time.monotonic() - self._camera_down_since)
@@ -326,6 +407,22 @@ class AlprWindow(QMainWindow):
         else:
             self._connection_label.setText(f"● No response {elapsed}s ago — {result.error}")
             self._connection_label.setStyleSheet(f"color: {RED.name()};")
+
+    def _render_video_status(self) -> None:
+        frames = self._worker.frames
+        result = frames.last_result
+
+        if frames.unsupported:
+            text, color = "Live video: only sent to the guard post's server", GRAY
+        elif result is None:
+            text, color = "Live video: starting…", GRAY
+        elif result.ok:
+            text, color = "Live video: sending to the guard panel", GREEN
+        else:
+            text, color = f"Live video: not sending — {result.error}", RED
+
+        self._video_status_label.setText(text)
+        self._video_status_label.setStyleSheet(f"color: {color.name()}; font-size: 12px;")
 
     def closeEvent(self, event) -> None:  # noqa: N802 (Qt override)
         self._worker.stop()

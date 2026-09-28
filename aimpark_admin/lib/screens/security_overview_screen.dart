@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
+import '../models/parking_slot.dart';
 import '../providers/auth_provider.dart';
 import '../providers/incidents_provider.dart';
 import '../providers/parking_provider.dart';
@@ -10,6 +11,9 @@ import '../providers/security_provider.dart';
 import '../router/destinations.dart';
 import '../theme/theme.dart';
 import 'dashboard_screen.dart';
+import '../widgets/live_camera_view.dart';
+import '../widgets/live_gate_log.dart';
+import '../widgets/open_gate_button.dart';
 import '../widgets/ui/ui.dart';
 
 /// What the guard on duty sees when they sign in.
@@ -17,10 +21,17 @@ import '../widgets/ui/ui.dart';
 /// Deliberately not the administrator's dashboard. That one is built on the
 /// Reports endpoints, which the API refuses a Security account — so rendering
 /// it for them would produce a screen of identical permission errors. This asks
-/// the three questions a guard has instead: how full is the lot, who is inside,
-/// and is anything waiting for me.
+/// the questions a guard has instead: who just came through the gate, what does
+/// the camera see, how full is the lot, who is inside, and is anything waiting
+/// for me.
+///
+/// The live log and camera come from the guard post's site server. Opened from
+/// the cloud panel they say so, and the rest of the screen still works.
 class SecurityOverviewScreen extends ConsumerWidget {
   const SecurityOverviewScreen({super.key});
+
+  /// Below this the camera, log and inside list stack in one column.
+  static const double _twoColumnsFrom = 1100;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -33,9 +44,18 @@ class SecurityOverviewScreen extends ConsumerWidget {
     final free = availability.valueOrNull?.availableSlots;
     final inside = sessions.valueOrNull?.length;
 
+    void refreshLot() {
+      ref.invalidate(parkingSlotsProvider);
+      ref.invalidate(activeParkingSessionsProvider);
+      ref.invalidate(visitorsOnSiteCountProvider);
+    }
+
+    final insideNow = _InsideNow(sessions: sessions);
+    final wide = MediaQuery.sizeOf(context).width >= _twoColumnsFrom;
+
     return AppPage(
       title: 'Overview',
-      subtitle: 'The lot as it stands right now.',
+      subtitle: 'The gates and the lot, live.',
       scrollable: true,
       actions: [
         IconButton(
@@ -73,8 +93,9 @@ class SecurityOverviewScreen extends ConsumerWidget {
                 value: visitors == null ? '—' : '$visitors',
                 caption: 'not yet returned',
                 icon: Icons.badge_outlined,
-                intent:
-                    (visitors ?? 0) > 0 ? StatusIntent.info : StatusIntent.neutral,
+                intent: (visitors ?? 0) > 0
+                    ? StatusIntent.info
+                    : StatusIntent.neutral,
               ),
               MetricCard(
                 label: 'Open incidents',
@@ -89,6 +110,10 @@ class SecurityOverviewScreen extends ConsumerWidget {
           const SizedBox(height: AppSpacing.sectionGap),
           Row(
             children: [
+              // First, and the only filled amber button: when the system can't
+              // let a car through, the guard shouldn't have to hunt for this.
+              const Expanded(child: OpenGateButton()),
+              const SizedBox(width: AppSpacing.controlGap),
               Expanded(
                 child: FilledButton.icon(
                   onPressed: () => context.go('/gate'),
@@ -115,64 +140,105 @@ class SecurityOverviewScreen extends ConsumerWidget {
             ],
           ),
           const SizedBox(height: AppSpacing.sectionGap),
-          Text(
-            'Inside right now',
-            style: Theme.of(context).textTheme.titleMedium,
-          ),
-          const SizedBox(height: AppSpacing.x1),
-          Text(
-            'Every vehicle with an entry logged and no exit yet.',
-            style: Theme.of(context)
-                .textTheme
-                .bodySmall
-                ?.copyWith(color: context.tokens.text.secondary),
-          ),
-          const SizedBox(height: AppSpacing.headingGap),
-          AsyncView(
-            value: sessions,
-            onRetry: () => ref.invalidate(activeParkingSessionsProvider),
-            loading: const SkeletonList(count: 4),
-            isEmpty: (list) => list.isEmpty,
-            empty: const AppEmptyState(
-              icon: Icons.local_parking_outlined,
-              title: 'The lot is empty',
-              message: 'Nothing has been logged in yet today.',
-            ),
-            data: (list) => AppCard(
-              padding: EdgeInsets.zero,
-              child: Column(
-                children: [
-                  for (final session in list)
-                    ListTile(
-                      leading: Icon(
-                        session.isVisitor
-                            ? Icons.badge_outlined
-                            : Icons.person_outline,
-                        color: context.tokens.text.secondary,
-                      ),
-                      title: Text(session.userName),
-                      subtitle: Text(
-                        [
-                          ?session.plateNumber,
-                          ?session.slotCode,
-                          'in at ${DateFormat('HH:mm').format(session.entryTime.toLocal())}',
-                        ].join(' · '),
-                      ),
-                      trailing: session.isVisitor
-                          ? StatusPill.of(
-                              'Visitor',
-                              intent: StatusIntent.info,
-                              dense: true,
-                              showDot: false,
-                            )
-                          : null,
-                    ),
-                ],
-              ),
-            ),
-          ),
+          if (wide)
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  flex: 2,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      const LiveCameraView(),
+                      const SizedBox(height: AppSpacing.sectionGap),
+                      insideNow,
+                    ],
+                  ),
+                ),
+                const SizedBox(width: AppSpacing.sectionGap),
+                Expanded(flex: 3, child: LiveGateLog(onNewTaps: refreshLot)),
+              ],
+            )
+          else ...[
+            const LiveCameraView(),
+            const SizedBox(height: AppSpacing.sectionGap),
+            LiveGateLog(onNewTaps: refreshLot),
+            const SizedBox(height: AppSpacing.sectionGap),
+            insideNow,
+          ],
         ],
       ),
+    );
+  }
+}
+
+/// Every vehicle with an entry logged and no exit yet.
+class _InsideNow extends ConsumerWidget {
+  const _InsideNow({required this.sessions});
+
+  final AsyncValue<List<ActiveParkingSession>> sessions;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text(
+          'Inside right now',
+          style: Theme.of(context).textTheme.titleMedium,
+        ),
+        const SizedBox(height: AppSpacing.x1),
+        Text(
+          'Every vehicle with an entry logged and no exit yet.',
+          style: Theme.of(
+            context,
+          ).textTheme.bodySmall?.copyWith(color: context.tokens.text.secondary),
+        ),
+        const SizedBox(height: AppSpacing.headingGap),
+        AsyncView(
+          value: sessions,
+          onRetry: () => ref.invalidate(activeParkingSessionsProvider),
+          loading: const SkeletonList(count: 4),
+          isEmpty: (list) => list.isEmpty,
+          empty: const AppEmptyState(
+            icon: Icons.local_parking_outlined,
+            title: 'The lot is empty',
+            message: 'Nothing has been logged in yet today.',
+          ),
+          data: (list) => AppCard(
+            padding: EdgeInsets.zero,
+            child: Column(
+              children: [
+                for (final session in list)
+                  ListTile(
+                    leading: Icon(
+                      session.isVisitor
+                          ? Icons.badge_outlined
+                          : Icons.person_outline,
+                      color: context.tokens.text.secondary,
+                    ),
+                    title: Text(session.userName),
+                    subtitle: Text(
+                      [
+                        ?session.plateNumber,
+                        ?session.slotCode,
+                        'in at ${DateFormat('HH:mm').format(session.entryTime.toLocal())}',
+                      ].join(' · '),
+                    ),
+                    trailing: session.isVisitor
+                        ? StatusPill.of(
+                            'Visitor',
+                            intent: StatusIntent.info,
+                            dense: true,
+                            showDot: false,
+                          )
+                        : null,
+                  ),
+              ],
+            ),
+          ),
+        ),
+      ],
     );
   }
 }

@@ -90,6 +90,14 @@ class ApiEndpoints {
   static String openGateReader(String port) =>
       '/api/site/gate-readers/$port/open';
 
+  // Security – the Overview's live gate log and camera. Site server only.
+  static const liveGateTaps = '/api/site/live-gate/taps';
+  static String liveGateTapPhoto(String tapId) =>
+      '/api/site/live-gate/taps/$tapId/photo';
+  static const liveGateHistory = '/api/site/live-gate/history';
+  static const liveGateCameras = '/api/site/live-gate/cameras';
+  static String liveGateCamera(int gate) => '/api/site/live-gate/camera/$gate';
+
   // Admin – Payments
   static const payments = '/api/admin/payments';
   static const paymentsExport = '/api/admin/payments/export';
@@ -142,6 +150,7 @@ class ApiEndpoints {
   static const reportsOccupancyTrend = '/api/admin/reports/occupancy-trend';
   static const reportsPeakHours = '/api/admin/reports/peak-hours';
   static const reportsEntryExit = '/api/admin/reports/entry-exit';
-  static const reportsViolationsBreakdown = '/api/admin/reports/violations-breakdown';
+  static const reportsViolationsBreakdown =
+      '/api/admin/reports/violations-breakdown';
   static const reportsRevenueTrend = '/api/admin/reports/revenue-trend';
 }

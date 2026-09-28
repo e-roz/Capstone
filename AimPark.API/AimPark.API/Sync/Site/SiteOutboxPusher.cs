@@ -130,6 +130,7 @@ namespace AimPark.API.Sync.Site
             var attemptIds = Ids(SyncKinds.GateAccessAttempt);
             var paymentIds = Ids(SyncKinds.PaymentTransaction);
             var notificationIds = Ids(SyncKinds.Notification);
+            var tapIds = Ids(SyncKinds.GateTapEvent);
 
             return new SiteEventBatch
             {
@@ -168,6 +169,9 @@ namespace AimPark.API.Sync.Site
                     .Where(d => deviceIds.Contains(d.Id) && d.LastSeenAt != null)
                     .Select(d => new DeviceSeenUpdate { Id = d.Id, LastSeenAt = d.LastSeenAt!.Value })
                     .ToListAsync(ct),
+
+                GateTapEvents = await db.Set<GateTapEvent>().AsNoTracking()
+                    .Where(t => tapIds.Contains(t.Id)).ToListAsync(ct),
 
                 Pushes = rows
                     .Where(r => r.Kind == SyncKinds.Push && r.Payload is not null)

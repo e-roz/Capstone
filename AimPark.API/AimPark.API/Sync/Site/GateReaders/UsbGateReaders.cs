@@ -145,6 +145,10 @@ namespace AimPark.API.Sync.Site.GateReaders
 
             _logger.LogInformation("Gate on {Port} opened by hand by {User}", port, openedBy);
             Record(new GateReaderTap(DateTime.UtcNow, port, null, null, "-", true, $"Opened by hand by {openedBy}."));
+
+            var deviceId = session.Binding.DeviceId;
+            _ = RecordForLiveLogAsync(
+                (recorder, token) => recorder.RecordManualOpenAsync(deviceId, openedBy, token), _stopping);
             return true;
         }
 
@@ -267,6 +271,7 @@ namespace AimPark.API.Sync.Site.GateReaders
         {
             GateTapOutcome outcome;
             string? readerName = null;
+            var tappedAt = DateTime.UtcNow;
 
             try
             {
@@ -291,7 +296,29 @@ namespace AimPark.API.Sync.Site.GateReaders
             session.LastTapAt = DateTime.UtcNow;
             Record(new GateReaderTap(DateTime.UtcNow, session.Binding.Port, readerName, tag,
                 outcome.Direction, outcome.Opened, outcome.Message));
+
+            // Not awaited: the barrier shouldn't wait on the log.
+            _ = RecordForLiveLogAsync(
+                (recorder, token) => recorder.RecordTapAsync(session.Binding.DeviceId, tag, tappedAt, outcome, token), ct);
             return outcome;
+        }
+
+        /// <summary>
+        /// Writes the guard's live log. Never allowed to fail the tap: the
+        /// barrier's answer matters more than the log line about it.
+        /// </summary>
+        private async Task RecordForLiveLogAsync(
+            Func<GateTapRecorder, CancellationToken, Task> write, CancellationToken ct)
+        {
+            try
+            {
+                using var scope = _scopes.CreateScope();
+                await write(scope.ServiceProvider.GetRequiredService<GateTapRecorder>(), ct);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                _logger.LogError(ex, "Could not write the live gate log");
+            }
         }
 
         private void Record(GateReaderTap tap)

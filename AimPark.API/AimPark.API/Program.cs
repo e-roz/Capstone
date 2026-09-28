@@ -111,7 +111,7 @@ builder.Services.AddCors(options =>
     });
 });
 
-builder.Services.AddAuthentication(options =>
+var authBuilder = builder.Services.AddAuthentication(options =>
     {
         options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
         options.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme;
@@ -136,24 +136,38 @@ builder.Services.AddAuthentication(options =>
         // was issued.
         options.EventsType = typeof(AccountStateJwtEvents);
     })
-    .AddGoogle(options =>
-    {
-        options.ClientId = builder.Configuration["Authentication:Google:ClientId"] ?? string.Empty;
-        options.ClientSecret = builder.Configuration["Authentication:Google:ClientSecret"] ?? string.Empty;
-        options.SignInScheme = CookieAuthenticationDefaults.AuthenticationScheme;
-    })
-    .AddMicrosoftAccount(options =>
-    {
-        options.ClientId = builder.Configuration["Authentication:Microsoft:ClientId"] ?? string.Empty;
-        options.ClientSecret = builder.Configuration["Authentication:Microsoft:ClientSecret"] ?? string.Empty;
-        options.SignInScheme = CookieAuthenticationDefaults.AuthenticationScheme;
-    })
     .AddCookie(CookieAuthenticationDefaults.AuthenticationScheme)
     // Gate hardware authenticates with a long-lived key instead of a JWT —
     // there is no operator to sign a reader in, and a 60-minute token would
     // strand the barrier mid-shift with no way to recover.
     .AddScheme<AuthenticationSchemeOptions, ApiKeyAuthenticationHandler>(
         ApiKeyDefaults.AuthenticationScheme, _ => { });
+
+// Google and Microsoft sign-in are registered only when their client ids are
+// configured. The authentication middleware validates every remote scheme on
+// every request, so an empty ClientId turns each request into a 500 — which is
+// exactly the site server's state, since it has no OAuth app of its own.
+var googleClientId = builder.Configuration["Authentication:Google:ClientId"];
+if (!string.IsNullOrWhiteSpace(googleClientId))
+{
+    authBuilder.AddGoogle(options =>
+    {
+        options.ClientId = googleClientId;
+        options.ClientSecret = builder.Configuration["Authentication:Google:ClientSecret"] ?? string.Empty;
+        options.SignInScheme = CookieAuthenticationDefaults.AuthenticationScheme;
+    });
+}
+
+var microsoftClientId = builder.Configuration["Authentication:Microsoft:ClientId"];
+if (!string.IsNullOrWhiteSpace(microsoftClientId))
+{
+    authBuilder.AddMicrosoftAccount(options =>
+    {
+        options.ClientId = microsoftClientId;
+        options.ClientSecret = builder.Configuration["Authentication:Microsoft:ClientSecret"] ?? string.Empty;
+        options.SignInScheme = CookieAuthenticationDefaults.AuthenticationScheme;
+    });
+}
 
 builder.Services.AddScoped<AccountStateJwtEvents>();
 
