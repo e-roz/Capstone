@@ -7,6 +7,9 @@ in VS Code. One folder per unit, one `[env:...]` in `platformio.ini` per folder.
 |---|---|---|
 | `aimpark_enroll_reader/` | `enroll_reader` | The reader on the admin's desk. Reads a card during registration so the UID is never typed by hand. |
 | `aimpark_gate_reader/` | `gate_reader` | A barrier: RC522 + SG90 servo, plugged by USB into the site server's PC. The server reads it directly (Gate Readers screen) and answers open or shut. See [`../SITE_SERVER.md`](../SITE_SERVER.md) Step 10. |
+| `aimpark_espnow_hub/` | `espnow_hub` | The ESP-NOW hub. Plugged by USB into the site server's PC and relays to the wireless nodes. See section 4. |
+| `aimpark_espnow_gate/` | `espnow_gate` | A wireless barrier (G1, G2): the same RC522 + servo, talking to the hub over ESP-NOW. |
+| `aimpark_espnow_sensor/` | `espnow_sensor` | A wireless slot sensor (S1, S2): HC-SR04 over one slot. |
 
 The barrier readers are covered separately in
 [`../MD files/ESP32_Gate_Integration.md`](../MD%20files/ESP32_Gate_Integration.md).
@@ -203,7 +206,66 @@ Double-click the `.exe` (or run it from a terminal) instead of `python
 bridge.py`; everything else about it is identical. It isn't committed to the
 repo — rebuild it with the command above whenever `bridge.py` changes.
 
-## 4. When it does not work
+## 4. ESP-NOW hub and wireless nodes
+
+Five boards in a star. Only the hub has a cable to the server; the gates and
+slot sensors reach it by ESP-NOW, encrypted, on WiFi channel 1 (no router
+involved).
+
+| Board | MAC | Sketch |
+|---|---|---|
+| HUB | `20:50:0d:cf:87:18` | `aimpark_espnow_hub` |
+| G1 | `58:2a:bd:d0:a3:6c` | `aimpark_espnow_gate` |
+| G2 | `20:50:0d:cf:cd:00` | `aimpark_espnow_gate` |
+| S1 | `58:2a:bd:d7:5c:fc` | `aimpark_espnow_sensor` |
+| S2 | `4c:c3:82:ed:1d:a4` | `aimpark_espnow_sensor` |
+
+The table lives in `lib/AimParkEspNow/src/AimParkEspNow.h`. Each board finds
+itself in it by its own MAC, so G1 and G2 get the identical sketch, and a
+board flashed with the wrong one says so on the Serial Monitor instead of
+joining. Replacing a board means reading its MAC
+(`py -m esptool --port COMx read-mac`), editing the table, and reflashing all
+five.
+
+**Keys.** The defaults are in the header. For your own, create
+`lib/AimParkEspNow/src/AimParkEspNowKeys.h` (git-ignored) defining
+`AIMPARK_PMK` and `AIMPARK_LMK`, 16 characters each, then reflash all five.
+
+**Arduino IDE.** The IDE only finds the shared header as a library. Link it in
+once, from `firmware/`:
+
+```bash
+cmd //c mklink /J "%USERPROFILE%\Documents\Arduino\libraries\AimParkEspNow" "lib\AimParkEspNow"
+```
+
+Then open the sketch's `.ino`, board **ESP32 Dev Module**, and upload.
+
+**Slot sensor wiring.** HC-SR04 `VCC` to `5V`, `GND` to `GND`, `TRIG` to
+`GPIO 5`, and `ECHO` to `GPIO 18` **through a divider** (ECHO — 1 kΩ — GPIO 18
+— 2 kΩ — GND): ECHO swings to 5 V. The on-board LED lights while the slot is
+occupied. Set `OCCUPIED_BELOW_CM` / `FREE_ABOVE_CM` in the sketch from what the
+Serial Monitor prints over an empty and a filled slot. The gate nodes are wired
+exactly like `aimpark_gate_reader`.
+
+**Hub protocol** (USB serial, 115200). Every line names the board it is about:
+
+| Direction | Line | Meaning |
+|---|---|---|
+| hub → server | `G1 UID:04A1B2C3` | Card tapped at gate 1 |
+| server → hub | `G1 RESULT:OPEN` / `G1 RESULT:SHUT` | The answer to that tap |
+| server → hub | `G2 CMD:OPEN` | Guard's "Open gate" |
+| hub → server | `S1 SLOT:OCCUPIED 7` / `S1 SLOT:FREE 0` | Slot changed; distance in cm, 0 = nothing in range |
+| hub → server | `G1 ONLINE` / `G1 OFFLINE` | Node came up, or missed three heartbeats (≈16 s) |
+| hub → server | `G1 ERR:NOT_DELIVERED` | A RESULT or CMD didn't reach the node |
+| server → hub | `STATUS` | Hub prints every node's state |
+| hub → server | `# ...` | Comments for a person reading the monitor |
+
+A gate node shakes its arm if the hub doesn't acknowledge the tap, or if no
+answer comes back within 15 s. You can drive the whole thing by hand from the
+hub's Serial Monitor (Newline line ending) before the server speaks this
+protocol.
+
+## 5. When it does not work
 
 | What you see | Cause | Fix |
 |---|---|---|
