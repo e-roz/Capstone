@@ -170,7 +170,9 @@ class _LiveGateLogState extends ConsumerState<LiveGateLog> {
           else
             for (var i = 0; i < taps.length; i++) ...[
               if (i > 0) const SizedBox(height: AppSpacing.x2),
-              _TapRow(tap: taps[i]),
+              // Keyed so a row keeps its own tap (and photo) when a new tap
+              // is inserted above it, instead of inheriting the one before.
+              _TapRow(key: ValueKey(taps[i].id), tap: taps[i]),
             ],
         ],
       ),
@@ -179,7 +181,7 @@ class _LiveGateLogState extends ConsumerState<LiveGateLog> {
 }
 
 class _TapRow extends StatelessWidget {
-  const _TapRow({required this.tap});
+  const _TapRow({super.key, required this.tap});
 
   final GateTapEvent tap;
 
@@ -411,10 +413,22 @@ class TapPhotoState extends ConsumerState<TapPhoto> {
   @override
   void initState() {
     super.initState();
-    _photo = widget.tap.hasPhoto
-        ? _cache.putIfAbsent(widget.tap.id, _fetch)
-        : Future.value(null);
+    _photo = _photoFor(widget.tap);
   }
+
+  @override
+  void didUpdateWidget(TapPhoto oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // The same box can be handed a different tap; show that tap's photo.
+    if (oldWidget.tap.id != widget.tap.id ||
+        oldWidget.tap.hasPhoto != widget.tap.hasPhoto) {
+      _photo = _photoFor(widget.tap);
+    }
+  }
+
+  Future<Uint8List?> _photoFor(GateTapEvent tap) => tap.hasPhoto
+      ? _cache.putIfAbsent(tap.id, _fetch)
+      : Future.value(null);
 
   Future<Uint8List?> _fetch() async {
     try {

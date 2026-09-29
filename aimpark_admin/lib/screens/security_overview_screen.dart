@@ -53,7 +53,7 @@ class SecurityOverviewScreen extends ConsumerWidget {
 
     final log = LiveGateLog(onNewTaps: refreshLot);
     final side = [
-      const LiveCameraView(),
+      const LiveCameras(),
       const SizedBox(height: AppSpacing.gutter),
       _InsideNow(sessions: sessions),
     ];

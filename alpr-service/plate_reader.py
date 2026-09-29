@@ -10,12 +10,19 @@ from dataclasses import dataclass, replace
 from pathlib import Path
 
 import cv2
+import onnxruntime as ort
 from fast_alpr import ALPR
 
 # Below this, a read is shown as a low-confidence (amber) result in the UI
 # rather than a trusted (green) one. Purely a display cue — the API compares
 # plate text, not confidence, so this has no effect on what gets sent.
 CONFIDENCE_THRESHOLD = 0.85
+
+# ONNX Runtime defaults to every core, busy-spinning between frames. One camera
+# app per gate runs on the same guard PC, so left at that, two cameras starve
+# each other (and the site server) and a feed freezes. Two threads each is
+# still well above the camera's frame rate for these small models.
+_INFERENCE_THREADS = 2
 
 # Where open_image_models/fast_plate_ocr each cache their downloaded .onnx
 # file — hardcoded on their end as `Path.home() / ".cache" / <name>`, so
@@ -44,6 +51,14 @@ def _seed_bundled_models() -> None:
         source = bundled_models / name
         if source.is_dir() and not target.exists():
             shutil.copytree(source, target)
+
+
+def _session_options() -> ort.SessionOptions:
+    options = ort.SessionOptions()
+    options.intra_op_num_threads = _INFERENCE_THREADS
+    options.inter_op_num_threads = 1
+    options.add_session_config_entry("session.intra_op.allow_spinning", "0")
+    return options
 
 
 def confidence_of(ocr) -> float:
@@ -76,6 +91,8 @@ class PlateReader:
         self._alpr = ALPR(
             detector_model="yolo-v9-t-384-license-plate-end2end",
             ocr_model="cct-xs-v2-global-model",
+            detector_sess_options=_session_options(),
+            ocr_sess_options=_session_options(),
         )
 
         # The global OCR model also guesses the plate's country, and
