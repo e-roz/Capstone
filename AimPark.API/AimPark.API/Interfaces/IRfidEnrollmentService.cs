@@ -18,5 +18,11 @@ namespace AimPark.API.Interfaces
         /// window. Polled by the panel while its Assign dialog is open.
         /// </summary>
         Task<ActionResult<RfidLastScanResponse?>> GetLastScanAsync(CancellationToken ct);
+
+        /// <summary>
+        /// Who holds a card the panel read itself, off a reader plugged into
+        /// the admin's own computer. Nothing is buffered.
+        /// </summary>
+        Task<ActionResult<RfidLastScanResponse>> LookupAsync(string? rfidTagId, CancellationToken ct);
     }
 }

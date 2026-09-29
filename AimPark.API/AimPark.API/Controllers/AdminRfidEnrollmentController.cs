@@ -59,6 +59,18 @@ namespace AimPark.API.Controllers
         public Task<ActionResult<RfidLastScanResponse?>> LastScan(CancellationToken ct)
             => _enrollment.GetLastScanAsync(ct);
 
+        /// <summary>
+        /// Used when the panel reads the reader itself over Web Serial: the UID
+        /// never passes through the cloud, only this "who holds it" question.
+        /// </summary>
+        [Authorize(
+            AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme,
+            Roles = "Admin")]
+        [HttpGet("lookup")]
+        public Task<ActionResult<RfidLastScanResponse>> Lookup(
+            [FromQuery] string? tag, CancellationToken ct)
+            => _enrollment.LookupAsync(tag, ct);
+
         private Guid DeviceId => Guid.Parse(User.FindFirst(ClaimTypes.NameIdentifier)!.Value);
 
         private string DeviceName => User.FindFirst(ClaimTypes.Name)?.Value ?? "Reader";
