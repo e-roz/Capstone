@@ -10,41 +10,27 @@ import '../core/network/dio_client.dart';
 import '../theme/theme.dart';
 import 'ui/ui.dart';
 
-/// The live picture from a gate's ALPR camera, for the guard's Overview.
+/// Every gate's live camera at once, side by side, for the guard's Overview.
 ///
-/// The camera app sends a frame to the site server a few times a second; this
-/// fetches the newest one on a timer and swaps it in without a flash. Fetched
-/// through Dio rather than an `<img>` so the sign-in token goes with it.
-class LiveCameraView extends ConsumerStatefulWidget {
-  const LiveCameraView({super.key});
+/// One [LiveCameraView] per gate that has a camera registered. Until the list
+/// loads (or if it can't), gate 1 still shows.
+class LiveCameras extends ConsumerStatefulWidget {
+  const LiveCameras({super.key});
+
+  /// Below this each camera takes the full width, one under the other.
+  static const double _sideBySideFrom = 520;
 
   @override
-  ConsumerState<LiveCameraView> createState() => _LiveCameraViewState();
+  ConsumerState<LiveCameras> createState() => _LiveCamerasState();
 }
 
-class _LiveCameraViewState extends ConsumerState<LiveCameraView> {
-  static const _refreshEvery = Duration(milliseconds: 250);
-
-  Timer? _timer;
-  bool _inFlight = false;
-
-  List<int> _gates = const [];
-  int _gate = 1;
-  Uint8List? _frame;
-  bool _offline = false;
-  String? _error;
+class _LiveCamerasState extends ConsumerState<LiveCameras> {
+  List<int> _gates = const [1];
 
   @override
   void initState() {
     super.initState();
     _loadGates();
-    _timer = Timer.periodic(_refreshEvery, (_) => _fetch());
-  }
-
-  @override
-  void dispose() {
-    _timer?.cancel();
-    super.dispose();
   }
 
   Future<void> _loadGates() async {
@@ -55,13 +41,83 @@ class _LiveCameraViewState extends ConsumerState<LiveCameraView> {
           ((g as Map)['gate'] as num).toInt(),
       ];
       if (!mounted || gates.isEmpty) return;
-      setState(() {
-        _gates = gates;
-        if (!gates.contains(_gate)) _gate = gates.first;
-      });
+      setState(() => _gates = gates);
     } on DioException {
-      // The picker is a nicety; gate 1 still shows.
+      // Gate 1 still shows; its own fetch reports what's wrong.
     }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final views = [
+          for (final g in _gates) LiveCameraView(key: ValueKey(g), gate: g),
+        ];
+        if (views.length == 1) return views.single;
+
+        if (constraints.maxWidth < LiveCameras._sideBySideFrom) {
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              for (var i = 0; i < views.length; i++) ...[
+                if (i > 0) const SizedBox(height: AppSpacing.gutter),
+                views[i],
+              ],
+            ],
+          );
+        }
+
+        return Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            for (var i = 0; i < views.length; i++) ...[
+              if (i > 0) const SizedBox(width: AppSpacing.gutter),
+              Expanded(child: views[i]),
+            ],
+          ],
+        );
+      },
+    );
+  }
+}
+
+/// The live picture from one gate's ALPR camera.
+///
+/// The camera app sends a frame to the site server about 15 times a second; this
+/// fetches the newest one on a timer and swaps it in without a flash. Fetched
+/// through Dio rather than an `<img>` so the sign-in token goes with it.
+class LiveCameraView extends ConsumerStatefulWidget {
+  const LiveCameraView({super.key, required this.gate});
+
+  final int gate;
+
+  @override
+  ConsumerState<LiveCameraView> createState() => _LiveCameraViewState();
+}
+
+class _LiveCameraViewState extends ConsumerState<LiveCameraView> {
+  // A little faster than the camera app sends (~15 fps), so a new frame is
+  // picked up soon after it lands; _inFlight stops requests piling up.
+  static const _refreshEvery = Duration(milliseconds: 50);
+
+  Timer? _timer;
+  bool _inFlight = false;
+
+  Uint8List? _frame;
+  bool _offline = false;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _timer = Timer.periodic(_refreshEvery, (_) => _fetch());
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
   }
 
   Future<void> _fetch() async {
@@ -72,7 +128,7 @@ class _LiveCameraViewState extends ConsumerState<LiveCameraView> {
       final res = await ref
           .read(dioProvider)
           .get<List<int>>(
-            ApiEndpoints.liveGateCamera(_gate),
+            ApiEndpoints.liveGateCamera(widget.gate),
             options: Options(responseType: ResponseType.bytes),
           );
       if (!mounted) return;
@@ -128,27 +184,10 @@ class _LiveCameraViewState extends ConsumerState<LiveCameraView> {
                 ),
                 const SizedBox(width: AppSpacing.x2),
                 Expanded(
-                  child: _gates.length > 1
-                      ? DropdownButton<int>(
-                          value: _gate,
-                          isDense: true,
-                          underline: const SizedBox.shrink(),
-                          items: [
-                            for (final g in _gates)
-                              DropdownMenuItem(
-                                value: g,
-                                child: Text('Gate $g camera'),
-                              ),
-                          ],
-                          onChanged: (g) => setState(() {
-                            _gate = g ?? _gate;
-                            _frame = null;
-                          }),
-                        )
-                      : Text(
-                          'Gate $_gate camera',
-                          style: Theme.of(context).textTheme.titleSmall,
-                        ),
+                  child: Text(
+                    'Gate ${widget.gate} camera',
+                    style: Theme.of(context).textTheme.titleSmall,
+                  ),
                 ),
                 StatusPill(
                   label: live ? 'Live' : 'Camera offline',

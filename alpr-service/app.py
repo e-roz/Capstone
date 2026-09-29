@@ -57,9 +57,9 @@ CONFIRM_FRAMES = 5
 # same as no plate in frame, so it can't even start a confirm streak.
 MIN_CONFIDENCE_TO_CONSIDER = 0.5
 
-# The live picture for the guard's Overview. Small and a few times a second is
-# enough to see the car; more would only load the guard PC and its network.
-FRAME_SEND_INTERVAL_SECONDS = 0.2
+# The live picture for the guard's Overview. Small and ~15 fps is smooth enough
+# to follow a car; more would only load the guard PC and its network.
+FRAME_SEND_INTERVAL_SECONDS = 1 / 15
 FRAME_SEND_WIDTH = 640
 FRAME_JPEG_QUALITY = 70
 
