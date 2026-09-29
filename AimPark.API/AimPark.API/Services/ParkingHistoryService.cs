@@ -139,6 +139,21 @@ namespace AimPark.API.Services
             // window the tag still opens the barrier. See RfidAccess.
             if (RfidAccess.IsSuspendedNow(user, nowUtc))
             {
+                // Only from the reader. An admin trying it by hand already knows.
+                if (loggedByDeviceId is not null)
+                {
+                    var until = user.RfidSuspendedUntil is DateTime end
+                        ? $" until {end:MMM d}"
+                        : "";
+                    await _notificationService.NotifyUserAsync(
+                        user.Id,
+                        NotificationType.Parking,
+                        "Your card was refused",
+                        $"{(dto.Gate is int g ? $"Gate {g}: y" : "Y")}our RFID access is suspended{until}. Open the app to see why.",
+                        new Dictionary<string, string> { ["screen"] = "violations" },
+                        ct);
+                }
+
                 return new BadRequestObjectResult(new
                 {
                     result = AllocationResult.RfidSuspended,
@@ -245,7 +260,19 @@ namespace AimPark.API.Services
 
             await _logs.SaveAsync(ct);
 
-            await AnnounceAvailabilityAsync(afterEntry: true, ct);
+            // A receipt, and the only way someone learns their card was used
+            // by somebody else. No clock time in the text: the server runs on
+            // UTC and the phone already stamps the notification itself.
+            var where = slot is not null
+                ? $"Gate {slot.Gate}, slot {slot.SlotCode}"
+                : dto.Gate is int entryGate ? $"Gate {entryGate}" : "Entry logged";
+            await _notificationService.NotifyUserAsync(
+                user.Id,
+                NotificationType.Parking,
+                "You're in",
+                $"{where}. Not you? Report it in the app right away.",
+                new Dictionary<string, string> { ["screen"] = "parking-history" },
+                ct);
 
             return new OkObjectResult(new
             {
@@ -258,21 +285,6 @@ namespace AimPark.API.Services
             });
         }
 
-        /// <summary>
-        /// Tells drivers when the lot fills up, and when it opens again.
-        /// </summary>
-        /// <remarks>
-        /// Fired on the transition only, never on the state. Announcing "the lot
-        /// is full" on every arrival while it stays full would be a notification
-        /// per car, which is how people learn to swipe the app's notifications
-        /// away without reading them.
-        ///
-        /// The transition is read off the count itself rather than from stored
-        /// state: the bay was taken a moment ago, so zero free means *this*
-        /// vehicle took the last one, and one free after an exit means *this*
-        /// vehicle freed the only one. No extra column, and nothing to get out
-        /// of step with the slots table.
-        /// </remarks>
         /// <summary>
         /// Refuses a hand-picked slot the vehicle has no business in, or null
         /// when the placement is fine.
@@ -406,6 +418,20 @@ namespace AimPark.API.Services
                 await RecordAttemptAsync(gateNumber, rfidTagId, userId, visitorPassId,
                     reading.PlateNumber, reading.Confidence, GateAccessOutcome.PlateMismatch, nowUtc, ct);
 
+                // The one refusal the card holder needs to hear about even when
+                // they are not the one at the gate: their card, somebody else's
+                // car. A camera being down is a guard's problem, not theirs.
+                if (userId is Guid owner)
+                {
+                    await _notificationService.NotifyUserAsync(
+                        owner,
+                        NotificationType.Parking,
+                        "Your card was refused",
+                        $"Gate {gateNumber}: the car at the camera ({reading.PlateNumber}) is not one of your registered vehicles. If that was not you, report your card right away.",
+                        new Dictionary<string, string> { ["screen"] = "parking-history" },
+                        ct);
+                }
+
                 return new AlprCheckResult(new BadRequestObjectResult(new
                 {
                     result = AllocationResult.PlateMismatch,
@@ -484,29 +510,30 @@ namespace AimPark.API.Services
             attempt.ResultingLogId = resultingLogId;
         }
 
-        private async Task AnnounceAvailabilityAsync(bool afterEntry, CancellationToken ct)
+        /// <summary>
+        /// Tells whoever pressed "Notify me" that the full lot has a bay again.
+        /// </summary>
+        /// <remarks>
+        /// Only the watchers. This used to push "The lot is full" and "A slot
+        /// just opened" to every user, including everyone already parked and
+        /// everyone not coming in today. The full-lot state is shown in the app
+        /// where the Notify-me button lives, so it no longer needs a push.
+        ///
+        /// Fired on the transition only: one free bay right after an exit means
+        /// *this* vehicle freed the only one. Read off the count, so there is no
+        /// extra column to get out of step with the slots table.
+        /// </remarks>
+        private async Task AnnounceSlotOpenedAsync(CancellationToken ct)
         {
             var free = await _db.Set<ParkingSlot>().AsNoTracking()
                 .CountAsync(sl => sl.Status == ParkingSlotStatus.Available, ct);
 
-            if (afterEntry && free == 0)
-            {
-                await _notificationService.NotifyRoleAsync(
-                    UserRole.User,
-                    NotificationType.ParkingAvailability,
-                    "The lot is full",
-                    "Every bay is taken right now. The app will let you know when one frees up.",
-                    ct);
-            }
-            else if (!afterEntry && free == 1)
-            {
-                await _notificationService.NotifyRoleAsync(
-                    UserRole.User,
-                    NotificationType.ParkingAvailability,
-                    "A slot just opened",
-                    "The lot was full and a bay has come free. Open the app to see where.",
-                    ct);
-            }
+            if (free != 1) return;
+
+            await _notificationService.NotifySlotWatchersAsync(
+                "A slot just opened",
+                "The lot was full and a bay has come free. Open the app to see where.",
+                ct);
         }
 
         /// <summary>
@@ -647,8 +674,6 @@ namespace AimPark.API.Services
 
             await _logs.SaveAsync(ct);
 
-            await AnnounceAvailabilityAsync(afterEntry: true, ct);
-
             return new OkObjectResult(new
             {
                 result = AllocationResult.Assigned,
@@ -739,7 +764,7 @@ namespace AimPark.API.Services
 
             await _logs.SaveAsync(ct);
 
-            await AnnounceAvailabilityAsync(afterEntry: false, ct);
+            await AnnounceSlotOpenedAsync(ct);
 
             // Visitor parking is free by design — a guest being escorted in for
             // a specific purpose, not a campus regular. No quote, no charge.

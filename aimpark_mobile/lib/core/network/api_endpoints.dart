@@ -27,6 +27,7 @@ class ApiEndpoints {
   static String notificationRead(String notificationId) =>
       '/api/notifications/$notificationId/read';
   static const deviceToken = '/api/notifications/device-token';
+  static const slotWatch = '/api/notifications/slot-watch';
 
   static const parkingHistory = '/api/parking/history';
   static const parkingSlots = '/api/parking/slots';

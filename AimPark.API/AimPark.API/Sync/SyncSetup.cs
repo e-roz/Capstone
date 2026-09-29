@@ -91,6 +91,8 @@ namespace AimPark.API.Sync
             services.AddSignalR();
             services.AddSingleton<MasterDataChangeNotifier>();
             services.AddSingleton<SentPushLedger>();
+            // Clock-driven pushes: due tomorrow, overdue, suspension start/end.
+            services.AddHostedService<AimPark.API.Services.NotificationReminderService>();
             services.AddScoped<ISaveChangesInterceptor, MasterDataChangeInterceptor>();
             services.AddScoped<SnapshotBuilder>();
             services.AddScoped<EventIngestor>();

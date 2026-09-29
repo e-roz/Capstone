@@ -117,6 +117,51 @@ namespace AimPark.API.Services
             }
         }
 
+        public Task NotifySlotWatchersAsync(string title, string message, CancellationToken ct)
+            => _pushSender.SendToSlotWatchersAsync(
+                title,
+                message,
+                new Dictionary<string, string>
+                {
+                    ["type"] = "notification",
+                    ["screen"] = "parking-slots"
+                },
+                ct);
+
+        // GET /api/notifications/slot-watch
+        public async Task<ActionResult<object>> GetSlotWatchAsync(Guid userId, CancellationToken ct)
+        {
+            var watching = await _db.Set<SlotWatch>().AnyAsync(w => w.UserId == userId, ct);
+            return new OkObjectResult(new { watching });
+        }
+
+        // POST /api/notifications/slot-watch
+        public async Task<ActionResult<object>> WatchSlotsAsync(Guid userId, CancellationToken ct)
+        {
+            var existing = await _db.Set<SlotWatch>().FirstOrDefaultAsync(w => w.UserId == userId, ct);
+
+            if (existing is null)
+            {
+                _db.Set<SlotWatch>().Add(new SlotWatch { UserId = userId });
+            }
+            else
+            {
+                // Pressed again later in the day: the clock restarts, since the
+                // wish to be told is as fresh as the last press.
+                existing.CreatedAt = DateTime.UtcNow;
+            }
+
+            await _db.SaveChangesAsync(ct);
+            return new OkObjectResult(new { watching = true, message = "We'll let you know when a slot opens." });
+        }
+
+        // DELETE /api/notifications/slot-watch
+        public async Task<ActionResult<object>> UnwatchSlotsAsync(Guid userId, CancellationToken ct)
+        {
+            await _db.Set<SlotWatch>().Where(w => w.UserId == userId).ExecuteDeleteAsync(ct);
+            return new OkObjectResult(new { watching = false });
+        }
+
         // POST /api/admin/notifications
         public async Task<ActionResult<object>> BroadcastAsync(BroadcastNotificationDto dto, Guid adminUserId, CancellationToken ct)
         {

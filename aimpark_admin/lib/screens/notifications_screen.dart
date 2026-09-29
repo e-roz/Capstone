@@ -16,7 +16,7 @@ const _types = ['Announcement', 'PolicyUpdate', 'ParkingAvailability', 'System']
 const _roles = ['Admin', 'Security', 'User'];
 
 /// Every type that can land in an inbox, in the order the filter offers them:
-/// the four an admin can send, then the four the system raises on its own.
+/// the four an admin can send, then the six the system raises on its own.
 const _inboxTypes = [
   'Announcement',
   'PolicyUpdate',
@@ -26,6 +26,8 @@ const _inboxTypes = [
   'Payment',
   'Incident',
   'Account',
+  'Parking',
+  'Reminder',
 ];
 
 /// Human wording for the API's enum names — `ParkingAvailability` is a value,
@@ -39,6 +41,8 @@ const _typeLabels = <String, String>{
   'Payment': 'Payment',
   'Incident': 'Incident',
   'Account': 'Account',
+  'Parking': 'Parking',
+  'Reminder': 'Reminder',
 };
 
 /// Two directions, two tabs.

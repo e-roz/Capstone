@@ -185,7 +185,9 @@ namespace AimPark.API.Sync.Cloud
             if (!_sentPushes.TryClaim(push.Id))
                 return;
 
-            if (push.TargetUserId is Guid userId)
+            if (push.ToSlotWatchers)
+                await _push.SendToSlotWatchersAsync(push.Title, push.Body, push.Data, ct);
+            else if (push.TargetUserId is Guid userId)
                 await _push.SendToUserAsync(userId, push.Title, push.Body, push.Data, ct);
             else
                 await _push.SendToRoleAsync(push.TargetRole, push.Title, push.Body, push.Data, ct);

@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../../../../core/theme/theme.dart';
 import '../../../../core/utils/app_flushbar.dart';
 import '../../../../core/widgets/widgets.dart';
+import '../../../notifications/presentation/providers/push_registration_provider.dart';
 import '../../data/models/scan_result.dart';
 import '../../data/registration_preflight.dart';
 import '../providers/auth_provider.dart';
@@ -192,6 +193,12 @@ class _RegisterConfirmScreenState extends ConsumerState<RegisterConfirmScreen> {
         'vehicleType': _vehicleType,
         'color': _color.text.trim(),
       });
+
+      // Last use of the registration token: point this phone at the new
+      // account so the review decision can reach it as a push.
+      await ref
+          .read(pushRegistrationProvider.notifier)
+          .registerForPendingAccount();
 
       // The registration token is spent. It was only ever a pass through the
       // remaining steps, and holding it would leave the app in the state the

@@ -123,13 +123,28 @@ namespace AimPark.API.Services
             var minutes = durationMinutes % 60;
             var duration = hours > 0 ? $"{hours}h {minutes}m" : $"{minutes}m";
 
-            await _notificationService.NotifyUserAsync(
-                log.UserId.Value,
-                NotificationType.Payment,
-                "Parking fee",
-                $"You parked for {duration}. Amount due: ₱{amountDue:0.00}.",
-                new Dictionary<string, string> { ["paymentId"] = transaction.Id.ToString() },
-                ct);
+            // A free session is still worth a receipt, but "Amount due: ₱0.00"
+            // under a "Parking fee" title reads like a bill.
+            if (amountDue > 0m)
+            {
+                await _notificationService.NotifyUserAsync(
+                    log.UserId.Value,
+                    NotificationType.Payment,
+                    "Parking fee",
+                    $"You parked for {duration}. Amount due: ₱{amountDue:0.00}.",
+                    new Dictionary<string, string> { ["paymentId"] = transaction.Id.ToString() },
+                    ct);
+            }
+            else
+            {
+                await _notificationService.NotifyUserAsync(
+                    log.UserId.Value,
+                    NotificationType.Parking,
+                    "You've left",
+                    $"You parked for {duration}. Nothing to pay.",
+                    new Dictionary<string, string> { ["screen"] = "parking-history" },
+                    ct);
+            }
 
             return transaction;
         }

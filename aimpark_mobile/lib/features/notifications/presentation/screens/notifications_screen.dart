@@ -83,6 +83,8 @@ class _NotificationTile extends StatelessWidget {
         'payment' => Icons.payments_rounded,
         'account' => Icons.verified_user_rounded,
         'incident' => Icons.report_rounded,
+        'parking' => Icons.directions_car_rounded,
+        'reminder' => Icons.schedule_rounded,
         'system' => Icons.info_rounded,
         _ => Icons.campaign_rounded,
       };

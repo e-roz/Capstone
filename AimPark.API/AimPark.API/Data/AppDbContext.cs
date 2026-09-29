@@ -36,6 +36,7 @@ namespace AimPark.API.Data
         public DbSet<GateAccessAttempt> GateAccessAttempts { get; set; }
         public DbSet<SyncOutboxEntry> SyncOutbox { get; set; }
         public DbSet<GateTapEvent> GateTapEvents { get; set; }
+        public DbSet<SlotWatch> SlotWatches { get; set; }
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -620,6 +621,24 @@ namespace AimPark.API.Data
                 entity.HasOne(t => t.User)
                       .WithMany()
                       .HasForeignKey(t => t.UserId)
+                      .OnDelete(DeleteBehavior.Cascade);
+            });
+
+            modelBuilder.Entity<SlotWatch>(entity =>
+            {
+                entity.HasKey(w => w.Id);
+
+                // One watch per person: pressing "Notify me" twice is still
+                // one wish to be told once.
+                entity.HasIndex(w => w.UserId)
+                      .IsUnique();
+
+                entity.Property(w => w.CreatedAt)
+                      .HasDefaultValueSql("NOW()");
+
+                entity.HasOne(w => w.User)
+                      .WithMany()
+                      .HasForeignKey(w => w.UserId)
                       .OnDelete(DeleteBehavior.Cascade);
             });
 

@@ -152,6 +152,13 @@ namespace AimPark.API.Sync
         /// <summary>Null together with a null <see cref="TargetUserId"/> means everyone.</summary>
         public UserRole? TargetRole { get; set; }
 
+        /// <summary>
+        /// For whoever pressed "Notify me" in a full lot. Overrides both targets
+        /// above. Older cloud builds ignore the field and would read the push as
+        /// a broadcast — deploy the cloud first.
+        /// </summary>
+        public bool ToSlotWatchers { get; set; }
+
         public string Title { get; set; } = string.Empty;
         public string Body { get; set; } = string.Empty;
         public Dictionary<string, string>? Data { get; set; }

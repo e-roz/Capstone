@@ -51,6 +51,30 @@ class PushRegistration extends _$PushRegistration {
     }
   }
 
+  /// Call when a registration is submitted, while the registration token is
+  /// still stored.
+  ///
+  /// A pending account cannot sign in, so without this the phone is never
+  /// registered and "Account approved", "Registration not approved" and
+  /// "retake documents" have nowhere to go — the three pushes that person is
+  /// actually waiting for. One registration and no listeners: the token is
+  /// cleared right after, and a refresh would have nothing to authenticate
+  /// with. Signing in after approval runs [registerAfterLogin] as usual.
+  Future<void> registerForPendingAccount() async {
+    try {
+      await PushService.instance.init();
+
+      final token = await PushService.instance.requestPermissionAndGetToken();
+      if (token == null) return;
+
+      await ref
+          .read(notificationsRepositoryProvider)
+          .registerDeviceToken(token, PushService.instance.platform);
+    } catch (e) {
+      debugPrint('Push registration for a pending account failed: $e');
+    }
+  }
+
   /// Call during logout, before the auth token is cleared — the unregister
   /// endpoint is authenticated, so ordering matters here.
   Future<void> unregisterOnLogout() async {

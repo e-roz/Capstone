@@ -84,5 +84,11 @@ namespace AimPark.API.Entities
         /// has to stay readable after the account it names is archived.
         /// </remarks>
         public Guid? ConfirmedByUserId { get; set; }
+
+        /// <summary>When the "due tomorrow" push went out, so it goes out once.</summary>
+        public DateTime? DueReminderSentAt { get; set; }
+
+        /// <summary>When the "overdue" push went out, so it goes out once.</summary>
+        public DateTime? OverdueNoticeSentAt { get; set; }
     }
 }

@@ -52,6 +52,20 @@ namespace AimPark.API.Controllers
             [FromBody] RegisterDeviceTokenDto dto, CancellationToken ct)
             => _deviceTokenService.UnregisterAsync(GetUserId(), dto, ct);
 
+        /// <summary>Whether this user is waiting to hear about a free bay.</summary>
+        [HttpGet("slot-watch")]
+        public Task<ActionResult<object>> GetSlotWatch(CancellationToken ct)
+            => _notificationService.GetSlotWatchAsync(GetUserId(), ct);
+
+        /// <summary>"Notify me when a slot opens" — pressed while the lot is full.</summary>
+        [HttpPost("slot-watch")]
+        public Task<ActionResult<object>> WatchSlots(CancellationToken ct)
+            => _notificationService.WatchSlotsAsync(GetUserId(), ct);
+
+        [HttpDelete("slot-watch")]
+        public Task<ActionResult<object>> UnwatchSlots(CancellationToken ct)
+            => _notificationService.UnwatchSlotsAsync(GetUserId(), ct);
+
         private Guid GetUserId()
             => Guid.Parse(User.FindFirst(ClaimTypes.NameIdentifier)!.Value);
 

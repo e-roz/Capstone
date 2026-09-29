@@ -3,8 +3,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../../core/theme/theme.dart';
+import '../../../../core/utils/app_flushbar.dart';
 import '../../../../core/utils/formatters.dart';
 import '../../../../core/widgets/widgets.dart';
+import '../../../notifications/presentation/providers/notifications_provider.dart';
 import '../../data/models/parking_history_entry.dart';
 import '../../data/models/parking_slot.dart';
 import '../providers/parking_history_provider.dart';
@@ -49,7 +51,8 @@ class ParkingScreen extends ConsumerWidget {
             _AvailabilityCard(availability: availability, onRefresh: refresh),
             if (availability.isLotFull) ...[
               const SizedBox(height: AppSpacing.gutter),
-              const _LotFullCard(),
+              // Someone already parked has no use for a free bay.
+              _LotFullCard(canWatch: current == null),
             ],
             if (current != null) ...[
               const SizedBox(height: AppSpacing.gutter),
@@ -235,12 +238,76 @@ class _RefreshButtonState extends State<_RefreshButton>
   }
 }
 
-class _LotFullCard extends StatelessWidget {
-  const _LotFullCard();
+class _LotFullCard extends ConsumerStatefulWidget {
+  const _LotFullCard({required this.canWatch});
+
+  /// False while this user is parked inside, where "tell me when a slot
+  /// opens" would only buzz them about a bay they do not need.
+  final bool canWatch;
+
+  @override
+  ConsumerState<_LotFullCard> createState() => _LotFullCardState();
+}
+
+/// "Notify me when a slot opens" lives here, on the one screen that shows the
+/// lot is full.
+///
+/// It replaced a push that told every user the lot had filled and every user
+/// again when a bay came free — including everyone already parked and everyone
+/// not coming in. Now only the people who asked hear about it, once.
+class _LotFullCardState extends ConsumerState<_LotFullCard> {
+  /// Null until the server has said; the button waits for it rather than
+  /// guessing and flipping a moment later.
+  bool? _watching;
+  bool _busy = false;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.canWatch) _load();
+  }
+
+  Future<void> _load() async {
+    try {
+      final watching =
+          await ref.read(notificationsRepositoryProvider).isWatchingSlots();
+      if (mounted) setState(() => _watching = watching);
+    } catch (_) {
+      // Not worth an error bar: the card still says the lot is full, and the
+      // button offers to watch, which is the safe default.
+      if (mounted) setState(() => _watching = false);
+    }
+  }
+
+  Future<void> _toggle() async {
+    final watching = _watching ?? false;
+    setState(() => _busy = true);
+    try {
+      final repo = ref.read(notificationsRepositoryProvider);
+      if (watching) {
+        await repo.unwatchSlots();
+      } else {
+        await repo.watchSlots();
+      }
+      if (!mounted) return;
+      setState(() => _watching = !watching);
+      showAppMessage(
+        context,
+        watching
+            ? "Okay, we won't notify you."
+            : "We'll notify you when a slot opens.",
+      );
+    } catch (e) {
+      if (mounted) showApiError(context, e);
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     final c = context.tokens.status.warning;
+    final watching = _watching ?? false;
 
     return AppCard(
       color: c.bg,
@@ -254,11 +321,24 @@ class _LotFullCard extends StatelessWidget {
           ),
           const SizedBox(height: 6),
           Text(
-            'No slots are free right now. Pull down to check again.',
+            watching
+                ? "You'll get a notification when a slot opens."
+                : 'No slots are free right now. Pull down to check again.',
             textAlign: TextAlign.center,
             style: context.text.bodyMedium
                 ?.copyWith(color: context.tokens.text.secondary),
           ),
+          if (widget.canWatch) ...[
+            const SizedBox(height: AppSpacing.md),
+            AppButton(
+              label: watching
+                  ? 'Stop notifying me'
+                  : 'Notify me when a slot opens',
+              style: watching ? AppButtonStyle.ghost : AppButtonStyle.primary,
+              isLoading: _busy,
+              onPressed: _busy || _watching == null ? null : _toggle,
+            ),
+          ],
         ],
       ),
     );

@@ -45,6 +45,20 @@ namespace AimPark.API.Interfaces
             string message,
             CancellationToken ct);
 
+        /// <summary>
+        /// Tells the people waiting on a full lot that a bay has come free.
+        /// </summary>
+        /// <remarks>
+        /// Push only, with no row in anyone's alerts list: "a slot just opened"
+        /// is stale within minutes, and the list is for things worth reading
+        /// later. Best-effort and never throws.
+        /// </remarks>
+        Task NotifySlotWatchersAsync(string title, string message, CancellationToken ct);
+
+        Task<ActionResult<object>> GetSlotWatchAsync(Guid userId, CancellationToken ct);
+        Task<ActionResult<object>> WatchSlotsAsync(Guid userId, CancellationToken ct);
+        Task<ActionResult<object>> UnwatchSlotsAsync(Guid userId, CancellationToken ct);
+
         Task<ActionResult<NotificationListResponse>> ListAllAsync(int page, int pageSize, CancellationToken ct);
         Task<ActionResult<NotificationListResponse>> ListForUserAsync(Guid userId, UserRole role, int page, int pageSize, CancellationToken ct);
         Task<ActionResult<object>> MarkReadAsync(Guid userId, Guid notificationId, CancellationToken ct);

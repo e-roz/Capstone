@@ -30,4 +30,14 @@ class NotificationsRepository {
   Future<void> unregisterDeviceToken(String token) {
     return _dio.delete(ApiEndpoints.deviceToken, data: {'token': token});
   }
+
+  /// Whether this user asked to hear when a bay frees up in a full lot.
+  Future<bool> isWatchingSlots() async {
+    final response = await _dio.get(ApiEndpoints.slotWatch);
+    return (response.data as Map<String, dynamic>)['watching'] as bool? ?? false;
+  }
+
+  Future<void> watchSlots() => _dio.post(ApiEndpoints.slotWatch);
+
+  Future<void> unwatchSlots() => _dio.delete(ApiEndpoints.slotWatch);
 }

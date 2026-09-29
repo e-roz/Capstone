@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:firebase_core/firebase_core.dart';
@@ -39,12 +40,24 @@ class PushService {
   final _onMessage = StreamController<RemoteMessage>.broadcast();
   Stream<RemoteMessage> get onMessage => _onMessage.stream;
 
+  /// Fires with a push's data when the user taps it, from the tray or from the
+  /// heads-up drawn while the app was open. The data says where to go.
+  final _onTap = StreamController<Map<String, String>>.broadcast();
+  Stream<Map<String, String>> get onTap => _onTap.stream;
+
+  /// A tap that launched the app from closed, kept until the home screen is
+  /// ready to act on it. Taken once — see [takeLaunchTap].
+  Map<String, String>? _launchTap;
+
   bool _initialized = false;
+  Future<void>? _initializing;
 
   /// Sets up Firebase, the local-notification channel, and message listeners.
   /// Safe to call more than once. Never throws — a device without Google Play
   /// Services (or a missing google-services.json) must not crash the app.
-  Future<void> init() async {
+  Future<void> init() => _initializing ??= _init();
+
+  Future<void> _init() async {
     if (_initialized) return;
 
     try {
@@ -57,6 +70,13 @@ class PushService {
           android: AndroidInitializationSettings('@mipmap/ic_launcher'),
           iOS: DarwinInitializationSettings(),
         ),
+        // The heads-up drawn below for a foreground push carries the push's
+        // data as its payload, so tapping it goes to the same place a tray tap
+        // would.
+        onDidReceiveNotificationResponse: (response) {
+          final data = _decode(response.payload);
+          if (data != null) _onTap.add(data);
+        },
       );
 
       await _localNotifications
@@ -71,13 +91,44 @@ class PushService {
         _onMessage.add(message);
       });
 
-      // Tapping a tray notification that opened the app.
-      FirebaseMessaging.onMessageOpenedApp.listen(_onMessage.add);
+      // Tapping a tray notification while the app was in the background.
+      // Still counts as a message too: something changed server-side.
+      FirebaseMessaging.onMessageOpenedApp.listen((message) {
+        _onMessage.add(message);
+        _onTap.add(_strings(message.data));
+      });
+
+      // Tapping a notification while the app was closed. Nothing is listening
+      // yet at this point, so it is held for the home screen to collect.
+      final initial = await FirebaseMessaging.instance.getInitialMessage();
+      if (initial != null) {
+        _launchTap = _strings(initial.data);
+      } else {
+        // Or a heads-up we drew ourselves, tapped after the app was closed.
+        final launch =
+            await _localNotifications.getNotificationAppLaunchDetails();
+        if (launch?.didNotificationLaunchApp ?? false) {
+          _launchTap = _decode(launch!.notificationResponse?.payload);
+        }
+      }
 
       _initialized = true;
     } catch (e, st) {
       debugPrint('Push init failed (continuing without push): $e\n$st');
+      // Let a later call try again rather than replaying this failure.
+      _initializing = null;
     }
+  }
+
+  /// The tap that launched the app, if any, handed over once.
+  ///
+  /// Waits for [init], which runs in the background after login, so a home
+  /// screen that builds first still gets the tap rather than missing it.
+  Future<Map<String, String>?> takeLaunchTap() async {
+    await init();
+    final tap = _launchTap;
+    _launchTap = null;
+    return tap;
   }
 
   /// Asks the user for notification permission and returns the FCM token,
@@ -118,6 +169,7 @@ class PushService {
       id: notification.hashCode,
       title: notification.title,
       body: notification.body,
+      payload: jsonEncode(message.data),
       notificationDetails: NotificationDetails(
         android: AndroidNotificationDetails(
           _channel.id,
@@ -130,6 +182,20 @@ class PushService {
         iOS: const DarwinNotificationDetails(),
       ),
     );
+  }
+
+  static Map<String, String> _strings(Map<String, dynamic> data) =>
+      data.map((k, v) => MapEntry(k, v.toString()));
+
+  static Map<String, String>? _decode(String? payload) {
+    if (payload == null || payload.isEmpty) return null;
+    try {
+      final decoded = jsonDecode(payload);
+      if (decoded is! Map) return null;
+      return decoded.map((k, v) => MapEntry(k.toString(), v.toString()));
+    } catch (_) {
+      return null;
+    }
   }
 
   String get platform => Platform.isIOS ? 'ios' : 'android';

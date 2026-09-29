@@ -58,6 +58,9 @@ Read this first. These are already known and deliberately not in v1.
 - **First action after idle takes ~50 seconds.** The free server sleeps and has to wake up. Only the first request is slow.
 - **Verification emails may land in spam.** Mark "not spam" once and later ones behave.
 - **You must be approved before logging in.** Register, then ask the admin to approve you.
+- **One phone gets one account's pushes: the last one that logged in.** Testing two accounts on one phone? Only the most recent login receives notifications.
+- **Reminders can be late on the free server.** "Payment due tomorrow", "overdue" and "suspension started" are checked hourly while the server is awake, so after it has slept they arrive on the next wake-up.
+- **"A slot just opened" only goes to people who pressed "Notify me when a slot opens"** on the Parking tab while the lot was full, and not to anyone already parked.
 
 ---
 

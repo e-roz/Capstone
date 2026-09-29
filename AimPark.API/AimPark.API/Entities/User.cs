@@ -113,5 +113,16 @@ namespace AimPark.API.Entities
         /// refused at the gate.
         /// </remarks>
         public DateTime? RfidSuspendedFrom { get; set; }
+
+        /// <summary>
+        /// The <see cref="RfidSuspendedFrom"/> the "your suspension has started"
+        /// push was sent for.
+        /// </summary>
+        /// <remarks>
+        /// The start time rather than a sent-at stamp: a second suspension
+        /// later has a different start, so it earns its own notice without
+        /// anything having to reset this.
+        /// </remarks>
+        public DateTime? SuspensionNoticeSentFor { get; set; }
     }
 }
