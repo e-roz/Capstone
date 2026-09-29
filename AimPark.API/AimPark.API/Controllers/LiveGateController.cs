@@ -126,7 +126,10 @@ namespace AimPark.API.Controllers
             return File(frame.Jpeg, "image/jpeg");
         }
 
-        /// <summary>The gates that have a camera, for the Overview's gate picker.</summary>
+        /// <summary>
+        /// The gates that have a camera, and whether each is sending right now —
+        /// for the Overview's gate picker and its Camera status chip.
+        /// </summary>
         [HttpGet("cameras")]
         public async Task<ActionResult<object>> Cameras(CancellationToken ct)
         {
@@ -139,7 +142,10 @@ namespace AimPark.API.Controllers
                 .OrderBy(g => g)
                 .ToListAsync(ct);
 
-            return Ok(new { gates });
+            return Ok(new
+            {
+                gates = gates.Select(g => new { gate = g, live = _cameras.Latest(g) is not null })
+            });
         }
 
         private ObjectResult NotAtGuardPost() => BadRequest(new

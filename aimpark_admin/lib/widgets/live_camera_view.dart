@@ -52,7 +52,7 @@ class _LiveCameraViewState extends ConsumerState<LiveCameraView> {
       final res = await ref.read(dioProvider).get(ApiEndpoints.liveGateCameras);
       final gates = [
         for (final g in (res.data as Map)['gates'] as List? ?? const [])
-          (g as num).toInt(),
+          ((g as Map)['gate'] as num).toInt(),
       ];
       if (!mounted || gates.isEmpty) return;
       setState(() {
@@ -158,43 +158,62 @@ class _LiveCameraViewState extends ConsumerState<LiveCameraView> {
               ],
             ),
           ),
-          AspectRatio(
-            aspectRatio: 4 / 3,
-            child: Container(
-              color: Colors.black,
-              alignment: Alignment.center,
-              child: _frame != null
-                  ? Stack(
-                      fit: StackFit.expand,
-                      children: [
-                        Image.memory(
-                          _frame!,
-                          fit: BoxFit.contain,
-                          gaplessPlayback: true,
-                        ),
-                        if (!live)
-                          Container(
-                            color: Colors.black54,
-                            alignment: Alignment.center,
-                            child: Text(
-                              'Last picture — the camera stopped sending.',
-                              style: TextStyle(color: badge.bg),
-                            ),
-                          ),
-                      ],
-                    )
-                  : Padding(
-                      padding: const EdgeInsets.all(AppSpacing.x6),
-                      child: Text(
-                        _error ??
-                            'No picture yet. Start the ALPR app on this PC and '
-                                'point it at http://localhost:5041.',
-                        textAlign: TextAlign.center,
-                        style: const TextStyle(color: Colors.white70),
-                      ),
+          if (_frame == null)
+            // Nothing to show: a short notice, not a big black box.
+            Container(
+              margin: const EdgeInsets.fromLTRB(
+                AppSpacing.cardPadding,
+                0,
+                AppSpacing.cardPadding,
+                AppSpacing.cardPadding,
+              ),
+              padding: const EdgeInsets.all(AppSpacing.x4),
+              decoration: BoxDecoration(
+                color: t.surface.muted,
+                borderRadius: AppRadii.mdAll,
+              ),
+              child: Row(
+                children: [
+                  Icon(Icons.videocam_off_outlined, color: t.text.tertiary),
+                  const SizedBox(width: AppSpacing.x3),
+                  Expanded(
+                    child: Text(
+                      _error ??
+                          'Camera offline — start the ALPR app on this PC and sign in.',
+                      style: Theme.of(
+                        context,
+                      ).textTheme.bodySmall?.copyWith(color: t.text.secondary),
                     ),
+                  ),
+                ],
+              ),
+            )
+          else
+            AspectRatio(
+              aspectRatio: 16 / 9,
+              child: Container(
+                color: Colors.black,
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    Image.memory(
+                      _frame!,
+                      fit: BoxFit.contain,
+                      gaplessPlayback: true,
+                    ),
+                    if (!live)
+                      Container(
+                        color: Colors.black54,
+                        alignment: Alignment.center,
+                        child: Text(
+                          'Last picture — the camera stopped sending.',
+                          style: TextStyle(color: badge.bg),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
             ),
-          ),
         ],
       ),
     );

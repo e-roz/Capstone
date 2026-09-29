@@ -31,7 +31,7 @@ class AppPage extends StatelessWidget {
     this.actions = const [],
     this.toolbar,
     this.scrollable = false,
-    this.maxWidth = AppSizes.contentMaxWidth,
+    this.maxWidth = double.infinity,
     this.onBack,
   });
 
@@ -62,6 +62,9 @@ class AppPage extends StatelessWidget {
   /// its own scrolling (a table, a list).
   final bool scrollable;
 
+  /// Pages fill the screen: the panel runs on wide guard-post and office
+  /// monitors, and a capped column left them empty down both sides. Pass a
+  /// value only for a page that is mostly running text.
   final double maxWidth;
 
   @override

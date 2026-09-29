@@ -116,103 +116,64 @@ class _LiveGateLogState extends ConsumerState<LiveGateLog> {
     final t = context.tokens;
     final taps = _taps;
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Row(
-          children: [
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Live gate log',
-                    style: Theme.of(context).textTheme.titleMedium,
-                  ),
-                  const SizedBox(height: AppSpacing.x1),
-                  Text(
-                    'The last $_shown card taps, newest on top.',
-                    style: Theme.of(
-                      context,
-                    ).textTheme.bodySmall?.copyWith(color: t.text.secondary),
-                  ),
-                ],
-              ),
-            ),
-            const _SoundToggle(),
-          ],
-        ),
-        const SizedBox(height: AppSpacing.headingGap),
-        if (_error != null && taps == null)
-          AppEmptyState(
-            icon: Icons.sensors_off_outlined,
-            title: 'Gate log unavailable',
-            message: _error!,
-          )
-        else if (taps == null)
-          const SkeletonList(count: 5)
-        else if (taps.isEmpty)
-          const AppEmptyState(
-            icon: Icons.contactless_outlined,
-            title: 'No taps yet today',
-            message:
-                'Each card tap at a gate will appear here the moment it happens.',
-          )
-        else
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
+    return AppCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
             children: [
-              for (final tap in taps)
-                Padding(
-                  padding: const EdgeInsets.only(bottom: AppSpacing.x2),
-                  child: _TapRow(tap: tap),
+              Icon(
+                Icons.contactless_outlined,
+                size: 18,
+                color: t.text.secondary,
+              ),
+              const SizedBox(width: AppSpacing.x2),
+              Expanded(
+                child: Text.rich(
+                  TextSpan(
+                    text: 'Live gate log',
+                    style: Theme.of(context).textTheme.titleSmall,
+                    children: [
+                      TextSpan(
+                        text: '  ·  last $_shown taps',
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: t.text.secondary,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
-              Align(
-                alignment: Alignment.centerRight,
-                child: TextButton.icon(
-                  onPressed: () => context.go('/system-logs?tab=taps'),
-                  icon: const Icon(Icons.history, size: 18),
-                  label: const Text('See all taps'),
-                ),
+              ),
+              TextButton.icon(
+                onPressed: () => context.go('/system-logs?tab=taps'),
+                icon: const Icon(Icons.history, size: 18),
+                label: const Text('See all taps'),
               ),
             ],
           ),
-      ],
-    );
-  }
-}
-
-/// Browsers block sound until a click, so the guard turns it on here.
-class _SoundToggle extends StatefulWidget {
-  const _SoundToggle();
-
-  @override
-  State<_SoundToggle> createState() => _SoundToggleState();
-}
-
-class _SoundToggleState extends State<_SoundToggle> {
-  @override
-  Widget build(BuildContext context) {
-    final on = AlertSound.isOn;
-    return Tooltip(
-      message: on
-          ? 'A refused tap beeps. Click to mute.'
-          : 'Beep when a tap is refused. Browsers need one click to allow sound.',
-      child: on
-          ? OutlinedButton.icon(
-              onPressed: () => setState(AlertSound.disable),
-              icon: const Icon(Icons.notifications_active_outlined, size: 18),
-              label: const Text('Sound on'),
+          const SizedBox(height: AppSpacing.x3),
+          if (_error != null && taps == null)
+            AppEmptyState(
+              icon: Icons.sensors_off_outlined,
+              title: 'Gate log unavailable',
+              message: _error!,
             )
-          : FilledButton.tonalIcon(
-              onPressed: () => setState(AlertSound.enable),
-              icon: const Icon(Icons.notifications_off_outlined, size: 18),
-              label: Text(
-                AlertSound.wanted
-                    ? 'Turn sound back on'
-                    : 'Turn on alert sound',
-              ),
-            ),
+          else if (taps == null)
+            const SkeletonList(count: 3)
+          else if (taps.isEmpty)
+            const AppEmptyState(
+              icon: Icons.contactless_outlined,
+              title: 'No taps yet today',
+              message:
+                  'Each card tap at a gate will appear here the moment it happens.',
+            )
+          else
+            for (var i = 0; i < taps.length; i++) ...[
+              if (i > 0) const SizedBox(height: AppSpacing.x2),
+              _TapRow(tap: taps[i]),
+            ],
+        ],
+      ),
     );
   }
 }
@@ -395,9 +356,11 @@ class _FactLine extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           SizedBox(
-            width: 104,
+            width: 120,
             child: Text(
               '${line.label}:',
+              softWrap: false,
+              overflow: TextOverflow.fade,
               style: style?.copyWith(color: t.text.secondary),
             ),
           ),
@@ -490,7 +453,22 @@ class TapPhotoState extends ConsumerState<TapPhoto> {
                       width: double.infinity,
                       height: double.infinity,
                     )
-                  : Icon(Icons.no_photography_outlined, color: t.text.tertiary),
+                  : Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          Icons.no_photography_outlined,
+                          size: 18,
+                          color: t.text.tertiary,
+                        ),
+                        const SizedBox(height: AppSpacing.x1),
+                        Text(
+                          'No photo',
+                          style: Theme.of(context).textTheme.labelSmall
+                              ?.copyWith(color: t.text.tertiary),
+                        ),
+                      ],
+                    ),
             );
           },
         ),

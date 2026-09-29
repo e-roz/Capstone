@@ -40,6 +40,10 @@ from plate_reader import CONFIDENCE_THRESHOLD, PlateReader
 PH_TIMEZONE = ZoneInfo("Asia/Manila")
 
 HEARTBEAT_INTERVAL_SECONDS = 15
+
+# While the same plate stays in view, send it again this often. Must be well
+# under the server's match window (ParkingHistoryService.AlprMatchWindow, 8 s).
+PLATE_RESEND_SECONDS = 2
 CAMERA_RETRY_INTERVAL_SECONDS = 3
 HISTORY_MAX_ROWS = 50
 UI_TICK_MS = 1000
@@ -152,6 +156,7 @@ class CaptureWorker(QThread):
 
         self._last_sent_plate: str | None = None
         self._last_send_attempt_at = 0.0
+        self._last_plate_sent_at = 0.0
 
         self._pending_plate: str | None = None
         self._pending_streak = 0
@@ -234,17 +239,27 @@ class CaptureWorker(QThread):
         now = time.monotonic()
 
         is_new_plate = plate is not None and plate != self._last_sent_plate
+        # The server only matches a card to a plate read in the last few
+        # seconds. A car that waits at the barrier before tapping must keep
+        # being reported, or its first read goes stale and the tap is refused.
+        is_still_there = (
+            plate is not None
+            and plate == self._last_sent_plate
+            and now - self._last_plate_sent_at >= PLATE_RESEND_SECONDS
+        )
         due_for_heartbeat = now - self._last_send_attempt_at >= HEARTBEAT_INTERVAL_SECONDS
 
-        if not is_new_plate and not due_for_heartbeat:
+        if not is_new_plate and not is_still_there and not due_for_heartbeat:
             return
 
-        to_send = plate if is_new_plate else None
-        outcome = self._api.post_reading(to_send, confidence if is_new_plate else None)
+        sends_plate = is_new_plate or is_still_there
+        to_send = plate if sends_plate else None
+        outcome = self._api.post_reading(to_send, confidence if sends_plate else None)
 
         self._last_send_attempt_at = now
-        if is_new_plate:
+        if sends_plate:
             self._last_sent_plate = plate
+            self._last_plate_sent_at = now
 
         self.send_result.emit(outcome)
         if is_new_plate:

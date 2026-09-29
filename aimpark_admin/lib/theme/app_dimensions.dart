@@ -203,8 +203,7 @@ class AppSizes {
   static const double iconMd = 20;
   static const double iconLg = 24;
 
-  /// Widest a form or detail column should ever grow — long lines are hard to
-  /// scan on an ultrawide monitor.
-  static const double contentMaxWidth = 1440;
+  /// Widest a form column should ever grow — long lines are hard to scan on
+  /// an ultrawide monitor.
   static const double formMaxWidth = 560;
 }
