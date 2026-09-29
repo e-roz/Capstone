@@ -118,6 +118,10 @@ namespace AimPark.API.Sync.Site
                         Add(SyncKinds.IncidentEvidence, e.Id);
                         break;
 
+                    case GateTapEvent t:
+                        Add(SyncKinds.GateTapEvent, t.Id);
+                        break;
+
                     case GateDevice d when entry.State == EntityState.Modified:
                         Add(SyncKinds.GateDevice, d.Id);
                         break;

@@ -64,6 +64,7 @@ namespace AimPark.API.Sync.Cloud
             steps.AddRange(batch.GateAccessAttempts.Select(a => ($"gate attempt {a.Id}", (Func<CancellationToken, Task>)(c => UpsertAsync(a, a.Id, c)))));
             steps.AddRange(batch.PaymentTransactions.Select(p => ($"payment {p.Id}", (Func<CancellationToken, Task>)(c => InsertOnceAsync(p, p.Id, c)))));
             steps.AddRange(batch.Notifications.Select(n => ($"notification {n.Id}", (Func<CancellationToken, Task>)(c => InsertOnceAsync(n, n.Id, c)))));
+            steps.AddRange(batch.GateTapEvents.Select(t => ($"gate tap {t.Id}", (Func<CancellationToken, Task>)(c => InsertOnceAsync(t, t.Id, c)))));
             steps.AddRange(batch.DevicesSeen.Select(d => ($"device {d.Id}", (Func<CancellationToken, Task>)(c => StageDeviceSeenAsync(d, c)))));
 
             var failed = 0;

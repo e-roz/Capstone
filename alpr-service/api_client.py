@@ -1,6 +1,7 @@
-"""Talks to POST /api/gate/alpr-readings — the one endpoint this app needs.
-Auth and device identity work exactly like the ESP32 reader: a long-lived
-device key sent as X-Api-Key, issued once via the admin API.
+"""Talks to POST /api/gate/alpr-readings for plate reads, and to
+POST /api/gate/camera-frame for the guard's live video. Auth and device
+identity work exactly like the ESP32 reader: a long-lived device key sent as
+X-Api-Key, issued once via the admin API.
 """
 
 from __future__ import annotations
@@ -77,6 +78,31 @@ class ApiClient:
         try:
             response = requests.post(
                 self._url, json=body, headers=self._headers, timeout=REQUEST_TIMEOUT_SECONDS
+            )
+        except requests.RequestException as exc:
+            return SendResult(ok=False, at=now, error=str(exc))
+
+        if response.status_code >= 400:
+            return SendResult(ok=False, at=now, error=f"HTTP {response.status_code}")
+
+        return SendResult(ok=True, at=now)
+
+
+class FrameClient:
+    """Sends the live picture to POST /api/gate/camera-frame for the guard's
+    Overview. Only the guard post's site server takes it; the cloud answers
+    404, which ``FrameSender`` treats as "stop trying"."""
+
+    def __init__(self, api_base: str, api_key: str) -> None:
+        self._url = f"{api_base}/api/gate/camera-frame"
+        self._headers = {"X-Api-Key": api_key, "Content-Type": "image/jpeg"}
+        self._session = requests.Session()
+
+    def post_frame(self, jpeg: bytes) -> SendResult:
+        now = datetime.now(timezone.utc)
+        try:
+            response = self._session.post(
+                self._url, data=jpeg, headers=self._headers, timeout=REQUEST_TIMEOUT_SECONDS
             )
         except requests.RequestException as exc:
             return SendResult(ok=False, at=now, error=str(exc))

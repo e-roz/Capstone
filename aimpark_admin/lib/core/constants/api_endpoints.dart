@@ -85,10 +85,19 @@ class ApiEndpoints {
 
   // Security – USB gate readers plugged into the guard post's PC. Only the
   // site server answers these; the cloud says to use the guard post's panel.
+  static const siteStatus = '/api/site/status';
   static const gateReaders = '/api/site/gate-readers';
   static String gateReader(String port) => '/api/site/gate-readers/$port';
   static String openGateReader(String port) =>
       '/api/site/gate-readers/$port/open';
+
+  // Security – the Overview's live gate log and camera. Site server only.
+  static const liveGateTaps = '/api/site/live-gate/taps';
+  static String liveGateTapPhoto(String tapId) =>
+      '/api/site/live-gate/taps/$tapId/photo';
+  static const liveGateHistory = '/api/site/live-gate/history';
+  static const liveGateCameras = '/api/site/live-gate/cameras';
+  static String liveGateCamera(int gate) => '/api/site/live-gate/camera/$gate';
 
   // Admin – Payments
   static const payments = '/api/admin/payments';
@@ -142,6 +151,7 @@ class ApiEndpoints {
   static const reportsOccupancyTrend = '/api/admin/reports/occupancy-trend';
   static const reportsPeakHours = '/api/admin/reports/peak-hours';
   static const reportsEntryExit = '/api/admin/reports/entry-exit';
-  static const reportsViolationsBreakdown = '/api/admin/reports/violations-breakdown';
+  static const reportsViolationsBreakdown =
+      '/api/admin/reports/violations-breakdown';
   static const reportsRevenueTrend = '/api/admin/reports/revenue-trend';
 }

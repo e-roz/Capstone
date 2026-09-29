@@ -331,7 +331,7 @@ namespace AimPark.API.Services
         /// still matches the tap, narrow enough that it can't drift onto the
         /// next car in line.
         /// </summary>
-        private static readonly TimeSpan AlprMatchWindow = TimeSpan.FromSeconds(8);
+        public static readonly TimeSpan AlprMatchWindow = TimeSpan.FromSeconds(8);
 
         private readonly record struct AlprCheckResult(ActionResult<object>? Denial, AlprReading? Matched);
 

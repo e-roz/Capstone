@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
 import '../core/utils/csv_export.dart';
@@ -16,6 +17,7 @@ import '../providers/auth_provider.dart';
 import '../router/destinations.dart';
 import '../theme/theme.dart';
 import '../widgets/ui/ui.dart';
+import 'gate_taps_tab.dart';
 
 final _stamp = DateFormat('MMM d, yyyy HH:mm');
 final _isoStamp = DateFormat('yyyy-MM-dd HH:mm');
@@ -39,14 +41,21 @@ class SystemLogsScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    // "Access Monitoring" is the guard's module: RFID access, and nothing
-    // else. The API refuses them user activity and system errors, and
-    // violations and admin actions are not theirs to read either - so Security
-    // gets the one tab it is entitled to rather than four that would error.
+    // "Access Monitoring" is the guard's module: RFID access and gate taps,
+    // and nothing else. The API refuses them user activity and system errors,
+    // and violations and admin actions are not theirs to read either - so
+    // Security gets the tabs it is entitled to rather than four that would
+    // error.
     final isSecurity = ref.watch(staffRoleProvider) == StaffRole.security;
 
+    // "See all taps" on the Overview links here with ?tab=taps.
+    final wantsTaps =
+        GoRouterState.of(context).uri.queryParameters['tab'] == 'taps';
+    final tabs = isSecurity ? 2 : 6;
+
     return DefaultTabController(
-      length: isSecurity ? 1 : 5,
+      length: tabs,
+      initialIndex: wantsTaps ? tabs - 1 : 0,
       child: _SystemLogsPage(isSecurity: isSecurity),
     );
   }
@@ -77,6 +86,7 @@ class _SystemLogsPage extends StatelessWidget {
               const Tab(text: 'Administrative Actions'),
               const Tab(text: 'System Errors'),
             ],
+            const Tab(text: 'Gate taps'),
           ],
         ),
       ),
@@ -89,6 +99,7 @@ class _SystemLogsPage extends StatelessWidget {
             const _AdminActionsTab(),
             const _SystemErrorsTab(),
           ],
+          const GateTapsTab(),
         ],
       ),
     );

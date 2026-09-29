@@ -1,4 +1,4 @@
-﻿using AimPark.API.Entities;
+using AimPark.API.Entities;
 using Microsoft.EntityFrameworkCore;
 
 namespace AimPark.API.Data
@@ -35,6 +35,7 @@ namespace AimPark.API.Data
         public DbSet<AlprReading> AlprReadings { get; set; }
         public DbSet<GateAccessAttempt> GateAccessAttempts { get; set; }
         public DbSet<SyncOutboxEntry> SyncOutbox { get; set; }
+        public DbSet<GateTapEvent> GateTapEvents { get; set; }
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -666,6 +667,23 @@ namespace AimPark.API.Data
                 entity.HasKey(o => o.Id);
 
                 entity.Property(o => o.Kind).IsRequired().HasMaxLength(40);
+            });
+
+            modelBuilder.Entity<GateTapEvent>(entity =>
+            {
+                entity.HasKey(t => t.Id);
+
+                // The live log reads "today, newest first" once a second.
+                entity.HasIndex(t => t.At);
+
+                entity.Property(t => t.Direction).IsRequired().HasMaxLength(8);
+                entity.Property(t => t.Message).IsRequired().HasMaxLength(500);
+                entity.Property(t => t.PersonKind).IsRequired().HasMaxLength(16);
+                entity.Property(t => t.ReaderName).HasMaxLength(100);
+                entity.Property(t => t.RfidTagId).HasMaxLength(64);
+                entity.Property(t => t.PersonName).HasMaxLength(200);
+                entity.Property(t => t.CameraPlate).HasMaxLength(20);
+                entity.Property(t => t.RegisteredPlates).HasMaxLength(200);
             });
         }
     }

@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import shutil
 import sys
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 import cv2
@@ -56,6 +56,13 @@ def confidence_of(ocr) -> float:
     return min(c) if isinstance(c, list) else c
 
 
+def _without_region(ocr):
+    # The OCR result is a frozen dataclass, so this copies rather than edits.
+    if ocr is None:
+        return None
+    return replace(ocr, region=None, region_confidence=None)
+
+
 @dataclass
 class ReadResult:
     frame: cv2.typing.MatLike  # with detection boxes/text already drawn
@@ -70,6 +77,13 @@ class PlateReader:
             detector_model="yolo-v9-t-384-license-plate-end2end",
             ocr_model="cct-xs-v2-global-model",
         )
+
+        # The global OCR model also guesses the plate's country, and
+        # draw_predictions prints that as an extra line over every box. Every
+        # plate here is Philippine, so it's only noise on the guard's screen —
+        # drop it before anything is drawn.
+        ocr_predict = self._alpr.ocr.predict
+        self._alpr.ocr.predict = lambda crop: _without_region(ocr_predict(crop))
 
     def read(self, frame: cv2.typing.MatLike) -> ReadResult:
         drawn = self._alpr.draw_predictions(frame)
