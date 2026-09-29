@@ -86,5 +86,31 @@ namespace AimPark.API.Services
                 AssignedToName = holder?.FullName
             });
         }
+
+        // GET /api/admin/rfid/lookup?tag=  (admin panel, USB reader)
+        public async Task<ActionResult<RfidLastScanResponse>> LookupAsync(
+            string? rfidTagId, CancellationToken ct)
+        {
+            var tag = RfidTag.Normalize(rfidTagId);
+            if (!RfidTag.LooksValid(tag))
+                return new BadRequestObjectResult(new { message = "That does not look like a card UID." });
+
+            var holder = await _db.Set<User>().AsNoTracking()
+                .Where(u => u.RfidTagId == tag && !u.IsDeleted)
+                .Select(u => new { u.Id, u.FullName })
+                .FirstOrDefaultAsync(ct);
+
+            // Same shape as last-scan, so the panel reads both paths the same way.
+            return new OkObjectResult(new RfidLastScanResponse
+            {
+                ScanId = Guid.NewGuid(),
+                RfidTagId = tag,
+                ScannedAt = DateTime.UtcNow,
+                DeviceName = "USB reader",
+                IsAssigned = holder is not null,
+                AssignedToUserId = holder?.Id,
+                AssignedToName = holder?.FullName
+            });
+        }
     }
 }

@@ -34,6 +34,10 @@ Plugging the reader into a new computer only requires that computer to have
 the bridge script's dependencies installed and its `config.json` filled in —
 no reflashing.
 
+Chrome and Edge can now open the serial port themselves (Web Serial), so on
+those browsers the admin panel reads the reader directly and the bridge isn't
+needed at all — see section 3.
+
 ## 1. Wiring — ESP32 to RC522
 
 The RC522 is a **3.3 V** part. Its `3.3V` pin goes to the ESP32's `3V3`, never
@@ -97,7 +101,27 @@ There is nothing to configure on the board itself — no `secrets.h`, no WiFi,
 no API key. Once flashed, it stays flashed; only the bridge script below needs
 per-computer setup.
 
-## 3. Host bridge (once per computer the reader plugs into)
+## 3. Plug and play in Chrome or Edge (recommended)
+
+No bridge script, no `config.json`, no API key on the desk PC:
+
+1. Plug the reader into the computer by USB.
+2. In the admin panel (Chrome or Edge), open **Assign RFID** on a user, or
+   issue a visitor pass.
+3. Click **Connect reader** and pick the board's port (CP210x / CH340).
+4. Tap a card. The field fills at once: one beep if it is free, two if someone
+   already holds it, three if the read failed.
+
+The browser reads the board directly over Web Serial, so the tap never goes
+through the cloud; only the "who holds this card" check and the final save do.
+Chrome remembers the port, so later visits reconnect on their own.
+
+Only one program can hold the port at a time. If Connect says the reader is in
+use, close `bridge.py`, the Arduino/PlatformIO Serial Monitor, or another
+admin-panel tab. Firefox and Safari don't support Web Serial; use the bridge
+below there.
+
+## 3b. Host bridge (other browsers, or entry/exit gate mode)
 
 This is what actually talks to the cloud. Everything under
 [`host_bridge/`](host_bridge/):

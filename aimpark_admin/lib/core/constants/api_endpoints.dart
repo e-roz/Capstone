@@ -49,6 +49,9 @@ class ApiEndpoints {
   /// nothing has been tapped recently.
   static const rfidLastScan = '/api/admin/rfid/last-scan';
 
+  /// Who holds a card the panel read itself off the USB reader. Takes `tag`.
+  static const rfidLookup = '/api/admin/rfid/lookup';
+
   // Admin – Audit Logs
   static const auditLogs = '/api/admin/audit-logs';
 
