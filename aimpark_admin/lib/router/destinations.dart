@@ -161,10 +161,10 @@ const navGroups = <NavGroup>[
       label: 'Parking',
       route: '/parking',
       description: 'Live bay occupancy, and manual entry and exit logging.',
-      // Admin only, deliberately. Most of this screen is creating bays and
-      // changing their status, which a guard may not do — and the two things
-      // they need from it, occupancy and manual entry/exit, they get on their
-      // own Overview and Gate Check without a screen of disabled buttons.
+      // Security gets the live map read-only. Creating bays, changing their
+      // status and logging by hand stay Admin: the screen hides those for a
+      // guard rather than showing them disabled.
+      roles: {StaffRole.admin, StaffRole.security},
     ),
     NavItem(
       icon: Icons.payments_outlined,

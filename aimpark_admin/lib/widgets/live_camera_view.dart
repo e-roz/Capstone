@@ -10,13 +10,19 @@ import '../core/network/dio_client.dart';
 import '../theme/theme.dart';
 import 'ui/ui.dart';
 
-/// The live picture from a gate's ALPR camera, for the guard's Overview.
+/// The live picture from one gate's ALPR camera, for the guard's Overview.
+///
+/// One of these per gate, side by side, so the guard watches both barriers at
+/// once instead of switching between them. An offline camera keeps its 16:9
+/// slot as a placeholder, so the other one never jumps around the screen.
 ///
 /// The camera app sends a frame to the site server a few times a second; this
 /// fetches the newest one on a timer and swaps it in without a flash. Fetched
 /// through Dio rather than an `<img>` so the sign-in token goes with it.
 class LiveCameraView extends ConsumerStatefulWidget {
-  const LiveCameraView({super.key});
+  const LiveCameraView({super.key, required this.gate});
+
+  final int gate;
 
   @override
   ConsumerState<LiveCameraView> createState() => _LiveCameraViewState();
@@ -28,8 +34,6 @@ class _LiveCameraViewState extends ConsumerState<LiveCameraView> {
   Timer? _timer;
   bool _inFlight = false;
 
-  List<int> _gates = const [];
-  int _gate = 1;
   Uint8List? _frame;
   bool _offline = false;
   String? _error;
@@ -37,7 +41,6 @@ class _LiveCameraViewState extends ConsumerState<LiveCameraView> {
   @override
   void initState() {
     super.initState();
-    _loadGates();
     _timer = Timer.periodic(_refreshEvery, (_) => _fetch());
   }
 
@@ -45,23 +48,6 @@ class _LiveCameraViewState extends ConsumerState<LiveCameraView> {
   void dispose() {
     _timer?.cancel();
     super.dispose();
-  }
-
-  Future<void> _loadGates() async {
-    try {
-      final res = await ref.read(dioProvider).get(ApiEndpoints.liveGateCameras);
-      final gates = [
-        for (final g in (res.data as Map)['gates'] as List? ?? const [])
-          ((g as Map)['gate'] as num).toInt(),
-      ];
-      if (!mounted || gates.isEmpty) return;
-      setState(() {
-        _gates = gates;
-        if (!gates.contains(_gate)) _gate = gates.first;
-      });
-    } on DioException {
-      // The picker is a nicety; gate 1 still shows.
-    }
   }
 
   Future<void> _fetch() async {
@@ -72,7 +58,7 @@ class _LiveCameraViewState extends ConsumerState<LiveCameraView> {
       final res = await ref
           .read(dioProvider)
           .get<List<int>>(
-            ApiEndpoints.liveGateCamera(_gate),
+            ApiEndpoints.liveGateCamera(widget.gate),
             options: Options(responseType: ResponseType.bytes),
           );
       if (!mounted) return;
@@ -128,27 +114,11 @@ class _LiveCameraViewState extends ConsumerState<LiveCameraView> {
                 ),
                 const SizedBox(width: AppSpacing.x2),
                 Expanded(
-                  child: _gates.length > 1
-                      ? DropdownButton<int>(
-                          value: _gate,
-                          isDense: true,
-                          underline: const SizedBox.shrink(),
-                          items: [
-                            for (final g in _gates)
-                              DropdownMenuItem(
-                                value: g,
-                                child: Text('Gate $g camera'),
-                              ),
-                          ],
-                          onChanged: (g) => setState(() {
-                            _gate = g ?? _gate;
-                            _frame = null;
-                          }),
-                        )
-                      : Text(
-                          'Gate $_gate camera',
-                          style: Theme.of(context).textTheme.titleSmall,
-                        ),
+                  child: Text(
+                    'Gate ${widget.gate} camera',
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.titleSmall,
+                  ),
                 ),
                 StatusPill(
                   label: live ? 'Live' : 'Camera offline',
@@ -159,33 +129,28 @@ class _LiveCameraViewState extends ConsumerState<LiveCameraView> {
             ),
           ),
           if (_frame == null)
-            // Nothing to show: a short notice, not a big black box.
-            Container(
-              margin: const EdgeInsets.fromLTRB(
-                AppSpacing.cardPadding,
-                0,
-                AppSpacing.cardPadding,
-                AppSpacing.cardPadding,
-              ),
-              padding: const EdgeInsets.all(AppSpacing.x4),
-              decoration: BoxDecoration(
+            // Holds the picture's place, so both gates line up whether or
+            // not their camera is on.
+            AspectRatio(
+              aspectRatio: 16 / 9,
+              child: Container(
                 color: t.surface.muted,
-                borderRadius: AppRadii.mdAll,
-              ),
-              child: Row(
-                children: [
-                  Icon(Icons.videocam_off_outlined, color: t.text.tertiary),
-                  const SizedBox(width: AppSpacing.x3),
-                  Expanded(
-                    child: Text(
+                padding: const EdgeInsets.all(AppSpacing.x4),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.videocam_off_outlined, size: 32, color: t.text.tertiary),
+                    const SizedBox(height: AppSpacing.x2),
+                    Text(
                       _error ??
-                          'Camera offline — start the ALPR app on this PC and sign in.',
+                          'Gate ${widget.gate} camera offline — start the ALPR app for this gate and sign in.',
+                      textAlign: TextAlign.center,
                       style: Theme.of(
                         context,
                       ).textTheme.bodySmall?.copyWith(color: t.text.secondary),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
             )
           else

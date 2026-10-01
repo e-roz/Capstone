@@ -15,6 +15,7 @@ import '../widgets/guard_status_bar.dart';
 import '../widgets/live_camera_view.dart';
 import '../widgets/live_gate_log.dart';
 import '../widgets/open_gate_button.dart';
+import '../widgets/parking/live_parking_map.dart';
 import '../widgets/ui/ui.dart';
 
 /// What the guard on duty sees when they sign in.
@@ -52,11 +53,7 @@ class SecurityOverviewScreen extends ConsumerWidget {
     }
 
     final log = LiveGateLog(onNewTaps: refreshLot);
-    final side = [
-      const LiveCameraView(),
-      const SizedBox(height: AppSpacing.gutter),
-      _InsideNow(sessions: sessions),
-    ];
+    final side = [_InsideNow(sessions: sessions)];
     final wide = MediaQuery.sizeOf(context).width >= _twoColumnsFrom;
 
     return AppPage(
@@ -104,6 +101,10 @@ class SecurityOverviewScreen extends ConsumerWidget {
           ),
           const SizedBox(height: AppSpacing.gutter),
           const _ActionBar(),
+          const SizedBox(height: AppSpacing.gutter),
+          const _GateCameras(),
+          const SizedBox(height: AppSpacing.gutter),
+          const LiveParkingMapCard(compact: true, showOpenLink: true),
           const SizedBox(height: AppSpacing.sectionGap),
           if (wide)
             Row(
@@ -128,6 +129,41 @@ class SecurityOverviewScreen extends ConsumerWidget {
           ],
         ],
       ),
+    );
+  }
+}
+
+/// Both gates' cameras at once, side by side; stacked on a narrow screen.
+class _GateCameras extends StatelessWidget {
+  const _GateCameras();
+
+  static const _gates = [1, 2];
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, box) {
+        if (box.maxWidth < 700) {
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              for (final gate in _gates) ...[
+                if (gate != _gates.first) const SizedBox(height: AppSpacing.gutter),
+                LiveCameraView(gate: gate),
+              ],
+            ],
+          );
+        }
+        return Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            for (final gate in _gates) ...[
+              if (gate != _gates.first) const SizedBox(width: AppSpacing.gutter),
+              Expanded(child: LiveCameraView(gate: gate)),
+            ],
+          ],
+        );
+      },
     );
   }
 }
