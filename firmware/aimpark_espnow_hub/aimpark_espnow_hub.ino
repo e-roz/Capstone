@@ -7,8 +7,8 @@
 //   hub    -> server   G1 UID:04A1B2C3          a card was tapped at gate 1
 //   server -> hub      G1 RESULT:OPEN           (or RESULT:SHUT) the answer
 //   server -> hub      G2 CMD:OPEN              the guard's "Open gate" button
-//   hub    -> server   S1 SLOT:OCCUPIED 7       slot changed; distance in cm
-//   hub    -> server   S1 SLOT:FREE 0           0 cm = nothing in range
+//   hub    -> server   S1/3 SLOT:OCCUPIED 3.7   slot 3 on board S1 changed;
+//   hub    -> server   S1/3 SLOT:FREE 0.0       distance in cm, 0 = nothing in range
 //   hub    -> server   G1 ONLINE / G1 OFFLINE   a node came up or went quiet
 //   hub    -> server   G1 ERR:NOT_DELIVERED     a RESULT/CMD didn't reach it
 //   server -> hub      STATUS                   one line per node, right now
@@ -32,9 +32,19 @@ struct NodeState {
   bool tapPending = false;
   uint16_t tapSeq = 0;
 
-  // Sensors: -1 until the first reading arrives.
-  int occupied = -1;
-  uint16_t distanceCm = 0;
+  // Sensors: one entry per slot on the board. -1 until the first reading.
+  uint8_t slotCount = 0;
+  int8_t occupied[MAX_SLOTS];
+  uint16_t distanceMm[MAX_SLOTS];
+
+  NodeState() { forgetSlots(); }
+  void forgetSlots() {
+    slotCount = 0;
+    for (uint8_t i = 0; i < MAX_SLOTS; i++) {
+      occupied[i] = -1;
+      distanceMm[i] = 0;
+    }
+  }
 };
 
 NodeState nodes[NODE_COUNT];
@@ -42,17 +52,22 @@ bool isHub = false;
 uint16_t mySeq = 0;
 
 // ── To the server ────────────────────────────────────────────────────────────
-void printSlot(Node n) {
-  Serial.printf("%s SLOT:%s %u\n", BOARDS[n].name,
-                nodes[n].occupied == 1 ? "OCCUPIED" : "FREE", nodes[n].distanceCm);
+// Slots are numbered from 1, as printed on the model.
+void printSlot(Node n, uint8_t slot) {
+  const NodeState& s = nodes[n];
+  Serial.printf("%s/%u SLOT:%s %u.%u\n", BOARDS[n].name, slot + 1,
+                s.occupied[slot] == 1 ? "OCCUPIED" : "FREE",
+                s.distanceMm[slot] / 10, s.distanceMm[slot] % 10);
 }
 
 void printStatus() {
   for (uint8_t i = 1; i < NODE_COUNT; i++) {
     Node n = (Node)i;
     Serial.printf("%s %s\n", BOARDS[n].name, nodes[n].online ? "ONLINE" : "OFFLINE");
-    if (BOARDS[n].role == ROLE_SENSOR && nodes[n].online && nodes[n].occupied >= 0) {
-      printSlot(n);
+    if (BOARDS[n].role == ROLE_SENSOR && nodes[n].online) {
+      for (uint8_t slot = 0; slot < nodes[n].slotCount; slot++) {
+        if (nodes[n].occupied[slot] >= 0) printSlot(n, slot);
+      }
     }
   }
 }
@@ -86,11 +101,14 @@ void handlePacket(const Incoming& in) {
 
     case MSG_SLOT: {
       if (BOARDS[n].role != ROLE_SENSOR) return;
-      int occupied = p.flag ? 1 : 0;
-      bool changed = (occupied != s.occupied);
-      s.occupied = occupied;
-      s.distanceCm = p.distanceCm;
-      if (changed) printSlot(n);   // Heartbeats that change nothing stay quiet.
+      s.slotCount = (p.slotCount < MAX_SLOTS) ? p.slotCount : MAX_SLOTS;
+      for (uint8_t slot = 0; slot < s.slotCount; slot++) {
+        int8_t occupied = (p.occupiedMask >> slot) & 1;
+        bool changed = (occupied != s.occupied[slot]);
+        s.occupied[slot] = occupied;
+        s.distanceMm[slot] = p.distanceMm[slot];
+        if (changed) printSlot(n, slot);   // Heartbeats that change nothing stay quiet.
+      }
       break;
     }
 
@@ -105,7 +123,7 @@ void checkForSilentNodes() {
     if (s.online && millis() - s.lastSeen > OFFLINE_AFTER_MS) {
       s.online = false;
       s.tapPending = false;
-      s.occupied = -1;     // Unknown, not free: a dead sensor proves nothing.
+      s.forgetSlots();     // Unknown, not free: a dead sensor proves nothing.
       Serial.printf("%s OFFLINE\n", BOARDS[i].name);
     }
   }
