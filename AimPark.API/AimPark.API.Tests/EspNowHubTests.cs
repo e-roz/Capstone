@@ -1,0 +1,342 @@
+using System.Collections.Concurrent;
+using AimPark.API.Enums;
+using AimPark.API.Sync.Site.GateReaders;
+
+namespace AimPark.API.Tests;
+
+public class HubProtocolTests
+{
+    [Theory]
+    [InlineData("G1 UID:04A1B2C3", "G1", "04A1B2C3")]
+    [InlineData("  G2 UID:DEADBEEF \r", "G2", "DEADBEEF")]
+    public void ReadsATap(string line, string node, string uid)
+    {
+        var tap = Assert.IsType<HubTap>(HubProtocol.Parse(line));
+        Assert.Equal(node, tap.Node);
+        Assert.Equal(uid, tap.Uid);
+    }
+
+    [Theory]
+    [InlineData("S1 SLOT:OCCUPIED 7", "S1", true, 7)]
+    [InlineData("S2 SLOT:FREE 0", "S2", false, 0)]
+    [InlineData("S1 SLOT:FREE", "S1", false, 0)]
+    public void ReadsASlot(string line, string node, bool occupied, int distance)
+    {
+        var slot = Assert.IsType<HubSlot>(HubProtocol.Parse(line));
+        Assert.Equal(node, slot.Node);
+        Assert.Equal(occupied, slot.Occupied);
+        Assert.Equal(distance, slot.DistanceCm);
+    }
+
+    [Fact]
+    public void ReadsPresenceAndErrors()
+    {
+        Assert.Equal(new HubPresence("G1", true), HubProtocol.Parse("G1 ONLINE"));
+        Assert.Equal(new HubPresence("S2", false), HubProtocol.Parse("S2 OFFLINE"));
+        Assert.Equal(new HubNodeError("G2", "NOT_DELIVERED"), HubProtocol.Parse("G2 ERR:NOT_DELIVERED"));
+    }
+
+    [Theory]
+    [InlineData("# AimPark ESP-NOW hub")]
+    [InlineData("# ERR:UNKNOWN_COMMAND G9 CMD:OPEN")]
+    public void CommentsAreComments(string line) => Assert.IsType<HubComment>(HubProtocol.Parse(line));
+
+    [Theory]
+    [InlineData("UID:04A1B2C3")]          // A USB gate reader's line, not the hub's.
+    [InlineData("G1 UID:")]
+    [InlineData("S1 SLOT:MAYBE 4")]
+    [InlineData("hello there")]
+    public void AnythingElseIsUnknown(string line) => Assert.IsType<HubUnknown>(HubProtocol.Parse(line));
+
+    [Fact]
+    public void RecognisesTheBannerAndReady()
+    {
+        Assert.True(HubProtocol.IsBanner("# AimPark ESP-NOW hub"));
+        Assert.True(HubProtocol.IsReady("# Ready on channel 1. Waiting for nodes."));
+        Assert.False(HubProtocol.IsBanner("# Ready on channel 1. Waiting for nodes."));
+    }
+
+    [Fact]
+    public void WritesTheServersLines()
+    {
+        Assert.Equal("G1 RESULT:OPEN", HubProtocol.Result("G1", true));
+        Assert.Equal("G2 RESULT:SHUT", HubProtocol.Result("G2", false));
+        Assert.Equal("G2 CMD:OPEN", HubProtocol.Open("G2"));
+    }
+}
+
+/// <summary>
+/// Plays the hub's side of the conversation: feeds it lines and keeps what the
+/// server wrote back, on a clock the test moves by hand.
+/// </summary>
+internal sealed class FakeHub
+{
+    public DateTime Now = new(2026, 10, 1, 8, 0, 0, DateTimeKind.Utc);
+    public readonly ConcurrentQueue<string> Sent = new();
+    public readonly ConcurrentQueue<(string Node, bool Occupied, int Distance)> Slots = new();
+    public Func<string, string, Task<bool>> Answer = (_, _) => Task.FromResult(true);
+
+    public HubConversation Server { get; }
+
+    public FakeHub()
+    {
+        Server = new HubConversation(
+            send: line => { Sent.Enqueue(line); return true; },
+            answerTap: (node, uid, _) => Answer(node, uid),
+            slotSeen: (node, occupied, cm, _) => { Slots.Enqueue((node, occupied, cm)); return Task.CompletedTask; },
+            now: () => Now);
+    }
+
+    /// <summary>Opens the port and boots, the way the hub does on Windows.</summary>
+    public async Task BootAsync()
+    {
+        Server.Connected();
+        await Server.Receive("# AimPark ESP-NOW hub");
+        await Server.Receive("# Ready on channel 1. Waiting for nodes.");
+    }
+
+    public Task Say(string line) => Server.Receive(line);
+
+    public void Wait(TimeSpan time)
+    {
+        Now += time;
+        Server.Tick();
+    }
+
+    public HubNodeView Node(string name) => Server.Nodes().Single(n => n.Node == name);
+}
+
+public class HubConversationTests
+{
+    [Fact]
+    public async Task AsksForStatusOnceReadyAndThenEveryTenSeconds()
+    {
+        var hub = new FakeHub();
+        hub.Server.Connected();
+        hub.Server.Tick();
+        Assert.Empty(hub.Sent);   // Still booting: a command now would be lost.
+
+        await hub.Say("# AimPark ESP-NOW hub");
+        await hub.Say("# Ready on channel 1. Waiting for nodes.");
+        Assert.Equal(["STATUS"], hub.Sent);
+
+        hub.Wait(TimeSpan.FromSeconds(5));
+        Assert.Single(hub.Sent);
+        hub.Wait(TimeSpan.FromSeconds(5));
+        Assert.Equal(2, hub.Sent.Count);
+    }
+
+    [Fact]
+    public void AHubThatDidNotRebootIsAskedAnyway()
+    {
+        // Not every board resets when its port opens.
+        var hub = new FakeHub();
+        hub.Server.Connected();
+        hub.Wait(HubConversation.ReadyWithin);
+        Assert.Equal(["STATUS"], hub.Sent);
+    }
+
+    [Fact]
+    public async Task AnswersATapAtTheGateItCameFrom()
+    {
+        var hub = new FakeHub();
+        await hub.BootAsync();
+        hub.Answer = (node, uid) => Task.FromResult(node == "G1" && uid == "04A1B2C3");
+
+        await hub.Say("G1 UID:04A1B2C3");
+        await hub.Say("G2 UID:FFFFFFFF");
+
+        Assert.Contains("G1 RESULT:OPEN", hub.Sent);
+        Assert.Contains("G2 RESULT:SHUT", hub.Sent);
+        Assert.NotNull(hub.Node("G1").LastTapAt);
+        Assert.True(hub.Node("G1").Online);
+    }
+
+    [Fact]
+    public async Task ASlowGateDoesNotHoldUpTheOther()
+    {
+        var hub = new FakeHub();
+        await hub.BootAsync();
+
+        var g1Release = new TaskCompletionSource<bool>();
+        hub.Answer = (node, _) => node == "G1" ? g1Release.Task : Task.FromResult(true);
+
+        var g1 = hub.Say("G1 UID:AAAA0001");
+        var g2 = hub.Say("G2 UID:BBBB0002");
+
+        await g2.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.Contains("G2 RESULT:OPEN", hub.Sent);
+        Assert.DoesNotContain(hub.Sent, l => l.StartsWith("G1 "));
+
+        g1Release.SetResult(true);
+        await g1.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.Contains("G1 RESULT:OPEN", hub.Sent);
+    }
+
+    [Fact]
+    public async Task TapsAtOneGateAreAnsweredInOrder()
+    {
+        var hub = new FakeHub();
+        await hub.BootAsync();
+
+        var first = new TaskCompletionSource<bool>();
+        hub.Answer = (_, uid) => uid == "00000001" ? first.Task : Task.FromResult(false);
+
+        var a = hub.Say("G1 UID:00000001");
+        var b = hub.Say("G1 UID:00000002");
+        await Task.Delay(100);
+        Assert.DoesNotContain(hub.Sent, l => l.StartsWith("G1 "));
+
+        first.SetResult(true);
+        await Task.WhenAll(a, b).WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.Equal(["G1 RESULT:OPEN", "G1 RESULT:SHUT"], hub.Sent.Where(l => l.StartsWith("G1 ")));
+    }
+
+    [Fact]
+    public async Task AFailedLookupKeepsTheBarrierShut()
+    {
+        var hub = new FakeHub();
+        await hub.BootAsync();
+        hub.Answer = (_, _) => throw new InvalidOperationException("database down");
+
+        await hub.Say("G1 UID:04A1B2C3");
+        Assert.Contains("G1 RESULT:SHUT", hub.Sent);
+    }
+
+    [Fact]
+    public async Task PassesSlotReadingsOnAndRemembersThem()
+    {
+        var hub = new FakeHub();
+        await hub.BootAsync();
+
+        await hub.Say("S1 SLOT:OCCUPIED 7");
+        await hub.Say("S2 SLOT:FREE 0");
+
+        Assert.Equal([("S1", true, 7), ("S2", false, 0)], hub.Slots);
+        Assert.Equal(true, hub.Node("S1").Occupied);
+        Assert.Equal(7, hub.Node("S1").DistanceCm);
+        Assert.Equal(false, hub.Node("S2").Occupied);
+    }
+
+    [Fact]
+    public async Task OfflineRightAfterABootMeansNotHeardYet()
+    {
+        var hub = new FakeHub();
+        await hub.BootAsync();
+        await hub.Say("G1 ONLINE");
+
+        // The port reopened and rebooted the hub. Its first STATUS reports
+        // everyone offline only because no heartbeat has arrived yet.
+        await hub.BootAsync();
+        await hub.Say("G1 OFFLINE");
+        Assert.True(hub.Node("G1").Online);
+        Assert.Null(hub.Node("G1").WentOfflineAt);
+
+        // Past the settle time, OFFLINE is the hub's real verdict.
+        hub.Wait(HubConversation.SettleFor);
+        await hub.Say("G1 OFFLINE");
+        Assert.False(hub.Node("G1").Online);
+        Assert.Equal(hub.Now, hub.Node("G1").WentOfflineAt);
+    }
+
+    [Fact]
+    public async Task ASensorGoingOfflineLeavesItsSlotAlone()
+    {
+        var hub = new FakeHub();
+        await hub.BootAsync();
+        await hub.Say("S1 SLOT:OCCUPIED 9");
+        hub.Wait(HubConversation.SettleFor);
+
+        await hub.Say("S1 OFFLINE");
+
+        Assert.Single(hub.Slots);           // Nothing new to apply to the slot.
+        Assert.False(hub.Node("S1").Online);
+        Assert.Equal(true, hub.Node("S1").Occupied);   // Last known, kept for the screen.
+    }
+
+    [Fact]
+    public async Task RemembersAnUndeliveredCommand()
+    {
+        var hub = new FakeHub();
+        await hub.BootAsync();
+
+        Assert.True(hub.Server.Open("G2"));
+        Assert.Contains("G2 CMD:OPEN", hub.Sent);
+
+        await hub.Say("G2 ERR:NOT_DELIVERED");
+        Assert.Equal("NOT_DELIVERED", hub.Node("G2").LastError);
+        Assert.Equal(hub.Now, hub.Node("G2").LastErrorAt);
+    }
+
+    [Fact]
+    public async Task IgnoresCommentsButNotesTheHubsOwnFailures()
+    {
+        var hub = new FakeHub();
+        await hub.BootAsync();
+
+        await hub.Say("# ERR:UNKNOWN_COMMAND G9 CMD:OPEN");
+        Assert.Null(hub.Server.HubError);
+
+        await hub.Say("# This board (aa:bb) is not the hub. It is G1.");
+        Assert.Contains("not the hub", hub.Server.HubError);
+        Assert.Empty(hub.Slots);
+    }
+
+    [Fact]
+    public async Task ListsTheExpectedBoardsAndAnyNewOnes()
+    {
+        var hub = new FakeHub();
+        Assert.Equal(["G1", "G2", "S1", "S2"], hub.Server.Nodes().Select(n => n.Node));
+
+        await hub.BootAsync();
+        await hub.Say("S3 ONLINE");
+        Assert.Contains(hub.Server.Nodes(), n => n is { Node: "S3", Kind: HubNodeKind.Sensor, Online: true });
+    }
+
+    [Fact]
+    public async Task GoesQuietWhenTheHubStopsAnswering()
+    {
+        var hub = new FakeHub();
+        await hub.BootAsync();
+        Assert.False(hub.Server.IsQuiet());
+
+        hub.Wait(HubConversation.QuietAfter + TimeSpan.FromSeconds(1));
+        Assert.True(hub.Server.IsQuiet());
+
+        await hub.Say("G1 ONLINE");
+        Assert.False(hub.Server.IsQuiet());
+    }
+}
+
+public class SlotSensorRuleTests
+{
+    [Fact]
+    public void ACarMakesTheSlotOccupied()
+    {
+        Assert.Equal(ParkingSlotStatus.Occupied,
+            SlotSensorRule.Next(ParkingSlotStatus.Available, occupied: true, heldBySession: false));
+        Assert.Null(SlotSensorRule.Next(ParkingSlotStatus.Occupied, occupied: true, heldBySession: true));
+    }
+
+    [Fact]
+    public void AnEmptySlotIsFreedWhenNoSessionHoldsIt()
+    {
+        Assert.Equal(ParkingSlotStatus.Available,
+            SlotSensorRule.Next(ParkingSlotStatus.Occupied, occupied: false, heldBySession: false));
+    }
+
+    [Fact]
+    public void AnAllocatedSlotStaysTakenUntilTheExit()
+    {
+        // The car was given this bay at the gate and is still driving to it.
+        Assert.Null(SlotSensorRule.Next(ParkingSlotStatus.Occupied, occupied: false, heldBySession: true));
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void OutOfServiceIsNeverOverridden(bool occupied)
+    {
+        Assert.Null(SlotSensorRule.Next(ParkingSlotStatus.OutOfService, occupied, heldBySession: false));
+    }
+}

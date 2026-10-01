@@ -48,6 +48,13 @@ namespace AimPark.API.Sync.Site.Cameras
                     : null;
         }
 
+        /// <summary>When the gate's camera last sent a frame, fresh or not. Null if never since the server started.</summary>
+        public DateTime? LastFrameAt(int gate)
+        {
+            lock (_lock)
+                return _frames.TryGetValue(gate, out var frame) ? frame.At : null;
+        }
+
         /// <summary>Keeps the gate's current frame as the photo for a tap. False when there is none.</summary>
         public bool SavePhoto(int gate, Guid tapId, DateTime at)
         {

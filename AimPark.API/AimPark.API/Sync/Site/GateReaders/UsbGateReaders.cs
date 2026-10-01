@@ -10,13 +10,21 @@ namespace AimPark.API.Sync.Site.GateReaders
     /// <summary>A COM port linked to the reader it stands for.</summary>
     public record GateReaderBinding(string Port, Guid DeviceId);
 
-    /// <summary>One tap, or one manual open, for the Gate Readers screen.</summary>
+    /// <summary>
+    /// One tap, or one manual open, for the Gate Readers screen. A tap at a
+    /// wireless gate names the hub's port and the node (G1, G2) it came from.
+    /// </summary>
     public record GateReaderTap(
         DateTime At, string Port, string? Reader, string? RfidTagId,
-        string Direction, bool Opened, string Message);
+        string Direction, bool Opened, string Message, string? Node = null);
 
+    /// <param name="LooksLikeHub">
+    /// The board on this port printed the ESP-NOW hub's banner: it was linked
+    /// as a reader by mistake and should be linked as a hub.
+    /// </param>
     public record GateReaderState(
-        string Port, Guid DeviceId, bool Connected, string? Error, DateTime? LastTapAt);
+        string Port, Guid DeviceId, bool Connected, string? Error, DateTime? LastTapAt,
+        DateTime? LastSeenAt, bool LooksLikeHub);
 
     /// <summary>
     /// The barrier readers plugged into this PC by USB
@@ -87,7 +95,8 @@ namespace AimPark.API.Sync.Site.GateReaders
                 return _sessions.Values
                     .OrderBy(s => s.Binding.Port)
                     .Select(s => new GateReaderState(
-                        s.Binding.Port, s.Binding.DeviceId, s.Connected, s.Error, s.LastTapAt))
+                        s.Binding.Port, s.Binding.DeviceId, s.Connected, s.Error, s.LastTapAt,
+                        s.Connected ? DateTime.UtcNow : s.LastSeenAt, s.LooksLikeHub))
                     .ToList();
         }
 
@@ -120,6 +129,23 @@ namespace AimPark.API.Sync.Site.GateReaders
             SaveBindings();
         }
 
+        public bool IsBound(string port)
+        {
+            lock (_lock) return _sessions.ContainsKey(port);
+        }
+
+        /// <summary>
+        /// Unlinks whichever port stands for this reader, so it can be linked
+        /// to a wireless gate instead. One reader, one place.
+        /// </summary>
+        public void ReleaseDevice(Guid deviceId)
+        {
+            string? port;
+            lock (_lock)
+                port = _sessions.Values.FirstOrDefault(s => s.Binding.DeviceId == deviceId)?.Binding.Port;
+            if (port is not null) Unbind(port);
+        }
+
         public bool Unbind(string port)
         {
             Session? old;
@@ -143,13 +169,23 @@ namespace AimPark.API.Sync.Site.GateReaders
             if (session is null || !session.TrySend("CMD:OPEN"))
                 return false;
 
-            _logger.LogInformation("Gate on {Port} opened by hand by {User}", port, openedBy);
-            Record(new GateReaderTap(DateTime.UtcNow, port, null, null, "-", true, $"Opened by hand by {openedBy}."));
+            RecordManualOpen(port, null, session.Binding.DeviceId, openedBy);
+            return true;
+        }
 
-            var deviceId = session.Binding.DeviceId;
+        /// <summary>
+        /// Logs a guard's open — on the Gate Readers screen and the live log —
+        /// once the barrier has been told. Shared with the wireless gates.
+        /// </summary>
+        public void RecordManualOpen(string port, string? node, Guid deviceId, string openedBy)
+        {
+            var where = node is null ? port : $"{node} on {port}";
+            _logger.LogInformation("Gate on {Where} opened by hand by {User}", where, openedBy);
+            Record(new GateReaderTap(DateTime.UtcNow, port, null, null, "-", true,
+                $"Opened by hand by {openedBy}.", node));
+
             _ = RecordForLiveLogAsync(
                 (recorder, token) => recorder.RecordManualOpenAsync(deviceId, openedBy, token), _stopping);
-            return true;
         }
 
         /// <summary>Serial ports on this PC, with Windows' name for each when it has one.</summary>
@@ -217,9 +253,11 @@ namespace AimPark.API.Sync.Site.GateReaders
                     _logger.LogInformation("Gate reader connected on {Port}", port);
 
                     // Some boards reset when the port opens. Let it finish
-                    // booting so its banner isn't read as a tap.
+                    // booting so its banner isn't read as a tap — but look at
+                    // the banner first: an ESP-NOW hub linked here by mistake
+                    // says so, and the screen offers to link it as a hub.
                     await Task.Delay(1500, ct);
-                    serial.DiscardInBuffer();
+                    session.Seen(serial.ReadExisting());
 
                     while (!ct.IsCancellationRequested)
                     {
@@ -233,10 +271,13 @@ namespace AimPark.API.Sync.Site.GateReaders
                             continue;
                         }
 
+                        session.Seen(line);
                         if (!line.StartsWith("UID:", StringComparison.Ordinal))
                             continue;
 
-                        var outcome = await HandleTapAsync(session, line[4..].Trim(), ct);
+                        var outcome = await AnswerTapAsync(
+                            port, null, session.Binding.DeviceId, line[4..].Trim(), ct);
+                        session.LastTapAt = DateTime.UtcNow;
                         session.TrySend(outcome.Opened ? "RESULT:OPEN" : "RESULT:SHUT");
                     }
                 }
@@ -267,7 +308,13 @@ namespace AimPark.API.Sync.Site.GateReaders
             }
         }
 
-        private async Task<GateTapOutcome> HandleTapAsync(Session session, string tag, CancellationToken ct)
+        /// <summary>
+        /// Decides one tap and logs it. Shared by the USB readers and the
+        /// wireless gates behind an ESP-NOW hub, so both are judged — and
+        /// logged against their own gate's camera — exactly alike.
+        /// </summary>
+        public async Task<GateTapOutcome> AnswerTapAsync(
+            string port, string? node, Guid deviceId, string tag, CancellationToken ct)
         {
             GateTapOutcome outcome;
             string? readerName = null;
@@ -277,11 +324,11 @@ namespace AimPark.API.Sync.Site.GateReaders
             {
                 using var scope = _scopes.CreateScope();
                 var handler = scope.ServiceProvider.GetRequiredService<GateTapHandler>();
-                outcome = await handler.HandleAsync(session.Binding.DeviceId, tag, ct);
+                outcome = await handler.HandleAsync(deviceId, tag, ct);
 
                 var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
                 readerName = await db.Set<GateDevice>().AsNoTracking()
-                    .Where(d => d.Id == session.Binding.DeviceId)
+                    .Where(d => d.Id == deviceId)
                     .Select(d => d.Name)
                     .FirstOrDefaultAsync(ct);
             }
@@ -289,17 +336,16 @@ namespace AimPark.API.Sync.Site.GateReaders
             {
                 // A barrier that stays shut is the safe failure. The guard can
                 // still open it by hand.
-                _logger.LogError(ex, "Gate tap on {Port} failed", session.Binding.Port);
+                _logger.LogError(ex, "Gate tap on {Port} {Node} failed", port, node);
                 outcome = new GateTapOutcome(false, "-", "Server error. Use Gate Check or open by hand.");
             }
 
-            session.LastTapAt = DateTime.UtcNow;
-            Record(new GateReaderTap(DateTime.UtcNow, session.Binding.Port, readerName, tag,
-                outcome.Direction, outcome.Opened, outcome.Message));
+            Record(new GateReaderTap(DateTime.UtcNow, port, readerName, tag,
+                outcome.Direction, outcome.Opened, outcome.Message, node));
 
             // Not awaited: the barrier shouldn't wait on the log.
             _ = RecordForLiveLogAsync(
-                (recorder, token) => recorder.RecordTapAsync(session.Binding.DeviceId, tag, tappedAt, outcome, token), ct);
+                (recorder, token) => recorder.RecordTapAsync(deviceId, tag, tappedAt, outcome, token), ct);
             return outcome;
         }
 
@@ -321,7 +367,7 @@ namespace AimPark.API.Sync.Site.GateReaders
             }
         }
 
-        private void Record(GateReaderTap tap)
+        internal void Record(GateReaderTap tap)
         {
             lock (_lock)
             {
@@ -394,17 +440,39 @@ namespace AimPark.API.Sync.Site.GateReaders
             public bool Connected => _serial is not null;
             public string? Error { get; private set; }
             public DateTime? LastTapAt { get; set; }
+            public DateTime? LastSeenAt { get; private set; }
+            public bool LooksLikeHub { get; private set; }
 
             public void Attach(SerialPort serial)
             {
                 lock (_write) _serial = serial;
                 Error = null;
+                LastSeenAt = DateTime.UtcNow;
+                LooksLikeHub = false;
             }
 
             public void Detach(string? error)
             {
-                lock (_write) _serial = null;
+                lock (_write)
+                {
+                    if (_serial is not null) LastSeenAt = DateTime.UtcNow;
+                    _serial = null;
+                }
                 Error = error;
+            }
+
+            /// <summary>Anything the board printed. Notes a hub's banner or its node-prefixed lines.</summary>
+            public void Seen(string text)
+            {
+                if (text.Length == 0) return;
+                LastSeenAt = DateTime.UtcNow;
+
+                foreach (var line in text.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+                {
+                    if (HubProtocol.IsBanner(line)
+                        || HubProtocol.Parse(line) is HubTap or HubSlot or HubPresence or HubNodeError)
+                        LooksLikeHub = true;
+                }
             }
 
             public bool TrySend(string line)
