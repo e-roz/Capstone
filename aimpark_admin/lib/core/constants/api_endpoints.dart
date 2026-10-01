@@ -94,6 +94,18 @@ class ApiEndpoints {
   static String openGateReader(String port) =>
       '/api/site/gate-readers/$port/open';
 
+  // Security – the boards behind an ESP-NOW hub: G1/G2 gates, S1/S2 sensors.
+  static String hubNode(String port, String node) =>
+      '/api/site/gate-readers/$port/nodes/$node';
+  static String openHubNode(String port, String node) =>
+      '/api/site/gate-readers/$port/nodes/$node/open';
+  // Development servers only: plays the hub's side, one line at a time.
+  static String simulateHub(String port) =>
+      '/api/site/gate-readers/$port/simulate';
+
+  // Admin and Security – every device the guard post depends on. Site server only.
+  static const deviceHealth = '/api/site/device-health';
+
   // Security – the Overview's live gate log and camera. Site server only.
   static const liveGateTaps = '/api/site/live-gate/taps';
   static String liveGateTapPhoto(String tapId) =>

@@ -10,7 +10,7 @@ import '../theme/theme.dart';
 /// The guard's manual override, on the Overview where it can't be missed.
 ///
 /// The same action as Gate Readers → Open gate: asks which gate when there is
-/// more than one reader connected, always asks "are you sure" so a stray
+/// more than one reader connected — cabled or behind the ESP-NOW hub — always asks "are you sure" so a stray
 /// click doesn't let a car in, and lands on the live gate log as
 /// "Opened by guard" with the guard's name.
 class OpenGateButton extends ConsumerStatefulWidget {
@@ -30,16 +30,7 @@ class _OpenGateButtonState extends ConsumerState<OpenGateButton> {
       final res = await dio.get(ApiEndpoints.gateReaders);
       final state = GateReadersState.fromJson(res.data as Map<String, dynamic>);
 
-      final gates = [
-        for (final p in state.ports)
-          if (p.connected && p.deviceId != null)
-            (
-              port: p.port,
-              reader: state.readers
-                  .where((r) => r.deviceId == p.deviceId)
-                  .firstOrNull,
-            ),
-      ]..sort((a, b) => (a.reader?.gate ?? 0).compareTo(b.reader?.gate ?? 0));
+      final gates = state.openableGates;
 
       if (!mounted) return;
       if (gates.isEmpty) {
@@ -47,10 +38,9 @@ class _OpenGateButtonState extends ConsumerState<OpenGateButton> {
         return;
       }
 
-      String nameOf(({String port, LinkableReader? reader}) g) =>
-          g.reader == null ? g.port : 'Gate ${g.reader!.gate}';
+      String nameOf(OpenableGate g) => g.name;
 
-      final chosen = await showDialog<({String port, LinkableReader? reader})>(
+      final chosen = await showDialog<OpenableGate>(
         context: context,
         builder: (ctx) => AlertDialog(
           title: Text(
@@ -81,7 +71,9 @@ class _OpenGateButtonState extends ConsumerState<OpenGateButton> {
       );
       if (chosen == null || !mounted) return;
 
-      final opened = await dio.post(ApiEndpoints.openGateReader(chosen.port));
+      final opened = await dio.post(chosen.node == null
+          ? ApiEndpoints.openGateReader(chosen.port)
+          : ApiEndpoints.openHubNode(chosen.port, chosen.node!));
       _say((opened.data as Map?)?['message']?.toString() ?? 'Gate opened.');
     } on DioException catch (e) {
       final data = e.response?.data;

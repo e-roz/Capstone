@@ -6,12 +6,14 @@ import 'package:intl/intl.dart';
 import '../core/utils/csv_export.dart';
 import '../models/report.dart';
 import '../providers/auth_provider.dart';
+import '../providers/device_health_provider.dart';
 import '../providers/gate_device_provider.dart';
 import '../providers/parking_provider.dart';
 import '../providers/registrations_provider.dart';
 import '../providers/reports_provider.dart';
 import '../router/destinations.dart';
 import '../theme/theme.dart';
+import '../widgets/device_health_list.dart';
 import '../widgets/ui/ui.dart';
 
 final _money = NumberFormat.currency(symbol: '₱', decimalDigits: 0);
@@ -1005,23 +1007,29 @@ class _PeakHoursCard extends ConsumerWidget {
   }
 }
 
+/// Every device at the guard post, one row each, from the site server's own
+/// view of them — not the keys issued in Gate Devices, which say nothing
+/// about whether a board is actually answering.
+///
+/// The ring is the share of linked devices that are up right now. Opened
+/// from the cloud panel there is nothing to ask, and the card says so.
 class _DeviceHealthCard extends ConsumerWidget {
   const _DeviceHealthCard();
+
+  /// Past this the list scrolls, so the card doesn't outgrow its row.
+  static const double _listMaxHeight = 320;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final t = context.tokens;
     final text = Theme.of(context).textTheme;
-    final devices = ref.watch(gateDeviceListProvider).valueOrNull ?? [];
-    final active = devices.where((d) => !d.isRevoked).length;
-    final total = devices.length;
-    final ratio = total == 0 ? 0.0 : active / total;
+    final report = ref.watch(deviceHealthProvider).report;
+
+    final linked = report?.devices.where((d) => d.bound).toList() ?? const [];
+    final up = linked.where((d) => d.online).length;
+    final ratio = linked.isEmpty ? 0.0 : up / linked.length;
     final percent = (ratio * 100).round();
-    final lastSeen = devices
-        .map((d) => d.lastSeenAt)
-        .whereType<DateTime>()
-        .fold<DateTime?>(null, (a, b) => a == null || b.isAfter(a) ? b : a);
-    final accent = t.chart.series(4);
+    final accent = up == linked.length ? t.chart.series(4) : t.status.danger.solid;
 
     return Container(
       padding: const EdgeInsets.all(AppSpacing.cardPadding),
@@ -1030,71 +1038,55 @@ class _DeviceHealthCard extends ConsumerWidget {
         borderRadius: AppRadii.lgAll,
       ),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Row(
             children: [
               Text('Device health',
                   style: text.titleMedium?.copyWith(color: t.text.inverse)),
               const Spacer(),
-              Icon(Icons.more_horiz, size: AppSizes.iconMd, color: t.text.inverseMuted),
+              IconButton(
+                tooltip: 'Check now',
+                visualDensity: VisualDensity.compact,
+                icon: Icon(Icons.refresh, size: AppSizes.iconMd, color: t.text.inverseMuted),
+                onPressed: () => ref.read(deviceHealthProvider.notifier).refresh(),
+              ),
             ],
           ),
-          const SizedBox(height: AppSpacing.x3),
-          Center(
-            child: AppProgressRing(
-              value: ratio,
-              size: 128,
-              strokeWidth: 12,
-              color: accent,
-              center: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text('ACTIVE',
-                      style: text.labelSmall?.copyWith(
-                          color: t.text.inverseMuted, letterSpacing: 0.6)),
-                  Text('$percent%',
-                      style: AppTypography.tabular(text.headlineSmall!)
-                          .copyWith(color: t.text.inverse)),
-                ],
+          if (report != null) ...[
+            const SizedBox(height: AppSpacing.x3),
+            Center(
+              child: AppProgressRing(
+                value: ratio,
+                size: 112,
+                strokeWidth: 12,
+                color: accent,
+                center: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text('ONLINE',
+                        style: text.labelSmall?.copyWith(
+                            color: t.text.inverseMuted, letterSpacing: 0.6)),
+                    Text(linked.isEmpty ? '—' : '$percent%',
+                        style: AppTypography.tabular(text.headlineSmall!)
+                            .copyWith(color: t.text.inverse)),
+                  ],
+                ),
               ),
             ),
+            const SizedBox(height: AppSpacing.x2),
+            Center(
+              child: Text('$up of ${linked.length} linked devices up',
+                  style: text.bodySmall?.copyWith(color: t.text.inverseMuted)),
+            ),
+            const SizedBox(height: AppSpacing.x3),
+            Divider(height: 1, color: t.text.inverseMuted.withValues(alpha: 0.16)),
+          ],
+          const SizedBox(height: AppSpacing.x1),
+          ConstrainedBox(
+            constraints: const BoxConstraints(maxHeight: _listMaxHeight),
+            child: const SingleChildScrollView(child: DeviceHealthList(dark: true)),
           ),
-          const SizedBox(height: AppSpacing.x4),
-          Divider(height: 1, color: t.text.inverseMuted.withValues(alpha: 0.16)),
-          const SizedBox(height: AppSpacing.x3),
-          _DarkFieldRow(label: 'Active devices', value: '$active'),
-          _DarkFieldRow(label: 'Revoked', value: '${total - active}'),
-          _DarkFieldRow(
-            label: 'Last seen',
-            value: lastSeen == null ? '—' : _timeLabel.format(lastSeen.toLocal()),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _DarkFieldRow extends StatelessWidget {
-  const _DarkFieldRow({required this.label, required this.value});
-
-  final String label;
-  final String value;
-
-  @override
-  Widget build(BuildContext context) {
-    final t = context.tokens;
-    final text = Theme.of(context).textTheme;
-
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: AppSpacing.x1 + 1),
-      child: Row(
-        children: [
-          Expanded(
-            child: Text(label, style: text.bodySmall?.copyWith(color: t.text.inverseMuted)),
-          ),
-          Text(value,
-              style: AppTypography.tabular(text.titleSmall!).copyWith(color: t.text.inverse)),
         ],
       ),
     );

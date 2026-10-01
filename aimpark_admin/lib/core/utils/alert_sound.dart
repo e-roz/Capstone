@@ -45,18 +45,25 @@ class AlertSound {
     _context = null;
   }
 
-  /// Two short high tones, quick enough not to annoy on a busy gate.
-  static void beep() {
+  /// Two short high tones, quick enough not to annoy on a busy gate. Also
+  /// what a device going offline sounds like.
+  static void beep() => _play(const [(0.0, 880), (0.18, 880)], 'square');
+
+  /// A soft rising pair: a device is back. Unlike [beep] it should never
+  /// make a guard look up in alarm.
+  static void chime() => _play(const [(0.0, 660), (0.14, 990)], 'sine');
+
+  static void _play(List<(double, int)> tones, String type) {
     final context = _context;
     if (context == null) return;
 
     try {
       final start = context.currentTime;
-      for (final offset in const [0.0, 0.18]) {
+      for (final (offset, frequency) in tones) {
         final osc = context.createOscillator();
         final gain = context.createGain();
-        osc.type = 'square';
-        osc.frequency.value = 880;
+        osc.type = type;
+        osc.frequency.value = frequency.toDouble();
         gain.gain.value = 0.08;
         osc.connect(gain);
         gain.connect(context.destination);
