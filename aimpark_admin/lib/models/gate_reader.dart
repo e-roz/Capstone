@@ -48,12 +48,12 @@ class GateReaderPort {
 DateTime? _date(dynamic value) =>
     value == null ? null : DateTime.parse(value.toString());
 
-/// One board behind the ESP-NOW hub: a wireless gate (G1, G2) or a slot
-/// sensor (S1, S2).
+/// One board behind the ESP-NOW hub: a wireless gate (G1, G2), a sensor
+/// board (S1, S2), or one sensor on a sensor board (S1/3).
 class HubNode {
   final String node;
 
-  /// "gate", "sensor", or null for a board this panel doesn't know.
+  /// "gate", "sensor", "sensorBoard", or null for a board this panel doesn't know.
   final String? kind;
 
   /// The reader a gate logs as, or the slot a sensor watches.
@@ -86,7 +86,12 @@ class HubNode {
   });
 
   bool get isGate => kind == 'gate';
+
+  /// One sensor on a sensor board, e.g. S1/3. Stands for a slot.
   bool get isSensor => kind == 'sensor';
+
+  /// S1, S2: the board itself. Only online or not; its sensors are the slots.
+  bool get isSensorBoard => kind == 'sensorBoard';
 
   factory HubNode.fromJson(Map<String, dynamic> json) => HubNode(
         node: json['node']?.toString() ?? '',

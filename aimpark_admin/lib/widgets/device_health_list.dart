@@ -171,7 +171,9 @@ String? deviceFixTip(DeviceHealth d, DeviceHealthReport report) {
       'Check $node\'s power. It rejoins within a few seconds of booting.',
     'slotSensor' => d.online
         ? 'Readings aren\'t reaching $node. Check its power.'
-        : 'Check $node\'s power. Its slot keeps its last status until then.',
+        : 'Check $node\'s wiring. Its slot keeps its last status until then.',
+    'sensorBoard' =>
+      'Check $node\'s power. Its slots keep their last status until it rejoins.',
     'gateReader' when error.contains('hub') =>
       'Link this port as a hub in Gate → Gate Readers.',
     'gateReader' =>
@@ -302,6 +304,7 @@ class _DeviceRow extends StatelessWidget {
         'hub' => Icons.hub_outlined,
         'gateNode' => Icons.sensor_door_outlined,
         'slotSensor' => Icons.sensors,
+        'sensorBoard' => Icons.developer_board_outlined,
         'gateReader' => Icons.usb,
         'camera' => Icons.videocam_outlined,
         _ => Icons.memory,

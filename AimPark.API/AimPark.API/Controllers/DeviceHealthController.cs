@@ -110,13 +110,15 @@ namespace AimPark.API.Controllers
             {
                 var hubId = $"hub:{hub.Port}";
                 var hubUp = hub.Connected && hub.Responding;
-                var online = hub.Nodes.Count(n => n.Node.Online);
+                // Boards, not the sensors on them: S1's nine slots are one board.
+                var boards = hub.Nodes.Where(n => n.Node.Kind != HubNodeKind.Sensor).ToList();
+                var online = boards.Count(n => n.Node.Online);
 
                 rows.Add(new DeviceHealth(
                     hubId, "ESP-NOW hub", "hub", hub.Simulated ? $"{hub.Port} (simulated)" : hub.Port,
                     true, hubUp, hub.Connected ? hub.LastSeenAt ?? now : hub.LastSeenAt,
                     hub.Error ?? (hub.Connected && !hub.Responding ? "Not answering STATUS." : null), null,
-                    Detail: hub.Connected ? $"{online} of {hub.Nodes.Count} boards online" : null));
+                    Detail: hub.Connected ? $"{online} of {boards.Count} boards online" : null));
 
                 foreach (var (node, boundTo) in hub.Nodes.Select(n => (n.Node, n.BoundTo)))
                 {
@@ -139,6 +141,23 @@ namespace AimPark.API.Controllers
                             DependsOn: hubId,
                             Detail: node.LastTapAt is null ? null : "Card taps reach the server."));
                     }
+                    else if (node.Kind == HubNodeKind.SensorBoard)
+                    {
+                        var sensors = hub.Nodes
+                            .Where(n => n.Node.Kind == HubNodeKind.Sensor
+                                     && HubProtocol.BoardOf(n.Node.Node) == node.Node)
+                            .ToList();
+                        var linked = sensors.Count(n => n.BoundTo is not null);
+
+                        rows.Add(new DeviceHealth(
+                            $"node:{hub.Port}:{node.Node}", $"Sensor board {node.Node}", "sensorBoard",
+                            sensors.Count == 0 ? null : $"{linked} of {sensors.Count} sensors linked to slots",
+                            true, hubUp && node.Online, node.LastSeenAt,
+                            recentError ? nodeError : null, recentError ? node.LastErrorAt : null,
+                            DependsOn: hubId,
+                            Detail: sensors.Count == 0 ? "No reading yet"
+                                : $"{sensors.Count(n => n.Node.Occupied == true)} of {sensors.Count} slots taken"));
+                    }
                     else if (node.Kind == HubNodeKind.Sensor)
                     {
                         var slot = boundTo is Guid s && slots.TryGetValue(s, out var found) ? found : null;
@@ -158,7 +177,7 @@ namespace AimPark.API.Controllers
                                 : $"Slot {slot.SlotCode} (Gate {slot.Gate})",
                             boundTo is not null, hubUp && node.Online, node.LastSeenAt,
                             recentError ? nodeError : null, recentError ? node.LastErrorAt : null,
-                            DependsOn: hubId, Detail: detail,
+                            DependsOn: $"node:{hub.Port}:{HubProtocol.BoardOf(node.Node)}", Detail: detail,
                             Occupied: node.Occupied, DistanceCm: node.DistanceCm));
                     }
                 }

@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text.RegularExpressions;
 
 namespace AimPark.API.Sync.Site.GateReaders
@@ -8,8 +9,11 @@ namespace AimPark.API.Sync.Site.GateReaders
         /// <summary>G1, G2: a wireless barrier with a card reader.</summary>
         Gate,
 
-        /// <summary>S1, S2: an ultrasonic sensor over one parking slot.</summary>
-        Sensor
+        /// <summary>S1/3: one ultrasonic sensor on a sensor board, over one parking slot.</summary>
+        Sensor,
+
+        /// <summary>S1, S2: a sensor board. Comes and goes as a whole; its sensors are the slots.</summary>
+        SensorBoard
     }
 
     /// <summary>One line from the hub, understood.</summary>
@@ -21,7 +25,7 @@ namespace AimPark.API.Sync.Site.GateReaders
     /// <summary><c>G1 UID:04A1B2C3</c> — a card at a gate, waiting for an answer.</summary>
     public record HubTap(string Node, string Uid) : HubLine;
 
-    /// <summary><c>S1 SLOT:OCCUPIED 7</c> — a slot changed, or a STATUS reply.</summary>
+    /// <summary><c>S1/3 SLOT:OCCUPIED 3.7</c> — a slot changed, or a STATUS reply. Distance rounded to whole cm.</summary>
     public record HubSlot(string Node, bool Occupied, int DistanceCm) : HubLine;
 
     /// <summary><c>G1 ONLINE</c> / <c>G1 OFFLINE</c>.</summary>
@@ -48,7 +52,8 @@ namespace AimPark.API.Sync.Site.GateReaders
         private const string BannerText = "# AimPark ESP-NOW hub";
         private const string ReadyText = "# Ready";
 
-        private static readonly Regex NodeName = new(@"^[A-Z]+[0-9]+$", RegexOptions.Compiled);
+        // A board ("G1", "S2"), or one sensor on a sensor board ("S2/7").
+        private static readonly Regex NodeName = new(@"^[A-Z]+[0-9]+(/[0-9]+)?$", RegexOptions.Compiled);
 
         /// <summary>The first thing the hub prints after it boots.</summary>
         public static bool IsBanner(string line) => line.Trim().StartsWith(BannerText, StringComparison.Ordinal);
@@ -62,13 +67,28 @@ namespace AimPark.API.Sync.Site.GateReaders
 
         public static bool IsNodeName(string node) => NodeName.IsMatch(node);
 
-        /// <summary>G for a gate, S for a sensor; null for a board this server doesn't know.</summary>
-        public static HubNodeKind? KindOf(string node) => node.Length < 2 ? null : node[0] switch
+        /// <summary>
+        /// G1 a gate, S1 a sensor board, S1/3 the third sensor on it; null for
+        /// a board this server doesn't know.
+        /// </summary>
+        public static HubNodeKind? KindOf(string node)
         {
-            'G' => HubNodeKind.Gate,
-            'S' => HubNodeKind.Sensor,
-            _ => null
-        };
+            if (node.Length < 2) return null;
+            var onBoard = node.Contains('/');
+            return node[0] switch
+            {
+                'G' when !onBoard => HubNodeKind.Gate,
+                'S' => onBoard ? HubNodeKind.Sensor : HubNodeKind.SensorBoard,
+                _ => null
+            };
+        }
+
+        /// <summary>The board a sensor sits on: S1 for S1/3. A board is its own.</summary>
+        public static string BoardOf(string node)
+        {
+            var slash = node.IndexOf('/');
+            return slash < 0 ? node : node[..slash];
+        }
 
         public static HubLine Parse(string raw)
         {
@@ -99,7 +119,8 @@ namespace AimPark.API.Sync.Site.GateReaders
 
             if (rest.StartsWith("SLOT:", StringComparison.Ordinal))
             {
-                // "OCCUPIED 7" or "FREE 0". The distance is a nicety; the word is the reading.
+                // "OCCUPIED 3.7" or "FREE 0.0". The distance is a nicety; the word is the reading.
+                if (KindOf(node) != HubNodeKind.Sensor) return new HubUnknown(line);
                 var parts = rest[5..].Split(' ', StringSplitOptions.RemoveEmptyEntries);
                 if (parts.Length == 0) return new HubUnknown(line);
 
@@ -108,7 +129,11 @@ namespace AimPark.API.Sync.Site.GateReaders
                 else if (parts[0] == "FREE") occupied = false;
                 else return new HubUnknown(line);
 
-                var distance = parts.Length > 1 && int.TryParse(parts[1], out var cm) && cm >= 0 ? cm : 0;
+                var distance = parts.Length > 1
+                    && double.TryParse(parts[1], NumberStyles.Float, CultureInfo.InvariantCulture, out var cm)
+                    && cm >= 0
+                        ? (int)Math.Round(cm, MidpointRounding.AwayFromZero)
+                        : 0;
                 return new HubSlot(node, occupied, distance);
             }
 

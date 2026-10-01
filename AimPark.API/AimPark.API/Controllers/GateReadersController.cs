@@ -131,6 +131,7 @@ namespace AimPark.API.Controllers
                         {
                             HubNodeKind.Gate => "gate",
                             HubNodeKind.Sensor => "sensor",
+                            HubNodeKind.SensorBoard => "sensorBoard",
                             _ => null
                         },
                         boundTo = n.BoundTo,
@@ -166,7 +167,7 @@ namespace AimPark.API.Controllers
                 // The reader holds the port open; it has to let go first.
                 _readers.Unbind(port);
                 _hubs.Bind(port);
-                return Ok(new { message = $"{port} linked as the ESP-NOW hub. Now pick what G1, G2, S1 and S2 stand for." });
+                return Ok(new { message = $"{port} linked as the ESP-NOW hub. Now pick the reader for G1 and G2, and the slot for each sensor on S1 and S2." });
             }
 
             if (dto.DeviceId is not Guid deviceId)
@@ -205,8 +206,11 @@ namespace AimPark.API.Controllers
                 : BadRequest(new { message = $"The reader on {port} isn't connected." });
         }
 
-        /// <summary>Says what a board behind the hub stands for: G1/G2 a reader, S1/S2 a slot.</summary>
-        [HttpPut("{port}/nodes/{node}")]
+        /// <summary>
+        /// Says what a board behind the hub stands for: G1/G2 a reader, each
+        /// sensor (S1/3) a slot. Catch-all, because a sensor's name has a slash.
+        /// </summary>
+        [HttpPut("{port}/nodes/{**node}")]
         public async Task<ActionResult<object>> LinkNode(
             string port, string node, [FromBody] LinkNodeDto dto, CancellationToken ct)
         {
@@ -220,6 +224,7 @@ namespace AimPark.API.Controllers
                 HubNodeKind.Gate => await _hubs.MapGateAsync(port, node, dto.DeviceId, ct),
                 HubNodeKind.Sensor when dto.SlotId is null => "Choose the slot this sensor watches.",
                 HubNodeKind.Sensor => await _hubs.MapSensorAsync(port, node, dto.SlotId, ct),
+                HubNodeKind.SensorBoard => $"{node} is a sensor board. Link each of its sensors ({node}/1, {node}/2 …) to a slot instead.",
                 _ => $"{node} isn't a board this server knows."
             };
 
@@ -234,7 +239,7 @@ namespace AimPark.API.Controllers
             });
         }
 
-        [HttpDelete("{port}/nodes/{node}")]
+        [HttpDelete("{port}/nodes/{**node}")]
         public async Task<ActionResult<object>> UnlinkNode(string port, string node, CancellationToken ct)
         {
             if (_hubs is null) return NotAtGuardPost();

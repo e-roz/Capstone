@@ -7,7 +7,7 @@ class DeviceHealth {
   final String id;
   final String name;
 
-  /// "cloud", "hub", "gateNode", "slotSensor", "gateReader" or "camera".
+  /// "cloud", "hub", "gateNode", "sensorBoard", "slotSensor", "gateReader" or "camera".
   final String kind;
 
   /// What it stands for: a gate's reader, a slot, a COM port.

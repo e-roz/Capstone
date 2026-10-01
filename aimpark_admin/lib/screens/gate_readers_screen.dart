@@ -299,12 +299,14 @@ class _GateReadersScreenState extends ConsumerState<GateReadersScreen> {
   }
 
   Widget _hubSection(HubPort hub, GateReadersState s) {
-    final online = hub.nodes.where((n) => n.online).length;
+    // Boards, not the sensors on them: S1's nine slots are one board.
+    final boards = hub.nodes.where((n) => !n.isSensor).toList();
+    final online = boards.where((n) => n.online).length;
     final status = switch (hub) {
       HubPort(connected: false) => 'Not connected. Check the hub\'s USB cable.',
       HubPort(responding: false) =>
         'Connected but not answering. It restarts itself; if it keeps happening, unplug it and plug it back in.',
-      _ => '$online of ${hub.nodes.length} boards online · heard from ${lastSeenLabel(hub.lastSeenAt)}',
+      _ => '$online of ${boards.length} boards online · heard from ${lastSeenLabel(hub.lastSeenAt)}',
     };
 
     return AppSectionCard(
@@ -353,10 +355,17 @@ class _GateReadersScreenState extends ConsumerState<GateReadersScreen> {
             : <DropdownMenuItem<String>>[];
     final known = options.any((o) => o.value == n.boundTo);
 
+    final sensorsOnBoard = n.isSensorBoard
+        ? hub.nodes.where((o) => o.isSensor && o.node.startsWith('${n.node}/')).toList()
+        : const <HubNode>[];
+
     final reading = switch (n) {
       HubNode(isSensor: true, occupied: true) => 'Vehicle at ${n.distanceCm ?? '?'} cm',
       HubNode(isSensor: true, occupied: false) => 'Empty',
       HubNode(isSensor: true) => 'No reading yet',
+      HubNode(isSensorBoard: true) when sensorsOnBoard.isEmpty => 'No reading yet',
+      HubNode(isSensorBoard: true) =>
+        '${sensorsOnBoard.where((o) => o.occupied == true).length} of ${sensorsOnBoard.length} slots taken',
       HubNode(lastTapAt: final at?) => 'Last tap ${DateFormat('HH:mm:ss').format(at.toLocal())}',
       _ => '—',
     };
@@ -364,9 +373,18 @@ class _GateReadersScreenState extends ConsumerState<GateReadersScreen> {
     return DataRow(cells: [
       DataCell(AppPrimaryCell(
         title: n.node,
-        subtitle: n.isGate ? 'Wireless gate' : n.isSensor ? 'Slot sensor' : 'Unknown board',
+        subtitle: switch (n) {
+          HubNode(isGate: true) => 'Wireless gate',
+          HubNode(isSensor: true) => 'Slot sensor',
+          HubNode(isSensorBoard: true) => 'Sensor board',
+          _ => 'Unknown board',
+        },
       )),
-      DataCell(
+      if (n.isSensorBoard)
+        DataCell(Text(sensorsOnBoard.isEmpty
+            ? 'Its sensors appear here once it reports'
+            : '${sensorsOnBoard.where((o) => o.boundTo != null).length} of ${sensorsOnBoard.length} sensors linked'))
+      else DataCell(
         DropdownButton<String>(
           value: known ? n.boundTo : null,
           hint: Text(n.boundTo != null
@@ -484,8 +502,9 @@ class _SimulatorCardState extends ConsumerState<_SimulatorCard> {
     'S1 ONLINE',
     'S2 ONLINE',
     'G1 UID:04A1B2C3',
-    'S1 SLOT:OCCUPIED 7',
-    'S1 SLOT:FREE 0',
+    'S1/1 SLOT:OCCUPIED 3.7',
+    'S1/1 SLOT:FREE 0.0',
+    'S2/4 SLOT:OCCUPIED 2.4',
     'G2 ERR:NOT_DELIVERED',
     'G1 OFFLINE',
     'S2 OFFLINE',

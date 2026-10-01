@@ -45,7 +45,10 @@ namespace AimPark.API.Sync.Site.GateReaders
         /// <summary>With STATUS every 10 s, a hub this quiet has stopped answering.</summary>
         public static readonly TimeSpan QuietAfter = TimeSpan.FromSeconds(25);
 
-        /// <summary>The boards the firmware is built for. Listed before the hub has said a word.</summary>
+        /// <summary>
+        /// The boards the firmware is built for. Listed before the hub has said
+        /// a word. A sensor board's sensors (S1/1, S1/2 …) appear once it reports.
+        /// </summary>
         public static readonly string[] ExpectedNodes = ["G1", "G2", "S1", "S2"];
 
         private readonly Func<string, bool> _send;
@@ -214,6 +217,11 @@ namespace AimPark.API.Sync.Site.GateReaders
                 case HubSlot slot:
                     lock (_lock)
                     {
+                        // A reading is the board checking in, too.
+                        var board = NodeFor(HubProtocol.BoardOf(slot.Node));
+                        board.Online = true;
+                        board.LastSeenAt = now;
+
                         var node = NodeFor(slot.Node);
                         node.Online = true;
                         node.LastSeenAt = now;
@@ -229,16 +237,27 @@ namespace AimPark.API.Sync.Site.GateReaders
                 case HubPresence presence:
                     lock (_lock)
                     {
-                        var node = NodeFor(presence.Node);
-                        if (presence.Online)
+                        // A sensor board comes and goes with all its sensors.
+                        // Coming back, they each report in their own lines.
+                        List<Node> affected = presence.Online
+                            ? [NodeFor(presence.Node)]
+                            : _nodes.Values
+                                .Where(n => n.Name == presence.Node
+                                         || HubProtocol.BoardOf(n.Name) == presence.Node)
+                                .ToList();
+
+                        foreach (var node in affected)
                         {
-                            node.Online = true;
-                            node.LastSeenAt = now;
-                        }
-                        else if (now >= _settleUntil)
-                        {
-                            if (node.Online) node.WentOfflineAt = now;
-                            node.Online = false;
+                            if (presence.Online)
+                            {
+                                node.Online = true;
+                                node.LastSeenAt = now;
+                            }
+                            else if (now >= _settleUntil)
+                            {
+                                if (node.Online) node.WentOfflineAt = now;
+                                node.Online = false;
+                            }
                         }
                     }
                     return Task.CompletedTask;
@@ -273,8 +292,11 @@ namespace AimPark.API.Sync.Site.GateReaders
         public IReadOnlyList<HubNodeView> Nodes()
         {
             lock (_lock)
+                // Gates, then each sensor board followed by its sensors in order.
                 return _nodes.Values
-                    .OrderBy(n => n.Kind ?? (HubNodeKind)99)
+                    .OrderBy(n => n.Kind == HubNodeKind.Gate ? 0 : n.Kind is null ? 2 : 1)
+                    .ThenBy(n => HubProtocol.BoardOf(n.Name).Length)
+                    .ThenBy(n => HubProtocol.BoardOf(n.Name), StringComparer.Ordinal)
                     .ThenBy(n => n.Name.Length).ThenBy(n => n.Name, StringComparer.Ordinal)
                     .Select(n => new HubNodeView(
                         n.Name, n.Kind, n.Online, n.LastSeenAt, n.WentOfflineAt,

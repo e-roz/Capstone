@@ -17,9 +17,10 @@ public class HubProtocolTests
     }
 
     [Theory]
-    [InlineData("S1 SLOT:OCCUPIED 7", "S1", true, 7)]
-    [InlineData("S2 SLOT:FREE 0", "S2", false, 0)]
-    [InlineData("S1 SLOT:FREE", "S1", false, 0)]
+    [InlineData("S1/3 SLOT:OCCUPIED 3.7", "S1/3", true, 4)]
+    [InlineData("S2/9 SLOT:FREE 0.0", "S2/9", false, 0)]
+    [InlineData("S1/1 SLOT:OCCUPIED 2.4", "S1/1", true, 2)]
+    [InlineData("S1/1 SLOT:FREE", "S1/1", false, 0)]
     public void ReadsASlot(string line, string node, bool occupied, int distance)
     {
         var slot = Assert.IsType<HubSlot>(HubProtocol.Parse(line));
@@ -44,9 +45,25 @@ public class HubProtocolTests
     [Theory]
     [InlineData("UID:04A1B2C3")]          // A USB gate reader's line, not the hub's.
     [InlineData("G1 UID:")]
-    [InlineData("S1 SLOT:MAYBE 4")]
+    [InlineData("S1/2 SLOT:MAYBE 4")]
+    [InlineData("S1 SLOT:OCCUPIED 7")]    // A board isn't a slot: the old one-sensor format.
     [InlineData("hello there")]
     public void AnythingElseIsUnknown(string line) => Assert.IsType<HubUnknown>(HubProtocol.Parse(line));
+
+    [Theory]
+    [InlineData("G1", HubNodeKind.Gate)]
+    [InlineData("S1", HubNodeKind.SensorBoard)]
+    [InlineData("S2/7", HubNodeKind.Sensor)]
+    [InlineData("G1/2", null)]
+    [InlineData("X1", null)]
+    public void TellsBoardsFromSensors(string node, HubNodeKind? kind) => Assert.Equal(kind, HubProtocol.KindOf(node));
+
+    [Fact]
+    public void FindsTheBoardASensorIsOn()
+    {
+        Assert.Equal("S2", HubProtocol.BoardOf("S2/7"));
+        Assert.Equal("G1", HubProtocol.BoardOf("G1"));
+    }
 
     [Fact]
     public void RecognisesTheBannerAndReady()
@@ -209,13 +226,50 @@ public class HubConversationTests
         var hub = new FakeHub();
         await hub.BootAsync();
 
-        await hub.Say("S1 SLOT:OCCUPIED 7");
-        await hub.Say("S2 SLOT:FREE 0");
+        await hub.Say("S1/3 SLOT:OCCUPIED 7.2");
+        await hub.Say("S2/1 SLOT:FREE 0.0");
 
-        Assert.Equal([("S1", true, 7), ("S2", false, 0)], hub.Slots);
-        Assert.Equal(true, hub.Node("S1").Occupied);
-        Assert.Equal(7, hub.Node("S1").DistanceCm);
-        Assert.Equal(false, hub.Node("S2").Occupied);
+        Assert.Equal([("S1/3", true, 7), ("S2/1", false, 0)], hub.Slots);
+        Assert.Equal(true, hub.Node("S1/3").Occupied);
+        Assert.Equal(7, hub.Node("S1/3").DistanceCm);
+        Assert.Equal(false, hub.Node("S2/1").Occupied);
+
+        // A reading is its board checking in.
+        Assert.True(hub.Node("S1").Online);
+        Assert.Null(hub.Node("S1").Occupied);
+    }
+
+    [Fact]
+    public async Task ABoardGoingOfflineTakesItsSensorsWithIt()
+    {
+        var hub = new FakeHub();
+        await hub.BootAsync();
+        await hub.Say("S1/1 SLOT:OCCUPIED 3.0");
+        await hub.Say("S1/2 SLOT:FREE 0.0");
+        await hub.Say("S2/1 SLOT:FREE 0.0");
+        hub.Wait(HubConversation.SettleFor);
+
+        await hub.Say("S1 OFFLINE");
+
+        Assert.False(hub.Node("S1").Online);
+        Assert.False(hub.Node("S1/1").Online);
+        Assert.False(hub.Node("S1/2").Online);
+        Assert.True(hub.Node("S2/1").Online);              // Another board: untouched.
+        Assert.Equal(true, hub.Node("S1/1").Occupied);     // Last known, kept for the screen.
+        Assert.Equal(3, hub.Slots.Count);                  // Nothing new to apply to any slot.
+    }
+
+    [Fact]
+    public async Task ListsEachBoardBeforeItsSensorsInOrder()
+    {
+        var hub = new FakeHub();
+        await hub.BootAsync();
+        await hub.Say("S2/1 SLOT:FREE 0.0");
+        await hub.Say("S1/10 SLOT:FREE 0.0");
+        await hub.Say("S1/2 SLOT:FREE 0.0");
+
+        Assert.Equal(["G1", "G2", "S1", "S1/2", "S1/10", "S2", "S2/1"],
+            hub.Server.Nodes().Select(n => n.Node));
     }
 
     [Fact]
@@ -244,14 +298,14 @@ public class HubConversationTests
     {
         var hub = new FakeHub();
         await hub.BootAsync();
-        await hub.Say("S1 SLOT:OCCUPIED 9");
+        await hub.Say("S1/4 SLOT:OCCUPIED 9.0");
         hub.Wait(HubConversation.SettleFor);
 
         await hub.Say("S1 OFFLINE");
 
         Assert.Single(hub.Slots);           // Nothing new to apply to the slot.
-        Assert.False(hub.Node("S1").Online);
-        Assert.Equal(true, hub.Node("S1").Occupied);   // Last known, kept for the screen.
+        Assert.False(hub.Node("S1/4").Online);
+        Assert.Equal(true, hub.Node("S1/4").Occupied);   // Last known, kept for the screen.
     }
 
     [Fact]
@@ -290,7 +344,7 @@ public class HubConversationTests
 
         await hub.BootAsync();
         await hub.Say("S3 ONLINE");
-        Assert.Contains(hub.Server.Nodes(), n => n is { Node: "S3", Kind: HubNodeKind.Sensor, Online: true });
+        Assert.Contains(hub.Server.Nodes(), n => n is { Node: "S3", Kind: HubNodeKind.SensorBoard, Online: true });
     }
 
     [Fact]
