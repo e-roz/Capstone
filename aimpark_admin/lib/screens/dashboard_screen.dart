@@ -12,6 +12,7 @@ import '../providers/registrations_provider.dart';
 import '../providers/reports_provider.dart';
 import '../router/destinations.dart';
 import '../theme/theme.dart';
+import '../widgets/parking/live_parking_map.dart';
 import '../widgets/ui/ui.dart';
 
 final _money = NumberFormat.currency(symbol: '₱', decimalDigits: 0);
@@ -95,6 +96,8 @@ class DashboardScreen extends ConsumerWidget {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 _MetricRow(summary: summary, range: range),
+                const SizedBox(height: AppSpacing.gutter),
+                const LiveParkingMapCard(compact: true, showOpenLink: true),
                 const SizedBox(height: AppSpacing.gutter),
                 _TwoUp(
                   leftFlex: 5,
@@ -765,7 +768,7 @@ class _SessionsRevenueChart extends ConsumerWidget {
   }
 }
 
-// ── Bottom row: gauge, gate levels, peak-hour rose, device health ───────────
+// ── Bottom row: gate levels, peak-hour rose, device health ──────────────────
 
 class _BottomRow extends StatelessWidget {
   const _BottomRow({required this.summary, required this.range});
@@ -777,8 +780,8 @@ class _BottomRow extends StatelessWidget {
   Widget build(BuildContext context) {
     return LayoutBuilder(
       builder: (context, constraints) {
-        final columns = constraints.maxWidth > 1200
-            ? 4
+        final columns = constraints.maxWidth > 1100
+            ? 3
             : constraints.maxWidth > 700
             ? 2
             : 1;
@@ -789,73 +792,12 @@ class _BottomRow extends StatelessWidget {
           spacing: AppSpacing.gutter,
           runSpacing: AppSpacing.gutter,
           children: [
-            SizedBox(width: width, child: _OccupancyGaugeCard(summary: summary)),
             SizedBox(width: width, child: const _GateLevelsCard()),
             SizedBox(width: width, child: _PeakHoursCard(range: range)),
             SizedBox(width: width, child: const _DeviceHealthCard()),
           ],
         );
       },
-    );
-  }
-}
-
-class _OccupancyGaugeCard extends StatelessWidget {
-  const _OccupancyGaugeCard({required this.summary});
-
-  final ReportsSummary summary;
-
-  @override
-  Widget build(BuildContext context) {
-    final t = context.tokens;
-    final text = Theme.of(context).textTheme;
-    final ratio = summary.occupancyRatio;
-    final percent = (ratio * 100).round();
-
-    return AppCard(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Text('Real-time occupancy', style: text.titleMedium),
-              const Spacer(),
-              Icon(Icons.more_horiz, size: AppSizes.iconMd, color: t.text.tertiary),
-            ],
-          ),
-          const SizedBox(height: AppSpacing.x3),
-          Center(
-            child: AppArcGauge(
-              value: ratio,
-              minLabel: '0',
-              maxLabel: '${summary.usableSlots}',
-              color: t.brand.primary,
-              center: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text('${summary.occupiedSlots}',
-                      style: AppTypography.tabular(text.headlineSmall!)),
-                  Text('$percent%', style: text.bodySmall?.copyWith(color: t.text.secondary)),
-                ],
-              ),
-            ),
-          ),
-          const SizedBox(height: AppSpacing.x4),
-          Row(
-            children: [
-              Expanded(child: _StatTile(label: 'Occupied', value: '${summary.occupiedSlots}')),
-              Expanded(child: _StatTile(label: 'Available', value: '${summary.availableSlots}')),
-            ],
-          ),
-          const SizedBox(height: AppSpacing.x3),
-          Row(
-            children: [
-              Expanded(child: _StatTile(label: 'Capacity', value: '$percent%')),
-              Expanded(child: _StatTile(label: 'Total', value: '${summary.totalSlots}')),
-            ],
-          ),
-        ],
-      ),
     );
   }
 }

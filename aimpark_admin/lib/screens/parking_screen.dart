@@ -4,46 +4,47 @@ import 'package:intl/intl.dart';
 
 import '../core/utils/responsive.dart';
 import '../models/parking_slot.dart';
+import '../providers/auth_provider.dart';
 import '../providers/parking_provider.dart';
+import '../router/destinations.dart';
 import '../theme/theme.dart';
 import '../widgets/ui/ui.dart';
+import '../widgets/parking/live_parking_map.dart';
 import '../widgets/user_picker.dart';
 
-final _clock = DateFormat('HH:mm');
-
-/// The lot drawn as it is laid out physically: two gates, each with its
-/// four-wheel bays and its motorcycle bays.
+/// The lot drawn as it is laid out physically — see [LiveParkingMapCard].
 ///
-/// This is the one screen whose data is inherently spatial, and it used to
-/// announce a full lot with a line of grey 14px text. The ring, the per-gate
-/// bars and the coloured bays say the same thing in a glance — and the
-/// "real-time parking visualisation" requirement is satisfied by a map of the
-/// facility in a way no table ever satisfies it.
+/// Security opens it read-only for the map. Creating bays, changing their
+/// status and logging entries by hand stay with the administrator.
 class ParkingScreen extends ConsumerWidget {
   const ParkingScreen({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final isAdmin = ref.watch(staffRoleProvider) != StaffRole.security;
+
     return AppPage(
       title: 'Parking',
       subtitle: 'Live bay status across both gates.',
       scrollable: true,
       actions: [
-        OutlinedButton.icon(
-          icon: const Icon(Icons.login, size: AppSizes.iconSm),
-          label: const Text('Log Entry'),
-          onPressed: () => _showLogEntry(context, ref),
-        ),
-        OutlinedButton.icon(
-          icon: const Icon(Icons.logout, size: AppSizes.iconSm),
-          label: const Text('Log Exit'),
-          onPressed: () => _showLogExit(context, ref),
-        ),
-        FilledButton.icon(
-          icon: const Icon(Icons.add, size: AppSizes.iconSm),
-          label: const Text('Add Slot'),
-          onPressed: () => _showAddSlot(context, ref),
-        ),
+        if (isAdmin) ...[
+          OutlinedButton.icon(
+            icon: const Icon(Icons.login, size: AppSizes.iconSm),
+            label: const Text('Log Entry'),
+            onPressed: () => _showLogEntry(context, ref),
+          ),
+          OutlinedButton.icon(
+            icon: const Icon(Icons.logout, size: AppSizes.iconSm),
+            label: const Text('Log Exit'),
+            onPressed: () => _showLogExit(context, ref),
+          ),
+          FilledButton.icon(
+            icon: const Icon(Icons.add, size: AppSizes.iconSm),
+            label: const Text('Add Slot'),
+            onPressed: () => _showAddSlot(context, ref),
+          ),
+        ],
         IconButton(
           icon: const Icon(Icons.refresh),
           tooltip: 'Refresh',
@@ -53,55 +54,8 @@ class ParkingScreen extends ConsumerWidget {
           },
         ),
       ],
-      body: AsyncView(
-        value: ref.watch(parkingSlotsProvider),
-        onRetry: () => ref.invalidate(parkingSlotsProvider),
-        loading: const Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            SkeletonBlock(height: 180),
-            SizedBox(height: AppSpacing.gutter),
-            SkeletonBlock(height: 220),
-            SizedBox(height: AppSpacing.gutter),
-            SkeletonBlock(height: 220),
-          ],
-        ),
-        isEmpty: (availability) => availability.slots.isEmpty,
-        empty: const AppEmptyState(
-          icon: Icons.local_parking_outlined,
-          title: 'No bays configured',
-          message: 'Add a slot to start tracking the lot.',
-        ),
-        data: (availability) {
-          // Occupied bays are matched back to who is standing in them, so a
-          // hovered bay can name the driver rather than just its own code.
-          final sessions = {
-            for (final s
-                in ref.watch(activeParkingSessionsProvider).valueOrNull ??
-                    const <ActiveParkingSession>[])
-              if (s.slotCode != null) s.slotCode!: s,
-          };
-
-          final gates = availability.slots.map((s) => s.gate).toSet().toList()
-            ..sort();
-
-          return Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              _LotSummary(availability: availability, gates: gates),
-              const SizedBox(height: AppSpacing.gutter),
-              for (final gate in gates) ...[
-                _GateSection(
-                  gate: gate,
-                  slots:
-                      availability.slots.where((s) => s.gate == gate).toList(),
-                  sessions: sessions,
-                ),
-                const SizedBox(height: AppSpacing.gutter),
-              ],
-            ],
-          );
-        },
+      body: LiveParkingMapCard(
+        onBayTap: isAdmin ? (slot) => _changeStatus(context, ref, slot) : null,
       ),
     );
   }
@@ -381,379 +335,7 @@ class ParkingScreen extends ConsumerWidget {
     ref.invalidate(activeParkingSessionsProvider);
   }
 
-  void _showSnack(BuildContext context, String msg) {
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
-  }
-}
-
-// ── Lot summary ──────────────────────────────────────────────────────────────
-
-class _LotSummary extends StatelessWidget {
-  const _LotSummary({required this.availability, required this.gates});
-
-  final ParkingAvailability availability;
-  final List<int> gates;
-
-  @override
-  Widget build(BuildContext context) {
-    final t = context.tokens;
-    final text = Theme.of(context).textTheme;
-
-    final total = availability.totalSlots;
-    final free = availability.availableSlots;
-    final occupied = total - free;
-    final ratio = total == 0 ? 0.0 : occupied / total;
-
-    final intent = switch (ratio) {
-      >= 0.95 => StatusIntent.danger,
-      >= 0.8 => StatusIntent.warning,
-      _ => StatusIntent.success,
-    };
-
-    return AppCard(
-      padding: const EdgeInsets.all(AppSpacing.x5),
-      child: LayoutBuilder(
-        builder: (context, constraints) {
-          final ring = AppProgressRing(
-            value: ratio,
-            intent: intent,
-            size: 150,
-            center: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text('$free',
-                    style: AppTypography.tabular(text.displaySmall!)),
-                Text('free',
-                    style:
-                        text.bodySmall?.copyWith(color: t.text.secondary)),
-              ],
-            ),
-          );
-
-          final detail = Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text('$occupied of $total bays in use', style: text.titleMedium),
-              const SizedBox(height: AppSpacing.x4),
-              for (final gate in gates) ...[
-                _GateBar(
-                  gate: gate,
-                  slots:
-                      availability.slots.where((s) => s.gate == gate).toList(),
-                ),
-                const SizedBox(height: AppSpacing.x3),
-              ],
-              const SizedBox(height: AppSpacing.x1),
-              const _Legend(),
-            ],
-          );
-
-          if (constraints.maxWidth < 620) {
-            return Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Center(child: ring),
-                const SizedBox(height: AppSpacing.x5),
-                detail,
-              ],
-            );
-          }
-
-          return Row(
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              ring,
-              const SizedBox(width: AppSpacing.x8),
-              Expanded(child: detail),
-            ],
-          );
-        },
-      ),
-    );
-  }
-}
-
-/// One gate's fill level as a bar, so the two gates can be compared without
-/// counting bays. A lot that is half full overall but has one gate jammed is a
-/// different operational situation, and only this makes that visible.
-class _GateBar extends StatelessWidget {
-  const _GateBar({required this.gate, required this.slots});
-
-  final int gate;
-  final List<ParkingSlot> slots;
-
-  @override
-  Widget build(BuildContext context) {
-    final t = context.tokens;
-    final text = Theme.of(context).textTheme;
-
-    final free = slots.where((s) => s.status == 'Available').length;
-    final ratio = slots.isEmpty ? 0.0 : (slots.length - free) / slots.length;
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          children: [
-            Icon(Icons.door_front_door_outlined,
-                size: AppSizes.iconSm, color: t.text.secondary),
-            const SizedBox(width: AppSpacing.x2),
-            Expanded(child: Text('Gate $gate', style: text.titleSmall)),
-            Text(
-              '$free free',
-              style: AppTypography.tabular(
-                text.bodySmall!.copyWith(color: t.text.secondary),
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: AppSpacing.x1),
-        ClipRRect(
-          borderRadius: AppRadii.fullAll,
-          child: LinearProgressIndicator(
-            value: ratio,
-            minHeight: 6,
-            backgroundColor: t.surface.muted,
-            valueColor: AlwaysStoppedAnimation(
-              t.status.of(ratio >= 0.95 ? StatusIntent.danger : StatusIntent.accent)
-                  .solid,
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _Legend extends StatelessWidget {
-  const _Legend();
-
-  static const _entries = [
-    ('Available', 'Available'),
-    ('Occupied', 'Occupied'),
-    ('OutOfService', 'Out of service'),
-  ];
-
-  @override
-  Widget build(BuildContext context) {
-    final t = context.tokens;
-    final text = Theme.of(context).textTheme;
-
-    return Wrap(
-      spacing: AppSpacing.x4,
-      runSpacing: AppSpacing.x2,
-      children: [
-        for (final (status, label) in _entries)
-          Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                width: 10,
-                height: 10,
-                decoration: BoxDecoration(
-                  color: t.status.of(StatusIntents.slot(status)).solid,
-                  borderRadius: const BorderRadius.all(Radius.circular(3)),
-                ),
-              ),
-              const SizedBox(width: AppSpacing.x2 - 2),
-              Text(label,
-                  style: text.labelSmall?.copyWith(color: t.text.secondary)),
-            ],
-          ),
-      ],
-    );
-  }
-}
-
-// ── Gate section ─────────────────────────────────────────────────────────────
-
-class _GateSection extends StatelessWidget {
-  const _GateSection({
-    required this.gate,
-    required this.slots,
-    required this.sessions,
-  });
-
-  final int gate;
-  final List<ParkingSlot> slots;
-  final Map<String, ActiveParkingSession> sessions;
-
-  @override
-  Widget build(BuildContext context) {
-    final cars = slots.where((s) => !s.isMotorcycle).toList()
-      ..sort((a, b) => a.slotCode.compareTo(b.slotCode));
-    final motorcycles = slots.where((s) => s.isMotorcycle).toList()
-      ..sort((a, b) => a.slotCode.compareTo(b.slotCode));
-    final free = slots.where((s) => s.status == 'Available').length;
-
-    return AppSectionCard(
-      title: 'Gate $gate',
-      subtitle: '$free of ${slots.length} bays free',
-      icon: Icons.door_front_door_outlined,
-      padding: const EdgeInsets.all(AppSpacing.x5),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          if (cars.isNotEmpty)
-            _BayRow(
-              icon: Icons.directions_car_rounded,
-              label: 'Four-wheel',
-              slots: cars,
-              sessions: sessions,
-            ),
-          if (cars.isNotEmpty && motorcycles.isNotEmpty)
-            const SizedBox(height: AppSpacing.x5),
-          if (motorcycles.isNotEmpty)
-            _BayRow(
-              icon: Icons.two_wheeler_rounded,
-              label: 'Motorcycle',
-              slots: motorcycles,
-              sessions: sessions,
-            ),
-        ],
-      ),
-    );
-  }
-}
-
-class _BayRow extends StatelessWidget {
-  const _BayRow({
-    required this.icon,
-    required this.label,
-    required this.slots,
-    required this.sessions,
-  });
-
-  final IconData icon;
-  final String label;
-  final List<ParkingSlot> slots;
-  final Map<String, ActiveParkingSession> sessions;
-
-  @override
-  Widget build(BuildContext context) {
-    final t = context.tokens;
-    final text = Theme.of(context).textTheme;
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          children: [
-            Icon(icon, size: AppSizes.iconSm, color: t.text.tertiary),
-            const SizedBox(width: AppSpacing.x2),
-            Text(
-              label.toUpperCase(),
-              style: text.labelSmall?.copyWith(
-                color: t.text.tertiary,
-                fontWeight: FontWeight.w600,
-                letterSpacing: 0.8,
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: AppSpacing.x3),
-        Wrap(
-          spacing: AppSpacing.x2,
-          runSpacing: AppSpacing.x2,
-          children: [
-            for (final slot in slots)
-              _Bay(slot: slot, session: sessions[slot.slotCode]),
-          ],
-        ),
-      ],
-    );
-  }
-}
-
-/// One bay. Colour is the status, the strip along the bottom repeats it for
-/// anyone who cannot separate the tints, and an occupied bay names its driver
-/// on hover — which is the whole reason to draw a map rather than a list.
-class _Bay extends ConsumerStatefulWidget {
-  const _Bay({required this.slot, required this.session});
-
-  final ParkingSlot slot;
-  final ActiveParkingSession? session;
-
-  @override
-  ConsumerState<_Bay> createState() => _BayState();
-}
-
-class _BayState extends ConsumerState<_Bay> {
-  bool _hovered = false;
-
-  @override
-  Widget build(BuildContext context) {
-    final t = context.tokens;
-    final text = Theme.of(context).textTheme;
-    final slot = widget.slot;
-    final c = t.status.of(StatusIntents.slot(slot.status));
-
-    final session = widget.session;
-    final tooltip = [
-      '${slot.slotCode} · ${slot.status}',
-      if (session != null) session.userName,
-      if (session?.plateNumber != null) session!.plateNumber!,
-      if (session != null)
-        'In since ${_clock.format(session.entryTime.toLocal())}',
-    ].join('\n');
-
-    return MouseRegion(
-      cursor: SystemMouseCursors.click,
-      onEnter: (_) => setState(() => _hovered = true),
-      onExit: (_) => setState(() => _hovered = false),
-      child: GestureDetector(
-        onTap: _changeStatus,
-        child: Tooltip(
-          message: tooltip,
-          child: AnimatedContainer(
-            duration: AppMotion.fast,
-            curve: AppMotion.standard,
-            width: 86,
-            height: 64,
-            decoration: BoxDecoration(
-              color: c.bg,
-              borderRadius: AppRadii.mdAll,
-              border: Border.all(
-                color: _hovered ? c.solid : c.border,
-                width: _hovered ? 1.5 : 1,
-              ),
-              boxShadow: _hovered ? AppElevation.md : AppElevation.none,
-            ),
-            padding: const EdgeInsets.all(AppSpacing.x2),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  slot.slotCode,
-                  overflow: TextOverflow.ellipsis,
-                  style: text.titleSmall?.copyWith(color: c.fg),
-                ),
-                const Spacer(),
-                if (session != null)
-                  Text(
-                    session.plateNumber ?? session.userName,
-                    overflow: TextOverflow.ellipsis,
-                    style: text.labelSmall?.copyWith(color: c.fg),
-                  )
-                else
-                  Container(
-                    width: 24,
-                    height: 3,
-                    decoration: BoxDecoration(
-                      color: c.solid,
-                      borderRadius: AppRadii.fullAll,
-                    ),
-                  ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Future<void> _changeStatus() async {
+  Future<void> _changeStatus(BuildContext context, WidgetRef ref, ParkingSlot slot) async {
     const options = {
       'Available': 'Available',
       'Occupied': 'Occupied',
@@ -765,7 +347,7 @@ class _BayState extends ConsumerState<_Bay> {
       builder: (ctx) {
         final t = ctx.tokens;
         return SimpleDialog(
-          title: Text('${widget.slot.slotCode} — ${widget.slot.status}'),
+          title: Text('${slot.slotCode} — ${slot.status}'),
           children: [
             for (final entry in options.entries)
               SimpleDialogOption(
@@ -790,15 +372,18 @@ class _BayState extends ConsumerState<_Bay> {
       },
     );
 
-    if (picked == null || picked == widget.slot.status || !mounted) return;
+    if (picked == null || picked == slot.status || !context.mounted) return;
 
     final msg = await ref
         .read(parkingActionsProvider.notifier)
-        .updateSlotStatus(widget.slot.slotId, picked);
-    if (!mounted) return;
-    ScaffoldMessenger.of(context)
-        .showSnackBar(SnackBar(content: Text(msg ?? 'Status updated.')));
+        .updateSlotStatus(slot.slotId, picked);
+    if (!context.mounted) return;
+    _showSnack(context, msg ?? 'Status updated.');
     ref.invalidate(parkingSlotsProvider);
+  }
+
+  void _showSnack(BuildContext context, String msg) {
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
   }
 }
 
