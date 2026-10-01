@@ -9,7 +9,7 @@ in VS Code. One folder per unit, one `[env:...]` in `platformio.ini` per folder.
 | `aimpark_gate_reader/` | `gate_reader` | A barrier: RC522 + SG90 servo, plugged by USB into the site server's PC. The server reads it directly (Gate Readers screen) and answers open or shut. See [`../SITE_SERVER.md`](../SITE_SERVER.md) Step 10. |
 | `aimpark_espnow_hub/` | `espnow_hub` | The ESP-NOW hub. Plugged by USB into the site server's PC and relays to the wireless nodes. See section 4. |
 | `aimpark_espnow_gate/` | `espnow_gate` | A wireless barrier (G1, G2): the same RC522 + servo, talking to the hub over ESP-NOW. |
-| `aimpark_espnow_sensor/` | `espnow_sensor` | A wireless slot sensor (S1, S2): HC-SR04 over one slot. |
+| `aimpark_espnow_sensor/` | `espnow_sensor` | A wireless slot sensor board (S1, S2): one HC-SR04 per slot, 9 slots each. |
 
 The barrier readers are covered separately in
 [`../MD files/ESP32_Gate_Integration.md`](../MD%20files/ESP32_Gate_Integration.md).
@@ -240,12 +240,21 @@ cmd //c mklink /J "%USERPROFILE%\Documents\Arduino\libraries\AimParkEspNow" "lib
 
 Then open the sketch's `.ino`, board **ESP32 Dev Module**, and upload.
 
-**Slot sensor wiring.** HC-SR04 `VCC` to `5V`, `GND` to `GND`, `TRIG` to
-`GPIO 5`, and `ECHO` to `GPIO 18` **through a divider** (ECHO — 1 kΩ — GPIO 18
-— 2 kΩ — GND): ECHO swings to 5 V. The on-board LED lights while the slot is
-occupied. Set `OCCUPIED_BELOW_CM` / `FREE_ABOVE_CM` in the sketch from what the
-Serial Monitor prints over an empty and a filled slot. The gate nodes are wired
-exactly like `aimpark_gate_reader`.
+**Slot sensor wiring.** Each sensor board watches several slots, one HC-SR04
+per slot, numbered in this order (S1 and S2 are wired the same):
+
+| Slot | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 |
+|---|---|---|---|---|---|---|---|---|---|
+| `TRIG` | 13 | 5 | 4 | 14 | 2 | 15 | 18 | 19 | 21 |
+| `ECHO` | 26 | 25 | 23 | 27 | 32 | 33 | 34 | 35 | 22 |
+
+Every sensor's `VCC` goes to `5V` (VIN) and `GND` to `GND`, and every `ECHO`
+goes **through a divider** (ECHO — 1 kΩ — pin — 2 kΩ — GND): ECHO swings to
+5 V. The sketch prints every slot's distance once a second; a slot reads
+occupied between `MIN_VALID_MM` and `OCCUPIED_MAX_MM` (1–50 mm, sized for the
+miniature model). Test with a flat, hard object held level about 3 cm under a
+sensor — a hand soaks up the echo and reads as nothing. The gate nodes are
+wired exactly like `aimpark_gate_reader`.
 
 **Hub protocol** (USB serial, 115200). Every line names the board it is about:
 
@@ -254,8 +263,8 @@ exactly like `aimpark_gate_reader`.
 | hub → server | `G1 UID:04A1B2C3` | Card tapped at gate 1 |
 | server → hub | `G1 RESULT:OPEN` / `G1 RESULT:SHUT` | The answer to that tap |
 | server → hub | `G2 CMD:OPEN` | Guard's "Open gate" |
-| hub → server | `S1 SLOT:OCCUPIED 7` / `S1 SLOT:FREE 0` | Slot changed; distance in cm, 0 = nothing in range |
-| hub → server | `G1 ONLINE` / `G1 OFFLINE` | Node came up, or missed three heartbeats (≈16 s) |
+| hub → server | `S1/3 SLOT:OCCUPIED 3.7` / `S1/3 SLOT:FREE 0.0` | Slot 3 on board S1 changed; distance in cm, 0 = nothing in range. Every slot is printed once when its board comes online |
+| hub → server | `G1 ONLINE` / `G1 OFFLINE` | Node came up, or missed three heartbeats (≈16 s). A sensor board going offline leaves its slots unknown, not free |
 | hub → server | `G1 ERR:NOT_DELIVERED` | A RESULT or CMD didn't reach the node |
 | server → hub | `STATUS` | Hub prints every node's state |
 | hub → server | `# ...` | Comments for a person reading the monitor |
@@ -264,6 +273,12 @@ A gate node shakes its arm if the hub doesn't acknowledge the tap, or if no
 answer comes back within 15 s. You can drive the whole thing by hand from the
 hub's Serial Monitor (Newline line ending) before the server speaks this
 protocol.
+
+Opening the hub's COM port resets it (the USB chip's reset line), so whatever
+connects should wait for `# Ready` and then send `STATUS` to catch up. Only one
+program can hold a port: if the site server has the hub bound on the Gate
+Readers screen, close it before using the Serial Monitor, and never bind a
+sensor or gate board plugged in by USB for flashing.
 
 ## 5. When it does not work
 

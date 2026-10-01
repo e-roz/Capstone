@@ -8,6 +8,8 @@
 //          ├── HUB ── USB ──┤        (HUB is plugged into the site server)
 //     G2 ──┘                └── S2
 //
+// S1 and S2 each watch several slots (up to MAX_SLOTS), one HC-SR04 per slot.
+//
 // A board works out who it is from its own MAC, so the gate sketch is the same
 // file on G1 and G2, and the sensor sketch the same on S1 and S2.
 
@@ -69,21 +71,29 @@ enum MsgType : uint8_t {
   MSG_UID    = 2,  // gate -> hub    a card was tapped
   MSG_RESULT = 3,  // hub  -> gate   the server's answer to that tap
   MSG_OPEN   = 4,  // hub  -> gate   the guard's "Open gate" button
-  MSG_SLOT   = 5,  // sensor -> hub  slot state; doubles as its heartbeat
+  MSG_SLOT   = 5,  // sensor -> hub  every slot's state; doubles as its heartbeat
 };
 
 // Bumped whenever Packet changes, so a board on old firmware is ignored
 // rather than misread. Reflash all five together.
-constexpr uint8_t PROTOCOL_VERSION = 1;
+constexpr uint8_t PROTOCOL_VERSION = 2;
 constexpr size_t UID_CHARS = 20;   // a 10-byte UID in hex
+
+// One sensor board watches several slots, each with its own HC-SR04.
+constexpr uint8_t MAX_SLOTS = 10;
 
 struct __attribute__((packed)) Packet {
   uint8_t  version;
   uint8_t  type;
   uint16_t seq;         // Per sender. RESULT echoes the seq of the UID it answers.
-  uint8_t  flag;        // RESULT: 1 = open. SLOT: 1 = occupied.
-  uint16_t distanceCm;  // SLOT only. 0 = nothing in range.
+  uint8_t  flag;        // RESULT: 1 = open.
   char     uid[UID_CHARS + 1];
+
+  // SLOT only. The whole board in one packet, so the hub sees every slot
+  // change together and a heartbeat costs one send, not one per slot.
+  uint8_t  slotCount;
+  uint16_t occupiedMask;           // Bit i set = slot i + 1 occupied.
+  uint16_t distanceMm[MAX_SLOTS];  // 0 = nothing in range.
 };
 
 inline Packet makePacket(MsgType type, uint16_t seq) {
