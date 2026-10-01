@@ -6,7 +6,7 @@ part of 'parking_provider.dart';
 // RiverpodGenerator
 // **************************************************************************
 
-String _$parkingSlotsHash() => r'4b1d6dfcb4e25c84d55dfa33bbcc5d20be591616';
+String _$parkingSlotsHash() => r'800a46eb2ea545f9fa4cdd898886ae4ba4be7d3b';
 
 /// See also [parkingSlots].
 @ProviderFor(parkingSlots)

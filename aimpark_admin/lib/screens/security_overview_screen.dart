@@ -11,6 +11,7 @@ import '../providers/security_provider.dart';
 import '../router/destinations.dart';
 import '../theme/theme.dart';
 import 'dashboard_screen.dart';
+import '../widgets/device_health_list.dart';
 import '../widgets/guard_status_bar.dart';
 import '../widgets/live_camera_view.dart';
 import '../widgets/live_gate_log.dart';
@@ -53,7 +54,17 @@ class SecurityOverviewScreen extends ConsumerWidget {
     }
 
     final log = LiveGateLog(onNewTaps: refreshLot);
-    final side = [_InsideNow(sessions: sessions)];
+    // Both gates' cameras are already above, in _GateCameras.
+    final side = [
+      const AppSectionCard(
+        title: 'Devices',
+        subtitle: 'Every board, reader and camera at the gates. Checked every few seconds.',
+        icon: Icons.sensors,
+        child: DeviceHealthList(),
+      ),
+      const SizedBox(height: AppSpacing.gutter),
+      _InsideNow(sessions: sessions),
+    ];
     final wide = MediaQuery.sizeOf(context).width >= _twoColumnsFrom;
 
     return AppPage(

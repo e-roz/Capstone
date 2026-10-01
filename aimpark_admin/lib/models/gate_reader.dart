@@ -6,31 +6,165 @@ class GateReaderPort {
   /// tells the reader apart from COM1, which every PC has.
   final String? description;
 
+  /// "reader", "hub", or null when the port isn't linked.
+  final String? kind;
+
   final String? deviceId;
   final bool connected;
   final String? error;
   final DateTime? lastTapAt;
 
+  /// Linked as a reader, but the board printed the ESP-NOW hub's banner.
+  final bool looksLikeHub;
+
   const GateReaderPort({
     required this.port,
     required this.description,
+    required this.kind,
     required this.deviceId,
     required this.connected,
     required this.error,
     required this.lastTapAt,
+    required this.looksLikeHub,
   });
 
-  bool get isLinked => deviceId != null;
+  bool get isHub => kind == 'hub';
+  bool get isLinked => kind != null;
 
   factory GateReaderPort.fromJson(Map<String, dynamic> json) => GateReaderPort(
         port: json['port']?.toString() ?? '',
         description: json['description']?.toString(),
+        kind: json['kind']?.toString(),
         deviceId: json['deviceId']?.toString(),
         connected: json['connected'] as bool? ?? false,
         error: json['error']?.toString(),
         lastTapAt: json['lastTapAt'] == null
             ? null
             : DateTime.parse(json['lastTapAt'].toString()),
+        looksLikeHub: json['looksLikeHub'] as bool? ?? false,
+      );
+}
+
+DateTime? _date(dynamic value) =>
+    value == null ? null : DateTime.parse(value.toString());
+
+/// One board behind the ESP-NOW hub: a wireless gate (G1, G2), a sensor
+/// board (S1, S2), or one sensor on a sensor board (S1/3).
+class HubNode {
+  final String node;
+
+  /// "gate", "sensor", "sensorBoard", or null for a board this panel doesn't know.
+  final String? kind;
+
+  /// The reader a gate logs as, or the slot a sensor watches.
+  final String? boundTo;
+  final bool online;
+  final DateTime? lastSeenAt;
+  final DateTime? wentOfflineAt;
+
+  /// "NOT_DELIVERED": an answer or an open didn't reach the board.
+  final String? lastError;
+  final DateTime? lastErrorAt;
+  final DateTime? lastTapAt;
+
+  /// Sensors: what it last saw. Null until the first reading.
+  final bool? occupied;
+  final int? distanceCm;
+
+  const HubNode({
+    required this.node,
+    required this.kind,
+    required this.boundTo,
+    required this.online,
+    required this.lastSeenAt,
+    required this.wentOfflineAt,
+    required this.lastError,
+    required this.lastErrorAt,
+    required this.lastTapAt,
+    required this.occupied,
+    required this.distanceCm,
+  });
+
+  bool get isGate => kind == 'gate';
+
+  /// One sensor on a sensor board, e.g. S1/3. Stands for a slot.
+  bool get isSensor => kind == 'sensor';
+
+  /// S1, S2: the board itself. Only online or not; its sensors are the slots.
+  bool get isSensorBoard => kind == 'sensorBoard';
+
+  factory HubNode.fromJson(Map<String, dynamic> json) => HubNode(
+        node: json['node']?.toString() ?? '',
+        kind: json['kind']?.toString(),
+        boundTo: json['boundTo']?.toString(),
+        online: json['online'] as bool? ?? false,
+        lastSeenAt: _date(json['lastSeenAt']),
+        wentOfflineAt: _date(json['wentOfflineAt']),
+        lastError: json['lastError']?.toString(),
+        lastErrorAt: _date(json['lastErrorAt']),
+        lastTapAt: _date(json['lastTapAt']),
+        occupied: json['occupied'] as bool?,
+        distanceCm: (json['distanceCm'] as num?)?.toInt(),
+      );
+}
+
+/// A port linked as the ESP-NOW hub, and the boards behind it.
+class HubPort {
+  final String port;
+  final bool connected;
+
+  /// Connected and answering STATUS.
+  final bool responding;
+  final String? error;
+  final DateTime? lastSeenAt;
+
+  /// Played by hand from this screen, in a development build.
+  final bool simulated;
+  final List<HubNode> nodes;
+
+  const HubPort({
+    required this.port,
+    required this.connected,
+    required this.responding,
+    required this.error,
+    required this.lastSeenAt,
+    required this.simulated,
+    required this.nodes,
+  });
+
+  factory HubPort.fromJson(Map<String, dynamic> json) => HubPort(
+        port: json['port']?.toString() ?? '',
+        connected: json['connected'] as bool? ?? false,
+        responding: json['responding'] as bool? ?? false,
+        error: json['error']?.toString(),
+        lastSeenAt: _date(json['lastSeenAt']),
+        simulated: json['simulated'] as bool? ?? false,
+        nodes: [
+          for (final n in json['nodes'] as List<dynamic>? ?? const [])
+            HubNode.fromJson(n as Map<String, dynamic>),
+        ],
+      );
+}
+
+/// A parking slot a sensor can watch.
+class LinkableSlot {
+  final String slotId;
+  final String slotCode;
+  final int gate;
+  final String status;
+
+  const LinkableSlot({
+    required this.slotId,
+    required this.slotCode,
+    required this.gate,
+    required this.status,
+  });
+
+  factory LinkableSlot.fromJson(Map<String, dynamic> json) => LinkableSlot(
+        slotId: json['slotId']?.toString() ?? '',
+        slotCode: json['slotCode']?.toString() ?? '',
+        gate: (json['gate'] as num?)?.toInt() ?? 0,
+        status: json['status']?.toString() ?? '',
       );
 }
 
@@ -53,7 +187,7 @@ class LinkableReader {
       );
 }
 
-/// One card tap at a USB reader, or one manual open.
+/// One card tap at a USB reader or a wireless gate, or one manual open.
 class GateReaderTap {
   final DateTime at;
   final String port;
@@ -66,6 +200,9 @@ class GateReaderTap {
   final bool opened;
   final String message;
 
+  /// The wireless gate (G1, G2) it came from, when it came through the hub.
+  final String? node;
+
   const GateReaderTap({
     required this.at,
     required this.port,
@@ -74,6 +211,7 @@ class GateReaderTap {
     required this.direction,
     required this.opened,
     required this.message,
+    required this.node,
   });
 
   factory GateReaderTap.fromJson(Map<String, dynamic> json) => GateReaderTap(
@@ -84,19 +222,54 @@ class GateReaderTap {
         direction: json['direction']?.toString() ?? '-',
         opened: json['opened'] as bool? ?? false,
         message: json['message']?.toString() ?? '',
+        node: json['node']?.toString(),
       );
 }
 
 class GateReadersState {
   final List<GateReaderPort> ports;
+  final List<HubPort> hubs;
   final List<LinkableReader> readers;
+  final List<LinkableSlot> slots;
   final List<GateReaderTap> taps;
+
+  /// A development server: the hub can be played from this screen.
+  final bool canSimulate;
 
   const GateReadersState({
     required this.ports,
+    required this.hubs,
     required this.readers,
+    required this.slots,
     required this.taps,
+    required this.canSimulate,
   });
+
+  /// Every barrier the guard can open right now: a connected USB reader, or
+  /// a wireless gate that is online and linked.
+  List<OpenableGate> get openableGates => [
+        for (final p in ports)
+          if (!p.isHub && p.connected && p.deviceId != null)
+            OpenableGate(port: p.port, node: null, reader: _reader(p.deviceId)),
+        for (final h in hubs)
+          for (final n in h.nodes)
+            if (n.isGate && n.online && n.boundTo != null)
+              OpenableGate(port: h.port, node: n.node, reader: _reader(n.boundTo)),
+      ]..sort((a, b) => (a.reader?.gate ?? 0).compareTo(b.reader?.gate ?? 0));
+
+  /// Every barrier that is linked, up or not — for the Reader chip.
+  List<({String name, bool up})> get linkedGates => [
+        for (final p in ports)
+          if (!p.isHub && p.deviceId != null)
+            (name: _reader(p.deviceId)?.name ?? p.port, up: p.connected),
+        for (final h in hubs)
+          for (final n in h.nodes)
+            if (n.isGate && n.boundTo != null)
+              (name: '${n.node} (${_reader(n.boundTo)?.name ?? 'reader'})', up: n.online),
+      ];
+
+  LinkableReader? _reader(String? id) =>
+      readers.where((r) => r.deviceId == id).firstOrNull;
 
   factory GateReadersState.fromJson(Map<String, dynamic> json) =>
       GateReadersState(
@@ -104,13 +277,36 @@ class GateReadersState {
           for (final p in json['ports'] as List<dynamic>? ?? const [])
             GateReaderPort.fromJson(p as Map<String, dynamic>),
         ],
+        hubs: [
+          for (final h in json['hubs'] as List<dynamic>? ?? const [])
+            HubPort.fromJson(h as Map<String, dynamic>),
+        ],
         readers: [
           for (final r in json['readers'] as List<dynamic>? ?? const [])
             LinkableReader.fromJson(r as Map<String, dynamic>),
+        ],
+        slots: [
+          for (final s in json['slots'] as List<dynamic>? ?? const [])
+            LinkableSlot.fromJson(s as Map<String, dynamic>),
         ],
         taps: [
           for (final t in json['taps'] as List<dynamic>? ?? const [])
             GateReaderTap.fromJson(t as Map<String, dynamic>),
         ],
+        canSimulate: json['canSimulate'] as bool? ?? false,
       );
+}
+
+/// A barrier the Open gate button can open: a USB reader's port, or a
+/// wireless gate behind the hub on that port.
+class OpenableGate {
+  final String port;
+
+  /// G1, G2 — null for a USB reader.
+  final String? node;
+  final LinkableReader? reader;
+
+  const OpenableGate({required this.port, required this.node, required this.reader});
+
+  String get name => reader == null ? (node ?? port) : 'Gate ${reader!.gate}';
 }
