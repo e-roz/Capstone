@@ -40,10 +40,12 @@ static_assert(SLOT_COUNT <= MAX_SLOTS, "More slots than a packet carries");
 const uint16_t MIN_VALID_MM   = 1;
 const uint16_t OCCUPIED_MAX_MM = 50;
 
-// Quick to call a slot occupied, slow to call it free, so one dropped echo
+// Quick to call a slot occupied, slower to call it free, so a dropped echo
 // under a parked car doesn't clear it. Counted in full scans of every sensor.
 const uint8_t OCCUPIED_CONFIRM_SCANS = 2;
-const uint8_t FREE_CONFIRM_SCANS     = 6;
+// Three scans (about 1.7 s) still rides out one or two missed echoes while
+// a car leaving shows as free quickly enough for the guard.
+const uint8_t FREE_CONFIRM_SCANS     = 3;
 
 // Sensors fire one at a time with this gap, so one's echo isn't heard by the
 // next. A full scan of 9 takes about half a second.

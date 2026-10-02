@@ -53,7 +53,8 @@ class LiveParkingMapCard extends ConsumerStatefulWidget {
 }
 
 class _LiveParkingMapCardState extends ConsumerState<LiveParkingMapCard> {
-  static const _refreshEvery = Duration(seconds: 3);
+  // A car leaving should free its bay on screen within a second or two.
+  static const _refreshEvery = Duration(milliseconds: 1500);
   static const _healthEvery = Duration(seconds: 5);
 
   Timer? _timer;
