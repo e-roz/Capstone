@@ -36,14 +36,20 @@ namespace AimPark.API.Sync.Site.GateReaders
                 .Select(d => new { d.Name, d.Gate })
                 .FirstOrDefaultAsync(ct);
 
-            var gate = device?.Gate ?? 0;
+            await RecordTapAsync(device?.Gate ?? 0, device?.Name, rawTag, tappedAt, outcome, ct);
+        }
+
+        /// <summary>A tap at a gate known by its number, e.g. a paired wireless gate board.</summary>
+        public async Task RecordTapAsync(
+            int gate, string? readerName, string rawTag, DateTime tappedAt, GateTapOutcome outcome, CancellationToken ct)
+        {
             var tag = RfidTag.Normalize(rawTag);
 
             var tap = new GateTapEvent
             {
                 At = tappedAt,
                 Gate = gate,
-                ReaderName = device?.Name,
+                ReaderName = readerName,
                 Direction = outcome.Direction,
                 Opened = outcome.Opened,
                 Message = Trim(outcome.Message, 500),
@@ -123,10 +129,15 @@ namespace AimPark.API.Sync.Site.GateReaders
                 .Select(d => new { d.Name, d.Gate })
                 .FirstOrDefaultAsync(ct);
 
+            await RecordManualOpenAsync(device?.Gate ?? 0, device?.Name, openedBy, ct);
+        }
+
+        public async Task RecordManualOpenAsync(int gate, string? readerName, string openedBy, CancellationToken ct)
+        {
             var tap = new GateTapEvent
             {
-                Gate = device?.Gate ?? 0,
-                ReaderName = device?.Name,
+                Gate = gate,
+                ReaderName = readerName,
                 Direction = "-",
                 Opened = true,
                 Message = Trim($"Opened by hand by {openedBy}.", 500),

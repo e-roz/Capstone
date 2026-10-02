@@ -101,7 +101,9 @@ namespace AimPark.API.Services
                     ExitTime = l.ExitTime,
                     Source = byDevice ? "Device" : "Manual",
                     RecordedBy = byDevice
-                        ? deviceNames.GetValueOrDefault(l.LoggedByDeviceId!.Value, "Unknown device")
+                        // A paired wireless gate has no Gate Devices row: it is named by its gate.
+                        ? deviceNames.GetValueOrDefault(l.LoggedByDeviceId!.Value,
+                            l.Gate is int g ? $"Gate {g} board" : "Gate board")
                         : l.LoggedByUserId != null
                             ? staffNames.GetValueOrDefault(l.LoggedByUserId.Value, "Unknown user")
                             : null,

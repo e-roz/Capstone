@@ -57,9 +57,21 @@ namespace AimPark.API.Sync.Site.GateReaders
         private readonly Func<DateTime> _now;
         private readonly Action<string>? _log;
 
+        /// <summary>A board's join request shows this long after it last asked. It asks every 2 s.</summary>
+        public static readonly TimeSpan RequestShownFor = TimeSpan.FromSeconds(15);
+
+        /// <summary>How long a PAIR or FORGET waits for the hub's answer.</summary>
+        public static readonly TimeSpan CommandTimeout = TimeSpan.FromSeconds(6);
+
         private readonly object _lock = new();
         private readonly Dictionary<string, Node> _nodes = new(StringComparer.Ordinal);
         private readonly Dictionary<string, Task> _queues = new(StringComparer.Ordinal);
+
+        // Pairing: boards asking to join, by id; what each paired board's id is,
+        // by name; and the PAIR / FORGET waiting for the hub's answer.
+        private readonly Dictionary<string, (HubNodeKind Kind, DateTime LastAt)> _requests = new(StringComparer.Ordinal);
+        private readonly Dictionary<string, string> _boardIds = new(StringComparer.Ordinal);
+        private readonly Dictionary<string, TaskCompletionSource<string?>> _waiting = new(StringComparer.Ordinal);
 
         private bool _ready;
         private DateTime _readyBy;
@@ -272,6 +284,56 @@ namespace AimPark.API.Sync.Site.GateReaders
                     _log?.Invoke($"{error.Node}: {error.Code}");
                     return Task.CompletedTask;
 
+                case HubPairRequest request:
+                    lock (_lock) _requests[request.Id] = (request.Kind, now);
+                    return Task.CompletedTask;
+
+                case HubPaired paired:
+                    lock (_lock)
+                    {
+                        // A name moving to a new board (a replacement) or a board
+                        // under a new name: the id is what changed hands.
+                        foreach (var stale in _boardIds.Where(b => b.Value == paired.Id && b.Key != paired.Node)
+                                     .Select(b => b.Key).ToList())
+                            _boardIds.Remove(stale);
+                        _boardIds[paired.Node] = paired.Id;
+                        _requests.Remove(paired.Id);
+                        NodeFor(paired.Node);
+                    }
+                    Answer(paired.Id, null);
+                    Answer(paired.Node, null);
+                    return Task.CompletedTask;
+
+                case HubForgot forgot:
+                    lock (_lock)
+                    {
+                        _boardIds.Remove(forgot.Node);
+                        // Its sensors go with it, and it isn't expected any more
+                        // unless it is one of the boards the lot is built with.
+                        foreach (var name in _nodes.Keys
+                                     .Where(n => n == forgot.Node || HubProtocol.BoardOf(n) == forgot.Node).ToList())
+                        {
+                            if (ExpectedNodes.Contains(name))
+                            {
+                                _nodes[name] = new Node(name);
+                            }
+                            else
+                            {
+                                _nodes.Remove(name);
+                            }
+                        }
+                    }
+                    Answer(forgot.Node, null);
+                    return Task.CompletedTask;
+
+                case HubCommandError error:
+                    Answer(error.Id, error.Message);
+                    _log?.Invoke($"{error.Id}: {error.Message}");
+                    return Task.CompletedTask;
+
+                case HubHello:
+                    return Task.CompletedTask;
+
                 case HubComment comment:
                     // The hub's own failures arrive as comments: flashed with the
                     // wrong sketch, or ESP-NOW not starting.
@@ -288,6 +350,78 @@ namespace AimPark.API.Sync.Site.GateReaders
 
         /// <summary>Sends the guard's open to a gate node. False when the line couldn't be written.</summary>
         public bool Open(string node) => _send(HubProtocol.Open(node));
+
+        // ── Pairing ───────────────────────────────────────────────────────────
+
+        /// <summary>Boards asking to join right now: id and what kind of board.</summary>
+        public IReadOnlyList<(string Id, HubNodeKind Kind)> Requests()
+        {
+            var cutoff = _now() - RequestShownFor;
+            lock (_lock)
+                return _requests
+                    .Where(r => r.Value.LastAt >= cutoff)
+                    .OrderBy(r => r.Key, StringComparer.Ordinal)
+                    .Select(r => (r.Key, r.Value.Kind))
+                    .ToList();
+        }
+
+        /// <summary>The id (MAC) of the board the hub calls this name, once it has said.</summary>
+        public string? IdOf(string node)
+        {
+            lock (_lock) return _boardIds.TryGetValue(node, out var id) ? id : null;
+        }
+
+        /// <summary>
+        /// Accepts a board asking to join and has the hub call it
+        /// <paramref name="node"/>. Returns why not, or null.
+        /// </summary>
+        public Task<string?> PairAsync(string id, string node)
+        {
+            HubNodeKind kind;
+            lock (_lock)
+            {
+                if (!_requests.TryGetValue(id, out var request))
+                    return Task.FromResult<string?>("That board isn't asking to join any more. Power it on and wait a few seconds.");
+                kind = request.Kind;
+            }
+
+            if (!HubProtocol.FitsName(node, kind))
+                return Task.FromResult<string?>(kind == HubNodeKind.Gate
+                    ? "A gate board is named G1 to G9."
+                    : "A sensor board is named S1 to S9.");
+
+            return CommandAsync(id, HubProtocol.Pair(id, node));
+        }
+
+        /// <summary>Removes a board from the hub. Returns why not, or null.</summary>
+        public Task<string?> ForgetAsync(string node) => CommandAsync(node, HubProtocol.Forget(node));
+
+        private async Task<string?> CommandAsync(string key, string line)
+        {
+            var waiter = new TaskCompletionSource<string?>(TaskCreationOptions.RunContinuationsAsynchronously);
+            lock (_lock) _waiting[key] = waiter;
+            try
+            {
+                if (!_send(line))
+                    return "The hub isn't connected.";
+
+                var done = await Task.WhenAny(waiter.Task, Task.Delay(CommandTimeout));
+                return done == waiter.Task ? await waiter.Task : "The hub didn't answer. Try again.";
+            }
+            finally
+            {
+                lock (_lock)
+                    if (_waiting.TryGetValue(key, out var current) && current == waiter)
+                        _waiting.Remove(key);
+            }
+        }
+
+        private void Answer(string key, string? problem)
+        {
+            TaskCompletionSource<string?>? waiter;
+            lock (_lock) _waiting.TryGetValue(key, out waiter);
+            waiter?.TrySetResult(problem);
+        }
 
         public IReadOnlyList<HubNodeView> Nodes()
         {

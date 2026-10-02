@@ -37,6 +37,21 @@ namespace AimPark.API.Sync.Site.GateReaders
     /// <summary>Anything else. Logged, never acted on.</summary>
     public record HubUnknown(string Text) : HubLine;
 
+    /// <summary><c>PAIRREQ 582ABDD0A36C GATE</c> — an unpaired board asking to join, by its id (MAC).</summary>
+    public record HubPairRequest(string Id, HubNodeKind Kind) : HubLine;
+
+    /// <summary><c>PAIRED G1 582ABDD0A36C GATE</c> — a board the hub knows by that name. Also repeated on STATUS.</summary>
+    public record HubPaired(string Node, string Id, HubNodeKind Kind) : HubLine;
+
+    /// <summary><c>FORGOT G1</c> — removed from the hub.</summary>
+    public record HubForgot(string Node) : HubLine;
+
+    /// <summary><c>ERR 582ABDD0A36C &lt;why&gt;</c> — a PAIR the hub couldn't do.</summary>
+    public record HubCommandError(string Id, string Message) : HubLine;
+
+    /// <summary><c>HUB 20500DCF8718 3</c> — the answer to PING: this hub's id and protocol.</summary>
+    public record HubHello(string Id, int Protocol) : HubLine;
+
     /// <summary>
     /// The ESP-NOW hub's serial protocol (firmware/aimpark_espnow_hub): one
     /// line each way, every line naming the board it is about.
@@ -64,6 +79,63 @@ namespace AimPark.API.Sync.Site.GateReaders
         public static string Result(string node, bool opened) => $"{node} RESULT:{(opened ? "OPEN" : "SHUT")}";
 
         public static string Open(string node) => $"{node} CMD:OPEN";
+
+        public const string Ping = "PING";
+
+        /// <summary>Accepts a board asking to join, and names it (G1, S2).</summary>
+        public static string Pair(string id, string node) => $"PAIR {id} {node}";
+
+        public static string Forget(string node) => $"FORGET {node}";
+
+        // A board's id: its MAC as 12 hex digits.
+        private static readonly Regex BoardId = new("^[0-9A-F]{12}$", RegexOptions.Compiled);
+
+        // What a paired board may be called: G1–G9 for a gate, S1–S9 for a sensor board.
+        private static readonly Regex BoardName = new("^[GS][1-9]$", RegexOptions.Compiled);
+
+        public static bool IsBoardId(string id) => BoardId.IsMatch(id);
+
+        /// <summary>A name the hub would accept for a board of this kind.</summary>
+        public static bool FitsName(string node, HubNodeKind kind) =>
+            BoardName.IsMatch(node) && KindOf(node) == kind;
+
+        /// <summary>The gate a gate node stands for when nothing else is chosen: G2 is gate 2.</summary>
+        public static int? GateOf(string node) =>
+            KindOf(node) == HubNodeKind.Gate && int.TryParse(node[1..], out var gate) && gate >= 1 ? gate : null;
+
+        private static HubNodeKind? KindOfRole(string role) => role switch
+        {
+            "GATE" => HubNodeKind.Gate,
+            "SENSOR" => HubNodeKind.SensorBoard,
+            _ => null
+        };
+
+        /// <summary>The pairing lines, which name a board by id rather than starting with its name.</summary>
+        private static HubLine? ParsePairing(string line)
+        {
+            var parts = line.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            switch (parts[0])
+            {
+                case "PAIRREQ" when parts.Length == 3 && IsBoardId(parts[1]) && KindOfRole(parts[2]) is { } kind:
+                    return new HubPairRequest(parts[1], kind);
+
+                case "PAIRED" when parts.Length == 4 && IsBoardId(parts[2]) && KindOfRole(parts[3]) is { } kind
+                                   && FitsName(parts[1].ToUpperInvariant(), kind):
+                    return new HubPaired(parts[1].ToUpperInvariant(), parts[2], kind);
+
+                case "FORGOT" when parts.Length == 2:
+                    return new HubForgot(parts[1].ToUpperInvariant());
+
+                case "ERR" when parts.Length >= 3 && IsBoardId(parts[1]):
+                    return new HubCommandError(parts[1], string.Join(' ', parts[2..]));
+
+                case "HUB" when parts.Length == 3 && IsBoardId(parts[1]) && int.TryParse(parts[2], out var protocol):
+                    return new HubHello(parts[1], protocol);
+
+                default:
+                    return null;
+            }
+        }
 
         public static bool IsNodeName(string node) => NodeName.IsMatch(node);
 
@@ -95,6 +167,9 @@ namespace AimPark.API.Sync.Site.GateReaders
             var line = raw.Trim();
             if (line.StartsWith('#'))
                 return new HubComment(line.TrimStart('#').Trim());
+
+            if (ParsePairing(line) is { } pairing)
+                return pairing;
 
             var space = line.IndexOf(' ');
             if (space <= 0)

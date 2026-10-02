@@ -49,6 +49,15 @@ namespace AimPark.API.Controllers
             public string? Kind { get; set; }
         }
 
+        public class PairDto
+        {
+            /// <summary>The board asking to join: its MAC as 12 hex digits.</summary>
+            public string Id { get; set; } = string.Empty;
+
+            /// <summary>What the hub will call it: G1–G9 for a gate, S1–S9 for a sensor board.</summary>
+            public string Node { get; set; } = string.Empty;
+        }
+
         public class LinkNodeDto
         {
             /// <summary>For a gate node (G1, G2): the reader it logs as.</summary>
@@ -124,9 +133,19 @@ namespace AimPark.API.Controllers
                     error = h.Error,
                     lastSeenAt = h.LastSeenAt,
                     simulated = h.Simulated,
+                    // Boards asking to join, to be accepted and named.
+                    requests = h.Requests.Select(r => new
+                    {
+                        id = r.Id,
+                        kind = r.Kind == HubNodeKind.Gate ? "gate" : "sensorBoard"
+                    }),
                     nodes = h.Nodes.Select(n => new
                     {
                         node = n.Node.Node,
+                        // The board's MAC, once the hub has said which board has this name.
+                        boardId = h.BoardIds.GetValueOrDefault(n.Node.Node),
+                        // A gate node with no reader chosen stands for the gate in its name.
+                        gate = HubProtocol.GateOf(n.Node.Node),
                         kind = n.Node.Kind switch
                         {
                             HubNodeKind.Gate => "gate",
@@ -255,6 +274,37 @@ namespace AimPark.API.Controllers
             return problem is null
                 ? Ok(new { message = $"{node} unlinked." })
                 : BadRequest(new { message = problem });
+        }
+
+        /// <summary>
+        /// Accepts a board asking to join, and names it. Naming a replacement
+        /// with a broken board's name takes over its gate or its slots.
+        /// </summary>
+        [HttpPost("{port}/pair")]
+        public async Task<ActionResult<object>> Pair(string port, [FromBody] PairDto dto)
+        {
+            if (_hubs is null) return NotAtGuardPost();
+
+            var node = dto.Node.Trim().ToUpperInvariant();
+            return await _hubs.PairAsync(port, dto.Id.Trim(), node) is { } problem
+                ? BadRequest(new { message = problem })
+                : Ok(new
+                {
+                    message = HubProtocol.GateOf(node) is int gate
+                        ? $"Accepted as {node}: it is Gate {gate}. Tap a card at it to try it."
+                        : $"Accepted as {node}. Now choose the slot for each of its sensors."
+                });
+        }
+
+        /// <summary>Removes a board from the hub, e.g. one that broke or is being replaced.</summary>
+        [HttpDelete("{port}/boards/{node}")]
+        public async Task<ActionResult<object>> Forget(string port, string node)
+        {
+            if (_hubs is null) return NotAtGuardPost();
+
+            return await _hubs.ForgetAsync(port, node) is { } problem
+                ? BadRequest(new { message = problem })
+                : Ok(new { message = $"{node.ToUpperInvariant()} removed." });
         }
 
         /// <summary>The guard's open for a wireless gate.</summary>

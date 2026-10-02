@@ -350,6 +350,49 @@ namespace AimPark.API.Sync.Site.GateReaders
         }
 
         /// <summary>
+        /// The same as <see cref="AnswerTapAsync"/>, for a paired wireless gate
+        /// that stands for its gate number rather than a Gate Devices reader.
+        /// </summary>
+        public async Task<GateTapOutcome> AnswerGateTapAsync(
+            string port, string node, int gate, Guid boardId, string tag, CancellationToken ct)
+        {
+            GateTapOutcome outcome;
+            var readerName = EspNowHubs.BoardName(gate);
+            var tappedAt = DateTime.UtcNow;
+
+            try
+            {
+                using var scope = _scopes.CreateScope();
+                outcome = await scope.ServiceProvider.GetRequiredService<GateTapHandler>()
+                    .HandleAsync(gate, boardId, tag, ct);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                _logger.LogError(ex, "Gate tap on {Port} {Node} failed", port, node);
+                outcome = new GateTapOutcome(false, "-", "Server error. Use Gate Check or open by hand.");
+            }
+
+            Record(new GateReaderTap(DateTime.UtcNow, port, readerName, tag,
+                outcome.Direction, outcome.Opened, outcome.Message, node));
+
+            _ = RecordForLiveLogAsync(
+                (recorder, token) => recorder.RecordTapAsync(gate, readerName, tag, tappedAt, outcome, token), ct);
+            return outcome;
+        }
+
+        /// <summary>A guard's open at a paired wireless gate, by its gate number.</summary>
+        public void RecordManualOpen(string port, string node, int gate, string openedBy)
+        {
+            _logger.LogInformation("Gate {Gate} ({Node} on {Port}) opened by hand by {User}", gate, node, port, openedBy);
+            Record(new GateReaderTap(DateTime.UtcNow, port, EspNowHubs.BoardName(gate), null, "-", true,
+                $"Opened by hand by {openedBy}.", node));
+
+            _ = RecordForLiveLogAsync(
+                (recorder, token) => recorder.RecordManualOpenAsync(gate, EspNowHubs.BoardName(gate), openedBy, token),
+                _stopping);
+        }
+
+        /// <summary>
         /// Writes the guard's live log. Never allowed to fail the tap: the
         /// barrier's answer matters more than the log line about it.
         /// </summary>

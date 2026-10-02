@@ -42,6 +42,7 @@ namespace AimPark.API.Sync.Site.GateReaders
             _parking = parking;
         }
 
+        /// <summary>A tap at a reader registered in Gate Devices.</summary>
         public async Task<GateTapOutcome> HandleAsync(Guid deviceId, string rawTag, CancellationToken ct)
         {
             var device = await _db.Set<GateDevice>().AsNoTracking()
@@ -51,6 +52,17 @@ namespace AimPark.API.Sync.Site.GateReaders
                 return new GateTapOutcome(false, "-",
                     "This reader has been revoked. Link the port to another reader in Gate Readers.");
 
+            return await HandleAsync(device.Gate, device.Id, rawTag, ct);
+        }
+
+        /// <summary>
+        /// A tap at a gate known only by its number: a paired wireless gate
+        /// board, which needs no Gate Devices entry. <paramref name="deviceId"/>
+        /// stands for it in ParkingLog.LoggedByDeviceId, so the tap takes the
+        /// device path (plate check included) and the log shows which board.
+        /// </summary>
+        public async Task<GateTapOutcome> HandleAsync(int gate, Guid deviceId, string rawTag, CancellationToken ct)
+        {
             var tag = RfidTag.Normalize(rawTag);
 
             var enteredAt = await _db.Set<ParkingLog>().AsNoTracking()
@@ -72,14 +84,14 @@ namespace AimPark.API.Sync.Site.GateReaders
 
                 var exit = await _parking.LogExitAsync(
                     new LogParkingExitDto { RfidTagId = tag },
-                    loggedByUserId: null, loggedByDeviceId: device.Id, ct);
+                    loggedByUserId: null, loggedByDeviceId: deviceId, ct);
 
                 return Describe(exit, "OUT");
             }
 
             var entry = await _parking.LogEntryAsync(
-                new LogParkingEntryDto { RfidTagId = tag, Gate = device.Gate },
-                loggedByUserId: null, loggedByDeviceId: device.Id, ct);
+                new LogParkingEntryDto { RfidTagId = tag, Gate = gate },
+                loggedByUserId: null, loggedByDeviceId: deviceId, ct);
 
             return Describe(entry, "IN");
         }
