@@ -4,7 +4,15 @@ namespace AimPark.API.DTOs
     {
         public List<ParkingSlotResponse> Slots { get; set; } = [];
         public int TotalSlots { get; set; }
+
+        /// <summary>
+        /// Free bays: in-service bays less the cars inside the lot, not the
+        /// green bays. See <see cref="Services.ParkingCapacity"/>.
+        /// </summary>
         public int AvailableSlots { get; set; }
+
+        public int AvailableCars { get; set; }
+        public int AvailableMotorcycles { get; set; }
     }
 
     public class ParkingSlotResponse

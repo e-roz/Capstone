@@ -68,12 +68,21 @@ class ActiveParkingSession {
 class ParkingAvailability {
   final List<ParkingSlot> slots;
   final int totalSlots;
+
+  /// Free bays: in-service bays less the cars inside the lot, not the green
+  /// bays. A car that entered counts until its exit tap, wherever it parked.
   final int availableSlots;
+
+  /// The same, per bay type. Null from a server older than this count.
+  final int? availableCars;
+  final int? availableMotorcycles;
 
   const ParkingAvailability({
     required this.slots,
     required this.totalSlots,
     required this.availableSlots,
+    this.availableCars,
+    this.availableMotorcycles,
   });
 
   factory ParkingAvailability.fromJson(Map<String, dynamic> json) =>
@@ -83,5 +92,7 @@ class ParkingAvailability {
             .toList(),
         totalSlots: (json['totalSlots'] as num?)?.toInt() ?? 0,
         availableSlots: (json['availableSlots'] as num?)?.toInt() ?? 0,
+        availableCars: (json['availableCars'] as num?)?.toInt(),
+        availableMotorcycles: (json['availableMotorcycles'] as num?)?.toInt(),
       );
 }

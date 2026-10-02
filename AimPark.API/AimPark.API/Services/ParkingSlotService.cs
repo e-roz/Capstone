@@ -109,7 +109,7 @@ namespace AimPark.API.Services
             return new OkObjectResult(new { message = "Slot status updated." });
         }
 
-        private static async Task<ParkingAvailabilityResponse> BuildResponseAsync(IQueryable<ParkingSlot> query, CancellationToken ct)
+        private async Task<ParkingAvailabilityResponse> BuildResponseAsync(IQueryable<ParkingSlot> query, CancellationToken ct)
         {
             var slots = await query
                 .OrderBy(s => s.Gate)
@@ -124,11 +124,15 @@ namespace AimPark.API.Services
                 })
                 .ToListAsync(ct);
 
+            var room = await ParkingCapacity.LoadAsync(_db, ct);
+
             return new ParkingAvailabilityResponse
             {
                 Slots = slots,
                 TotalSlots = slots.Count,
-                AvailableSlots = slots.Count(s => s.Status == ParkingSlotStatus.Available.ToString())
+                AvailableSlots = room.Free,
+                AvailableCars = room.FreeCars,
+                AvailableMotorcycles = room.FreeMotorcycles
             };
         }
     }

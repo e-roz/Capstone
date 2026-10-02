@@ -368,22 +368,26 @@ public class SlotSensorRuleTests
     public void ACarMakesTheSlotOccupied()
     {
         Assert.Equal(ParkingSlotStatus.Occupied,
-            SlotSensorRule.Next(ParkingSlotStatus.Available, occupied: true, heldBySession: false));
-        Assert.Null(SlotSensorRule.Next(ParkingSlotStatus.Occupied, occupied: true, heldBySession: true));
+            SlotSensorRule.Next(ParkingSlotStatus.Available, occupied: true));
+        Assert.Null(SlotSensorRule.Next(ParkingSlotStatus.Occupied, occupied: true));
     }
 
     [Fact]
-    public void AnEmptySlotIsFreedWhenNoSessionHoldsIt()
+    public void AnEmptySlotIsFree()
     {
         Assert.Equal(ParkingSlotStatus.Available,
-            SlotSensorRule.Next(ParkingSlotStatus.Occupied, occupied: false, heldBySession: false));
+            SlotSensorRule.Next(ParkingSlotStatus.Occupied, occupied: false));
+        Assert.Null(SlotSensorRule.Next(ParkingSlotStatus.Available, occupied: false));
     }
 
     [Fact]
-    public void AnAllocatedSlotStaysTakenUntilTheExit()
+    public void ABayGivenAtTheGateShowsFreeWhileNoCarIsInIt()
     {
-        // The car was given this bay at the gate and is still driving to it.
-        Assert.Null(SlotSensorRule.Next(ParkingSlotStatus.Occupied, occupied: false, heldBySession: true));
+        // The claim at the gate marked it Occupied; the car is still driving
+        // there, or parked elsewhere. The sensor shows what is really there;
+        // the open session keeps the car counted (ParkingCapacity).
+        Assert.Equal(ParkingSlotStatus.Available,
+            SlotSensorRule.Next(ParkingSlotStatus.Occupied, occupied: false));
     }
 
     [Theory]
@@ -391,6 +395,6 @@ public class SlotSensorRuleTests
     [InlineData(false)]
     public void OutOfServiceIsNeverOverridden(bool occupied)
     {
-        Assert.Null(SlotSensorRule.Next(ParkingSlotStatus.OutOfService, occupied, heldBySession: false));
+        Assert.Null(SlotSensorRule.Next(ParkingSlotStatus.OutOfService, occupied));
     }
 }

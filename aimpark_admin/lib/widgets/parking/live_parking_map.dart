@@ -182,6 +182,7 @@ class _LiveParkingMapCardState extends ConsumerState<LiveParkingMapCard> {
           slots: _silent,
           child: _MapWithSummary(
           slots: availability.slots,
+          availability: availability,
           sessions: sessions,
           compact: widget.compact,
           onBayTap: widget.onBayTap,
@@ -293,6 +294,7 @@ const _rows = 9;
 class _MapWithSummary extends StatelessWidget {
   const _MapWithSummary({
     required this.slots,
+    required this.availability,
     required this.sessions,
     required this.compact,
     required this.onBayTap,
@@ -301,6 +303,7 @@ class _MapWithSummary extends StatelessWidget {
   });
 
   final List<ParkingSlot> slots;
+  final ParkingAvailability availability;
   final Map<String, ActiveParkingSession> sessions;
   final bool compact;
   final void Function(ParkingSlot slot)? onBayTap;
@@ -326,7 +329,7 @@ class _MapWithSummary extends StatelessWidget {
       health: health,
       onGateTap: onGateTap,
     );
-    final summary = _Summary(slots: slots);
+    final summary = _Summary(slots: slots, availability: availability);
 
     return LayoutBuilder(
       builder: (context, box) {
@@ -1096,18 +1099,22 @@ class _Unplaced extends StatelessWidget {
 // ── Numbers beside the map ───────────────────────────────────────────────────
 
 class _Summary extends StatelessWidget {
-  const _Summary({required this.slots});
+  const _Summary({required this.slots, required this.availability});
 
   final List<ParkingSlot> slots;
+  final ParkingAvailability availability;
 
   @override
   Widget build(BuildContext context) {
     final t = context.tokens;
     final text = Theme.of(context).textTheme;
 
+    // The count is cars inside the lot, from the server: a car that tapped in
+    // counts until it taps out, even while its bay shows green (driving to it,
+    // parked elsewhere, lifted out of the model).
     final usable = slots.where((s) => s.status != 'OutOfService').toList();
-    final free = usable.where((s) => s.status == 'Available').length;
-    final occupied = usable.where((s) => s.status == 'Occupied').length;
+    final free = availability.availableSlots.clamp(0, usable.length);
+    final occupied = usable.length - free;
     final down = slots.length - usable.length;
     final ratio = usable.isEmpty ? 0.0 : occupied / usable.length;
 
@@ -1117,9 +1124,9 @@ class _Summary extends StatelessWidget {
       _ => StatusIntent.success,
     };
 
-    (int, int) freeOf(bool Function(ParkingSlot) where) {
+    (int, int) freeOf(bool Function(ParkingSlot) where, int? fromServer) {
       final group = usable.where(where).toList();
-      return (group.where((s) => s.status == 'Available').length, group.length);
+      return (fromServer ?? group.where((s) => s.status == 'Available').length, group.length);
     }
 
     return Column(
@@ -1151,7 +1158,7 @@ class _Summary extends StatelessWidget {
         ),
         const SizedBox(height: AppSpacing.x1),
         Text(
-          '$occupied occupied · ${(ratio * 100).round()}% full',
+          '$occupied taken · ${(ratio * 100).round()}% full',
           style: AppTypography.tabular(text.bodySmall!.copyWith(color: t.text.secondary)),
         ),
         const SizedBox(height: AppSpacing.x5),
@@ -1160,12 +1167,12 @@ class _Summary extends StatelessWidget {
         _FreeRow(
           icon: Icons.directions_car_rounded,
           label: 'Four-wheel',
-          counts: freeOf((s) => s.vehicleType == 'Car'),
+          counts: freeOf((s) => s.vehicleType == 'Car', availability.availableCars),
         ),
         _FreeRow(
           icon: Icons.two_wheeler_rounded,
           label: 'Motorcycle',
-          counts: freeOf((s) => s.vehicleType != 'Car'),
+          counts: freeOf((s) => s.vehicleType != 'Car', availability.availableMotorcycles),
         ),
         if (down > 0) ...[
           const SizedBox(height: AppSpacing.x3),

@@ -610,10 +610,7 @@ namespace AimPark.API.Sync.Site.GateReaders
             var slot = await db.Set<ParkingSlot>().FirstOrDefaultAsync(s => s.Id == watched, ct);
             if (slot is null) return;
 
-            var held = !occupied && await db.Set<ParkingLog>()
-                .AnyAsync(l => l.SlotId == watched && l.ExitTime == null, ct);
-
-            if (SlotSensorRule.Next(slot.Status, occupied, held) is not { } status)
+            if (SlotSensorRule.Next(slot.Status, occupied) is not { } status)
                 return;
 
             slot.Status = status;

@@ -132,9 +132,21 @@ namespace AimPark.API.Services
             var acceptable = tier.Select(t => (VehicleType?)t).ToArray();
             var now = DateTime.UtcNow;
 
+            // Cars inside count against the lot even when their bay looks
+            // empty: driving to it, parked elsewhere, or lifted out of the
+            // model without tapping out. See ParkingCapacity.
+            var room = await ParkingCapacity.LoadAsync(_db, ct);
+            if (room.FreeOf(tier) <= 0)
+                return [];
+
+            // A bay given to a car still inside is never offered again, even
+            // while its sensor sees it empty.
+            var held = await ParkingCapacity.HeldBaysAsync(_db, ct);
+
             var free = await _db.Set<ParkingSlot>().AsNoTracking()
                 .Where(s => (s.VehicleType == null || acceptable.Contains(s.VehicleType))
-                         && s.Status == ParkingSlotStatus.Available)
+                         && s.Status == ParkingSlotStatus.Available
+                         && !held.Contains(s.Id))
                 .ToListAsync(ct);
 
             if (free.Count == 0)
