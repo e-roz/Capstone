@@ -90,10 +90,12 @@ namespace AimPark.API.Sync
             // cable. Answers gate taps through the readers above.
             services.AddSingleton<EspNowHubs>();
             services.AddHostedService(sp => sp.GetRequiredService<EspNowHubs>());
+            services.AddSingleton<AimPark.API.Interfaces.ISlotSensors>(sp => sp.GetRequiredService<EspNowHubs>());
         }
 
         private static void AddCloud(IServiceCollection services)
         {
+            services.AddSingleton<AimPark.API.Interfaces.ISlotSensors, AimPark.API.Interfaces.NoSlotSensors>();
             services.AddSignalR();
             services.AddSingleton<MasterDataChangeNotifier>();
             services.AddSingleton<SentPushLedger>();

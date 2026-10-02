@@ -47,7 +47,7 @@ namespace AimPark.API.Sync.Site.GateReaders
     /// with no reader chosen stands for the gate in its name — G2 is gate 2 —
     /// so nothing needs registering in Gate Devices.
     /// </remarks>
-    public class EspNowHubs : BackgroundService
+    public class EspNowHubs : BackgroundService, AimPark.API.Interfaces.ISlotSensors
     {
         private const int BaudRate = 115200;
         private const int KeptSimulatedLines = 30;
@@ -158,6 +158,12 @@ namespace AimPark.API.Sync.Site.GateReaders
                     conversation.HubError ?? h.Session.Error, lastLine, h.Session.Simulated, nodes,
                     conversation.Requests(), ids);
             }).ToList();
+        }
+
+        /// <summary>A sensor behind a hub is linked to this bay: only it says whether a car is there.</summary>
+        public bool Watches(Guid slotId)
+        {
+            lock (_lock) return _bindings.Values.Any(b => b.Slots.ContainsValue(slotId));
         }
 
         public bool IsBound(string port)

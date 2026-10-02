@@ -17,6 +17,7 @@ namespace AimPark.API.Services
         private readonly IParkingAllocationService _allocationService;
         private readonly INotificationService _notificationService;
         private readonly AppDbContext _db;
+        private readonly ISlotSensors _sensors;
 
         public ParkingHistoryService(
             IRepository<ParkingLog> logs,
@@ -24,8 +25,10 @@ namespace AimPark.API.Services
             IPaymentService paymentService,
             IParkingAllocationService allocationService,
             INotificationService notificationService,
-            AppDbContext db)
+            AppDbContext db,
+            ISlotSensors sensors)
         {
+            _sensors = sensors;
             _logs = logs;
             _slots = slots;
             _paymentService = paymentService;
@@ -246,7 +249,9 @@ namespace AimPark.API.Services
 
             await _logs.AddAsync(log, ct);
 
-            if (slot is not null)
+            // A bay with a sensor is marked by its sensor, when the car is
+            // really there: the bay given here is only a recommendation.
+            if (slot is not null && !_sensors.Watches(slot.Id))
             {
                 // Idempotent for the automatic path, where the claim already
                 // took the slot; the manual path relies on it.
@@ -662,7 +667,7 @@ namespace AimPark.API.Services
 
             await _logs.AddAsync(log, ct);
 
-            if (slot is not null)
+            if (slot is not null && !_sensors.Watches(slot.Id))
             {
                 slot.Status = ParkingSlotStatus.Occupied;
                 slot.UpdatedAt = nowUtc;
@@ -754,7 +759,8 @@ namespace AimPark.API.Services
             if (log.SlotId is not null)
             {
                 var slot = await _slots.FindAsync(s => s.Id == log.SlotId, ct);
-                if (slot is not null)
+                // A bay with a sensor goes free when the car leaves it, not at the tap.
+                if (slot is not null && !_sensors.Watches(slot.Id))
                 {
                     slot.Status = ParkingSlotStatus.Available;
                     slot.UpdatedAt = DateTime.UtcNow;

@@ -37,10 +37,12 @@ namespace AimPark.API.Services
         private const int MaxClaimAttempts = 3;
 
         private readonly AppDbContext _db;
+        private readonly ISlotSensors _sensors;
 
-        public ParkingAllocationService(AppDbContext db)
+        public ParkingAllocationService(AppDbContext db, ISlotSensors sensors)
         {
             _db = db;
+            _sensors = sensors;
         }
 
         public async Task<SlotRecommendationResponse> RecommendAsync(Guid userId, CancellationToken ct)
@@ -182,6 +184,13 @@ namespace AimPark.API.Services
         /// </summary>
         private async Task<bool> TryClaimAsync(Guid slotId, CancellationToken ct)
         {
+            // A bay with a sensor is only recommended, never marked: the
+            // driver may park in another, and that bay's sensor reports it.
+            // Being given to this session keeps it from the next car.
+            if (_sensors.Watches(slotId))
+                return await _db.Set<ParkingSlot>()
+                    .AnyAsync(s => s.Id == slotId && s.Status == ParkingSlotStatus.Available, ct);
+
             var rows = await _db.Set<ParkingSlot>()
                 .Where(s => s.Id == slotId && s.Status == ParkingSlotStatus.Available)
                 .ExecuteUpdateAsync(setters => setters
