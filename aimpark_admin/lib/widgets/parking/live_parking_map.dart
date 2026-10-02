@@ -1,11 +1,14 @@
 import 'dart:async';
 
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
+import '../../core/constants/api_endpoints.dart';
 import '../../core/network/dio_client.dart';
+import '../../models/gate_reader.dart';
 import '../../models/parking_slot.dart';
 import '../../providers/parking_provider.dart';
 import '../../theme/theme.dart';
@@ -65,6 +68,11 @@ class _LiveParkingMapCardState extends ConsumerState<LiveParkingMapCard> {
   bool _healthInFlight = false;
   Map<int, GateStatus> _health = const {1: GateStatus.unknown1, 2: GateStatus.unknown2};
 
+  /// Slots whose sensor has no signal: its board lost power or the hub is
+  /// gone. They keep their last status, but the map greys them out so a
+  /// dead sensor never passes for a parked car.
+  Set<String> _silent = const {};
+
   @override
   void initState() {
     super.initState();
@@ -92,10 +100,32 @@ class _LiveParkingMapCardState extends ConsumerState<LiveParkingMapCard> {
     if (_healthInFlight) return;
     _healthInFlight = true;
     try {
-      final health = await GateStatus.fetch(ref.read(dioProvider));
-      if (mounted) setState(() => _health = health);
+      final dio = ref.read(dioProvider);
+      final (health, silent) = await (GateStatus.fetch(dio), _silentSensors(dio)).wait;
+      if (mounted) {
+        setState(() {
+          _health = health;
+          _silent = silent;
+        });
+      }
     } finally {
       _healthInFlight = false;
+    }
+  }
+
+  /// The slots a linked sensor watches but can't hear from. From the cloud
+  /// panel nothing answers, and no slot is greyed out. Never throws.
+  static Future<Set<String>> _silentSensors(Dio dio) async {
+    try {
+      final res = await dio.get(ApiEndpoints.gateReaders);
+      final state = GateReadersState.fromJson(res.data as Map<String, dynamic>);
+      return {
+        for (final hub in state.hubs)
+          for (final n in hub.nodes)
+            if (n.isSensor && n.boundTo != null && !n.online) n.boundTo!,
+      };
+    } on DioException {
+      return const {};
     }
   }
 
@@ -148,13 +178,16 @@ class _LiveParkingMapCardState extends ConsumerState<LiveParkingMapCard> {
           title: 'No bays configured',
           message: 'Add a slot to start tracking the lot.',
         ),
-        data: (availability) => _MapWithSummary(
+        data: (availability) => _SilentSensors(
+          slots: _silent,
+          child: _MapWithSummary(
           slots: availability.slots,
           sessions: sessions,
           compact: widget.compact,
           onBayTap: widget.onBayTap,
           health: _health,
           onGateTap: _showGate,
+          ),
         ),
       ),
     );
@@ -897,14 +930,18 @@ class _BayState extends State<_Bay> {
     final text = Theme.of(context).textTheme;
     final slot = widget.slot;
     final session = widget.session;
-    final c = t.status.of(StatusIntents.slot(slot.status));
+    // No sensor signal: shown grey, whatever it last read, until it is back.
+    final silent = _SilentSensors.of(context).contains(slot.slotId);
+    final c = silent ? t.status.neutral : t.status.of(StatusIntents.slot(slot.status));
 
-    final occupied = slot.status == 'Occupied';
+    final occupied = !silent && slot.status == 'Occupied';
     final outOfService = slot.status == 'OutOfService';
     final fg = occupied ? t.text.onBrand : c.fg;
 
     final tooltip = [
-      '${slot.slotCode} · ${_statusLabel(slot.status)}',
+      silent
+          ? '${slot.slotCode} · Sensor has no signal (last seen ${_statusLabel(slot.status).toLowerCase()})'
+          : '${slot.slotCode} · ${_statusLabel(slot.status)}',
       slot.isMotorcycle ? 'Motorcycle bay' : slot.vehicleType == 'Car' ? 'Four-wheel bay' : 'Any vehicle',
       if (session != null) session.userName,
       if (session?.plateNumber != null) session!.plateNumber!,
@@ -913,7 +950,7 @@ class _BayState extends State<_Bay> {
     ].join('\n');
 
     final icon = Icon(
-      switch (slot.vehicleType) {
+      silent ? Icons.sensors_off_rounded : switch (slot.vehicleType) {
         'Motorcycle' => Icons.two_wheeler_rounded,
         'Car' => Icons.directions_car_rounded,
         _ => Icons.local_parking_rounded,
@@ -1240,6 +1277,14 @@ class _Legend extends StatelessWidget {
         entry('Available', 'Free'),
         entry('Occupied', 'Occupied', filled: true),
         entry('OutOfService', 'Out of service'),
+        Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.sensors_off_rounded, size: 12, color: t.status.neutral.fg),
+            const SizedBox(width: AppSpacing.x2 - 2),
+            Text('No sensor signal', style: text.labelSmall?.copyWith(color: t.text.secondary)),
+          ],
+        ),
       ],
     );
   }
@@ -1254,3 +1299,19 @@ String _statusLabel(String status) => switch (status) {
   'OutOfService' => 'Out of service',
   _ => status,
 };
+
+
+/// The slots whose sensor has gone quiet, for every bay on the map to read
+/// without passing it down through each layer.
+class _SilentSensors extends InheritedWidget {
+  const _SilentSensors({required this.slots, required super.child});
+
+  final Set<String> slots;
+
+  static Set<String> of(BuildContext context) =>
+      context.dependOnInheritedWidgetOfExactType<_SilentSensors>()?.slots ?? const {};
+
+  @override
+  bool updateShouldNotify(_SilentSensors old) =>
+      old.slots.length != slots.length || !old.slots.containsAll(slots);
+}
