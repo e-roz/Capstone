@@ -414,7 +414,8 @@ void setup() {
   hubId = selfId();
   setPeer(BROADCAST, false);
 
-  prefs.begin("aimpark-hub", false);
+  // "-3": protocol 3 keeps names with each board; an older list would be misread.
+  prefs.begin("aimpark-hub-3", false);
   loadNodes();
 
   Serial.printf("# Ready on channel %u. Hub %s, protocol %u.\n", WIFI_CHANNEL, hubId.c_str(), PROTOCOL_VERSION);

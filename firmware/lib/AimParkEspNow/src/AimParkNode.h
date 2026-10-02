@@ -27,7 +27,8 @@ class NodeLink {
     setPeer(BROADCAST, false);
     seq_ = (uint16_t)esp_random();   // So the hub can't mistake a reboot for a repeat.
 
-    prefs_.begin("aimpark", false);
+    // "-3": a board paired under an older protocol starts over, unpaired.
+    prefs_.begin("aimpark-3", false);
     paired_ = prefs_.getBytes("hub", hub_, 6) == 6;
     if (paired_ && !setPeer(hub_, true)) paired_ = false;
 
