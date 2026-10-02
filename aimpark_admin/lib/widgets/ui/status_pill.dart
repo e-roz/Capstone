@@ -156,8 +156,9 @@ class StatusIntents {
   /// lot is normal operation, not a problem to flag.
   static StatusIntent slot(String status) => switch (status) {
         'Available' => StatusIntent.success,
-        'Occupied' => StatusIntent.accent,
-        'OutOfService' => StatusIntent.danger,
+        // Red reads "taken" from across the guard house; orange "not in use".
+        'Occupied' => StatusIntent.danger,
+        'OutOfService' => StatusIntent.warning,
         _ => StatusIntent.neutral,
       };
 
