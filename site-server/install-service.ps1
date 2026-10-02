@@ -9,7 +9,7 @@
 
         powershell -ExecutionPolicy Bypass -File C:\AimPark\site-server\install-service.ps1
 
-    Before running it, finish steps 1-8 of SITE_SERVER.md: the local
+    Before running it, finish steps 1-8 of MD files/SITE_SERVER.md: the local
     database exists and has its tables, and appsettings.Site.json is filled in.
 #>
 param(
@@ -33,11 +33,11 @@ $admin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdenti
 if (-not $admin) { throw "Run this from PowerShell opened with 'Run as administrator'." }
 
 if (-not (Get-Command dotnet -ErrorAction SilentlyContinue)) {
-    throw "The .NET 8 SDK is not installed. See SITE_SERVER.md step 1."
+    throw "The .NET 8 SDK is not installed. See MD files/SITE_SERVER.md step 1."
 }
 
 if (-not (Test-Path $SourceSettings)) {
-    throw "Missing $SourceSettings. Copy appsettings.Site.example.json to appsettings.Site.json and fill it in first (SITE_SERVER.md step 5)."
+    throw "Missing $SourceSettings. Copy appsettings.Site.example.json to appsettings.Site.json and fill it in first (MD files/SITE_SERVER.md step 5)."
 }
 
 # --- Build ------------------------------------------------------------------

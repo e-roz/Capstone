@@ -663,7 +663,7 @@ class _GatePicker extends StatelessWidget {
         decoration: BoxDecoration(
           color: t.surface.card,
           borderRadius: AppRadii.fullAll,
-          boxShadow: AppElevation.sm,
+          border: Border.all(color: t.border.normal),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,

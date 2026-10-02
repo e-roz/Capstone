@@ -52,22 +52,28 @@ flutter:
   # Both bundled rather than fetched, so the panel renders identically with no
   # network — the defence demo cannot depend on Google's font CDN.
   fonts:
-    # Carries every dense, small-size surface: tables, forms, labels, badges.
-    - family: IBM Plex Sans
+    # Same faces as the mobile app. Inter carries every dense, small-size
+    # surface: tables, forms, labels, badges.
+    - family: Inter
       fonts:
-        - asset: assets/fonts/IBMPlexSans-Variable.ttf
+        - asset: assets/fonts/Inter-Regular.ttf
           weight: 400
-        - asset: assets/fonts/IBMPlexSans-Variable.ttf
+        - asset: assets/fonts/Inter-Medium.ttf
           weight: 500
-        - asset: assets/fonts/IBMPlexSans-Variable.ttf
+        - asset: assets/fonts/Inter-SemiBold.ttf
           weight: 600
-    # Display face for page titles, KPI numerals and dialog headers.
-    - family: Sora
-      fonts:
-        - asset: assets/fonts/Sora-Variable.ttf
-          weight: 600
-        - asset: assets/fonts/Sora-Variable.ttf
+        - asset: assets/fonts/Inter-Bold.ttf
           weight: 700
+    # Inter's optical-size display cut: page titles, KPI numerals, dialog
+    # headers.
+    - family: InterDisplay
+      fonts:
+        - asset: assets/fonts/InterDisplay-SemiBold.ttf
+          weight: 600
+        - asset: assets/fonts/InterDisplay-Bold.ttf
+          weight: 700
+        - asset: assets/fonts/InterDisplay-ExtraBold.ttf
+          weight: 800
     # Eyebrow labels, timestamps, table headers, status pills — anywhere a
     # value reads as data rather than as prose.
     - family: IBM Plex Mono

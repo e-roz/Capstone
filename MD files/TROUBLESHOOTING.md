@@ -423,5 +423,5 @@ powershell -ExecutionPolicy Bypass -File C:\Users\ADMIN\.aimpark\gen-render-env.
 ---
 
 See also: [DEPLOYMENT.md](DEPLOYMENT.md) for first-time setup,
-[HOW_TO_RUN.txt](HOW_TO_RUN.txt) for local dev, [TESTING.md](TESTING.md) for
+[HOW_TO_RUN.txt](../HOW_TO_RUN.txt) for local dev, [TESTING.md](TESTING.md) for
 what testers should and shouldn't report.

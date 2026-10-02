@@ -144,35 +144,33 @@ class AppSurfaceTokens {
   final Color scrim;
 
   static const light = AppSurfaceTokens(
-    canvas: AppPalette.neutral100,
+    canvas: AppPalette.neutral50,
     card: AppPalette.neutral0,
-    muted: AppPalette.neutral200,
+    muted: AppPalette.neutral100,
     hover: AppPalette.neutral50,
     selected: AppPalette.brand50,
-    // The sidebar and every "emphasis" fill read from the cool `ink` ramp
-    // rather than the warm `neutral` ramp — see AppPalette's note on the
-    // two-hue split. That keeps them a consistent cool-dark regardless of
-    // which theme's canvas they sit on.
-    inverse: AppPalette.ink700,
-    sidebar: AppPalette.ink700,
+    inverse: AppPalette.neutral900,
+    // Deep indigo in both themes — the panel's one large brand surface, the
+    // same role the indigo live-session and ID cards play on mobile.
+    sidebar: AppPalette.brand800,
     sidebarHover: Color(0x14FFFFFF),
     sidebarSelected: Color(0x24FFFFFF),
     overlay: AppPalette.neutral0,
-    scrim: Color(0x801C1F25),
+    scrim: Color(0x800B0A07),
   );
 
   static const dark = AppSurfaceTokens(
     canvas: AppPalette.neutral950,
     card: AppPalette.neutral900,
     muted: AppPalette.neutral800,
-    hover: Color(0xFF0A152A),
-    selected: Color(0xFF0F2248),
-    inverse: AppPalette.ink100,
-    sidebar: AppPalette.ink800,
+    hover: Color(0xFF1D1C15),
+    selected: Color(0xFF1B1E3A),
+    inverse: AppPalette.neutral100,
+    sidebar: AppPalette.brand900,
     sidebarHover: Color(0x14FFFFFF),
     sidebarSelected: Color(0x24FFFFFF),
     overlay: AppPalette.neutral800,
-    scrim: Color(0xB3030305),
+    scrim: Color(0xB3000000),
   );
 
   static AppSurfaceTokens lerp(
@@ -260,32 +258,32 @@ class AppTextTokens {
   final Color onBrand;
 
   static const light = AppTextTokens(
-    primary: AppPalette.ink700,
-    secondary: AppPalette.ink500,
-    tertiary: AppPalette.ink400,
-    disabled: AppPalette.ink300,
+    primary: AppPalette.neutral900,
+    secondary: AppPalette.neutral500,
+    tertiary: AppPalette.neutral400,
+    disabled: AppPalette.neutral300,
     inverse: AppPalette.neutral0,
     inverseMuted: Color(0xB3FFFFFF),
     onDark: AppPalette.neutral0,
     onDarkMuted: Color(0xB3FFFFFF),
     onDarkSubtle: Color(0xDBFFFFFF),
-    link: AppPalette.brand600,
+    link: AppPalette.brand500,
     onBrand: AppPalette.neutral0,
   );
 
   static const dark = AppTextTokens(
-    primary: AppPalette.ink50,
-    secondary: AppPalette.ink300,
-    tertiary: AppPalette.ink400,
-    disabled: AppPalette.ink600,
-    inverse: AppPalette.ink800,
+    primary: AppPalette.neutral50,
+    secondary: AppPalette.neutral400,
+    tertiary: AppPalette.neutral500,
+    disabled: AppPalette.neutral600,
+    inverse: AppPalette.neutral900,
     inverseMuted: Color(0xB3FFFFFF),
     // Identical to the light theme on purpose: the surfaces these sit on do not
     // change between themes, so neither should the text.
     onDark: AppPalette.neutral0,
     onDarkMuted: Color(0xB3FFFFFF),
     onDarkSubtle: Color(0xDBFFFFFF),
-    link: AppPalette.brand400,
+    link: AppPalette.brand300,
     onBrand: AppPalette.neutral0,
   );
 
@@ -335,15 +333,15 @@ class AppBorderTokens {
   static const light = AppBorderTokens(
     subtle: AppPalette.neutral100,
     normal: AppPalette.neutral200,
-    strong: AppPalette.neutral300,
+    strong: AppPalette.neutral400,
     focus: AppPalette.brand500,
     onSidebar: Color(0x1FFFFFFF),
   );
 
   static const dark = AppBorderTokens(
-    subtle: Color(0xFF181611),
-    normal: AppPalette.neutral800,
-    strong: AppPalette.neutral700,
+    subtle: AppPalette.neutral800,
+    normal: AppPalette.neutral700,
+    strong: AppPalette.neutral500,
     focus: AppPalette.brand400,
     onSidebar: Color(0x1FFFFFFF),
   );
@@ -383,18 +381,18 @@ class AppBrandTokens {
   final Color subtleText;
 
   static const light = AppBrandTokens(
-    primary: AppPalette.brand700,
-    hover: AppPalette.brand800,
-    pressed: AppPalette.brand900,
-    subtle: AppPalette.brand50,
-    subtleText: AppPalette.brand800,
+    primary: AppPalette.brand500,
+    hover: AppPalette.brand600,
+    pressed: AppPalette.brand700,
+    subtle: AppPalette.brand100,
+    subtleText: AppPalette.brand700,
   );
 
   static const dark = AppBrandTokens(
-    primary: AppPalette.brand500,
-    hover: AppPalette.brand400,
-    pressed: AppPalette.brand300,
-    subtle: Color(0xFF0C1D40),
+    primary: AppPalette.brand400,
+    hover: AppPalette.brand300,
+    pressed: AppPalette.brand500,
+    subtle: Color(0x333C46AE),
     subtleText: AppPalette.brand200,
   );
 
@@ -483,28 +481,28 @@ class AppStatusTokens {
       solid: AppPalette.neutral500,
     ),
     info: StatusColors(
-      bg: AppPalette.teal50,
-      fg: AppPalette.teal700,
-      border: AppPalette.teal200,
-      solid: AppPalette.teal600,
+      bg: AppPalette.sky100,
+      fg: AppPalette.sky700,
+      border: AppPalette.sky200,
+      solid: AppPalette.sky500,
     ),
     success: StatusColors(
-      bg: AppPalette.green50,
+      bg: AppPalette.green100,
       fg: AppPalette.green700,
       border: AppPalette.green200,
-      solid: AppPalette.green600,
+      solid: AppPalette.green500,
     ),
     warning: StatusColors(
-      bg: AppPalette.amber50,
+      bg: AppPalette.amber100,
       fg: AppPalette.amber700,
       border: AppPalette.amber200,
       solid: AppPalette.amber500,
     ),
     danger: StatusColors(
-      bg: AppPalette.red50,
+      bg: AppPalette.red100,
       fg: AppPalette.red700,
       border: AppPalette.red200,
-      solid: AppPalette.red600,
+      solid: AppPalette.red500,
     ),
     accent: StatusColors(
       bg: AppPalette.violet100,
@@ -518,39 +516,39 @@ class AppStatusTokens {
   // light end of the ramp carrying the text.
   static const dark = AppStatusTokens(
     neutral: StatusColors(
-      bg: Color(0x1F94A3B8),
+      bg: Color(0x1F9E9A8C),
       fg: AppPalette.neutral300,
-      border: Color(0x3D94A3B8),
+      border: Color(0x3D9E9A8C),
       solid: AppPalette.neutral400,
     ),
     info: StatusColors(
-      bg: Color(0x24009E97),
-      fg: AppPalette.teal200,
-      border: Color(0x4D009E97),
-      solid: AppPalette.teal400,
+      bg: Color(0x243FA0DE),
+      fg: AppPalette.sky200,
+      border: Color(0x4D3FA0DE),
+      solid: AppPalette.sky400,
     ),
     success: StatusColors(
-      bg: Color(0x24179765),
+      bg: Color(0x243FB166),
       fg: AppPalette.green200,
-      border: Color(0x4D179765),
+      border: Color(0x4D3FB166),
       solid: AppPalette.green400,
     ),
     warning: StatusColors(
-      bg: Color(0x24DEA143),
+      bg: Color(0x24E7A83B),
       fg: AppPalette.amber200,
-      border: Color(0x4DDEA143),
+      border: Color(0x4DE7A83B),
       solid: AppPalette.amber400,
     ),
     danger: StatusColors(
-      bg: Color(0x24F2716A),
+      bg: Color(0x24E66950),
       fg: AppPalette.red200,
-      border: Color(0x4DF2716A),
+      border: Color(0x4DE66950),
       solid: AppPalette.red400,
     ),
     accent: StatusColors(
-      bg: Color(0x24B48DF4),
+      bg: Color(0x24B27FDD),
       fg: AppPalette.violet100,
-      border: Color(0x4DB48DF4),
+      border: Color(0x4DB27FDD),
       solid: AppPalette.violet400,
     ),
   );
@@ -583,13 +581,13 @@ class AppChartTokens {
 
   static const light = AppChartTokens(
     categorical: [
-      AppPalette.brand600,
-      AppPalette.rose500,
-      AppPalette.violet500,
+      AppPalette.brand500,
+      AppPalette.mint500,
       AppPalette.amber500,
-      AppPalette.teal500,
-      AppPalette.green500,
-      AppPalette.red500,
+      AppPalette.rose500,
+      AppPalette.sky500,
+      AppPalette.violet500,
+      AppPalette.red600,
       AppPalette.neutral400,
     ],
     grid: AppPalette.neutral200,
@@ -598,11 +596,11 @@ class AppChartTokens {
   static const dark = AppChartTokens(
     categorical: [
       AppPalette.brand400,
-      AppPalette.rose400,
-      AppPalette.violet400,
+      AppPalette.mint400,
       AppPalette.amber400,
-      AppPalette.teal400,
-      AppPalette.green400,
+      AppPalette.rose400,
+      AppPalette.sky400,
+      AppPalette.violet400,
       AppPalette.red400,
       AppPalette.neutral500,
     ],
