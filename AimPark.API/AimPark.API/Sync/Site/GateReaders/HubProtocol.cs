@@ -53,6 +53,15 @@ namespace AimPark.API.Sync.Site.GateReaders
     public record HubHello(string Id, int Protocol) : HubLine;
 
     /// <summary>
+    /// <c>DIAG G1 rtt=14 rssi=-52 …</c> or <c>DIAG HUB up=… heap=…</c> — the
+    /// answer to a connection test, as the hub's key=value pairs.
+    /// </summary>
+    public record HubDiag(string Node, IReadOnlyDictionary<string, string> Values) : HubLine;
+
+    /// <summary><c>DIAG G1 FAIL NO_REPLY</c> — the connection test didn't reach the board, or it didn't answer.</summary>
+    public record HubDiagFailed(string Node, string Code) : HubLine;
+
+    /// <summary>
     /// The ESP-NOW hub's serial protocol (firmware/aimpark_espnow_hub): one
     /// line each way, every line naming the board it is about.
     /// </summary>
@@ -81,6 +90,19 @@ namespace AimPark.API.Sync.Site.GateReaders
         public static string Open(string node) => $"{node} CMD:OPEN";
 
         public const string Ping = "PING";
+
+        /// <summary>What a connection test of the hub itself is called, in its DIAG lines.</summary>
+        public const string HubName = "HUB";
+
+        /// <summary>The hub's own health, or with a board's name, a ping to that board over the air.</summary>
+        public static string Diag(string? node = null) => node is null ? "DIAG" : $"DIAG {node}";
+
+        /// <summary>
+        /// The hub's "# ERR:UNKNOWN_COMMAND DIAG …": its firmware is older than
+        /// the connection test.
+        /// </summary>
+        public static bool IsUnknownDiag(HubComment comment) =>
+            comment.Text.StartsWith("ERR:UNKNOWN_COMMAND DIAG", StringComparison.Ordinal);
 
         /// <summary>Accepts a board asking to join, and names it (G1, S2).</summary>
         public static string Pair(string id, string node) => $"PAIR {id} {node}";
@@ -131,6 +153,18 @@ namespace AimPark.API.Sync.Site.GateReaders
 
                 case "HUB" when parts.Length == 3 && IsBoardId(parts[1]) && int.TryParse(parts[2], out var protocol):
                     return new HubHello(parts[1], protocol);
+
+                case "DIAG" when parts.Length >= 4 && parts[2] == "FAIL":
+                    return new HubDiagFailed(parts[1].ToUpperInvariant(), parts[3]);
+
+                case "DIAG" when parts.Length >= 2:
+                    var values = new Dictionary<string, string>(StringComparer.Ordinal);
+                    foreach (var pair in parts[2..])
+                    {
+                        var eq = pair.IndexOf('=');
+                        if (eq > 0) values[pair[..eq]] = pair[(eq + 1)..];
+                    }
+                    return new HubDiag(parts[1].ToUpperInvariant(), values);
 
                 default:
                     return null;

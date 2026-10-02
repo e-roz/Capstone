@@ -267,7 +267,16 @@ wired exactly like `aimpark_gate_reader`.
 | hub → server | `G1 ONLINE` / `G1 OFFLINE` | Node came up, or missed three heartbeats (≈16 s). A sensor board going offline leaves its slots unknown, not free |
 | hub → server | `G1 ERR:NOT_DELIVERED` | A RESULT or CMD didn't reach the node |
 | server → hub | `STATUS` | Hub prints every node's state |
+| server → hub | `DIAG` | Connection test of the hub: `DIAG HUB id=… proto=3 up=… heap=… reset=… channel=1 nodes=… fails=…` |
+| server → hub | `DIAG G1` | Pings G1 over the air: `DIAG G1 rtt=… rssi=… noderssi=… up=… heap=… reset=… fails=… packets=… drops=…`, plus `rc522=92` on a gate (`00`/`FF` = reader not wired) or `sensors=9 noecho=0000` on a sensor board (bit set = that sensor hears nothing), or `DIAG G1 FAIL NOT_PAIRED` / `NOT_DELIVERED` / `NO_REPLY` |
 | hub → server | `# ...` | Comments for a person reading the monitor |
+
+`rssi` is how loud the board is at the hub and `noderssi` the hub at the board,
+in dBm (below about −80 packets start getting lost); `reset=BROWNOUT` means the
+board last restarted from a power dip. The Gate Readers screen runs these as
+**Test connection**, and its **Console** shows every line over the cable. A
+board on firmware older than the test ignores the ping (`NO_REPLY`): reflash
+the hub and every board to get the details.
 
 A gate node shakes its arm if the hub doesn't acknowledge the tap, or if no
 answer comes back within 15 s. You can drive the whole thing by hand from the

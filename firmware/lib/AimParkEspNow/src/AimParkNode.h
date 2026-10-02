@@ -6,6 +6,9 @@
 // Paired, it talks to that hub only, encrypted.
 //
 // Holding BOOT for 5 s forgets the hub, for a board being replaced or moved.
+//
+// The hub's connection test (PING) is answered here, for every sketch: the
+// sketch only adds what is its own to say, through setDiagnostics().
 
 #pragma once
 
@@ -40,6 +43,10 @@ class NodeLink {
 
   bool paired() const { return paired_; }
 
+  // Fills in the sketch's part of a connection test answer: the RC522 on a
+  // gate, the sensors on a sensor board. Called on the loop, from poll().
+  void setDiagnostics(void (*fill)(Diag&)) { fillDiag_ = fill; }
+
   // True once, right after pairing: a sensor sends its reading at once.
   bool takeJustPaired() {
     bool was = justPaired_;
@@ -66,6 +73,11 @@ class NodeLink {
         continue;
       }
       if (memcmp(in.mac, hub_, 6) != 0) continue;   // Only our hub gives orders.
+      if (in.rssi != 0) hubRssi_ = in.rssi;
+      if (in.packet.type == MSG_PING) {
+        answerPing(in.packet.seq);
+        continue;
+      }
       if (in.packet.type == MSG_FORGET) {
         Serial.println("The hub removed me. Asking to join again.");
         forget();
@@ -94,6 +106,18 @@ class NodeLink {
   void setLed(bool on) { ledOn_ = on; }
 
  private:
+  void answerPing(uint16_t pingSeq) {
+    Packet p = makePacket(MSG_PONG, role_, nextSeq());
+    p.diag.pingSeq = pingSeq;
+    p.diag.uptimeS = millis() / 1000;
+    p.diag.sendFailures = sendFailures();
+    p.diag.freeHeapKb = (uint16_t)(ESP.getFreeHeap() / 1024);
+    p.diag.rssi = hubRssi_;
+    p.diag.resetReason = (uint8_t)esp_reset_reason();
+    if (fillDiag_) fillDiag_(p.diag);
+    send(p, 2);
+  }
+
   void adopt(const uint8_t* mac) {
     if (!setPeer(mac, true)) {
       Serial.println("Could not add the hub as a peer.");
@@ -135,6 +159,8 @@ class NodeLink {
   bool paired_ = false;
   bool ledOn_ = false;
   bool justPaired_ = false;
+  int8_t hubRssi_ = 0;
+  void (*fillDiag_)(Diag&) = nullptr;
   uint16_t seq_ = 0;
   unsigned long lastRequestAt_ = 0;
   unsigned long bootDownAt_ = 0;

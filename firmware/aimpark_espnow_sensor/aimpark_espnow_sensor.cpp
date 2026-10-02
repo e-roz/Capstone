@@ -126,6 +126,14 @@ void printDistances() {
   Serial.println();
 }
 
+// For the hub's connection test. A sensor over an empty bay still echoes off
+// the floor, so one that hears nothing at all is unplugged or miswired.
+void fillDiagnostics(Diag& diag) {
+  diag.slotCount = SLOT_COUNT;
+  for (uint8_t i = 0; i < SLOT_COUNT; i++)
+    if (distanceMm[i] == 0) diag.noEchoMask |= (uint16_t)1 << i;
+}
+
 // ── To the hub ───────────────────────────────────────────────────────────────
 void report() {
   Packet p = makePacket(MSG_SLOT, ROLE_SENSOR, hubLink.nextSeq());
@@ -161,6 +169,7 @@ void setup() {
     return;
   }
   linkUp = true;
+  hubLink.setDiagnostics(fillDiagnostics);
   Serial.printf("Watching %u slots.\n", SLOT_COUNT);
 
   // Settle on what the sensors see before the first report, rather than

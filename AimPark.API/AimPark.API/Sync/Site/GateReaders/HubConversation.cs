@@ -15,6 +15,21 @@ namespace AimPark.API.Sync.Site.GateReaders
         DateTime? SlotChangedAt);
 
     /// <summary>
+    /// One connection test: of the hub itself (<see cref="HubProtocol.HubName"/>)
+    /// or of a board behind it, pinged over the air.
+    /// </summary>
+    /// <param name="Ok">The board answered.</param>
+    /// <param name="RoundTripMs">From the server writing DIAG to reading the answer, USB both ways included.</param>
+    /// <param name="Values">What the hub reported, as it printed it: rtt, rssi, up, heap, reset …</param>
+    /// <param name="Problem">Why it failed, or what is wrong though it answered. Null when all is well.</param>
+    public record HubDiagnosis(
+        string Node, DateTime At, bool Ok, int RoundTripMs,
+        IReadOnlyDictionary<string, string> Values, string? Problem);
+
+    /// <summary>One line over the hub's USB cable. <c>Out</c>: the server wrote it.</summary>
+    public record HubTrafficLine(long Seq, DateTime At, bool Out, string Line);
+
+    /// <summary>
     /// The server's half of one conversation with an ESP-NOW hub: reads its
     /// lines, keeps track of every node, and writes the answers back.
     /// </summary>
@@ -63,6 +78,18 @@ namespace AimPark.API.Sync.Site.GateReaders
         /// <summary>How long a PAIR or FORGET waits for the hub's answer.</summary>
         public static readonly TimeSpan CommandTimeout = TimeSpan.FromSeconds(6);
 
+        /// <summary>
+        /// How long a connection test waits. The hub gives a board 2 s to answer
+        /// its ping, after up to half a second getting the ping to it.
+        /// </summary>
+        public static readonly TimeSpan DiagTimeout = TimeSpan.FromSeconds(4);
+
+        /// <summary>Lines kept for the hub console: about two minutes of STATUS polling.</summary>
+        public const int KeptTrafficLines = 300;
+
+        /// <summary>Below this, ESP-NOW starts dropping packets.</summary>
+        public const int WeakSignalDbm = -80;
+
         private readonly object _lock = new();
         private readonly Dictionary<string, Node> _nodes = new(StringComparer.Ordinal);
         private readonly Dictionary<string, Task> _queues = new(StringComparer.Ordinal);
@@ -72,6 +99,13 @@ namespace AimPark.API.Sync.Site.GateReaders
         private readonly Dictionary<string, (HubNodeKind Kind, DateTime LastAt)> _requests = new(StringComparer.Ordinal);
         private readonly Dictionary<string, string> _boardIds = new(StringComparer.Ordinal);
         private readonly Dictionary<string, TaskCompletionSource<string?>> _waiting = new(StringComparer.Ordinal);
+
+        // Connection tests waiting for the hub's DIAG line, and the last result of each, by board.
+        private readonly Dictionary<string, TaskCompletionSource<HubLine>> _diagWaiting = new(StringComparer.Ordinal);
+        private readonly Dictionary<string, HubDiagnosis> _diagnoses = new(StringComparer.Ordinal);
+
+        private readonly LinkedList<HubTrafficLine> _traffic = new();
+        private long _trafficSeq;
 
         private bool _ready;
         private DateTime _readyBy;
@@ -161,7 +195,7 @@ namespace AimPark.API.Sync.Site.GateReaders
                 if (poll) _nextStatus = now + StatusEvery;
             }
 
-            if (poll) _send(HubProtocol.StatusRequest);
+            if (poll) Send(HubProtocol.StatusRequest);
         }
 
         /// <summary>
@@ -176,6 +210,7 @@ namespace AimPark.API.Sync.Site.GateReaders
 
             var now = _now();
             LastLineAt = now;
+            Note(now, false, line);
 
             if (HubProtocol.IsBanner(line))
             {
@@ -223,7 +258,7 @@ namespace AimPark.API.Sync.Site.GateReaders
                             _log?.Invoke($"Tap at {tap.Node} failed: {ex.Message}");
                             opened = false;
                         }
-                        _send(HubProtocol.Result(tap.Node, opened));
+                        Send(HubProtocol.Result(tap.Node, opened));
                     });
 
                 case HubSlot slot:
@@ -334,6 +369,20 @@ namespace AimPark.API.Sync.Site.GateReaders
                 case HubHello:
                     return Task.CompletedTask;
 
+                case HubDiag diag:
+                    AnswerDiag(diag.Node, diag);
+                    return Task.CompletedTask;
+
+                case HubDiagFailed failed:
+                    AnswerDiag(failed.Node, failed);
+                    return Task.CompletedTask;
+
+                case HubComment comment when HubProtocol.IsUnknownDiag(comment):
+                    // "ERR:UNKNOWN_COMMAND DIAG G1": the test reached a hub too old to run it.
+                    var asked = comment.Text["ERR:UNKNOWN_COMMAND DIAG".Length..].Trim();
+                    AnswerDiag(asked.Length == 0 ? HubProtocol.HubName : asked.ToUpperInvariant(), comment);
+                    return Task.CompletedTask;
+
                 case HubComment comment:
                     // The hub's own failures arrive as comments: flashed with the
                     // wrong sketch, or ESP-NOW not starting.
@@ -349,7 +398,132 @@ namespace AimPark.API.Sync.Site.GateReaders
         }
 
         /// <summary>Sends the guard's open to a gate node. False when the line couldn't be written.</summary>
-        public bool Open(string node) => _send(HubProtocol.Open(node));
+        public bool Open(string node) => Send(HubProtocol.Open(node));
+
+        // ── Diagnostics ───────────────────────────────────────────────────────
+
+        /// <summary>
+        /// Tests the connection to the hub (<paramref name="node"/> null) or to
+        /// one board behind it, pinged over the air. Never throws.
+        /// </summary>
+        public async Task<HubDiagnosis> DiagnoseAsync(string? node)
+        {
+            var name = node?.ToUpperInvariant() ?? HubProtocol.HubName;
+            var waiter = new TaskCompletionSource<HubLine>(TaskCreationOptions.RunContinuationsAsynchronously);
+            lock (_lock) _diagWaiting[name] = waiter;
+
+            var started = System.Diagnostics.Stopwatch.StartNew();
+            HubDiagnosis result;
+            try
+            {
+                if (!Send(HubProtocol.Diag(node is null ? null : name)))
+                {
+                    result = Failed("The hub isn't connected. Check its USB cable.");
+                }
+                else
+                {
+                    var done = await Task.WhenAny(waiter.Task, Task.Delay(DiagTimeout));
+                    var ms = (int)started.ElapsedMilliseconds;
+                    result = done != waiter.Task
+                        ? Failed(node is null
+                            ? "The hub didn't answer. It restarts itself if this keeps happening; otherwise unplug it and plug it back in."
+                            : "The hub didn't answer the test.", ms)
+                        : await waiter.Task switch
+                        {
+                            HubDiag diag => new HubDiagnosis(name, _now(), true, ms, diag.Values, Concern(name, diag.Values)),
+                            HubDiagFailed failed => Failed(Explain(name, failed.Code), ms),
+                            // An older hub answered, so the cable is fine; it just can't say more.
+                            _ when node is null => new HubDiagnosis(name, _now(), true, ms, new Dictionary<string, string>(),
+                                "The hub answered, but its firmware is older than this test. Reflash it for signal and health details."),
+                            _ => Failed("The hub's firmware is older than this test. Reflash the hub, then this board.", ms),
+                        };
+                }
+            }
+            finally
+            {
+                lock (_lock)
+                    if (_diagWaiting.TryGetValue(name, out var current) && current == waiter)
+                        _diagWaiting.Remove(name);
+            }
+
+            lock (_lock) _diagnoses[name] = result;
+            return result;
+
+            HubDiagnosis Failed(string problem, int ms = 0) =>
+                new(name, _now(), false, ms, new Dictionary<string, string>(), problem);
+        }
+
+        /// <summary>The last connection test of the hub and of each board, by name.</summary>
+        public IReadOnlyDictionary<string, HubDiagnosis> Diagnoses()
+        {
+            lock (_lock) return new Dictionary<string, HubDiagnosis>(_diagnoses);
+        }
+
+        /// <summary>The last lines over the cable, oldest first: only those after <paramref name="afterSeq"/>.</summary>
+        public IReadOnlyList<HubTrafficLine> Traffic(long afterSeq = 0)
+        {
+            lock (_lock) return _traffic.Where(t => t.Seq > afterSeq).ToList();
+        }
+
+        private void AnswerDiag(string node, HubLine line)
+        {
+            TaskCompletionSource<HubLine>? waiter;
+            lock (_lock) _diagWaiting.TryGetValue(node, out waiter);
+            waiter?.TrySetResult(line);
+        }
+
+        /// <summary>What the hub means by a failed test, for a guard.</summary>
+        private static string Explain(string node, string code) => code switch
+        {
+            "NOT_PAIRED" => $"The hub has no board called {node}. Accept it again on this screen.",
+            "NOT_DELIVERED" => $"{node} didn't hear the hub. Check that it is powered, and move it closer to the hub or clear what is between them.",
+            "NO_REPLY" => $"{node} heard the test but didn't answer. It may be restarting, or still on firmware older than this test.",
+            _ => $"{node}: {code}"
+        };
+
+        /// <summary>Answered, but something on the board needs a look. Null when nothing does.</summary>
+        public static string? Concern(string node, IReadOnlyDictionary<string, string> values)
+        {
+            var concerns = new List<string>();
+
+            if (values.TryGetValue("rssi", out var r) && int.TryParse(r, out var rssi) && rssi != 0 && rssi < WeakSignalDbm)
+                concerns.Add($"weak signal ({rssi} dBm): move {node} closer to the hub");
+
+            if (values.TryGetValue("reset", out var reset) && reset is "BROWNOUT" or "CRASH" or "WATCHDOG")
+                concerns.Add(reset == "BROWNOUT"
+                    ? "it last restarted from a power dip: check its USB cable and power supply (and the servo capacitor on a gate)"
+                    : $"it last restarted after a {reset.ToLowerInvariant()}: if that keeps happening, reflash it");
+
+            if (values.TryGetValue("rc522", out var rc522) && rc522 is "00" or "FF")
+                concerns.Add("the card reader (RC522) isn't answering: check its wiring and 3.3 V");
+
+            if (values.TryGetValue("noecho", out var noEcho)
+                && int.TryParse(noEcho, System.Globalization.NumberStyles.HexNumber, null, out var mask) && mask != 0)
+            {
+                var silent = Enumerable.Range(0, 16).Where(i => (mask & (1 << i)) != 0).Select(i => $"{node}/{i + 1}");
+                concerns.Add($"no echo from {string.Join(", ", silent)}: check those sensors' wiring");
+            }
+
+            if (concerns.Count == 0) return null;
+            var text = string.Join("; ", concerns);
+            return char.ToUpperInvariant(text[0]) + text[1..] + ".";
+        }
+
+        private bool Send(string line)
+        {
+            var sent = _send(line);
+            if (sent) Note(_now(), true, line);
+            return sent;
+        }
+
+        private void Note(DateTime at, bool outgoing, string line)
+        {
+            lock (_lock)
+            {
+                _traffic.AddLast(new HubTrafficLine(++_trafficSeq, at, outgoing, line));
+                while (_traffic.Count > KeptTrafficLines) _traffic.RemoveFirst();
+            }
+        }
 
         // ── Pairing ───────────────────────────────────────────────────────────
 
@@ -402,7 +576,7 @@ namespace AimPark.API.Sync.Site.GateReaders
             lock (_lock) _waiting[key] = waiter;
             try
             {
-                if (!_send(line))
+                if (!Send(line))
                     return "The hub isn't connected.";
 
                 var done = await Task.WhenAny(waiter.Task, Task.Delay(CommandTimeout));

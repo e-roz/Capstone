@@ -82,6 +82,8 @@ enum MsgType : uint8_t {
   MSG_PAIR_REQ = 6,  // node -> all     unpaired, asking to join (broadcast, plain)
   MSG_PAIR_OK  = 7,  // hub  -> node    accepted; the sender is your hub (plain)
   MSG_FORGET   = 8,  // hub  -> node    you were removed; ask to join again
+  MSG_PING     = 9,  // hub  -> node    connection test: answer at once
+  MSG_PONG     = 10, // node -> hub     the answer, with the board's health (Diag)
 };
 
 // Bumped whenever Packet changes, so a board on old firmware is ignored
@@ -92,6 +94,19 @@ constexpr size_t UID_CHARS = 20;   // a 10-byte UID in hex
 // One sensor board watches several slots, each with its own HC-SR04.
 constexpr uint8_t MAX_SLOTS = 10;
 
+// PONG only: how the board is doing, for the connection test on the panel.
+struct __attribute__((packed)) Diag {
+  uint16_t pingSeq;       // The PING this answers.
+  uint32_t uptimeS;
+  uint32_t sendFailures;  // Sends the hub never acknowledged, since boot.
+  uint16_t freeHeapKb;
+  int8_t   rssi;          // How loud the hub is here, dBm. 0 = not known.
+  uint8_t  resetReason;   // esp_reset_reason_t: why the board last restarted.
+  uint8_t  rc522;         // Gate: the RC522's version register. 0x00/0xFF = not wired.
+  uint8_t  slotCount;     // Sensor board: sensors fitted.
+  uint16_t noEchoMask;    // Sensor board: bit i set = sensor i + 1 heard nothing.
+};
+
 struct __attribute__((packed)) Packet {
   uint8_t  version;
   uint8_t  type;
@@ -100,17 +115,43 @@ struct __attribute__((packed)) Packet {
   uint8_t  flag;        // RESULT: 1 = open.
   char     uid[UID_CHARS + 1];
 
-  // SLOT only. The whole board in one packet, so the hub sees every slot
-  // change together and a heartbeat costs one send, not one per slot.
-  uint8_t  slotCount;
-  uint16_t occupiedMask;           // Bit i set = slot i + 1 occupied.
-  uint16_t distanceMm[MAX_SLOTS];  // 0 = nothing in range.
+  union __attribute__((packed)) {
+    // SLOT only. The whole board in one packet, so the hub sees every slot
+    // change together and a heartbeat costs one send, not one per slot.
+    struct __attribute__((packed)) {
+      uint8_t  slotCount;
+      uint16_t occupiedMask;           // Bit i set = slot i + 1 occupied.
+      uint16_t distanceMm[MAX_SLOTS];  // 0 = nothing in range.
+    };
+    Diag diag;                         // PONG only.
+  };
 };
+
+// PING and PONG share the SLOT bytes, so boards on the previous build still
+// read every packet the same size: they ignore a PING rather than reject it.
+static_assert(sizeof(Packet) == 50, "Packet changed size: bump PROTOCOL_VERSION and reflash every board");
+static_assert(sizeof(Diag) <= 1 + 2 + 2 * MAX_SLOTS, "Diag must fit in the SLOT bytes");
 
 struct Incoming {
   uint8_t mac[6];
+  int8_t rssi;   // dBm of the radio frame it came in, 0 when not known.
   Packet packet;
 };
+
+inline const char* resetReasonName(uint8_t reason) {
+  switch (reason) {
+    case ESP_RST_POWERON:   return "POWERON";
+    case ESP_RST_EXT:       return "EXTERNAL";
+    case ESP_RST_SW:        return "SOFTWARE";
+    case ESP_RST_PANIC:     return "CRASH";
+    case ESP_RST_INT_WDT:
+    case ESP_RST_TASK_WDT:
+    case ESP_RST_WDT:       return "WATCHDOG";
+    case ESP_RST_DEEPSLEEP: return "DEEPSLEEP";
+    case ESP_RST_BROWNOUT:  return "BROWNOUT";
+    default:                return "UNKNOWN";
+  }
+}
 
 static const uint8_t BROADCAST[6] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
 
@@ -158,9 +199,11 @@ inline String selfId() {
 #if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(5, 0, 0)
 #define AIMPARK_RECV_ARGS const esp_now_recv_info_t* info, const uint8_t* data, int len
 #define AIMPARK_RECV_MAC  (info->src_addr)
+#define AIMPARK_RECV_RSSI (info->rx_ctrl ? (int8_t)info->rx_ctrl->rssi : detail::rssiFor(info->src_addr))
 #else
 #define AIMPARK_RECV_ARGS const uint8_t* mac, const uint8_t* data, int len
 #define AIMPARK_RECV_MAC  (mac)
+#define AIMPARK_RECV_RSSI (detail::rssiFor(mac))
 #endif
 
 #if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(5, 5, 0)
@@ -173,12 +216,34 @@ namespace detail {
 static QueueHandle_t inbox = nullptr;
 static volatile bool sendDone = false;
 static volatile bool sendOk = false;
+static volatile uint32_t sendFailures = 0;
+
+// ESP-NOW's receive callback doesn't say how loud the frame was before IDF 5,
+// so the radio also listens promiscuously for management frames and notes the
+// sender and RSSI of the last one; ESP-NOW frames are those, and the sniffer
+// sees each just before ESP-NOW hands it over.
+static uint8_t sniffedMac[6] = {0};
+static volatile int8_t sniffedRssi = 0;
+
+static void onSniffed(void* buffer, wifi_promiscuous_pkt_type_t type) {
+  if (type != WIFI_PKT_MGMT) return;
+  const auto* pkt = (const wifi_promiscuous_pkt_t*)buffer;
+  const uint8_t* frame = pkt->payload;
+  if (pkt->rx_ctrl.sig_len < 24 || frame[0] != 0xD0) return;   // Action frames only.
+  memcpy(sniffedMac, frame + 10, 6);                            // Address 2: the sender.
+  sniffedRssi = (int8_t)pkt->rx_ctrl.rssi;
+}
+
+static int8_t rssiFor(const uint8_t* mac) {
+  return memcmp(mac, sniffedMac, 6) == 0 ? sniffedRssi : 0;
+}
 
 static void onReceive(AIMPARK_RECV_ARGS) {
   if (len != (int)sizeof(Packet)) return;
 
   Incoming in;
   memcpy(in.mac, AIMPARK_RECV_MAC, 6);
+  in.rssi = AIMPARK_RECV_RSSI;
   memcpy(&in.packet, data, sizeof(Packet));
   if (in.packet.version != PROTOCOL_VERSION) return;
   in.packet.uid[UID_CHARS] = '\0';
@@ -204,8 +269,18 @@ inline bool begin() {
   detail::inbox = xQueueCreate(16, sizeof(Incoming));
   esp_now_register_recv_cb(detail::onReceive);
   esp_now_register_send_cb(detail::onSent);
+
+  // Signal strength for the connection test. Not worth failing over.
+  wifi_promiscuous_filter_t filter = {.filter_mask = WIFI_PROMIS_FILTER_MASK_MGMT};
+  esp_wifi_set_promiscuous_filter(&filter);
+  esp_wifi_set_promiscuous_rx_cb(detail::onSniffed);
+  esp_wifi_set_promiscuous(true);
+
   return detail::inbox != nullptr;
 }
+
+// Sends this board has given up on since boot. See sendConfirmed.
+inline uint32_t sendFailures() { return detail::sendFailures; }
 
 // Adds a peer, or changes it if it is already there (e.g. from plain to
 // encrypted once pairing is done).
@@ -241,6 +316,7 @@ inline bool sendConfirmed(const uint8_t* to, const Packet& packet, uint8_t attem
     }
     delay(30);
   }
+  if (memcmp(to, BROADCAST, 6) != 0) detail::sendFailures++;
   return false;
 }
 

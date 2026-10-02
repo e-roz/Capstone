@@ -22,6 +22,13 @@
 //   hub    -> server   FORGOT G1
 //   hub    -> server   ERR 582ABDD0A36C <why>       a PAIR that didn't work
 //   server -> hub      PING                         answered: HUB <id> <protocol>
+// Diagnostics, for the panel's connection test:
+//   server -> hub      DIAG                         the hub's own health:
+//   hub    -> server   DIAG HUB id=… proto=3 up=… heap=… reset=… nodes=… fails=…
+//   server -> hub      DIAG G1                      ping the board over the air:
+//   hub    -> server   DIAG G1 rtt=… rssi=… noderssi=… up=… heap=… reset=…
+//                               fails=… packets=… drops=… [rc522=… | sensors=… noecho=…]
+//   hub    -> server   DIAG G1 FAIL <why>           NOT_PAIRED, NOT_DELIVERED, NO_REPLY
 // Naming a board with a name another board has (a replacement for a broken
 // G1) removes the old one. Gates are G1–G9, sensor boards S1–S9.
 // Lines starting with "#" are for people reading the Serial Monitor.
@@ -52,6 +59,14 @@ struct NodeState {
   bool tapPending = false;
   uint16_t tapSeq = 0;
 
+  // Connection test: the PING waiting for its PONG, and what the radio saw.
+  bool pingPending = false;
+  uint16_t pingSeq = 0;
+  unsigned long pingSentAt = 0;
+  int8_t rssi = 0;              // Of the last packet heard from it, dBm.
+  uint32_t packets = 0;         // Heard from it since the hub booted.
+  uint16_t drops = 0;           // Times it went offline since the hub booted.
+
   // Sensors: one entry per slot on the board. -1 until the first reading.
   uint8_t slotCount = 0;
   int8_t occupied[MAX_SLOTS];
@@ -75,6 +90,10 @@ struct Request {
   unsigned long lastAt = 0;
   unsigned long lastPrintedAt = 0;
 };
+
+// A board answers a PING from its loop: a sensor board between scans, so
+// allow a full scan of nine sensors and then some.
+constexpr unsigned long PING_TIMEOUT_MS = 2000;
 
 constexpr uint8_t MAX_REQUESTS = 8;
 constexpr unsigned long REQUEST_FORGOTTEN_MS = 30000;
@@ -166,6 +185,24 @@ void printStatus() {
   }
 }
 
+void printDiag(const NodeState& n, const Diag& d, unsigned long rttMs) {
+  Serial.printf("DIAG %s rtt=%lu rssi=%d noderssi=%d up=%lu heap=%u reset=%s fails=%lu packets=%lu drops=%u",
+                n.name, rttMs, n.rssi, d.rssi, (unsigned long)d.uptimeS, d.freeHeapKb,
+                resetReasonName(d.resetReason), (unsigned long)d.sendFailures,
+                (unsigned long)n.packets, n.drops);
+  if (n.role == ROLE_GATE) Serial.printf(" rc522=%02X", d.rc522);
+  if (n.role == ROLE_SENSOR) Serial.printf(" sensors=%u noecho=%04X", d.slotCount, d.noEchoMask);
+  Serial.println();
+}
+
+void printHubDiag() {
+  uint8_t paired = 0;
+  for (auto& n : nodes) if (n.used) paired++;
+  Serial.printf("DIAG HUB id=%s proto=%u up=%lu heap=%u reset=%s channel=%u nodes=%u fails=%lu\n",
+                hubId.c_str(), PROTOCOL_VERSION, millis() / 1000, (unsigned)(ESP.getFreeHeap() / 1024),
+                resetReasonName(esp_reset_reason()), WIFI_CHANNEL, paired, (unsigned long)sendFailures());
+}
+
 // ── From the nodes ───────────────────────────────────────────────────────────
 void noteRequest(const Incoming& in) {
   if (in.packet.role != ROLE_GATE && in.packet.role != ROLE_SENSOR) return;
@@ -211,6 +248,8 @@ void handlePacket(const Incoming& in) {
   if (!n) return;   // Not one of ours.
   NodeState& s = *n;
 
+  s.packets++;
+  if (in.rssi != 0) s.rssi = in.rssi;
   s.lastSeen = millis();
   if (!s.online) {
     s.online = true;
@@ -243,6 +282,13 @@ void handlePacket(const Incoming& in) {
       break;
     }
 
+    case MSG_PONG:
+      if (s.pingPending && p.diag.pingSeq == s.pingSeq) {
+        s.pingPending = false;
+        printDiag(s, p.diag, millis() - s.pingSentAt);
+      }
+      break;
+
     default:  // MSG_HELLO: lastSeen above is all it is for.
       break;
   }
@@ -250,8 +296,13 @@ void handlePacket(const Incoming& in) {
 
 void checkForSilentNodes() {
   for (auto& s : nodes) {
+    if (s.used && s.pingPending && millis() - s.pingSentAt > PING_TIMEOUT_MS) {
+      s.pingPending = false;
+      Serial.printf("DIAG %s FAIL NO_REPLY\n", s.name);
+    }
     if (s.used && s.online && millis() - s.lastSeen > OFFLINE_AFTER_MS) {
       s.online = false;
+      s.drops++;
       s.tapPending = false;
       s.forgetSlots();     // Unknown, not free: a dead sensor proves nothing.
       Serial.printf("%s OFFLINE\n", s.name);
@@ -357,6 +408,21 @@ void forget(const String& name) {
   saveNodes();
 }
 
+// Pings a board. The answer (or NO_REPLY) is printed from the loop.
+void diagnose(const String& name) {
+  NodeState* n = byName(name);
+  if (!n) { Serial.printf("DIAG %s FAIL NOT_PAIRED\n", name.c_str()); return; }
+
+  n->pingSeq = ++mySeq;
+  n->pingSentAt = millis();
+  if (!sendConfirmed(n->mac, makePacket(MSG_PING, ROLE_HUB, n->pingSeq), 2)) {
+    n->pingPending = false;
+    Serial.printf("DIAG %s FAIL NOT_DELIVERED\n", n->name);
+    return;
+  }
+  n->pingPending = true;
+}
+
 void deliver(NodeState& n, const Packet& packet) {
   if (!sendConfirmed(n.mac, packet)) {
     Serial.printf("%s ERR:NOT_DELIVERED\n", n.name);
@@ -368,6 +434,8 @@ void handleLine(const String& line) {
   if (line.equalsIgnoreCase("PING")) { Serial.printf("HUB %s %u\n", hubId.c_str(), PROTOCOL_VERSION); return; }
   if (line.startsWith("PAIR ")) { pair(line.substring(5)); return; }
   if (line.startsWith("FORGET ")) { String name = line.substring(7); name.trim(); forget(name); return; }
+  if (line.equalsIgnoreCase("DIAG")) { printHubDiag(); return; }
+  if (line.startsWith("DIAG ")) { String name = line.substring(5); name.trim(); name.toUpperCase(); diagnose(name); return; }
 
   int space = line.indexOf(' ');
   NodeState* n = (space > 0) ? byName(line.substring(0, space)) : nullptr;

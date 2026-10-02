@@ -140,6 +140,10 @@ class HubPort {
   /// Boards asking to join, to be accepted and named.
   final List<HubJoinRequest> requests;
 
+  /// The last connection test of the hub ("HUB") and of each board ("G1"),
+  /// since the server started.
+  final Map<String, HubDiagnosis> diagnoses;
+
   const HubPort({
     required this.port,
     required this.connected,
@@ -149,6 +153,7 @@ class HubPort {
     required this.simulated,
     required this.nodes,
     required this.requests,
+    this.diagnoses = const {},
   });
 
   factory HubPort.fromJson(Map<String, dynamic> json) => HubPort(
@@ -166,8 +171,105 @@ class HubPort {
           for (final r in json['requests'] as List<dynamic>? ?? const [])
             HubJoinRequest.fromJson(r as Map<String, dynamic>),
         ],
+        diagnoses: {
+          for (final e in (json['diagnoses'] as Map<String, dynamic>? ?? const {}).entries)
+            e.key: HubDiagnosis.fromJson(e.value as Map<String, dynamic>),
+        },
       );
 }
+
+/// One connection test: the hub over USB ("HUB"), or a board behind it
+/// pinged over the air.
+class HubDiagnosis {
+  /// "HUB", or the board: "G1", "S2".
+  final String node;
+  final DateTime at;
+
+  /// It answered.
+  final bool ok;
+
+  /// Server to board and back, USB included.
+  final int roundTripMs;
+
+  /// What the hub reported: rtt, rssi, noderssi, up, heap, reset, fails,
+  /// packets, drops, rc522 (gates), sensors and noecho (sensor boards).
+  final Map<String, String> values;
+
+  /// Why it failed, or what needs a look though it answered.
+  final String? problem;
+
+  const HubDiagnosis({
+    required this.node,
+    required this.at,
+    required this.ok,
+    required this.roundTripMs,
+    required this.values,
+    required this.problem,
+  });
+
+  bool get isHub => node == 'HUB';
+
+  /// Answered, with nothing to look at.
+  bool get healthy => ok && problem == null;
+
+  /// How loud the board is at the hub, dBm. Null when not known.
+  int? get rssi => _dbm(values['rssi']);
+
+  /// How loud the hub is at the board, dBm.
+  int? get boardRssi => _dbm(values['noderssi']);
+
+  /// Over the air only, as the hub timed it.
+  int? get airMs => int.tryParse(values['rtt'] ?? '');
+
+  Duration? get uptime {
+    final s = int.tryParse(values['up'] ?? '');
+    return s == null ? null : Duration(seconds: s);
+  }
+
+  static int? _dbm(String? v) {
+    final n = int.tryParse(v ?? '');
+    return n == null || n == 0 ? null : n;
+  }
+
+  factory HubDiagnosis.fromJson(Map<String, dynamic> json) => HubDiagnosis(
+        node: json['node']?.toString() ?? '',
+        at: DateTime.parse(json['at'].toString()),
+        ok: json['ok'] as bool? ?? false,
+        roundTripMs: (json['roundTripMs'] as num?)?.toInt() ?? 0,
+        values: {
+          for (final e in (json['values'] as Map<String, dynamic>? ?? const {}).entries)
+            e.key: e.value.toString(),
+        },
+        problem: json['problem']?.toString(),
+      );
+}
+
+/// One line over the hub's USB cable, for the hub console.
+class HubTrafficLine {
+  final int seq;
+  final DateTime at;
+
+  /// The server wrote it; otherwise the hub printed it.
+  final bool out;
+  final String line;
+
+  const HubTrafficLine({required this.seq, required this.at, required this.out, required this.line});
+
+  factory HubTrafficLine.fromJson(Map<String, dynamic> json) => HubTrafficLine(
+        seq: (json['seq'] as num?)?.toInt() ?? 0,
+        at: DateTime.parse(json['at'].toString()),
+        out: json['out'] as bool? ?? false,
+        line: json['line']?.toString() ?? '',
+      );
+}
+
+/// How a guard should read a signal strength in dBm.
+String signalLabel(int dbm) => switch (dbm) {
+      >= -60 => 'Excellent',
+      >= -70 => 'Good',
+      >= -80 => 'Fair',
+      _ => 'Weak',
+    };
 
 /// An unpaired board asking to join the hub.
 class HubJoinRequest {

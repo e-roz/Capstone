@@ -11,6 +11,7 @@ import '../core/network/dio_client.dart';
 import '../models/gate_reader.dart';
 import '../theme/theme.dart';
 import '../widgets/device_health_list.dart' show lastSeenLabel;
+import '../widgets/hub_diagnostics.dart';
 import '../widgets/ui/ui.dart';
 
 /// The barrier readers plugged into the guard post's PC by USB, and the
@@ -43,6 +44,12 @@ class _GateReadersScreenState extends ConsumerState<GateReadersScreen> {
   GateReadersState? _state;
   String? _error;
   bool _busy = false;
+
+  /// What is being tested right now: a hub's port, or "port/G1".
+  String? _testing;
+
+  /// Hubs whose console is open.
+  final Set<String> _consoles = {};
 
   @override
   void initState() {
@@ -124,6 +131,33 @@ class _GateReadersScreenState extends ConsumerState<GateReadersScreen> {
 
   Future<void> _forget(String port, String node) =>
       _run((dio) => dio.delete(ApiEndpoints.hubBoard(port, node)));
+
+  /// The connection test: the hub and every board behind it, or one board.
+  /// Takes a few seconds per board that doesn't answer.
+  Future<void> _diagnose(String port, {String? node}) async {
+    setState(() => _testing = node == null ? port : '$port/$node');
+    List<HubDiagnosis>? results;
+    String? failure;
+    try {
+      final res = await ref.read(dioProvider).post(node == null
+          ? ApiEndpoints.diagnoseHub(port)
+          : ApiEndpoints.diagnoseHubNode(port, node));
+      results = [
+        for (final r in (res.data as Map)['results'] as List<dynamic>? ?? const [])
+          HubDiagnosis.fromJson(r as Map<String, dynamic>),
+      ];
+    } on DioException catch (e) {
+      failure = _messageOf(e);
+    }
+    if (!mounted) return;
+    setState(() => _testing = null);
+    if (results != null) {
+      await showHubDiagnostics(context, results);
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(failure ?? 'Error')));
+    }
+    await _load();
+  }
 
   /// Accepting a board: the installer says what it is. A name already in use
   /// goes to the new board — how a broken one is replaced.
@@ -409,10 +443,28 @@ class _GateReadersScreenState extends ConsumerState<GateReadersScreen> {
       _ => '$online of ${boards.length} boards online · heard from ${lastSeenLabel(hub.lastSeenAt)}',
     };
 
+    final testing = _testing == hub.port;
+    final consoleOpen = _consoles.contains(hub.port);
+
     return AppSectionCard(
       title: 'ESP-NOW hub on ${hub.port}${hub.simulated ? ' (simulated)' : ''}',
       subtitle: hub.error != null && hub.connected ? hub.error! : status,
       icon: Icons.hub_outlined,
+      actions: [
+        OutlinedButton.icon(
+          onPressed: () => setState(() => consoleOpen ? _consoles.remove(hub.port) : _consoles.add(hub.port)),
+          icon: const Icon(Icons.terminal, size: 18),
+          label: Text(consoleOpen ? 'Hide console' : 'Console'),
+        ),
+        const SizedBox(width: AppSpacing.x2),
+        FilledButton.tonalIcon(
+          onPressed: _testing != null || !hub.connected ? null : () => _diagnose(hub.port),
+          icon: testing
+              ? const SizedBox.square(dimension: 16, child: CircularProgressIndicator(strokeWidth: 2))
+              : const Icon(Icons.network_check, size: 18),
+          label: Text(testing ? 'Testing…' : 'Test connection'),
+        ),
+      ],
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -435,18 +487,47 @@ class _GateReadersScreenState extends ConsumerState<GateReadersScreen> {
             const SizedBox(height: AppSpacing.x3),
           ],
           AppDataTable(
-            minWidth: 900,
+            minWidth: 1100,
             columns: const [
               DataColumn(label: Text('Board')),
               DataColumn(label: Text('Stands for')),
               DataColumn(label: Text('Status')),
               DataColumn(label: Text('Last seen')),
               DataColumn(label: Text('Reading')),
+              DataColumn(label: Text('Last test')),
               DataColumn(label: Text('')),
             ],
             rows: [for (final n in hub.nodes) _nodeRow(hub, n, s)],
           ),
+          if (consoleOpen) ...[
+            const SizedBox(height: AppSpacing.x4),
+            HubConsole(port: hub.port),
+          ],
         ],
+      ),
+    );
+  }
+
+  /// A board's last connection test, or a sensor's board's. Tap to see it again.
+  Widget _lastTestCell(HubPort hub, HubNode n) {
+    if (n.isSensor) return const Text('—');
+    final d = hub.diagnoses[n.node];
+    if (d == null) return const Text('Not tested');
+    final (label, intent) = diagnosisStatus(d);
+    return InkWell(
+      onTap: () => showHubDiagnostics(context, [d]),
+      child: Tooltip(
+        message: d.problem ?? 'Tested at ${DateFormat('HH:mm:ss').format(d.at.toLocal())}',
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            StatusPill(label: label, intent: intent, dense: true),
+            if (d.ok) ...[
+              const SizedBox(width: AppSpacing.x2),
+              Text(diagnosisSummary(d)),
+            ],
+          ],
+        ),
       ),
     );
   }
@@ -548,9 +629,18 @@ class _GateReadersScreenState extends ConsumerState<GateReadersScreen> {
       )),
       DataCell(Text(lastSeenLabel(n.lastSeenAt))),
       DataCell(Text(reading)),
+      DataCell(_lastTestCell(hub, n)),
       DataCell(Row(
         mainAxisSize: MainAxisSize.min,
         children: [
+          if ((n.isGate || n.isSensorBoard) && n.boardId != null)
+            AppRowAction(
+              label: _testing == '${hub.port}/${n.node}' ? 'Testing…' : 'Test',
+              icon: Icons.network_check,
+              onPressed: _testing != null || !hub.connected
+                  ? null
+                  : () => _diagnose(hub.port, node: n.node),
+            ),
           if (n.isGate && n.online && n.isLinked)
             AppRowAction(
               label: 'Open gate',
@@ -654,6 +744,10 @@ class _SimulatorCardState extends ConsumerState<_SimulatorCard> {
     'S1/1 SLOT:FREE 0.0',
     'S2/4 SLOT:OCCUPIED 2.4',
     'G2 ERR:NOT_DELIVERED',
+    'DIAG HUB id=20500DCF8718 proto=3 up=120 heap=200 reset=POWERON channel=1 nodes=4 fails=0',
+    'DIAG G1 rtt=12 rssi=-58 noderssi=-55 up=300 heap=180 reset=POWERON fails=0 packets=60 drops=0 rc522=92',
+    'DIAG S1 rtt=35 rssi=-83 noderssi=-81 up=300 heap=190 reset=BROWNOUT fails=4 packets=60 drops=2 sensors=9 noecho=0020',
+    'DIAG G2 FAIL NO_REPLY',
     'G1 OFFLINE',
     'S2 OFFLINE',
   ];

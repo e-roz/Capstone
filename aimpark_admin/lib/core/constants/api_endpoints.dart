@@ -103,6 +103,14 @@ class ApiEndpoints {
   static String pairHub(String port) => '/api/site/gate-readers/$port/pair';
   static String hubBoard(String port, String node) =>
       '/api/site/gate-readers/$port/boards/$node';
+  // Connection tests: the hub and every board, or one board; and the hub
+  // console, every line over its cable (after = the last seq already shown).
+  static String diagnoseHub(String port) =>
+      '/api/site/gate-readers/$port/diagnose';
+  static String diagnoseHubNode(String port, String node) =>
+      '/api/site/gate-readers/$port/diagnose/$node';
+  static String hubTraffic(String port, int after) =>
+      '/api/site/gate-readers/$port/traffic?after=$after';
   // Development servers only: plays the hub's side, one line at a time.
   static String simulateHub(String port) =>
       '/api/site/gate-readers/$port/simulate';

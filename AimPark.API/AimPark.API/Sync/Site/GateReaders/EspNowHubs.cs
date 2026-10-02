@@ -19,11 +19,13 @@ namespace AimPark.API.Sync.Site.GateReaders
     /// <param name="Simulated">Fed by hand from the Gate Readers screen in a development build.</param>
     /// <param name="Requests">Boards asking to join, by id (MAC), waiting to be accepted and named.</param>
     /// <param name="BoardIds">The id of each paired board, by the name the hub calls it.</param>
+    /// <param name="Diagnoses">The last connection test of the hub ("HUB") and of each board.</param>
     public record HubState(
         string Port, bool Connected, bool Responding, string? Error, DateTime? LastSeenAt,
         bool Simulated, IReadOnlyList<HubNodeState> Nodes,
         IReadOnlyList<(string Id, HubNodeKind Kind)> Requests,
-        IReadOnlyDictionary<string, string> BoardIds);
+        IReadOnlyDictionary<string, string> BoardIds,
+        IReadOnlyDictionary<string, HubDiagnosis> Diagnoses);
 
     /// <summary>
     /// The ESP-NOW hubs plugged into this PC (firmware/aimpark_espnow_hub):
@@ -156,7 +158,7 @@ namespace AimPark.API.Sync.Site.GateReaders
 
                 return new HubState(h.Binding.Port, h.Session.Connected, responding,
                     conversation.HubError ?? h.Session.Error, lastLine, h.Session.Simulated, nodes,
-                    conversation.Requests(), ids);
+                    conversation.Requests(), ids, conversation.Diagnoses());
             }).ToList();
         }
 
@@ -414,6 +416,53 @@ namespace AimPark.API.Sync.Site.GateReaders
             else
                 _readers.RecordManualOpen(port, node, HubProtocol.GateOf(node)!.Value, openedBy);
             return null;
+        }
+
+        // ── Diagnostics ───────────────────────────────────────────────────────
+
+        /// <summary>
+        /// Tests the connection to the hub on <paramref name="port"/>, or with a
+        /// board's name to that board over the air. A sensor (S1/3) tests its
+        /// board. Null when the port isn't linked as a hub.
+        /// </summary>
+        public async Task<HubDiagnosis?> DiagnoseAsync(string port, string? node)
+        {
+            HubSession? session;
+            lock (_lock) _sessions.TryGetValue(port, out session);
+            if (session is null) return null;
+
+            return await session.Conversation.DiagnoseAsync(node is null ? null : HubProtocol.BoardOf(node.ToUpperInvariant()));
+        }
+
+        /// <summary>
+        /// Tests the hub, then every board paired with it, one after another.
+        /// Stops after the hub when the hub itself doesn't answer: nothing
+        /// behind it can. Null when the port isn't linked as a hub.
+        /// </summary>
+        public async Task<IReadOnlyList<HubDiagnosis>?> DiagnoseAllAsync(string port)
+        {
+            HubSession? session;
+            lock (_lock) _sessions.TryGetValue(port, out session);
+            if (session is null) return null;
+
+            var conversation = session.Conversation;
+            var results = new List<HubDiagnosis> { await conversation.DiagnoseAsync(null) };
+            if (!results[0].Ok) return results;
+
+            var boards = conversation.Nodes()
+                .Where(n => n.Kind is HubNodeKind.Gate or HubNodeKind.SensorBoard && conversation.IdOf(n.Node) is not null)
+                .Select(n => n.Node);
+            foreach (var board in boards)
+                results.Add(await conversation.DiagnoseAsync(board));
+            return results;
+        }
+
+        /// <summary>The lines over a hub's cable, for the hub console. Null when the port isn't linked as a hub.</summary>
+        public IReadOnlyList<HubTrafficLine>? Traffic(string port, long afterSeq)
+        {
+            HubSession? session;
+            lock (_lock) _sessions.TryGetValue(port, out session);
+            return session?.Conversation.Traffic(afterSeq);
         }
 
         /// <summary>

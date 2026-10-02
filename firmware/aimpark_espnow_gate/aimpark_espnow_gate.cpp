@@ -113,6 +113,12 @@ void checkHub() {
   while (hubLink.poll(in)) handlePacket(in, false, 0, unused);
 }
 
+// For the hub's connection test: 0x91/0x92 is a working RC522, 0x00 or 0xFF
+// one that isn't wired (or powered) right.
+void fillDiagnostics(Diag& diag) {
+  diag.rc522 = rfid.PCD_ReadRegister(MFRC522::VersionReg);
+}
+
 void sendHello() {
   hubLink.send(makePacket(MSG_HELLO, ROLE_GATE, hubLink.nextSeq()), 1);
   lastHelloAt = millis();
@@ -189,6 +195,7 @@ void setup() {
     return;
   }
   linkUp = true;
+  hubLink.setDiagnostics(fillDiagnostics);
 
   SPI.begin();
   rfid.PCD_Init();

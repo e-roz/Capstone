@@ -133,6 +133,8 @@ namespace AimPark.API.Controllers
                     error = h.Error,
                     lastSeenAt = h.LastSeenAt,
                     simulated = h.Simulated,
+                    // The last connection test of the hub and each board, by name ("HUB", "G1").
+                    diagnoses = h.Diagnoses.ToDictionary(d => d.Key, d => Diagnosis(d.Value)),
                     // Boards asking to join, to be accepted and named.
                     requests = h.Requests.Select(r => new
                     {
@@ -317,6 +319,72 @@ namespace AimPark.API.Controllers
                 ? BadRequest(new { message = problem })
                 : Ok(new { message = "Gate opened." });
         }
+
+        /// <summary>
+        /// Connection test: the hub over USB, then every paired board over the
+        /// air, each with its round trip, signal and health.
+        /// </summary>
+        [HttpPost("{port}/diagnose")]
+        public async Task<ActionResult<object>> DiagnoseAll(string port)
+        {
+            if (_hubs is null) return NotAtGuardPost();
+
+            var results = await _hubs.DiagnoseAllAsync(port);
+            if (results is null) return NotFound(new { message = $"{port} isn't linked as a hub." });
+
+            var failed = results.Count(r => !r.Ok);
+            var concerns = results.Count(r => r.Ok && r.Problem is not null);
+            return Ok(new
+            {
+                message = failed > 0 ? $"{failed} of {results.Count} didn't answer."
+                    : concerns > 0 ? $"All {results.Count} answered; {concerns} need a look."
+                    : $"All {results.Count} answered.",
+                results = results.Select(Diagnosis)
+            });
+        }
+
+        /// <summary>Connection test of one board behind the hub. A sensor (S1/3) tests its board.</summary>
+        [HttpPost("{port}/diagnose/{**node}")]
+        public async Task<ActionResult<object>> DiagnoseNode(string port, string node)
+        {
+            if (_hubs is null) return NotAtGuardPost();
+
+            var result = await _hubs.DiagnoseAsync(port, node);
+            if (result is null) return NotFound(new { message = $"{port} isn't linked as a hub." });
+
+            return Ok(new
+            {
+                message = result.Ok
+                    ? result.Problem ?? $"{result.Node} answered in {result.RoundTripMs} ms."
+                    : result.Problem,
+                results = new[] { Diagnosis(result) }
+            });
+        }
+
+        /// <summary>
+        /// The hub console: every line over its cable, both ways, oldest first.
+        /// <paramref name="after"/> is the last <c>seq</c> already shown.
+        /// </summary>
+        [HttpGet("{port}/traffic")]
+        public ActionResult<object> Traffic(string port, [FromQuery] long after = 0)
+        {
+            if (_hubs is null) return NotAtGuardPost();
+
+            var lines = _hubs.Traffic(port, after);
+            return lines is null
+                ? NotFound(new { message = $"{port} isn't linked as a hub." })
+                : Ok(new { lines = lines.Select(l => new { seq = l.Seq, at = l.At, @out = l.Out, line = l.Line }) });
+        }
+
+        private static object Diagnosis(HubDiagnosis d) => new
+        {
+            node = d.Node,
+            at = d.At,
+            ok = d.Ok,
+            roundTripMs = d.RoundTripMs,
+            values = d.Values,
+            problem = d.Problem
+        };
 
         /// <summary>
         /// Development builds only: plays the hub's side, one line at a time,
