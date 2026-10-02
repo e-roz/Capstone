@@ -57,10 +57,19 @@ public class ParkingCapacityTests
     }
 
     [Fact]
-    public void ACarSeenWithNoSessionStillTakesItsBay()
+    public void ACarSeenWithNoTapDoesNotCount()
     {
-        // Tapped out but not yet driven off, or a manual entry still to come.
+        // Set down on the miniature by hand: its bay is red, the count moves
+        // with taps only.
         var room = ParkingCapacity.Of(Lot(carsSeen: 1), []);
+        Assert.Equal(3, room.FreeCars);
+        Assert.Equal(9, room.Free);
+    }
+
+    [Fact]
+    public void TappedInAndParkedCountsOnce()
+    {
+        var room = ParkingCapacity.Of(Lot(carsSeen: 1), [GivenA(VehicleType.Car)]);
         Assert.Equal(2, room.FreeCars);
         Assert.Equal(8, room.Free);
     }
@@ -100,7 +109,7 @@ public class ParkingCapacityTests
     [Fact]
     public void AVehicleMayUseItsFallbackTier()
     {
-        var room = ParkingCapacity.Of(Lot(motorcyclesSeen: 6), []);
+        var room = ParkingCapacity.Of(Lot(), [.. Enumerable.Repeat(GivenA(VehicleType.Motorcycle), 6)]);
         Assert.Equal(0, room.FreeOf([VehicleType.Motorcycle]));
         Assert.Equal(3, room.FreeOf([VehicleType.Car]));
     }
