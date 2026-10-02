@@ -507,9 +507,22 @@ class _GateReadersScreenState extends ConsumerState<GateReadersScreen> {
         ].join(' · '),
       )),
       if (n.isSensorBoard)
-        DataCell(Text(sensorsOnBoard.isEmpty
-            ? 'Its sensors appear here once it reports'
-            : '${sensorsOnBoard.where((o) => o.boundTo != null).length} of ${sensorsOnBoard.length} sensors linked'))
+        DataCell(sensorsOnBoard.isEmpty
+            ? const Text('Its sensors appear here once it reports')
+            // Right where the installer is looking, not off the table's edge.
+            : Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text('${sensorsOnBoard.where((o) => o.boundTo != null).length} of '
+                      '${sensorsOnBoard.length} linked'),
+                  const SizedBox(width: AppSpacing.x2),
+                  TextButton.icon(
+                    onPressed: _busy || n.boardId == null ? null : () => _fillInOrder(hub, n, s),
+                    icon: const Icon(Icons.format_list_numbered, size: 18),
+                    label: const Text('Fill slots in order'),
+                  ),
+                ],
+              ))
       else DataCell(
         DropdownButton<String>(
           value: known ? n.boundTo : null,
@@ -538,12 +551,6 @@ class _GateReadersScreenState extends ConsumerState<GateReadersScreen> {
       DataCell(Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          if (n.isSensorBoard && n.boardId != null)
-            AppRowAction(
-              label: 'Fill slots in order',
-              icon: Icons.format_list_numbered,
-              onPressed: _busy ? null : () => _fillInOrder(hub, n, s),
-            ),
           if (n.isGate && n.online && n.isLinked)
             AppRowAction(
               label: 'Open gate',
