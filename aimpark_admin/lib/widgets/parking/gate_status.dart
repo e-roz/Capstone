@@ -113,20 +113,43 @@ class GateStatus {
           final ports = readers?.ports.where((p) => linked.contains(p.deviceId)).toList() ?? const [];
           // A connected port wins; otherwise show whichever is linked, to name its error.
           final port = ports.where((p) => p.connected).firstOrNull ?? ports.firstOrNull;
-          final name = readers?.readers.where((r) => r.deviceId == port?.deviceId).firstOrNull?.name;
           final atGate = today.where((t) => t.gate == gate).toList();
+
+          // A wireless gate behind the hub: linked to one of this gate's
+          // readers, or standing for the gate in its name (G2 is gate 2).
+          final wireless = port != null
+              ? null
+              : readers?.hubs
+                  .expand((h) => h.nodes.map((n) => (hub: h, node: n)))
+                  .where((w) => w.node.isGate &&
+                      (w.node.boundTo != null ? linked.contains(w.node.boundTo) : w.node.gate == gate))
+                  .firstOrNull;
+          final wirelessUp = wireless != null && wireless.hub.connected && wireless.node.online;
+
+          final name = wireless != null
+              ? (wireless.node.boundTo == null
+                  ? 'Gate $gate board (${wireless.node.node})'
+                  : readers?.readers.where((r) => r.deviceId == wireless.node.boundTo).firstOrNull?.name)
+              : readers?.readers.where((r) => r.deviceId == port?.deviceId).firstOrNull?.name;
 
           return GateStatus(
             gate: gate,
             known: readers != null || cameras != null,
-            reader: readers == null ? null : (port?.connected ?? false),
+            reader: readers == null ? null : (wireless != null ? wirelessUp : (port?.connected ?? false)),
             camera: cameras == null ? null : (cameras[gate] ?? false),
             readerName: name,
-            port: port?.port,
-            readerError: port == null
-                ? (readers == null ? null : 'No reader linked to Gate $gate')
-                : (port.connected ? null : (port.error ?? 'Not plugged in')),
+            port: wireless != null ? '${wireless.node.node} via ${wireless.hub.port}' : port?.port,
+            readerError: wireless != null
+                ? (wirelessUp
+                    ? null
+                    : !wireless.hub.connected
+                        ? "The hub isn't connected"
+                        : 'No signal from ${wireless.node.node}. Check its power.')
+                : port == null
+                    ? (readers == null ? null : 'No reader linked to Gate $gate')
+                    : (port.connected ? null : (port.error ?? 'Not plugged in')),
             lastTapAt: [
+              wireless?.node.lastTapAt,
               port?.lastTapAt,
               atGate.firstOrNull?.at,
             ].whereType<DateTime>().fold<DateTime?>(null, (a, b) => a == null || b.isAfter(a) ? b : a),

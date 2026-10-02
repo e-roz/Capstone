@@ -132,9 +132,11 @@ namespace AimPark.API.Controllers
 
                     if (node.Kind == HubNodeKind.Gate)
                     {
+                        // With no reader chosen, a gate node stands for the gate in its name.
+                        var byName = HubProtocol.GateOf(node.Node) is int gate ? $"Gate {gate}" : null;
                         rows.Add(new DeviceHealth(
                             $"node:{hub.Port}:{node.Node}", $"Wireless gate {node.Node}", "gateNode",
-                            boundTo is Guid d ? ReaderLabel(d) : null, boundTo is not null,
+                            boundTo is Guid d ? ReaderLabel(d) : byName, boundTo is not null || byName is not null,
                             hubUp && node.Online, node.LastSeenAt,
                             (boundTo is Guid r ? ReaderProblem(r) : null) ?? (recentError ? nodeError : null),
                             recentError ? node.LastErrorAt : null,

@@ -58,6 +58,13 @@ class HubNode {
 
   /// The reader a gate logs as, or the slot a sensor watches.
   final String? boundTo;
+
+  /// Gates and sensor boards: the board's id (its MAC), once paired.
+  final String? boardId;
+
+  /// Gates: the gate it stands for by its name (G2 is gate 2) when no
+  /// reader is chosen.
+  final int? gate;
   final bool online;
   final DateTime? lastSeenAt;
   final DateTime? wentOfflineAt;
@@ -75,6 +82,8 @@ class HubNode {
     required this.node,
     required this.kind,
     required this.boundTo,
+    required this.boardId,
+    required this.gate,
     required this.online,
     required this.lastSeenAt,
     required this.wentOfflineAt,
@@ -93,10 +102,16 @@ class HubNode {
   /// S1, S2: the board itself. Only online or not; its sensors are the slots.
   bool get isSensorBoard => kind == 'sensorBoard';
 
+  /// Stands for something: a gate is linked by its name alone, a sensor
+  /// once it has a slot.
+  bool get isLinked => boundTo != null || (isGate && gate != null);
+
   factory HubNode.fromJson(Map<String, dynamic> json) => HubNode(
         node: json['node']?.toString() ?? '',
         kind: json['kind']?.toString(),
         boundTo: json['boundTo']?.toString(),
+        boardId: json['boardId']?.toString(),
+        gate: (json['gate'] as num?)?.toInt(),
         online: json['online'] as bool? ?? false,
         lastSeenAt: _date(json['lastSeenAt']),
         wentOfflineAt: _date(json['wentOfflineAt']),
@@ -122,6 +137,9 @@ class HubPort {
   final bool simulated;
   final List<HubNode> nodes;
 
+  /// Boards asking to join, to be accepted and named.
+  final List<HubJoinRequest> requests;
+
   const HubPort({
     required this.port,
     required this.connected,
@@ -130,6 +148,7 @@ class HubPort {
     required this.lastSeenAt,
     required this.simulated,
     required this.nodes,
+    required this.requests,
   });
 
   factory HubPort.fromJson(Map<String, dynamic> json) => HubPort(
@@ -143,6 +162,28 @@ class HubPort {
           for (final n in json['nodes'] as List<dynamic>? ?? const [])
             HubNode.fromJson(n as Map<String, dynamic>),
         ],
+        requests: [
+          for (final r in json['requests'] as List<dynamic>? ?? const [])
+            HubJoinRequest.fromJson(r as Map<String, dynamic>),
+        ],
+      );
+}
+
+/// An unpaired board asking to join the hub.
+class HubJoinRequest {
+  /// Its MAC as 12 hex digits, as on its label.
+  final String id;
+
+  /// "gate" or "sensorBoard".
+  final String kind;
+
+  const HubJoinRequest({required this.id, required this.kind});
+
+  bool get isGate => kind == 'gate';
+
+  factory HubJoinRequest.fromJson(Map<String, dynamic> json) => HubJoinRequest(
+        id: json['id']?.toString() ?? '',
+        kind: json['kind']?.toString() ?? '',
       );
 }
 
@@ -253,9 +294,9 @@ class GateReadersState {
             OpenableGate(port: p.port, node: null, reader: _reader(p.deviceId)),
         for (final h in hubs)
           for (final n in h.nodes)
-            if (n.isGate && n.online && n.boundTo != null)
-              OpenableGate(port: h.port, node: n.node, reader: _reader(n.boundTo)),
-      ]..sort((a, b) => (a.reader?.gate ?? 0).compareTo(b.reader?.gate ?? 0));
+            if (n.isGate && n.online && n.isLinked)
+              OpenableGate(port: h.port, node: n.node, reader: _reader(n.boundTo), gate: n.gate),
+      ]..sort((a, b) => (a.gateNumber ?? 0).compareTo(b.gateNumber ?? 0));
 
   /// Every barrier that is linked, up or not — for the Reader chip.
   List<({String name, bool up})> get linkedGates => [
@@ -264,8 +305,13 @@ class GateReadersState {
             (name: _reader(p.deviceId)?.name ?? p.port, up: p.connected),
         for (final h in hubs)
           for (final n in h.nodes)
-            if (n.isGate && n.boundTo != null)
-              (name: '${n.node} (${_reader(n.boundTo)?.name ?? 'reader'})', up: n.online),
+            if (n.isGate && n.isLinked)
+              (
+                name: n.boundTo == null
+                    ? '${n.node} (Gate ${n.gate})'
+                    : '${n.node} (${_reader(n.boundTo)?.name ?? 'reader'})',
+                up: n.online,
+              ),
       ];
 
   LinkableReader? _reader(String? id) =>
@@ -306,7 +352,12 @@ class OpenableGate {
   final String? node;
   final LinkableReader? reader;
 
-  const OpenableGate({required this.port, required this.node, required this.reader});
+  /// A wireless gate with no reader chosen: the gate in its name.
+  final int? gate;
 
-  String get name => reader == null ? (node ?? port) : 'Gate ${reader!.gate}';
+  const OpenableGate({required this.port, required this.node, required this.reader, this.gate});
+
+  int? get gateNumber => reader?.gate ?? gate;
+
+  String get name => gateNumber == null ? (node ?? port) : 'Gate $gateNumber';
 }

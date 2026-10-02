@@ -99,6 +99,10 @@ class ApiEndpoints {
       '/api/site/gate-readers/$port/nodes/$node';
   static String openHubNode(String port, String node) =>
       '/api/site/gate-readers/$port/nodes/$node/open';
+  // Accept a board asking to join, and name it (G1, S2); remove a board.
+  static String pairHub(String port) => '/api/site/gate-readers/$port/pair';
+  static String hubBoard(String port, String node) =>
+      '/api/site/gate-readers/$port/boards/$node';
   // Development servers only: plays the hub's side, one line at a time.
   static String simulateHub(String port) =>
       '/api/site/gate-readers/$port/simulate';

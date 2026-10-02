@@ -118,6 +118,101 @@ class _GateReadersScreenState extends ConsumerState<GateReadersScreen> {
   Future<void> _openNode(String port, String node) =>
       _run((dio) => dio.post(ApiEndpoints.openHubNode(port, node)));
 
+  Future<void> _pair(String port, String id, String node) => _run(
+        (dio) => dio.post(ApiEndpoints.pairHub(port), data: {'id': id, 'node': node}),
+      );
+
+  Future<void> _forget(String port, String node) =>
+      _run((dio) => dio.delete(ApiEndpoints.hubBoard(port, node)));
+
+  /// Accepting a board: the installer says what it is. A name already in use
+  /// goes to the new board — how a broken one is replaced.
+  Future<void> _accept(HubPort hub, HubJoinRequest request) async {
+    final letter = request.isGate ? 'G' : 'S';
+    String label(int n) => request.isGate ? 'Gate $n' : 'Sensor board $n';
+    final taken = {for (final n in hub.nodes) if (n.boardId != null) n.node};
+
+    final name = await showDialog<String>(
+      context: context,
+      builder: (ctx) => SimpleDialog(
+        title: Text(request.isGate ? 'Which gate is this board at?' : 'Which sensor board is this?'),
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(24, 0, 24, 8),
+            child: Text('Board ${request.id}'),
+          ),
+          for (var n = 1; n <= 4; n++)
+            SimpleDialogOption(
+              onPressed: () => Navigator.pop(ctx, '$letter$n'),
+              child: Text(taken.contains('$letter$n')
+                  ? '${label(n)} — replaces the board there now'
+                  : label(n)),
+            ),
+        ],
+      ),
+    );
+    if (name != null) await _pair(hub.port, request.id, name);
+  }
+
+  /// Links a sensor board's sensors to one gate's slots in order: sensor 1 to
+  /// the first slot, and so on. Each one can still be changed after.
+  Future<void> _fillInOrder(HubPort hub, HubNode board, GateReadersState s) async {
+    final sensors = hub.nodes.where((o) => o.isSensor && o.node.startsWith('${board.node}/')).toList()
+      ..sort((a, b) => _naturalCompare(a.node, b.node));
+    final gates = {for (final slot in s.slots) slot.gate}.toList()..sort();
+
+    final gate = await showDialog<int>(
+      context: context,
+      builder: (ctx) => SimpleDialog(
+        title: Text('Which slots does ${board.node} watch?'),
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(24, 0, 24, 8),
+            child: Text('Sensor 1 gets the first slot, sensor 2 the next, and so on. '
+                'You can change any of them after.'),
+          ),
+          for (final g in gates)
+            SimpleDialogOption(
+              onPressed: () => Navigator.pop(ctx, g),
+              child: Text("Gate $g's slots"),
+            ),
+        ],
+      ),
+    );
+    if (gate == null) return;
+
+    final slots = s.slots.where((slot) => slot.gate == gate).toList()
+      ..sort((a, b) => _naturalCompare(a.slotCode, b.slotCode));
+    final pairs = [for (var i = 0; i < sensors.length && i < slots.length; i++) (sensors[i], slots[i])];
+
+    await _run((dio) async {
+      Response<dynamic>? last;
+      for (final (sensor, slot) in pairs) {
+        last = await dio.put(ApiEndpoints.hubNode(hub.port, sensor.node), data: {'slotId': slot.slotId});
+      }
+      return last ?? Response(requestOptions: RequestOptions(), data: {'message': 'Nothing to link yet.'});
+    });
+  }
+
+  Future<void> _confirmForget(HubPort hub, HubNode n) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('Remove ${n.node}?'),
+        content: Text(n.isGate
+            ? 'This gate stops reading cards until another board is accepted as ${n.node}. '
+                  'Use this when a board broke or is being replaced.'
+            : 'Its slots stop following its sensors until another board is accepted as ${n.node}. '
+                  'Use this when a board broke or is being replaced.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Remove')),
+        ],
+      ),
+    );
+    if (confirmed == true) await _forget(hub.port, n.node);
+  }
+
   @override
   Widget build(BuildContext context) {
     final state = _state;
@@ -313,17 +408,40 @@ class _GateReadersScreenState extends ConsumerState<GateReadersScreen> {
       title: 'ESP-NOW hub on ${hub.port}${hub.simulated ? ' (simulated)' : ''}',
       subtitle: hub.error != null && hub.connected ? hub.error! : status,
       icon: Icons.hub_outlined,
-      child: AppDataTable(
-        minWidth: 900,
-        columns: const [
-          DataColumn(label: Text('Board')),
-          DataColumn(label: Text('Stands for')),
-          DataColumn(label: Text('Status')),
-          DataColumn(label: Text('Last seen')),
-          DataColumn(label: Text('Reading')),
-          DataColumn(label: Text('')),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          if (hub.requests.isNotEmpty) ...[
+            _Banner(text: hub.requests.length == 1
+                ? 'A new board is asking to join. Accept it and say what it is.'
+                : '${hub.requests.length} new boards are asking to join. Accept each and say what it is.'),
+            for (final r in hub.requests)
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: Icon(r.isGate ? Icons.door_sliding_outlined : Icons.sensors),
+                title: Text(r.isGate ? 'New gate board' : 'New sensor board'),
+                subtitle: Text('Board ${r.id}'),
+                trailing: FilledButton.icon(
+                  onPressed: _busy ? null : () => _accept(hub, r),
+                  icon: const Icon(Icons.check),
+                  label: const Text('Accept'),
+                ),
+              ),
+            const SizedBox(height: AppSpacing.x3),
+          ],
+          AppDataTable(
+            minWidth: 900,
+            columns: const [
+              DataColumn(label: Text('Board')),
+              DataColumn(label: Text('Stands for')),
+              DataColumn(label: Text('Status')),
+              DataColumn(label: Text('Last seen')),
+              DataColumn(label: Text('Reading')),
+              DataColumn(label: Text('')),
+            ],
+            rows: [for (final n in hub.nodes) _nodeRow(hub, n, s)],
+          ),
         ],
-        rows: [for (final n in hub.nodes) _nodeRow(hub, n, s)],
       ),
     );
   }
@@ -333,7 +451,7 @@ class _GateReadersScreenState extends ConsumerState<GateReadersScreen> {
         DateTime.now().difference(n.lastErrorAt!.toLocal()) < const Duration(minutes: 10);
 
     final (label, intent) = switch (n) {
-      HubNode(online: false) when n.boundTo == null => ('Offline', StatusIntent.neutral),
+      HubNode(online: false) when !n.isLinked => ('Offline', StatusIntent.neutral),
       HubNode(online: false) => ('Offline', StatusIntent.danger),
       _ when recentError => ('Missed a message', StatusIntent.warning),
       _ => ('Online', StatusIntent.success),
@@ -373,12 +491,15 @@ class _GateReadersScreenState extends ConsumerState<GateReadersScreen> {
     return DataRow(cells: [
       DataCell(AppPrimaryCell(
         title: n.node,
-        subtitle: switch (n) {
-          HubNode(isGate: true) => 'Wireless gate',
-          HubNode(isSensor: true) => 'Slot sensor',
-          HubNode(isSensorBoard: true) => 'Sensor board',
-          _ => 'Unknown board',
-        },
+        subtitle: [
+          switch (n) {
+            HubNode(isGate: true) => 'Wireless gate',
+            HubNode(isSensor: true) => 'Slot sensor',
+            HubNode(isSensorBoard: true) => 'Sensor board',
+            _ => 'Unknown board',
+          },
+          ?n.boardId,
+        ].join(' · '),
       )),
       if (n.isSensorBoard)
         DataCell(Text(sensorsOnBoard.isEmpty
@@ -389,7 +510,9 @@ class _GateReadersScreenState extends ConsumerState<GateReadersScreen> {
           value: known ? n.boundTo : null,
           hint: Text(n.boundTo != null
               ? (n.isGate ? 'Reader no longer active' : 'Slot no longer exists')
-              : (n.isGate ? 'Choose a reader' : 'Choose a slot')),
+              : (n.isGate
+                  ? (n.gate != null ? 'Gate ${n.gate}' : 'Choose a reader')
+                  : 'Choose a slot')),
           underline: const SizedBox.shrink(),
           items: options,
           onChanged: _busy || options.isEmpty
@@ -410,7 +533,13 @@ class _GateReadersScreenState extends ConsumerState<GateReadersScreen> {
       DataCell(Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          if (n.isGate && n.online && n.boundTo != null)
+          if (n.isSensorBoard && n.boardId != null)
+            AppRowAction(
+              label: 'Fill slots in order',
+              icon: Icons.format_list_numbered,
+              onPressed: _busy ? null : () => _fillInOrder(hub, n, s),
+            ),
+          if (n.isGate && n.online && n.isLinked)
             AppRowAction(
               label: 'Open gate',
               icon: Icons.lock_open,
@@ -420,10 +549,17 @@ class _GateReadersScreenState extends ConsumerState<GateReadersScreen> {
             ),
           if (n.boundTo != null)
             AppRowAction(
-              label: 'Unlink',
+              label: n.isGate && n.gate != null ? 'Use Gate ${n.gate}' : 'Unlink',
               icon: Icons.link_off,
               intent: StatusIntent.danger,
               onPressed: _busy ? null : () => _unlinkNode(hub.port, n.node),
+            ),
+          if ((n.isGate || n.isSensorBoard) && n.boardId != null)
+            AppRowAction(
+              label: 'Remove',
+              icon: Icons.delete_outline,
+              intent: StatusIntent.danger,
+              onPressed: _busy ? null : () => _confirmForget(hub, n),
             ),
         ],
       )),
@@ -641,4 +777,18 @@ class _Banner extends StatelessWidget {
       ),
     );
   }
+}
+
+/// "S1/10" after "S1/9", "M10" after "M9".
+int _naturalCompare(String a, String b) {
+  final re = RegExp(r'(\d+)|(\D+)');
+  final pa = re.allMatches(a).map((m) => m.group(0)!).toList();
+  final pb = re.allMatches(b).map((m) => m.group(0)!).toList();
+  for (var i = 0; i < pa.length && i < pb.length; i++) {
+    final na = int.tryParse(pa[i]);
+    final nb = int.tryParse(pb[i]);
+    final c = (na != null && nb != null) ? na.compareTo(nb) : pa[i].compareTo(pb[i]);
+    if (c != 0) return c;
+  }
+  return pa.length.compareTo(pb.length);
 }
