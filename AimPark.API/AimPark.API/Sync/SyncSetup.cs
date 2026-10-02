@@ -42,7 +42,7 @@ namespace AimPark.API.Sync
         {
             if (string.IsNullOrWhiteSpace(options.CloudBaseUrl) || string.IsNullOrWhiteSpace(options.CloudApiKey))
                 throw new InvalidOperationException(
-                    "Site mode needs Site:CloudBaseUrl and Site:CloudApiKey. See SITE_SERVER.md.");
+                    "Site mode needs Site:CloudBaseUrl and Site:CloudApiKey. See MD files/SITE_SERVER.md.");
 
             var cloud = new Uri(options.CloudBaseUrl.TrimEnd('/') + "/");
 

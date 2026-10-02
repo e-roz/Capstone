@@ -10,6 +10,16 @@ without anyone having to remember what August looked like.
 what that role looks like. Every hardcoded `Color(0xFF...)` is a decision that
 dark mode, a rebrand and the next developer can no longer reach.
 
+**Shared identity.** The panel wears the same visual identity as the mobile
+app: indigo brand, cream neutrals, sky/mint/green/amber/coral ramps, Inter +
+Inter Display type, soft corners and flat, border-separated cards. The colour
+ramps in `lib/theme/app_palette.dart` are copied from
+`aimpark_mobile/lib/core/theme/app_palette.dart`, so change a hue in both. What
+the panel keeps as its own is **density** (14px base text, 44px table rows,
+40px controls, 24px page padding) and IBM Plex Mono for data labels. The
+mobile app's "emotion" layer (the fixed dark gate-feedback theme) is
+deliberately not ported.
+
 ---
 
 ## 1. Where things live
@@ -137,12 +147,14 @@ Raw steps: `AppSpacing.x1`(4) `x2`(8) `x3`(12) `x4`(16) `x5`(20) `x6`(24)
 
 ### Radius, elevation, motion
 
-- **Radius** — `AppRadii.sm`(8) inline chips · `md`(12) controls · `lg`(24)
+- **Radius** — `AppRadii.sm`(12) inline chips · `md`(18) controls · `lg`(24)
   containers · `xl`(28) dialogs · `full` pills. `.smAll`/`.mdAll`/`.lgAll` are
   ready-made `BorderRadius` constants.
-- **Elevation** — `AppElevation.sm` resting cards · `md` hover · `lg` dialogs and
-  slide-overs. These are real `BoxShadow` lists, because Material 3's numeric
-  elevation renders as a surface *tint* and the panel wants an actual lift.
+- **Elevation** — `AppElevation.sm` resting cards (empty: cards sit flat and
+  are separated by their `t.border.normal` hairline, as on mobile) · `md`
+  hover · `lg` dialogs and slide-overs. `md`/`lg` are real `BoxShadow` lists,
+  because Material 3's numeric elevation renders as a surface *tint* and those
+  surfaces need an actual lift.
 - **Motion** — `AppMotion.fast`(120ms) hover · `normal`(180ms) expand/collapse ·
   `slow`(280ms) panel slides. Anything slower reads as lag in an admin tool.
 
@@ -153,7 +165,7 @@ The scale is mapped onto Material's own `TextTheme` slots, so an unstyled
 
 | Slot | Size / weight | Use |
 |---|---|---|
-| `displaySmall` | 28 / 700 | Metric tile numbers |
+| `displaySmall` | 32 / 800 | Metric tile numbers |
 | `headlineSmall` | 22 / 700 | Page title — one per screen |
 | `titleLarge` | 18 / 600 | Dialog and slide-over headers |
 | `titleMedium` | 16 / 600 | Card and section headings |
@@ -172,12 +184,11 @@ row: `AppTypography.tabular(text.bodyMedium!)`, or just use `AppNumericCell`.
 
 **Font:** three families, all bundled under `assets/fonts/` and declared in
 `pubspec.yaml` — no runtime fetch, so the panel renders identically offline.
-IBM Plex Sans (`AppTypography._base`) carries every dense, small-size slot:
-table cells, form values, labels, badges. Sora (`AppTypography._display`)
-carries the three slots that read as a title rather than as data —
-`displaySmall`, `headlineSmall`, `titleLarge` — its tighter, slightly
-geometric letterforms give AimPark a title voice that still reads as a sans,
-not a display face. IBM Plex Mono (`AppTypography._mono`) carries anything
+Inter (`AppTypography._base`) carries every dense, small-size slot: table
+cells, form values, labels, badges. Inter Display (`AppTypography._display`),
+Inter's optical-size cut, carries the three slots that read as a title rather
+than as data — `displaySmall`, `headlineSmall`, `titleLarge`. Both are the
+mobile app's faces. IBM Plex Mono (`AppTypography._mono`) carries anything
 that reads as data *about* the page rather than prose — eyebrow labels,
 timestamps, table column headers, status pills — which is what makes an
 eyebrow like "STI BALIUAG · 12 SLOTS" read as instrumentation. A screen never
@@ -384,9 +395,11 @@ Any screen built with tokens from day one needs no dark-mode work at all.
 kit, `main.dart` wired to `AppTheme`, and every screen and shared widget
 (including `widgets/admin_shell.dart` and `widgets/ui/app_page.dart`, which
 superseded the old `page_header.dart`). No screen names a raw colour, and the
-warm-sand / cool-ink palette, IBM Plex + Sora type, and 24/28px card radii
-from the reference dashboard read consistently across the panel in both
-themes.
+mobile app's indigo / cream palette, Inter type and soft, flat cards read
+consistently across the panel in both themes. (The earlier warm-sand /
+cool-ink palette with IBM Plex Sans + Sora was replaced by that shared
+identity; because screens only speak tokens, the swap touched only
+`lib/theme/`, `pubspec.yaml` and one hand-rolled pill on the dashboard.)
 
 **New features should use the system from the start** — there is no
 un-migrated screen left to match, so there is no excuse to hardcode a colour

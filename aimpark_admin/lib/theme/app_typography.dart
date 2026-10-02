@@ -13,21 +13,22 @@ import 'package:flutter/material.dart';
 class AppTypography {
   AppTypography._();
 
-  /// IBM Plex Sans carries the table cells, form values and paragraph text —
-  /// the surfaces that read as prose rather than as data or as a title.
+  /// Inter carries the table cells, form values and paragraph text — the
+  /// surfaces that read as prose rather than as data or as a title. Same face
+  /// as the mobile app, so the two products read as one; only the sizes here
+  /// are desk-dense.
   ///
   /// All bundled under `assets/fonts/` and declared in `pubspec.yaml`, not
   /// fetched from a CDN: the defence demo has to survive a room with no
   /// working Wi-Fi.
   static TextStyle _base(TextStyle style) =>
-      style.copyWith(fontFamily: 'IBM Plex Sans');
+      style.copyWith(fontFamily: 'Inter');
 
-  /// Sora carries the three slots that behave like a title rather than like
-  /// data: metric numerals, page titles, and dialog headers. Its tight,
-  /// slightly geometric letterforms give AimPark a title voice that is still
-  /// a sans, not a display face, so it never fights the data underneath it.
+  /// Inter Display — Inter's optical-size cut — carries the three slots that
+  /// behave like a title rather than like data: metric numerals, page titles,
+  /// and dialog headers. Matches the mobile app's headline face.
   static TextStyle _display(TextStyle style) =>
-      style.copyWith(fontFamily: 'Sora');
+      style.copyWith(fontFamily: 'InterDisplay');
 
   /// IBM Plex Mono carries anything that reads as *data about the page*
   /// rather than as prose: eyebrow labels, timestamps, table column headers
@@ -52,9 +53,9 @@ class AppTypography {
       displaySmall: _display(
         TextStyle(
           fontSize: 32,
-          fontWeight: FontWeight.w700,
+          fontWeight: FontWeight.w800,
           height: _tight,
-          letterSpacing: -0.4,
+          letterSpacing: -0.6,
           color: color,
         ),
       ),
