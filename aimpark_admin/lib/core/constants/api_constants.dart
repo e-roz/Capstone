@@ -13,7 +13,7 @@ class ApiConstants {
   ///
   /// `same-origin` means "whatever server served this page". The guard post's
   /// build uses it, so one build works at http://localhost:5041 on the guard
-  /// PC and at http://<its LAN address>:5041 from any other browser.
+  /// PC and at its network address (port 5041) from any other browser.
   static final baseUrl =
       _configured == 'same-origin' ? Uri.base.origin : _configured;
 }

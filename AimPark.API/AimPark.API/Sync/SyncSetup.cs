@@ -85,6 +85,11 @@ namespace AimPark.API.Sync
             services.AddHostedService(sp => sp.GetRequiredService<CameraFrames>());
             services.AddSingleton<UsbGateReaders>();
             services.AddHostedService(sp => sp.GetRequiredService<UsbGateReaders>());
+
+            // The ESP-NOW hub: wireless gates and slot sensors behind one USB
+            // cable. Answers gate taps through the readers above.
+            services.AddSingleton<EspNowHubs>();
+            services.AddHostedService(sp => sp.GetRequiredService<EspNowHubs>());
         }
 
         private static void AddCloud(IServiceCollection services)

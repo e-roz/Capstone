@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
@@ -8,8 +10,17 @@ import '../models/parking_slot.dart';
 
 part 'parking_provider.g.dart';
 
+/// How often an open screen re-reads the bays. The slot sensors change a
+/// bay's status on their own, with no tap or button to refresh after.
+const slotRefreshEvery = Duration(seconds: 5);
+
 @riverpod
 Future<ParkingAvailability> parkingSlots(Ref ref) async {
+  // Auto-disposed, so this only runs while something shows the bays. The
+  // previous answer stays on screen while the next one loads.
+  final timer = Timer(slotRefreshEvery, ref.invalidateSelf);
+  ref.onDispose(timer.cancel);
+
   final dio = ref.watch(dioProvider);
   final response = await dio.get(ApiEndpoints.parkingSlots);
   return ParkingAvailability.fromJson(response.data as Map<String, dynamic>);

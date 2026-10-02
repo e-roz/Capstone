@@ -34,6 +34,9 @@ class _GuardStatusBarState extends ConsumerState<GuardStatusBar> {
   bool? _camera;
   bool? _reader;
 
+  /// The linked gates that are down, by name, for the Reader chip's tooltip.
+  List<String> _readersDown = const [];
+
   @override
   void initState() {
     super.initState();
@@ -78,8 +81,13 @@ class _GuardStatusBarState extends ConsumerState<GuardStatusBar> {
         ),
       ),
       read<bool>(ApiEndpoints.gateReaders, (d) {
-        final state = GateReadersState.fromJson(d as Map<String, dynamic>);
-        return state.ports.any((p) => p.connected && p.deviceId != null);
+        // USB readers and the wireless gates behind the hub alike: green
+        // only when every linked barrier can take a card.
+        final gates = GateReadersState.fromJson(
+          d as Map<String, dynamic>,
+        ).linkedGates;
+        _readersDown = [for (final g in gates) if (!g.up) g.name];
+        return gates.isNotEmpty && _readersDown.isEmpty;
       }),
     ]);
 
@@ -117,9 +125,10 @@ class _GuardStatusBarState extends ConsumerState<GuardStatusBar> {
           _Chip(
             label: 'Reader',
             ok: _reader,
-            okTip: 'A gate reader is connected.',
-            badTip:
-                'No gate reader connected. Check the USB cable, then Gate → Gate Readers.',
+            okTip: 'Every gate reader is connected.',
+            badTip: _readersDown.isEmpty
+                ? 'No gate reader linked. Check the USB cable or the hub, then Gate → Gate Readers.'
+                : 'Not answering: ${_readersDown.join(', ')}. See Devices below for what to check.',
           ),
         ],
         const SoundToggle(),
