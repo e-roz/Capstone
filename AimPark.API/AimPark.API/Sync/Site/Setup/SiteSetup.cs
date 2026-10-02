@@ -64,6 +64,9 @@ namespace AimPark.API.Sync.Site.Setup
                     dbPort = db.Port,
                     dbName = db.Database ?? "AimParkSite",
                     dbUser = db.Username ?? "postgres",
+                    // The installer set PostgreSQL up and saved its password:
+                    // the page skips that box. The password itself stays here.
+                    dbPreset = !string.IsNullOrEmpty(db.Password),
                     cloudBaseUrl = config["Site:CloudBaseUrl"] ?? string.Empty,
                     jwtIssuer = config["Jwt:Issuer"] ?? "AimPark.API",
                     jwtAudience = config["Jwt:Audience"] ?? "AimPark.Client",
@@ -72,6 +75,12 @@ namespace AimPark.API.Sync.Site.Setup
 
             app.MapPost("/setup/api/save", async (SetupRequest request, IHttpClientFactory http, IHostApplicationLifetime lifetime) =>
             {
+                if (string.IsNullOrEmpty(request.DbPassword))
+                {
+                    var preset = new NpgsqlConnectionStringBuilder(config.GetConnectionString("DefaultConnection") ?? string.Empty);
+                    request = request with { DbPassword = preset.Password ?? string.Empty };
+                }
+
                 var checks = new List<SetupCheck>
                 {
                     await CheckDatabaseAsync(request),
@@ -131,7 +140,7 @@ namespace AimPark.API.Sync.Site.Setup
         {
             const string name = "Database";
 
-            if (!SafeName.IsMatch(r.DbName ?? string.Empty))
+            if (r.DbName is null || !SafeName.IsMatch(r.DbName))
                 return new(name, false, "The database name may only use letters, numbers and _.");
 
             try
@@ -164,10 +173,10 @@ namespace AimPark.API.Sync.Site.Setup
         {
             const string name = "Site key";
 
-            if (string.IsNullOrWhiteSpace(r.CloudApiKey))
+            if (string.IsNullOrWhiteSpace(r.CloudApiKey) || r.CloudBaseUrl is null)
                 return new(name, false, "Paste the Site Server key from the online admin panel.");
 
-            if (!Uri.TryCreate(r.CloudBaseUrl?.Trim().TrimEnd('/') + "/", UriKind.Absolute, out var cloud))
+            if (!Uri.TryCreate(r.CloudBaseUrl.Trim().TrimEnd('/') + "/", UriKind.Absolute, out var cloud))
                 return new(name, false, "The cloud address isn't a web address.");
 
             try
@@ -207,7 +216,7 @@ namespace AimPark.API.Sync.Site.Setup
 
         public record SetupRequest(
             string DbHost, int DbPort, string DbName, string DbUser, string DbPassword,
-            string? CloudBaseUrl, string CloudApiKey,
+            string CloudBaseUrl, string CloudApiKey,
             string JwtKey, string JwtIssuer, string JwtAudience);
 
         public record SetupCheck(string Name, bool Ok, string Message);

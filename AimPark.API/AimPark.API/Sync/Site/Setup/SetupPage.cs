@@ -73,8 +73,11 @@ namespace AimPark.API.Sync.Site.Setup
     <section>
       <h2><span class="step">1</span> Local database</h2>
       <p class="hint">The password chosen when PostgreSQL was installed on this PC. The database is created for you.</p>
-      <label for="dbPassword">PostgreSQL password</label>
-      <input id="dbPassword" type="password" autocomplete="off" required>
+      <p class="hint" id="dbPresetNote" style="color: var(--ok)" hidden>✓ Already set up by the installer. Nothing to do here.</p>
+      <div id="dbPasswordBox">
+        <label for="dbPassword">PostgreSQL password</label>
+        <input id="dbPassword" type="password" autocomplete="off" required>
+      </div>
       <details>
         <summary>Advanced</summary>
         <div class="row">
@@ -132,6 +135,11 @@ namespace AimPark.API.Sync.Site.Setup
 
   fetch("/setup/api/defaults").then(r => r.json()).then(d => {
     for (const k of Object.keys(d)) if ($(k) && !$(k).value) $(k).value = d[k];
+    if (d.dbPreset) {
+      $("dbPasswordBox").hidden = true;
+      $("dbPassword").required = false;
+      $("dbPresetNote").hidden = false;
+    }
   });
 
   $("form").addEventListener("submit", async e => {

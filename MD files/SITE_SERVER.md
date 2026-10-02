@@ -352,7 +352,30 @@ Keep the guard panel's **Overview** open. The camera box shows the live picture,
 
 # Part 2 — Moving to the real guard PC
 
-Same steps as Part 1, with these differences.
+## The easy way: AimParkSetup.exe
+
+On the real guard PC, use the installer instead of Part 1. Nothing else needs installing first: no .NET, no Flutter, no Git, no PostgreSQL.
+
+**Build it (developer PC, once per version):**
+
+```bash
+powershell -ExecutionPolicy Bypass -File site-server\installer\build-installer.ps1 -Version 1.0.0
+```
+
+It needs the .NET 8 SDK, Flutter and Inno Setup 6, and downloads the PostgreSQL installer the first time. The result is `site-server\installer\output\AimParkSetup-1.0.0.exe` (~390 MB). It includes the ALPR camera app if `alpr-service\dist\AimParkALPR` exists.
+
+**Install it (guard PC):**
+
+1. Admin: create a **Site Server** key in the online panel (Step 4a).
+2. Run `AimParkSetup-1.0.0.exe` → **Next** → **Install** → **Finish**. It installs PostgreSQL (if the PC has none) with a random password, the server as the **AimPark Site Server** service, the firewall rule (private networks only) and an **AimPark Guard Panel** desktop shortcut.
+3. The setup page opens. Paste the **Site Server key** and **Jwt__Key** → **Check and save**. The database box is already done if the installer installed PostgreSQL; if PostgreSQL was already on the PC, type its password.
+4. The guard panel opens. Sign in as **Security**, then register and link the devices (Steps 8b–10b).
+
+**Update:** run the newer `AimParkSetup-x.y.z.exe` over the old one. The program is replaced; the settings (`C:\ProgramData\AimPark`), reader links, photos and database are kept, and new tables are added on start. The gate is down for about 30 seconds.
+
+**Uninstall:** Windows Settings → Apps → *AimPark Site Server*. It removes the service and the firewall rule, and keeps PostgreSQL, the database and `C:\ProgramData\AimPark`.
+
+The guard panel built by the installer works at **any** address of the PC (`localhost` or its network address), so step 2 below is only needed for the ALPR app's server address. The steps below are the manual way, for development.
 
 ### 1. Make it start with Windows
 
