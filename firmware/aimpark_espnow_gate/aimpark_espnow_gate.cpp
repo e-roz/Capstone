@@ -1,10 +1,12 @@
-// AimPark — wireless gate node (G1 / G2)
+// AimPark — wireless gate node
 // ESP32 + RC522 + SG90 servo(s), talking to the hub over ESP-NOW instead of a
 // USB cable. Same job as aimpark_gate_reader: read a card, pass the UID on,
 // open or shake the barrier on the server's answer. This board decides nothing.
 //
-// The same sketch goes on G1 and G2; each works out which gate it is from its
-// own MAC (see AimParkEspNow.h).
+// The same sketch goes on every gate. Which gate a board is gets chosen on
+// the guard panel when it is accepted, and the hub calls it G1, G2, …
+// (see AimParkNode.h). Power it on, it blinks fast, accept it there. Hold
+// BOOT 5 s to unpair.
 //
 // Wiring (RC522 -> ESP32): SDA 5, SCK 18, MOSI 23, MISO 19, RST 22, 3.3V, GND.
 // Servo signal on GPIO 13 (a second arm, if fitted, on GPIO 12). Put a
@@ -15,7 +17,7 @@
 #include <SPI.h>
 #include <MFRC522.h>
 #include <ESP32Servo.h>
-#include <AimParkEspNow.h>
+#include <AimParkNode.h>
 
 using namespace aimpark;
 
@@ -47,9 +49,8 @@ Servo servo1;
 Servo servo2;
 #endif
 
-Node self = UNKNOWN_NODE;
+NodeLink hubLink(ROLE_GATE);
 bool linkUp = false;
-uint16_t seq = 0;
 unsigned long lastHelloAt = 0;
 
 String lastUid = "";
@@ -93,8 +94,6 @@ void refuse() {
 // Handles one packet. Returns true when it was the answer to tap `waitingSeq`,
 // with `opened` set to what the server said.
 bool handlePacket(const Incoming& in, bool waiting, uint16_t waitingSeq, bool& opened) {
-  if (in.from != HUB) return false;   // Only the hub gives orders.
-
   if (in.packet.type == MSG_OPEN) {
     Serial.println("Opened by the guard.");
     openGate();
@@ -111,11 +110,11 @@ bool handlePacket(const Incoming& in, bool waiting, uint16_t waitingSeq, bool& o
 void checkHub() {
   Incoming in;
   bool unused;
-  while (receive(in)) handlePacket(in, false, 0, unused);
+  while (hubLink.poll(in)) handlePacket(in, false, 0, unused);
 }
 
 void sendHello() {
-  sendConfirmed(HUB, makePacket(MSG_HELLO, ++seq), 1);
+  hubLink.send(makePacket(MSG_HELLO, ROLE_GATE, hubLink.nextSeq()), 1);
   lastHelloAt = millis();
 }
 
@@ -134,10 +133,16 @@ String readUid() {
 void handleCard(const String& uid) {
   Serial.printf("Card %s\n", uid.c_str());
 
-  Packet p = makePacket(MSG_UID, ++seq);
+  if (!hubLink.paired()) {
+    Serial.println("  -> not paired yet: accept this gate on the Devices screen");
+    refuse();
+    return;
+  }
+
+  Packet p = makePacket(MSG_UID, ROLE_GATE, hubLink.nextSeq());
   strncpy(p.uid, uid.c_str(), UID_CHARS);
 
-  if (!sendConfirmed(HUB, p)) {
+  if (!hubLink.send(p)) {
     Serial.println("  -> hub unreachable");
     refuse();
     return;
@@ -148,7 +153,7 @@ void handleCard(const String& uid) {
   while (millis() - started < SERVER_RESPONSE_TIMEOUT_MS) {
     Incoming in;
     bool opened = false;
-    if (!receive(in)) {
+    if (!hubLink.poll(in)) {
       delay(5);
       continue;
     }
@@ -179,21 +184,11 @@ void setup() {
 #endif
   closeGate();
 
-  self = identifySelf();
-  if (self == UNKNOWN_NODE || BOARDS[self].role != ROLE_GATE) {
-    Serial.printf("This board (%s) is not a gate node. It is %s.\n", selfMac().c_str(),
-                  self == UNKNOWN_NODE ? "not in AimParkEspNow.h" : BOARDS[self].name);
-    Serial.println("Flash the hub or sensor sketch onto it instead.");
-    return;
-  }
-
-  if (!begin() || !addPeer(HUB)) {
+  if (!hubLink.begin()) {
     Serial.println("ESP-NOW failed to start. Reset the board.");
     return;
   }
   linkUp = true;
-  seq = (uint16_t)esp_random();   // So the hub can't mistake a reboot for a repeat.
-  Serial.printf("I am %s. Hub is %s.\n", BOARDS[self].name, macToString(BOARDS[HUB].mac).c_str());
 
   SPI.begin();
   rfid.PCD_Init();

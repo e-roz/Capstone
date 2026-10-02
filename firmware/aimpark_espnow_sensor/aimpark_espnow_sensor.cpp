@@ -1,12 +1,17 @@
-// AimPark — wireless slot sensor board (S1 / S2)
+// AimPark — wireless slot sensor board
 // ESP32 + one HC-SR04 per parking slot, looking down at the slot. Tells the
 // hub whenever any slot turns occupied or free, and repeats every slot's state
 // every few seconds as a heartbeat, so the hub catches up after either one
 // restarts.
 //
-// The same sketch goes on S1 and S2; each works out which board it is from its
-// own MAC (see AimParkEspNow.h). Slot numbers are the order of the pin table
-// below, starting at 1: the hub prints S2/3 for the third sensor on S2.
+// The same sketch goes on every sensor board. Which board it is (S1, S2) is
+// chosen on the guard panel when it is accepted (see AimParkNode.h): power it
+// on and accept it there. Hold BOOT 5 s to unpair. Slot numbers are the order
+// of the pin table below, starting at 1: the hub prints S2/3 for the third
+// sensor on S2.
+//
+// GPIO 2 is a TRIG pin here, so this board has no pairing blink: the serial
+// monitor says "Not paired yet", and the panel lists it under New boards.
 //
 // Wiring, per sensor (HC-SR04 -> ESP32):
 //   VCC  -> 5V (VIN)          GND -> GND
@@ -15,7 +20,7 @@
 //           ECHO swings to 5 V and the ESP32's pins take 3.3 V at most.
 
 #include <Arduino.h>
-#include <AimParkEspNow.h>
+#include <AimParkNode.h>
 
 using namespace aimpark;
 
@@ -49,9 +54,9 @@ const unsigned long ECHO_TIMEOUT_US = 10000;
 // the Serial Monitor open. 0 turns it off.
 const unsigned long PRINT_DISTANCE_EVERY_MS = 1000;
 
-Node self = UNKNOWN_NODE;
+// No LED: GPIO 2 is a TRIG pin on this board.
+NodeLink hubLink(ROLE_SENSOR, -1);
 bool linkUp = false;
-uint16_t seq = 0;
 
 bool occupied[SLOT_COUNT];
 uint8_t occupiedStreak[SLOT_COUNT];
@@ -92,7 +97,7 @@ bool scan() {
       if (!occupied[i] && occupiedStreak[i] >= OCCUPIED_CONFIRM_SCANS) {
         occupied[i] = true;
         changed = true;
-        Serial.printf("%s/%u OCCUPIED (%u mm)\n", BOARDS[self].name, i + 1, mm);
+        Serial.printf("Slot %u OCCUPIED (%u mm)\n", i + 1, mm);
       }
     } else {
       occupiedStreak[i] = 0;
@@ -100,7 +105,7 @@ bool scan() {
       if (occupied[i] && freeStreak[i] >= FREE_CONFIRM_SCANS) {
         occupied[i] = false;
         changed = true;
-        Serial.printf("%s/%u FREE\n", BOARDS[self].name, i + 1);
+        Serial.printf("Slot %u FREE\n", i + 1);
       }
     }
 
@@ -121,7 +126,7 @@ void printDistances() {
 
 // ── To the hub ───────────────────────────────────────────────────────────────
 void report() {
-  Packet p = makePacket(MSG_SLOT, ++seq);
+  Packet p = makePacket(MSG_SLOT, ROLE_SENSOR, hubLink.nextSeq());
   p.slotCount = SLOT_COUNT;
   for (uint8_t i = 0; i < SLOT_COUNT; i++) {
     if (occupied[i]) p.occupiedMask |= (uint16_t)1 << i;
@@ -129,9 +134,9 @@ void report() {
   }
 
   // A report that doesn't get through is repeated by the next heartbeat.
-  bool delivered = sendConfirmed(HUB, p);
   lastReportAt = millis();
-  if (!delivered) Serial.println("  (hub unreachable; will retry)");
+  if (!hubLink.paired()) return;
+  if (!hubLink.send(p)) Serial.println("  (hub unreachable; will retry)");
 }
 
 // ── Lifecycle ────────────────────────────────────────────────────────────────
@@ -149,22 +154,12 @@ void setup() {
     distanceMm[i] = 0;
   }
 
-  self = identifySelf();
-  if (self == UNKNOWN_NODE || BOARDS[self].role != ROLE_SENSOR) {
-    Serial.printf("This board (%s) is not a slot sensor. It is %s.\n", selfMac().c_str(),
-                  self == UNKNOWN_NODE ? "not in AimParkEspNow.h" : BOARDS[self].name);
-    Serial.println("Flash the hub or gate sketch onto it instead.");
-    return;
-  }
-
-  if (!begin() || !addPeer(HUB)) {
+  if (!hubLink.begin()) {
     Serial.println("ESP-NOW failed to start. Reset the board.");
     return;
   }
   linkUp = true;
-  seq = (uint16_t)esp_random();   // So the hub can't mistake a reboot for a repeat.
-  Serial.printf("I am %s with %u slots. Hub is %s.\n", BOARDS[self].name, SLOT_COUNT,
-                macToString(BOARDS[HUB].mac).c_str());
+  Serial.printf("Watching %u slots.\n", SLOT_COUNT);
 
   // Settle on what the sensors see before the first report, rather than
   // telling the hub every slot is free and correcting it a second later.
@@ -191,7 +186,8 @@ void loop() {
     printDistances();
   }
 
-  // Nothing from the hub is meant for a sensor; just keep the inbox empty.
+  // Nothing from the hub is meant for a sensor; polling handles pairing.
   Incoming in;
-  while (receive(in)) {}
+  while (hubLink.poll(in)) {}
+  if (hubLink.takeJustPaired()) report();
 }

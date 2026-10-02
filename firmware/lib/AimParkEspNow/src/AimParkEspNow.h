@@ -1,6 +1,6 @@
 // AimPark — the ESP-NOW link shared by the hub, the gate nodes and the slot
-// sensors. Every sketch includes this, so the board list, the keys and the
-// packet format can never drift apart between them.
+// sensors. Every sketch includes this, so the keys and the packet format can
+// never drift apart between them.
 //
 // Star layout: each node talks to the hub only, never to another node.
 //
@@ -10,8 +10,12 @@
 //
 // S1 and S2 each watch several slots (up to MAX_SLOTS), one HC-SR04 per slot.
 //
-// A board works out who it is from its own MAC, so the gate sketch is the same
-// file on G1 and G2, and the sensor sketch the same on S1 and S2.
+// Nothing here names a particular board. A new gate or sensor board asks to
+// join (MSG_PAIR_REQ, broadcast) and blinks fast; the installer accepts it on
+// the guard panel and says what it is — Gate 1, Sensor board 2 — and the hub
+// answers (MSG_PAIR_OK) and from then on calls it G1, S2, … The hub keeps
+// the names, each node keeps its hub, both in flash. Holding a node's BOOT
+// button 5 s makes it forget its hub (see AimParkNode.h).
 
 #pragma once
 
@@ -23,9 +27,9 @@
 #include <freertos/FreeRTOS.h>
 #include <freertos/queue.h>
 
-// Keys. The link is encrypted, so a stray ESP32 can't open a barrier or fake a
-// slot. To use keys of your own, create AimParkEspNowKeys.h next to this file
-// (it is git-ignored) with the same two #defines, then reflash all five boards.
+// Keys. Paired traffic is encrypted, so a stray ESP32 can't open a barrier or
+// fake a slot. To use keys of your own, create AimParkEspNowKeys.h next to this
+// file (it is git-ignored) with the same two #defines, then reflash every board.
 #if __has_include("AimParkEspNowKeys.h")
 #include "AimParkEspNowKeys.h"
 #else
@@ -37,25 +41,18 @@ static_assert(sizeof(AIMPARK_LMK) == 17, "AIMPARK_LMK must be exactly 16 charact
 
 namespace aimpark {
 
-// ── Boards ───────────────────────────────────────────────────────────────────
-enum Node : uint8_t { HUB = 0, G1, G2, S1, S2, NODE_COUNT, UNKNOWN_NODE = 0xFF };
-enum Role : uint8_t { ROLE_HUB, ROLE_GATE, ROLE_SENSOR };
+// ── Roles ────────────────────────────────────────────────────────────────────
+// Fixed by the sketch a board runs, not by which board it is.
+enum Role : uint8_t { ROLE_HUB = 0, ROLE_GATE = 1, ROLE_SENSOR = 2 };
 
-struct Board {
-  const char* name;
-  Role role;
-  uint8_t mac[6];
-};
-
-// Read off each chip with esptool on 2026-09-29. The MAC belongs to the chip,
-// so label the boards: one that swaps places takes its identity with it.
-static const Board BOARDS[NODE_COUNT] = {
-  {"HUB", ROLE_HUB,    {0x20, 0x50, 0x0D, 0xCF, 0x87, 0x18}},
-  {"G1",  ROLE_GATE,   {0x58, 0x2A, 0xBD, 0xD0, 0xA3, 0x6C}},
-  {"G2",  ROLE_GATE,   {0x20, 0x50, 0x0D, 0xCF, 0xCD, 0x00}},
-  {"S1",  ROLE_SENSOR, {0x58, 0x2A, 0xBD, 0xD7, 0x5C, 0xFC}},
-  {"S2",  ROLE_SENSOR, {0x4C, 0xC3, 0x82, 0xED, 0x1D, 0xA4}},
-};
+inline const char* roleName(uint8_t role) {
+  switch (role) {
+    case ROLE_HUB:    return "HUB";
+    case ROLE_GATE:   return "GATE";
+    case ROLE_SENSOR: return "SENSOR";
+    default:          return "UNKNOWN";
+  }
+}
 
 // Every board must sit on the same channel. None of them joins a WiFi network,
 // so nothing else moves them off it.
@@ -65,18 +62,31 @@ constexpr uint8_t WIFI_CHANNEL = 1;
 constexpr unsigned long HEARTBEAT_MS     = 5000;
 constexpr unsigned long OFFLINE_AFTER_MS = 3 * HEARTBEAT_MS + 1000;
 
+// An unpaired node repeats its request this often.
+constexpr unsigned long PAIR_REQUEST_MS = 2000;
+
+// Holding BOOT this long makes a node forget its hub.
+constexpr unsigned long FORGET_HOLD_MS = 5000;
+constexpr uint8_t PIN_BOOT_BUTTON = 0;
+
+// The radio holds only a few encrypted peers; this stays under its limit.
+constexpr uint8_t MAX_NODES = 6;
+
 // ── Packets ──────────────────────────────────────────────────────────────────
 enum MsgType : uint8_t {
-  MSG_HELLO  = 1,  // gate -> hub    heartbeat
-  MSG_UID    = 2,  // gate -> hub    a card was tapped
-  MSG_RESULT = 3,  // hub  -> gate   the server's answer to that tap
-  MSG_OPEN   = 4,  // hub  -> gate   the guard's "Open gate" button
-  MSG_SLOT   = 5,  // sensor -> hub  every slot's state; doubles as its heartbeat
+  MSG_HELLO    = 1,  // gate -> hub     heartbeat
+  MSG_UID      = 2,  // gate -> hub     a card was tapped
+  MSG_RESULT   = 3,  // hub  -> gate    the server's answer to that tap
+  MSG_OPEN     = 4,  // hub  -> gate    the guard's "Open gate" button
+  MSG_SLOT     = 5,  // sensor -> hub   every slot's state; doubles as its heartbeat
+  MSG_PAIR_REQ = 6,  // node -> all     unpaired, asking to join (broadcast, plain)
+  MSG_PAIR_OK  = 7,  // hub  -> node    accepted; the sender is your hub (plain)
+  MSG_FORGET   = 8,  // hub  -> node    you were removed; ask to join again
 };
 
 // Bumped whenever Packet changes, so a board on old firmware is ignored
-// rather than misread. Reflash all five together.
-constexpr uint8_t PROTOCOL_VERSION = 2;
+// rather than misread. Reflash every board together.
+constexpr uint8_t PROTOCOL_VERSION = 3;
 constexpr size_t UID_CHARS = 20;   // a 10-byte UID in hex
 
 // One sensor board watches several slots, each with its own HC-SR04.
@@ -85,6 +95,7 @@ constexpr uint8_t MAX_SLOTS = 10;
 struct __attribute__((packed)) Packet {
   uint8_t  version;
   uint8_t  type;
+  uint8_t  role;        // The sender's Role.
   uint16_t seq;         // Per sender. RESULT echoes the seq of the UID it answers.
   uint8_t  flag;        // RESULT: 1 = open.
   char     uid[UID_CHARS + 1];
@@ -96,40 +107,49 @@ struct __attribute__((packed)) Packet {
   uint16_t distanceMm[MAX_SLOTS];  // 0 = nothing in range.
 };
 
-inline Packet makePacket(MsgType type, uint16_t seq) {
+struct Incoming {
+  uint8_t mac[6];
+  Packet packet;
+};
+
+static const uint8_t BROADCAST[6] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
+
+inline Packet makePacket(MsgType type, Role role, uint16_t seq) {
   Packet p;
   memset(&p, 0, sizeof p);
   p.version = PROTOCOL_VERSION;
   p.type = type;
+  p.role = role;
   p.seq = seq;
   return p;
 }
 
-struct Incoming {
-  Node from;
-  Packet packet;
-};
-
-// ── Lookup ───────────────────────────────────────────────────────────────────
-inline Node nodeForMac(const uint8_t* mac) {
-  for (uint8_t i = 0; i < NODE_COUNT; i++) {
-    if (memcmp(BOARDS[i].mac, mac, 6) == 0) return (Node)i;
-  }
-  return UNKNOWN_NODE;
-}
-
-inline Node nodeForName(const String& name) {
-  for (uint8_t i = 0; i < NODE_COUNT; i++) {
-    if (name.equalsIgnoreCase(BOARDS[i].name)) return (Node)i;
-  }
-  return UNKNOWN_NODE;
-}
-
-inline String macToString(const uint8_t* mac) {
-  char text[18];
-  snprintf(text, sizeof text, "%02x:%02x:%02x:%02x:%02x:%02x",
+// ── Ids ──────────────────────────────────────────────────────────────────────
+// A board's id is its MAC as 12 hex digits, e.g. 582ABDD0A36C: what the
+// pairing screen shows, and what to write on its label.
+inline String macToId(const uint8_t* mac) {
+  char text[13];
+  snprintf(text, sizeof text, "%02X%02X%02X%02X%02X%02X",
            mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
   return String(text);
+}
+
+inline bool idToMac(const String& id, uint8_t* mac) {
+  if (id.length() != 12) return false;
+  for (int i = 0; i < 6; i++) {
+    char pair[3] = {id[i * 2], id[i * 2 + 1], 0};
+    char* end = nullptr;
+    long value = strtol(pair, &end, 16);
+    if (end != pair + 2) return false;
+    mac[i] = (uint8_t)value;
+  }
+  return true;
+}
+
+inline String selfId() {
+  uint8_t mac[6];
+  esp_wifi_get_mac(WIFI_IF_STA, mac);
+  return macToId(mac);
 }
 
 // ── Callbacks ────────────────────────────────────────────────────────────────
@@ -155,12 +175,10 @@ static volatile bool sendDone = false;
 static volatile bool sendOk = false;
 
 static void onReceive(AIMPARK_RECV_ARGS) {
-  Node from = nodeForMac(AIMPARK_RECV_MAC);
-  if (from == UNKNOWN_NODE) return;               // Not one of ours.
   if (len != (int)sizeof(Packet)) return;
 
   Incoming in;
-  in.from = from;
+  memcpy(in.mac, AIMPARK_RECV_MAC, 6);
   memcpy(&in.packet, data, sizeof(Packet));
   if (in.packet.version != PROTOCOL_VERSION) return;
   in.packet.uid[UID_CHARS] = '\0';
@@ -175,21 +193,6 @@ static void onSent(AIMPARK_SENT_ARGS) {
 }  // namespace detail
 
 // ── Setup ────────────────────────────────────────────────────────────────────
-// Which board this is, from its own MAC. UNKNOWN_NODE means it isn't in
-// BOARDS at all.
-inline Node identifySelf() {
-  WiFi.mode(WIFI_STA);
-  uint8_t mac[6];
-  esp_wifi_get_mac(WIFI_IF_STA, mac);
-  return nodeForMac(mac);
-}
-
-inline String selfMac() {
-  uint8_t mac[6];
-  esp_wifi_get_mac(WIFI_IF_STA, mac);
-  return macToString(mac);
-}
-
 inline bool begin() {
   WiFi.mode(WIFI_STA);
   WiFi.disconnect();
@@ -204,25 +207,34 @@ inline bool begin() {
   return detail::inbox != nullptr;
 }
 
-inline bool addPeer(Node node) {
+// Adds a peer, or changes it if it is already there (e.g. from plain to
+// encrypted once pairing is done).
+inline bool setPeer(const uint8_t* mac, bool encrypt) {
   esp_now_peer_info_t peer;
   memset(&peer, 0, sizeof peer);
-  memcpy(peer.peer_addr, BOARDS[node].mac, 6);
+  memcpy(peer.peer_addr, mac, 6);
   peer.channel = WIFI_CHANNEL;
   peer.ifidx = WIFI_IF_STA;
-  peer.encrypt = true;
-  memcpy(peer.lmk, AIMPARK_LMK, 16);
+  peer.encrypt = encrypt;
+  if (encrypt) memcpy(peer.lmk, AIMPARK_LMK, 16);
+
+  if (esp_now_is_peer_exist(mac)) return esp_now_mod_peer(&peer) == ESP_OK;
   return esp_now_add_peer(&peer) == ESP_OK;
+}
+
+inline void removePeer(const uint8_t* mac) {
+  if (esp_now_is_peer_exist(mac)) esp_now_del_peer(mac);
 }
 
 // ── Traffic ──────────────────────────────────────────────────────────────────
 // Sends and waits for the other board's radio to acknowledge it. True only
-// once it has. A retry can deliver the same packet twice when an ack is lost,
-// which is why receivers drop repeated seqs.
-inline bool sendConfirmed(Node to, const Packet& packet, uint8_t attempts = 3) {
+// once it has (a broadcast is never acknowledged, so it is true once sent).
+// A retry can deliver the same packet twice when an ack is lost, which is why
+// receivers drop repeated seqs.
+inline bool sendConfirmed(const uint8_t* to, const Packet& packet, uint8_t attempts = 3) {
   for (uint8_t i = 0; i < attempts; i++) {
     detail::sendDone = false;
-    if (esp_now_send(BOARDS[to].mac, (const uint8_t*)&packet, sizeof packet) == ESP_OK) {
+    if (esp_now_send(to, (const uint8_t*)&packet, sizeof packet) == ESP_OK) {
       unsigned long started = millis();
       while (!detail::sendDone && millis() - started < 200) delay(1);
       if (detail::sendDone && detail::sendOk) return true;
