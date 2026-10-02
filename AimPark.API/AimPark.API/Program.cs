@@ -24,6 +24,18 @@ var builder = WebApplication.CreateBuilder(new WebApplicationOptions
         : null
 });
 
+// The guard PC's own settings live in ProgramData, so a new version of the
+// server never touches them. Site environment only.
+AimPark.API.Sync.Site.Setup.SiteSettingsFile.AddTo(builder);
+
+// A guard PC with no site key yet gets the setup page instead of the server.
+// Saving it restarts into the real thing.
+if (AimPark.API.Sync.Site.Setup.SiteSetup.IsNeeded(builder.Configuration))
+{
+    AimPark.API.Sync.Site.Setup.SiteSetup.Run(builder);
+    return;
+}
+
 // Cloud (the hosted API) or Site (the server at the guard post). Defaults to
 // Cloud, which behaves exactly as before the site server existed.
 var siteOptions = builder.AddAimParkSync();
@@ -282,6 +294,9 @@ builder.Services.AddSwaggerGen(options =>
 });
 
 var app = builder.Build();
+
+// Site: create or update the local tables before the first gate tap.
+app.PrepareSiteDatabase(siteOptions);
 
 if (app.Environment.IsDevelopment())
 {

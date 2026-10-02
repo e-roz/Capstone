@@ -73,6 +73,8 @@ These are the folders you'll use below:
 | `C:\AimPark\aimpark_admin` | The admin web |
 | `C:\AimPark\firmware\host_bridge` | The ESP32 bridge |
 
+> **Shortcut: the setup page.** Steps 3, 5 and 6 can be skipped (do Step 7 first, so the guard panel is built). Start the server with no `appsettings.Site.json` (Step 8's command), open **http://localhost:5041/** on this PC, and fill in the three boxes: PostgreSQL password, Site Server key (Step 4a), and `Jwt__Key`. Each one is checked, the database is created, the settings are saved to `C:\ProgramData\AimPark\site-settings.json` (readable only by administrators), and the tables are created when the server starts. Started by hand, start it again after saving; as a service it restarts by itself. To redo setup, delete that file.
+
 ## Step 3 — Create the local database
 
 1. Open **pgAdmin 4** from the Start menu.

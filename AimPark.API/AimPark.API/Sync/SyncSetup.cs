@@ -4,6 +4,7 @@ using AimPark.API.Sync.Cloud;
 using AimPark.API.Sync.Site;
 using AimPark.API.Sync.Site.Cameras;
 using AimPark.API.Sync.Site.GateReaders;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.Extensions.FileProviders;
 
@@ -11,7 +12,7 @@ namespace AimPark.API.Sync
 {
     /// <summary>
     /// Everything that differs between the cloud and the site server, in one
-    /// place. Program.cs calls these three and otherwise does not care which
+    /// place. Program.cs calls these four and otherwise does not care which
     /// one it is.
     /// </summary>
     public static class SyncSetup
@@ -96,6 +97,48 @@ namespace AimPark.API.Sync
             services.AddScoped<ISaveChangesInterceptor, MasterDataChangeInterceptor>();
             services.AddScoped<SnapshotBuilder>();
             services.AddScoped<EventIngestor>();
+        }
+
+        /// <summary>
+        /// Site: brings the local database up to date with this version's
+        /// migrations, so neither a first install nor an update needs
+        /// <c>dotnet ef</c>. The cloud's migrations stay a deliberate, manual
+        /// step, since that database is shared.
+        /// </summary>
+        /// <remarks>
+        /// Waits for PostgreSQL rather than failing: after a power cut both
+        /// services start together, and the database is usually the slower.
+        /// </remarks>
+        public static void PrepareSiteDatabase(this WebApplication app, SiteOptions options)
+        {
+            if (!options.IsSite)
+                return;
+
+            var log = app.Logger;
+            for (var attempt = 1; ; attempt++)
+            {
+                try
+                {
+                    using var scope = app.Services.CreateScope();
+                    var db = scope.ServiceProvider.GetRequiredService<AimPark.API.Data.AppDbContext>();
+                    var pending = db.Database.GetPendingMigrations().ToList();
+                    if (pending.Count > 0)
+                    {
+                        log.LogInformation("Updating the local database: {Count} migration(s).", pending.Count);
+                        db.Database.Migrate();
+                    }
+                    return;
+                }
+                // A wrong password won't fix itself: fail at once with that.
+                catch (Exception e) when (attempt < 30
+                    && e is not Npgsql.PostgresException { SqlState: Npgsql.PostgresErrorCodes.InvalidPassword }
+                    && e is Npgsql.NpgsqlException or System.Net.Sockets.SocketException
+                        or InvalidOperationException { InnerException: Npgsql.NpgsqlException })
+                {
+                    log.LogWarning("The local database isn't answering yet ({Message}). Retrying.", e.Message);
+                    Thread.Sleep(TimeSpan.FromSeconds(2));
+                }
+            }
         }
 
         /// <summary>Before authentication: decides where a request is answered.</summary>

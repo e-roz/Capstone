@@ -9,8 +9,9 @@
 
         powershell -ExecutionPolicy Bypass -File C:\AimPark\site-server\install-service.ps1
 
-    Before running it, finish steps 1-8 of MD files/SITE_SERVER.md: the local
-    database exists and has its tables, and appsettings.Site.json is filled in.
+    Only PostgreSQL has to be installed first. On a PC with no settings yet,
+    the server opens the setup page at http://localhost:5041/ (database
+    password, site key, sign-in key), and creates its own database and tables.
 #>
 param(
     # Where the built server is kept. Not the source folder, so pulling new
@@ -36,9 +37,6 @@ if (-not (Get-Command dotnet -ErrorAction SilentlyContinue)) {
     throw "The .NET 8 SDK is not installed. See MD files/SITE_SERVER.md step 1."
 }
 
-if (-not (Test-Path $SourceSettings)) {
-    throw "Missing $SourceSettings. Copy appsettings.Site.example.json to appsettings.Site.json and fill it in first (MD files/SITE_SERVER.md step 5)."
-}
 
 # --- Build ------------------------------------------------------------------
 
@@ -52,9 +50,12 @@ Step "Building the server into $InstallDir"
 dotnet publish $Project -c Release -o $InstallDir --nologo
 if ($LASTEXITCODE -ne 0) { throw "Build failed. See the errors above." }
 
-# The build copies appsettings.Site.json along with the rest, but copy it
-# explicitly so a settings change is picked up even when nothing else changed.
-Copy-Item $SourceSettings (Join-Path $InstallDir "appsettings.Site.json") -Force
+# Older setups keep their settings in appsettings.Site.json. Copy it if there
+# is one, so a change is picked up even when nothing else changed. New setups
+# use the setup page, which saves to C:\ProgramData\AimPark instead.
+if (Test-Path $SourceSettings) {
+    Copy-Item $SourceSettings (Join-Path $InstallDir "appsettings.Site.json") -Force
+}
 
 # --- Service ----------------------------------------------------------------
 
@@ -118,6 +119,9 @@ if (-not $status) {
 Write-Host "`nThe site server is running and will start by itself when the PC turns on." -ForegroundColor Green
 Write-Host "Status: $statusUrl"
 $status | Format-List
-if (-not $status.cloudConnected) {
+if ($status.mode -eq "Setup") {
+    Write-Host "First time on this PC: open http://localhost:5041/ here and fill in the setup page." -ForegroundColor Yellow
+}
+elseif (-not $status.cloudConnected) {
     Write-Host "Not connected to the cloud yet. That's normal for the first few seconds; open the status page again shortly." -ForegroundColor Yellow
 }
