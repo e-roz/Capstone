@@ -34,7 +34,7 @@ class NodeLink {
 
     Serial.printf("I am %s (%s). ", selfId().c_str(), roleName(role_));
     if (paired_) Serial.printf("Paired with hub %s.\n", macToId(hub_).c_str());
-    else         Serial.println("Not paired yet: accept me on the Devices screen.");
+    else         Serial.println("Not paired yet: accept me on the Gate Readers screen.");
     return true;
   }
 

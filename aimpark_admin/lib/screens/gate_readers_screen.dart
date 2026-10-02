@@ -127,10 +127,15 @@ class _GateReadersScreenState extends ConsumerState<GateReadersScreen> {
 
   /// Accepting a board: the installer says what it is. A name already in use
   /// goes to the new board — how a broken one is replaced.
-  Future<void> _accept(HubPort hub, HubJoinRequest request) async {
+  Future<void> _accept(HubPort hub, HubJoinRequest request, GateReadersState s) async {
     final letter = request.isGate ? 'G' : 'S';
     String label(int n) => request.isGate ? 'Gate $n' : 'Sensor board $n';
     final taken = {for (final n in hub.nodes) if (n.boardId != null) n.node};
+
+    // Only what the lot has: one gate board per gate with bays behind it, and
+    // as many sensor boards (each watches one gate's bays).
+    final gates = {for (final slot in s.slots) slot.gate}.where((g) => g >= 1).toList()..sort();
+    final count = gates.isEmpty ? 2 : gates.last;
 
     final name = await showDialog<String>(
       context: context,
@@ -141,7 +146,7 @@ class _GateReadersScreenState extends ConsumerState<GateReadersScreen> {
             padding: const EdgeInsets.fromLTRB(24, 0, 24, 8),
             child: Text('Board ${request.id}'),
           ),
-          for (var n = 1; n <= 4; n++)
+          for (var n = 1; n <= count; n++)
             SimpleDialogOption(
               onPressed: () => Navigator.pop(ctx, '$letter$n'),
               child: Text(taken.contains('$letter$n')
@@ -422,7 +427,7 @@ class _GateReadersScreenState extends ConsumerState<GateReadersScreen> {
                 title: Text(r.isGate ? 'New gate board' : 'New sensor board'),
                 subtitle: Text('Board ${r.id}'),
                 trailing: FilledButton.icon(
-                  onPressed: _busy ? null : () => _accept(hub, r),
+                  onPressed: _busy ? null : () => _accept(hub, r, s),
                   icon: const Icon(Icons.check),
                   label: const Text('Accept'),
                 ),
