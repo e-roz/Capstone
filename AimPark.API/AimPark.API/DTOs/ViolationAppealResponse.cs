@@ -12,6 +12,14 @@ namespace AimPark.API.DTOs
     {
         public Guid AppealId { get; set; }
         public Guid ViolationId { get; set; }
+
+        // Enough of the violation to know what the appeal is about from the
+        // queue. The decision itself is made in the violation's View dialog.
+        public string PolicyRuleTitle { get; set; } = string.Empty;
+        public string UserFullName { get; set; } = string.Empty;
+        public string? RfidTagId { get; set; }
+        public string ViolationStatus { get; set; } = string.Empty;
+
         public string ReasonText { get; set; } = string.Empty;
         public string Status { get; set; } = string.Empty;
         public string? AdminNotes { get; set; }

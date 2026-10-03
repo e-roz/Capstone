@@ -33,6 +33,12 @@ class ViolationDetailScreen extends ConsumerWidget {
               title: 'Recorded facts',
               facts: [
                 AppFact('Issued', Formatters.date(violation.createdAt)),
+                if (violation.canAppeal && violation.appealDeadline != null)
+                  AppFact(
+                    'Appeal by',
+                    Formatters.date(violation.appealDeadline!),
+                    intent: StatusIntent.warning,
+                  ),
                 AppFact(
                   'Suspension',
                   violation.suspensionDays != null
@@ -80,7 +86,7 @@ class ViolationDetailScreen extends ConsumerWidget {
             const SizedBox(height: AppSpacing.lg),
             if (violation.appealStatus != null)
               _AppealCard(violation: violation)
-            else
+            else if (violation.canAppeal)
               AppButton(
                 label: 'Appeal this violation',
                 style: AppButtonStyle.ghost,
@@ -115,12 +121,28 @@ class _StatusCard extends StatelessWidget {
     if (violation.isPaid) {
       return 'Paid. This record stays on file but needs nothing from you.';
     }
-    if (violation.appealStatus != null) {
-      return 'Your appeal is with the parking office. The violation stays open '
-          'until they decide.';
+    switch (violation.status.toLowerCase()) {
+      case 'pendingappeal':
+        return 'Your appeal is with the parking office. Nothing is charged '
+            'until they decide.';
+      case 'appealed':
+        return 'Your appeal was accepted. No penalty applies.';
+      case 'dismissed':
+        return 'This violation was dismissed. No penalty applies.';
+      case 'accountable':
+        return violation.isPayable
+            ? 'This violation is final. Please pay the penalty.'
+            : 'This violation is final.';
     }
-    return 'This violation is open. You can pay it or appeal it. Your access '
-        'is unaffected while it is open.';
+    final deadline = violation.appealDeadline;
+    if (deadline != null && DateTime.now().isAfter(deadline)) {
+      return 'The appeal period has ended. This violation will become final '
+          'shortly.';
+    }
+    return deadline == null
+        ? 'This violation is open. You can appeal it.'
+        : 'This violation is open. Appeal by ${Formatters.date(deadline)}, or '
+            'it becomes final and the penalty is charged.';
   }
 
   @override

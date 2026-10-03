@@ -101,6 +101,8 @@ namespace AimPark.API.Sync
             services.AddSingleton<SentPushLedger>();
             // Clock-driven pushes: due tomorrow, overdue, suspension start/end.
             services.AddHostedService<AimPark.API.Services.NotificationReminderService>();
+            // Issued violations past their appeal deadline become Accountable.
+            services.AddHostedService<AimPark.API.Services.ViolationDeadlineService>();
             services.AddScoped<ISaveChangesInterceptor, MasterDataChangeInterceptor>();
             services.AddScoped<SnapshotBuilder>();
             services.AddScoped<EventIngestor>();

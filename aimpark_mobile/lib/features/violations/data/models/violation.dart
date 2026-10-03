@@ -1,3 +1,10 @@
+/// A violation status as the user should read it — "Pending Appeal", not
+/// "PendingAppeal". `Appealed` means the user won their appeal.
+String violationStatusLabel(String status) => switch (status.toLowerCase()) {
+      'pendingappeal' => 'Pending Appeal',
+      _ => status,
+    };
+
 class ViolationSummary {
   const ViolationSummary({
     required this.violationId,
@@ -19,7 +26,7 @@ class ViolationSummary {
 
   /// Settlement state of the penalty: `Pending`, `Paid`, `Waived`, or null when
   /// no transaction was raised. Deliberately not folded into [status], which is
-  /// the appeal lifecycle — a violation can be `Upheld` and paid at once.
+  /// the appeal lifecycle — a violation can be `Accountable` and paid at once.
   final String? paymentStatus;
   final DateTime? paidAt;
 
@@ -28,16 +35,16 @@ class ViolationSummary {
   /// Whether there is anything left for the user to do about this violation.
   ///
   /// Settled covers both ways it can end: the fine was paid, or the violation
-  /// itself went away (dismissed, overturned, or the fee waived with it).
+  /// itself went away (dismissed, appeal won, or the fee waived with it).
   bool get isSettled =>
       isPaid ||
       paymentStatus?.toLowerCase() == 'waived' ||
-      const {'dismissed', 'overturned'}.contains(status.toLowerCase());
+      const {'dismissed', 'appealed'}.contains(status.toLowerCase());
 
   /// What the badge should read. The payment outranks the appeal status once
   /// it is settled, because "Paid" is the answer to the question the user is
   /// actually asking when they open this list.
-  String get displayStatus => isPaid ? 'Paid' : status;
+  String get displayStatus => isPaid ? 'Paid' : violationStatusLabel(status);
 
   factory ViolationSummary.fromJson(Map<String, dynamic> json) {
     return ViolationSummary(
@@ -65,6 +72,7 @@ class ViolationDetail {
     required this.status,
     required this.createdAt,
     required this.updatedAt,
+    this.appealDeadline,
     this.suspensionDays,
     this.paymentStatus,
     this.paidAt,
@@ -88,6 +96,10 @@ class ViolationDetail {
   final DateTime createdAt;
   final DateTime updatedAt;
 
+  /// Last moment the user can appeal. After it the violation becomes final
+  /// (Accountable) and the fine is charged.
+  final DateTime? appealDeadline;
+
   /// See [ViolationSummary.paymentStatus].
   final String? paymentStatus;
   final DateTime? paidAt;
@@ -103,7 +115,11 @@ class ViolationDetail {
   final DateTime? appealDecidedAt;
   final List<String> appealEvidenceUrls;
 
-  bool get canAppeal => appealStatus == null;
+  /// Only an Issued violation with no appeal yet, before the deadline.
+  bool get canAppeal =>
+      appealStatus == null &&
+      status.toLowerCase() == 'issued' &&
+      (appealDeadline == null || DateTime.now().isBefore(appealDeadline!));
 
   bool get isPaid => paymentStatus?.toLowerCase() == 'paid';
   bool get isWaived => paymentStatus?.toLowerCase() == 'waived';
@@ -112,7 +128,7 @@ class ViolationDetail {
   bool get isPayable => paymentStatus?.toLowerCase() == 'pending';
 
   /// See [ViolationSummary.displayStatus].
-  String get displayStatus => isPaid ? 'Paid' : status;
+  String get displayStatus => isPaid ? 'Paid' : violationStatusLabel(status);
 
   factory ViolationDetail.fromJson(Map<String, dynamic> json) {
     return ViolationDetail(
@@ -125,6 +141,9 @@ class ViolationDetail {
       status: json['status'] as String,
       createdAt: DateTime.parse(json['createdAt'] as String),
       updatedAt: DateTime.parse(json['updatedAt'] as String),
+      appealDeadline: json['appealDeadline'] == null
+          ? null
+          : DateTime.parse(json['appealDeadline'] as String),
       paymentStatus: json['paymentStatus'] as String?,
       paidAt: json['paidAt'] == null
           ? null

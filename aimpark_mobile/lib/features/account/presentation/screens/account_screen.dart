@@ -56,7 +56,7 @@ class AccountScreen extends ConsumerWidget {
                 const <ViolationSummary>[])
             .where((v) {
       final status = v.status.toLowerCase();
-      return status == 'issued' || status == 'appealed';
+      return status == 'issued' || status == 'pendingappeal';
     }).length;
 
     final balance =

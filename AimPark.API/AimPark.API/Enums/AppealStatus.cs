@@ -4,6 +4,12 @@ namespace AimPark.API.Enums
     {
         Pending,
         Approved,
-        Denied
+        Denied,
+
+        /// <summary>
+        /// The violation was dismissed while this appeal was waiting, so there
+        /// is nothing left to decide.
+        /// </summary>
+        Dismissed
     }
 }

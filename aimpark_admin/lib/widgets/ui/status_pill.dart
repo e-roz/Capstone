@@ -127,12 +127,13 @@ class StatusIntents {
         _ => StatusIntent.neutral,
       };
 
-  /// Violation and appeal outcomes. Note `Dismissed` is a *good* outcome here.
+  /// Violation and appeal outcomes. `Appealed` is the user *winning* the
+  /// appeal; `PendingAppeal` is the one still waiting on a decision.
   static StatusIntent violation(String status) => switch (status) {
-        'Approved' || 'Overturned' || 'Dismissed' => StatusIntent.success,
-        'Denied' || 'Upheld' => StatusIntent.danger,
-        'Appealed' => StatusIntent.warning,
-        'Pending' => StatusIntent.info,
+        'Approved' || 'Appealed' => StatusIntent.success,
+        'Denied' || 'Accountable' => StatusIntent.danger,
+        'PendingAppeal' || 'Pending' => StatusIntent.warning,
+        'Issued' => StatusIntent.info,
         _ => StatusIntent.neutral,
       };
 
