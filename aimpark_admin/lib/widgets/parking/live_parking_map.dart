@@ -312,8 +312,8 @@ class _MapWithSummary extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final left = _column(gate: 1, carsLast: false);
-    final right = _column(gate: 2, carsLast: true);
+    final left = _column(gate: 1, mirrored: false);
+    final right = _column(gate: 2, mirrored: true);
 
     // Bays that don't fit the drawing: a third gate, or a tenth bay at one.
     final placed = {...left, ...right}.map((s) => s.slotId).toSet();
@@ -364,17 +364,19 @@ class _MapWithSummary extends StatelessWidget {
   }
 
   /// One column of the drawing, top to bottom. Four-wheel bays sit at the
-  /// top of the left column and at the bottom of the right one. When a gate
-  /// has more than nine bays, the overflow comes from the non-car bays, so the
-  /// four-wheel bays always keep their painted spots at the end of the column.
-  List<ParkingSlot> _column({required int gate, required bool carsLast}) {
+  /// top of the left column (C1…C3, M1…M6). The right column is its mirror,
+  /// counting down to the bottom (M6…M1, C3…C1). When a gate has more than
+  /// nine bays, the overflow comes from the non-car bays, so the four-wheel
+  /// bays always keep their painted spots at the end of the column.
+  List<ParkingSlot> _column({required int gate, required bool mirrored}) {
     int byCode(ParkingSlot a, ParkingSlot b) => _naturalCompare(a.slotCode, b.slotCode);
     final atGate = slots.where((s) => s.gate == gate).toList();
     final cars = (atGate.where((s) => s.vehicleType == 'Car').toList()..sort(byCode)).take(_rows).toList();
     final others = (atGate.where((s) => s.vehicleType != 'Car').toList()..sort(byCode))
         .take(_rows - cars.length)
         .toList();
-    return carsLast ? [...others, ...cars] : [...cars, ...others];
+    final column = [...cars, ...others];
+    return mirrored ? column.reversed.toList() : column;
   }
 }
 
