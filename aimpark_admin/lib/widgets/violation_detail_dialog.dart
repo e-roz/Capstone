@@ -158,7 +158,7 @@ class _UserSection extends StatelessWidget {
           AppField(
               label: 'Card now',
               value: v.rfidTagId ??
-                  (v.rfidRevokedAt != null ? 'Revoked' : 'No card')),
+                  (v.rfidStatus == 'Revoked' ? 'Revoked' : 'No card')),
           AppField(
             label: 'Accountable violations',
             child: StatusPill(

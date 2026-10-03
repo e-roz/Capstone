@@ -240,7 +240,11 @@ namespace AimPark.API.Services
             // Active is the only status a card belongs to: Rejected and
             // Suspended are both decisions to keep this person out, and issuing
             // a working card is the opposite of carrying them out.
-            if (user.AccountStatus != AccountStatus.Active)
+            // Revoked is the one exception: giving the card back is exactly how
+            // a user who lost access to three violations is reinstated.
+            var reinstating = user.AccountStatus == AccountStatus.Revoked;
+
+            if (user.AccountStatus != AccountStatus.Active && !reinstating)
             {
                 var reason = user.AccountStatus switch
                 {
@@ -282,6 +286,13 @@ namespace AimPark.API.Services
             user.RfidStatus = RfidStatus.Active;
             user.UpdatedAt = DateTime.UtcNow;
 
+            if (reinstating)
+            {
+                user.AccountStatus = AccountStatus.Active;
+                await LogActionAsync(adminUserId, userId, "Reinstate", "AccountStatus=Revoked",
+                    "AccountStatus=Active", "Reinstated by assigning a card", ct);
+            }
+
             if (card is not null) _db.Set<RfidCard>().Remove(card);
 
             await LogActionAsync(adminUserId, userId, "AssignRfid", oldValue, $"RfidTagId={user.RfidTagId}, RfidStatus={user.RfidStatus}", null, ct);
@@ -289,7 +300,10 @@ namespace AimPark.API.Services
             _users.Update(user);
             await _users.SaveAsync(ct);
 
-            return new OkObjectResult(new { message = "RFID tag assigned." });
+            return new OkObjectResult(new
+            {
+                message = reinstating ? "RFID tag assigned. The user is reinstated." : "RFID tag assigned."
+            });
         }
 
         // POST /api/admin/users/{userId}/revoke-rfid
@@ -311,12 +325,37 @@ namespace AimPark.API.Services
         }
 
         // Called by ViolationService on a user's third Accountable violation.
+        //
+        // Marks both the account and the RFID as Revoked, so User Management
+        // says what happened instead of showing an ordinary "no card". The
+        // physical card is filed Free by RevokeCardAsync, so it can be handed
+        // to anyone — including this user again, which reinstates them.
+        //
+        // Runs even when no card is on the account: the status is what keeps
+        // the record straight, and skipping it there left the user showing
+        // their old suspension.
         public async Task<bool> RevokeForViolationLimitAsync(User user, Guid actorUserId, CancellationToken ct)
         {
-            var (ok, _) = await RevokeCardAsync(
-                user, actorUserId, RfidRevokeReason.ViolationLimit,
-                "Third accountable violation", ct);
-            return ok;
+            if (user.AccountStatus == AccountStatus.Revoked)
+                return false;
+
+            if (user.RfidStatus != RfidStatus.Unassigned && !string.IsNullOrWhiteSpace(user.RfidTagId))
+                await RevokeCardAsync(
+                    user, actorUserId, RfidRevokeReason.ViolationLimit,
+                    "Third accountable violation", ct);
+
+            var oldValue = $"AccountStatus={user.AccountStatus}, RfidStatus={user.RfidStatus}";
+            user.RfidTagId = null;
+            user.RfidStatus = RfidStatus.Revoked;
+            user.AccountStatus = AccountStatus.Revoked;
+            user.RfidSuspendedFrom = null;
+            user.RfidSuspendedUntil = null;
+            user.UpdatedAt = DateTime.UtcNow;
+            _users.Update(user);
+
+            await LogActionAsync(actorUserId, user.Id, "ViolationRevoke", oldValue,
+                "AccountStatus=Revoked, RfidStatus=Revoked", "Three accountable violations", ct);
+            return true;
         }
 
         // POST /api/admin/users/bulk-revoke-rfid
@@ -561,7 +600,7 @@ namespace AimPark.API.Services
             var activity = action switch
             {
                 "AssignRfid" => UserActivities.RfidAssigned,
-                "RevokeRfid" => UserActivities.RfidRevoked,
+                "RevokeRfid" or "ViolationRevoke" => UserActivities.RfidRevoked,
                 _ => UserActivities.StatusChanged
             };
 
@@ -601,6 +640,8 @@ namespace AimPark.API.Services
                 "Archive" => "Account archived",
                 "Restore" => "Account restored",
                 "DeleteDocuments" => "ID documents deleted",
+                "ViolationRevoke" => "Account and RFID revoked after three accountable violations",
+                "Reinstate" => "Reinstated by assigning a card",
                 "AssignRfid" => DescribeCard(oldValue, newValue),
                 "RevokeRfid" => ReadField(oldValue, "RfidTagId") is { Length: > 0 } tag
                     ? $"RFID card {tag} revoked"

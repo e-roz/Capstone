@@ -35,8 +35,9 @@ class ViolationDetailScreen extends ConsumerWidget {
                 AppFact('Issued', Formatters.date(violation.createdAt)),
                 if (violation.canAppeal && violation.appealDeadline != null)
                   AppFact(
-                    'Appeal by',
-                    Formatters.date(violation.appealDeadline!),
+                    'Appeal until',
+                    '${Formatters.date(violation.appealDeadline!)} · '
+                        '${appealTimeLeft(violation.appealDeadline!)}',
                     intent: StatusIntent.warning,
                   ),
                 AppFact(

@@ -118,6 +118,8 @@ class _UserDetailView extends ConsumerWidget {
           'card activates it at the gate.',
       'Rejected' => 'A rejected registration cannot be given a card.',
       'Suspended' => 'Lift the suspension before issuing a card.',
+      // Revoked is allowed on purpose: assigning a card is how a user who
+      // lost access to three violations is reinstated.
       _ => null,
     };
 
@@ -169,7 +171,11 @@ class _UserDetailView extends ConsumerWidget {
               Tooltip(
                 message: cardBlockedReason ?? '',
                 child: AppRowAction(
-                  label: detail.rfidTagId == null ? 'Assign' : 'Reassign',
+                  label: detail.rfidStatus == 'Revoked'
+                      ? 'Assign & reinstate'
+                      : detail.rfidTagId == null
+                          ? 'Assign'
+                          : 'Reassign',
                   icon: Icons.nfc,
                   onPressed: cardBlockedReason != null
                       ? null
@@ -196,6 +202,13 @@ class _UserDetailView extends ConsumerWidget {
                 child: StatusPill.of(detail.rfidStatus,
                     intent: StatusIntents.rfid(detail.rfidStatus)),
               ),
+              if (detail.rfidStatus == 'Revoked')
+                const AppField(
+                  label: 'Why',
+                  value: 'Revoked after 3 accountable violations. The card '
+                      'went back to the pool. Assigning a card reinstates '
+                      'this user.',
+                ),
               if (detail.rfidStatus == 'Suspended')
                 AppField(
                   label: 'Suspended Until',
