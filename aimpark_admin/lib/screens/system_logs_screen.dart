@@ -533,12 +533,9 @@ class _RfidAccessTab extends ConsumerWidget {
 
 // ── Violation logs ───────────────────────────────────────────────────────────
 
-const _violationStatuses = [
-  AppFilterOption('Issued', 'Issued'),
-  AppFilterOption('Appealed', 'Appealed'),
-  AppFilterOption('Upheld', 'Upheld'),
-  AppFilterOption('Overturned', 'Overturned'),
-  AppFilterOption('Dismissed', 'Dismissed'),
+final _violationStatuses = [
+  for (final s in ViolationStatuses.all)
+    AppFilterOption(s, ViolationStatuses.label(s)),
 ];
 
 class _ViolationLogsTab extends ConsumerWidget {
@@ -593,8 +590,8 @@ class _ViolationLogsTab extends ConsumerWidget {
               DataRow(cells: [
                 DataCell(Text(v.policyRuleTitle,
                     style: Theme.of(context).textTheme.titleSmall)),
-                DataCell(StatusPill.of(
-                  v.status,
+                DataCell(StatusPill(
+                  label: ViolationStatuses.label(v.status),
                   intent: StatusIntents.violation(v.status),
                   dense: true,
                 )),

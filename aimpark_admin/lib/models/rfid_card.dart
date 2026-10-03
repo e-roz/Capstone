@@ -44,6 +44,10 @@ class RfidRevokeReasons {
   static const stolen = 'Stolen';
   static const other = 'Other';
 
+  /// Set by the API on a third Accountable violation. Not offered in the
+  /// revoke dropdown — an admin never picks it by hand.
+  static const violationLimit = 'ViolationLimit';
+
   static const all = [graduated, noLongerNeeded, damaged, lost, stolen, other];
 
   /// The label shown to the admin — "NoLongerNeeded" split into words.
@@ -54,6 +58,7 @@ class RfidRevokeReasons {
         lost => 'Lost',
         stolen => 'Stolen',
         other => 'Other',
+        violationLimit => '3 violations',
         _ => reason,
       };
 

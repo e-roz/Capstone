@@ -2,14 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
-import '../core/utils/responsive.dart';
 import '../models/violation.dart';
 import '../providers/violations_provider.dart';
 import '../theme/theme.dart';
-import 'document_viewer.dart';
+import 'violation_detail_dialog.dart';
 import 'ui/ui.dart';
 
-const _appealStatuses = ['Pending', 'Approved', 'Denied'];
+const _appealStatuses = ['Pending', 'Approved', 'Denied', 'Dismissed'];
 
 /// The appeals queue, as a self-contained panel.
 ///
@@ -18,6 +17,10 @@ const _appealStatuses = ['Pending', 'Approved', 'Denied'];
 /// while the data hangs off a violation. Keeping the panel portable means the
 /// decision about which screen hosts it is a one-line change, not a 200-line
 /// move.
+///
+/// This is a queue, not a place to decide: each card opens the violation's
+/// View dialog, where the rule, the user's record and the history are on
+/// screen before Accept or Reject is.
 class AppealsPanel extends ConsumerWidget {
   const AppealsPanel({super.key});
 
@@ -119,9 +122,12 @@ class _AppealCard extends ConsumerWidget {
               ),
               const SizedBox(width: AppSpacing.x3),
               Expanded(
-                child: Text(
-                  'Violation ${appeal.violationId.substring(0, 8)}…',
-                  style: text.titleSmall,
+                child: AppPrimaryCell(
+                  title: appeal.policyRuleTitle,
+                  subtitle: [
+                    appeal.userFullName,
+                    if (appeal.rfidTagId != null) 'RFID ${appeal.rfidTagId}',
+                  ].join(' · '),
                 ),
               ),
               Text(
@@ -151,7 +157,7 @@ class _AppealCard extends ConsumerWidget {
               style: text.labelSmall?.copyWith(color: t.text.secondary),
             ),
             const SizedBox(height: AppSpacing.x2),
-            _EvidenceStrip(urls: appeal.evidenceUrls),
+            AppealEvidenceStrip(urls: appeal.evidenceUrls),
           ],
           if (appeal.adminNotes case final notes? when notes.isNotEmpty)
             Padding(
@@ -179,154 +185,18 @@ class _AppealCard extends ConsumerWidget {
                 style: text.labelSmall?.copyWith(color: t.text.tertiary),
               ),
             ),
-          if (pending) ...[
-            const SizedBox(height: AppSpacing.x4),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.end,
-              children: [
-                AppRowAction(
-                  label: 'Deny',
-                  icon: Icons.close,
-                  intent: StatusIntent.danger,
-                  onPressed: () => _decide(context, ref, false),
-                ),
-                const SizedBox(width: AppSpacing.controlGap),
-                AppRowAction(
-                  label: 'Approve',
-                  icon: Icons.check,
-                  intent: StatusIntent.success,
-                  onPressed: () => _decide(context, ref, true),
-                ),
-              ],
+          const SizedBox(height: AppSpacing.x4),
+          Align(
+            alignment: Alignment.centerRight,
+            child: AppRowAction(
+              label: pending ? 'View & decide' : 'View',
+              icon: Icons.visibility_outlined,
+              intent: pending ? StatusIntent.warning : null,
+              onPressed: () => showViolationDetail(context, appeal.violationId),
             ),
-          ],
-        ],
-      ),
-    );
-  }
-
-  Future<void> _decide(
-      BuildContext context, WidgetRef ref, bool approve) async {
-    final notesCtrl = TextEditingController();
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text(approve ? 'Approve Appeal' : 'Deny Appeal'),
-        content: SizedBox(
-          width: ctx.dialogWidth(420),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(approve
-                  ? 'Approving overturns the violation and lifts any suspension it carried.'
-                  : 'Denying upholds the violation as issued.'),
-              const SizedBox(height: AppSpacing.x4),
-              TextField(
-                controller: notesCtrl,
-                maxLines: 2,
-                autofocus: true,
-                decoration: const InputDecoration(
-                  labelText: 'Admin notes (optional)',
-                  helperText: 'Shown to the user with the decision.',
-                ),
-              ),
-            ],
-          ),
-        ),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('Cancel')),
-          FilledButton(
-            style: approve
-                ? null
-                : FilledButton.styleFrom(
-                    backgroundColor: ctx.tokens.status.danger.solid),
-            onPressed: () => Navigator.pop(ctx, true),
-            child: Text(approve ? 'Approve' : 'Deny'),
           ),
         ],
       ),
-    );
-
-    if (confirmed != true || !context.mounted) return;
-    final msg = await ref.read(violationActionsProvider.notifier).decideAppeal(
-        appeal.appealId,
-        approve,
-        notesCtrl.text.trim().isEmpty ? null : notesCtrl.text.trim());
-    if (!context.mounted) return;
-    ScaffoldMessenger.of(context)
-        .showSnackBar(SnackBar(content: Text(msg ?? 'Appeal decided.')));
-    ref.invalidate(appealListProvider);
-    ref.invalidate(violationListProvider);
-  }
-}
-
-/// The appeal's photographs, as a row of thumbnails that open full size.
-///
-/// Thumbnails rather than a list of links: an admin deciding an appeal is
-/// looking for whether the photo shows what the text claims, and a filename
-/// tells them nothing about that. Clicking one opens the existing viewer, so
-/// this behaves like the registration documents do.
-class _EvidenceStrip extends StatelessWidget {
-  const _EvidenceStrip({required this.urls});
-
-  final List<String> urls;
-
-  @override
-  Widget build(BuildContext context) {
-    final t = context.tokens;
-
-    return Wrap(
-      spacing: AppSpacing.x2,
-      runSpacing: AppSpacing.x2,
-      children: [
-        for (final (i, url) in urls.indexed)
-          Tooltip(
-            message: 'Open photo ${i + 1}',
-            child: InkWell(
-              onTap: () => viewDocument(
-                context,
-                title: 'Appeal evidence ${i + 1}',
-                // The signed URL carries a query string, so the extension has
-                // to be read off the path rather than the whole thing —
-                // otherwise every image is mistaken for a PDF and opens in a
-                // new tab instead of the viewer.
-                fileName: Uri.parse(url).path,
-                url: url,
-              ),
-              borderRadius: AppRadii.smAll,
-              child: Container(
-                width: 92,
-                height: 92,
-                clipBehavior: Clip.antiAlias,
-                decoration: BoxDecoration(
-                  color: t.surface.muted,
-                  borderRadius: AppRadii.smAll,
-                  border: Border.all(color: t.border.normal),
-                ),
-                child: Image.network(
-                  url,
-                  fit: BoxFit.cover,
-                  errorBuilder: (_, _, _) => Icon(
-                    Icons.broken_image_outlined,
-                    color: t.text.tertiary,
-                  ),
-                  loadingBuilder: (_, child, progress) => progress == null
-                      ? child
-                      : const Center(
-                          child: SizedBox(
-                            width: 18,
-                            height: 18,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          ),
-                        ),
-                ),
-              ),
-            ),
-          ),
-      ],
     );
   }
 }
