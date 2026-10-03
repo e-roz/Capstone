@@ -274,11 +274,11 @@ class _GateReadersScreenState extends ConsumerState<GateReadersScreen> {
               if (s.readers.isEmpty) ...[
                 _Banner(
                   text: 'No RFID reader is registered for a gate yet. Register '
-                      'one in Gate Devices (type RFID Reader, gate 1 or higher), '
+                      'one in Devices (type RFID Reader, gate 1 or higher), '
                       'then come back and link it to its port or wireless gate.',
                   action: TextButton(
                     onPressed: () => context.go('/gate-devices'),
-                    child: const Text('Open Gate Devices'),
+                    child: const Text('Open Devices'),
                   ),
                 ),
                 const SizedBox(height: AppSpacing.x3),

@@ -15,15 +15,26 @@ import '../widgets/ui/ui.dart';
 /// each one authenticates as. A key is only ever shown once, right after
 /// it's created — this screen otherwise only shows its first 12 characters,
 /// enough to tell two devices apart without being able to reuse either.
+///
+/// With [siteServers] it is the System > Site Server page instead: the same
+/// keys, but only the guard post's servers, which are not gate hardware.
 class GateDevicesScreen extends ConsumerWidget {
-  const GateDevicesScreen({super.key});
+  const GateDevicesScreen({super.key, this.siteServers = false});
+
+  final bool siteServers;
+
+  bool _shows(GateDevice d) =>
+      (d.deviceType == GateDeviceType.siteServer) == siteServers;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     return AppPage(
-      title: 'Gate Devices',
-      subtitle: 'The RFID readers and ALPR cameras allowed to talk to the '
-          'gate API, and the keys they use to prove it.',
+      title: siteServers ? 'Site Server' : 'Devices',
+      subtitle: siteServers
+          ? 'The guard post PCs allowed to sync with the cloud, and the keys '
+              'they use to prove it.'
+          : 'The RFID readers and ALPR cameras allowed to talk to the '
+              'gate API, and the keys they use to prove it.',
       body: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -38,38 +49,49 @@ class GateDevicesScreen extends ConsumerWidget {
               FilledButton.icon(
                 onPressed: () => _showRegisterDialog(context, ref),
                 icon: const Icon(Icons.add),
-                label: const Text('Register a device'),
+                label: Text(siteServers
+                    ? 'Register a site server'
+                    : 'Register a device'),
               ),
             ],
           ),
           const SizedBox(height: AppSpacing.headingGap),
           Expanded(
             child: AsyncView(
-              value: ref.watch(gateDeviceListProvider),
+              value: ref
+                  .watch(gateDeviceListProvider)
+                  .whenData((all) => all.where(_shows).toList()),
               onRetry: () => ref.invalidate(gateDeviceListProvider),
               loading: const SkeletonTable(),
               isEmpty: (devices) => devices.isEmpty,
               empty: AppEmptyState(
-                icon: Icons.sensors_outlined,
-                title: 'No gate devices yet',
-                message: 'Register the RFID reader or ALPR camera at a gate '
-                    'to give it a key.',
+                icon: siteServers ? Icons.dns_outlined : Icons.sensors_outlined,
+                title: siteServers ? 'No site server yet' : 'No devices yet',
+                message: siteServers
+                    ? 'Register the guard post PC to give it a key for syncing.'
+                    : 'Register the RFID reader or ALPR camera at a gate '
+                        'to give it a key.',
                 action: FilledButton.icon(
                   onPressed: () => _showRegisterDialog(context, ref),
                   icon: const Icon(Icons.add),
-                  label: const Text('Register a device'),
+                  label: Text(siteServers
+                      ? 'Register a site server'
+                      : 'Register a device'),
                 ),
               ),
               data: (devices) => AppDataTable(
-                minWidth: 760,
-                columns: const [
-                  DataColumn(label: Text('Device')),
-                  DataColumn(label: Text('Gate')),
-                  DataColumn(label: Text('Type')),
-                  DataColumn(label: Text('Key')),
-                  DataColumn(label: Text('Status')),
-                  DataColumn(label: Text('Last seen')),
-                  DataColumn(label: Text('')),
+                minWidth: siteServers ? 560 : 760,
+                columns: [
+                  DataColumn(label: Text(siteServers ? 'Server' : 'Device')),
+                  if (!siteServers) ...const [
+                    DataColumn(label: Text('Gate')),
+                    DataColumn(label: Text('Type')),
+                  ],
+                  const DataColumn(label: Text('Key')),
+                  const DataColumn(label: Text('Status')),
+                  DataColumn(
+                      label: Text(siteServers ? 'Last synced' : 'Last seen')),
+                  const DataColumn(label: Text('')),
                 ],
                 rows: [
                   for (final device in devices) _rowFor(context, ref, device),
@@ -85,8 +107,10 @@ class GateDevicesScreen extends ConsumerWidget {
   DataRow _rowFor(BuildContext context, WidgetRef ref, GateDevice device) {
     return DataRow(cells: [
       DataCell(AppPrimaryCell(title: device.name)),
-      DataCell(Text(device.gateLabel)),
-      DataCell(Text(device.deviceType.label)),
+      if (!siteServers) ...[
+        DataCell(Text(device.gateLabel)),
+        DataCell(Text(device.deviceType.label)),
+      ],
       DataCell(Text('${device.apiKeyPrefix}…')),
       DataCell(
         StatusPill(
@@ -120,8 +144,11 @@ class GateDevicesScreen extends ConsumerWidget {
       builder: (ctx) => AlertDialog(
         title: Text('Revoke ${device.name}?'),
         content: Text(
-          'Its key stops working immediately. ${device.deviceType.label} '
-          'hardware at ${device.gateLabel} will need a new one to reconnect.',
+          siteServers
+              ? 'Its key stops working immediately. That PC stops syncing '
+                  'with the cloud until it is given a new one.'
+              : 'Its key stops working immediately. ${device.deviceType.label} '
+                  'hardware at ${device.gateLabel} will need a new one to reconnect.',
         ),
         actions: [
           TextButton(
@@ -150,16 +177,20 @@ class GateDevicesScreen extends ConsumerWidget {
   }
 
   Future<void> _showRegisterDialog(BuildContext context, WidgetRef ref) async {
-    // Admin registers what lives off the gates — the site server and the
-    // enrollment desk reader, both gate 0. Security registers what is on a
-    // gate. The API enforces the same split; this only keeps the form honest.
+    // Admin registers what lives off the gates — the site server (on its own
+    // page) and the enrollment desk reader, both gate 0. Security registers
+    // what is on a gate. The API enforces the same split; this only keeps the
+    // form honest.
     final isAdmin = ref.read(staffRoleProvider) != StaffRole.security;
-    final types = isAdmin
-        ? const [GateDeviceType.siteServer, GateDeviceType.rfidReader]
-        : const [GateDeviceType.rfidReader, GateDeviceType.alprCamera];
+    final types = siteServers
+        ? const [GateDeviceType.siteServer]
+        : isAdmin
+            ? const [GateDeviceType.rfidReader]
+            : const [GateDeviceType.rfidReader, GateDeviceType.alprCamera];
 
     final nameCtrl = TextEditingController();
-    final gateCtrl = TextEditingController(text: isAdmin ? '0' : '1');
+    final gateCtrl =
+        TextEditingController(text: isAdmin || siteServers ? '0' : '1');
     var deviceType = types.first;
     final formKey = GlobalKey<FormState>();
 
@@ -167,7 +198,8 @@ class GateDevicesScreen extends ConsumerWidget {
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setState) => AlertDialog(
-          title: const Text('Register a Gate Device'),
+          title: Text(
+              siteServers ? 'Register a Site Server' : 'Register a Device'),
           content: SizedBox(
             width: ctx.dialogWidth(420),
             child: Form(
@@ -180,10 +212,14 @@ class GateDevicesScreen extends ConsumerWidget {
                     const AppRequiredNote(),
                     TextFormField(
                       controller: nameCtrl,
-                      decoration: const InputDecoration(
-                        label: AppFieldLabel('Device name', isRequired: true),
-                        helperText: 'Something recognizable, e.g. "North gate '
-                            'ALPR camera."',
+                      decoration: InputDecoration(
+                        label: AppFieldLabel(
+                            siteServers ? 'Server name' : 'Device name',
+                            isRequired: true),
+                        helperText: siteServers
+                            ? 'Something recognizable, e.g. "Guard post PC."'
+                            : 'Something recognizable, e.g. "North gate '
+                                'ALPR camera."',
                       ),
                       validator: (v) => (v == null || v.trim().isEmpty)
                           ? 'A name is required'
@@ -191,7 +227,7 @@ class GateDevicesScreen extends ConsumerWidget {
                     ),
                     // Everything the admin registers is gate 0, so there is
                     // nothing to ask.
-                    if (!isAdmin) ...[
+                    if (!isAdmin && !siteServers) ...[
                       const SizedBox(height: AppSpacing.x3),
                       TextFormField(
                         controller: gateCtrl,
@@ -208,6 +244,8 @@ class GateDevicesScreen extends ConsumerWidget {
                         },
                       ),
                     ],
+                    // A site server is the only thing this page registers.
+                    if (!siteServers) ...[
                     const SizedBox(height: AppSpacing.x3),
                     DropdownButtonFormField<GateDeviceType>(
                       initialValue: deviceType,
@@ -229,6 +267,7 @@ class GateDevicesScreen extends ConsumerWidget {
                       ],
                       onChanged: (v) => setState(() => deviceType = v!),
                     ),
+                    ],
                   ],
                 ),
               ),

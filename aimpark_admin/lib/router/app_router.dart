@@ -86,6 +86,11 @@ GoRouter appRouter(Ref ref) {
             builder: (context, state) => const GateDevicesScreen(),
           ),
           GoRoute(
+            path: '/site-server',
+            builder: (context, state) =>
+                const GateDevicesScreen(siteServers: true),
+          ),
+          GoRoute(
             path: '/gate-readers',
             builder: (context, state) => const GateReadersScreen(),
           ),

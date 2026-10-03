@@ -129,7 +129,7 @@ const navGroups = <NavGroup>[
     NavItem(
       icon: Icons.sensors_outlined,
       selectedIcon: Icons.sensors,
-      label: 'Gate Devices',
+      label: 'Devices',
       route: '/gate-devices',
       description: 'Register the RFID readers and ALPR cameras at each gate, '
           'and the keys they use to connect.',
@@ -268,6 +268,13 @@ const navGroups = <NavGroup>[
       description: 'Save a copy of the database, or put a saved copy back.',
       // Admin only, and deliberately not shared with Security: a restore
       // replaces every row in the database.
+    ),
+    NavItem(
+      icon: Icons.dns_outlined,
+      selectedIcon: Icons.dns,
+      label: 'Site Server',
+      route: '/site-server',
+      description: 'The guard post PC that syncs with the cloud, and its key.',
     ),
   ]),
 ];
