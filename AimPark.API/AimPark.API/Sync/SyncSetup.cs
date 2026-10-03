@@ -92,6 +92,17 @@ namespace AimPark.API.Sync
             services.AddSingleton<EspNowHubs>();
             services.AddHostedService(sp => sp.GetRequiredService<EspNowHubs>());
             services.AddSingleton<AimPark.API.Interfaces.ISlotSensors>(sp => sp.GetRequiredService<EspNowHubs>());
+
+            // Keeps this PC on the newest release, installed when the gates are quiet.
+            services.AddHttpClient(Site.Updates.SiteUpdater.HttpClientName, c =>
+            {
+                c.Timeout = TimeSpan.FromMinutes(15);
+                c.DefaultRequestHeaders.UserAgent.ParseAdd("AimPark-SiteServer");
+                c.DefaultRequestHeaders.Accept.ParseAdd("application/vnd.github+json");
+            });
+            services.AddSingleton<Site.Updates.UpdateSignal>();
+            services.AddSingleton<Site.Updates.SiteUpdateStatus>();
+            services.AddHostedService<Site.Updates.SiteUpdater>();
         }
 
         private static void AddCloud(IServiceCollection services)
@@ -161,7 +172,13 @@ namespace AimPark.API.Sync
                 if (AdminWeb(options) is { } files)
                 {
                     app.UseDefaultFiles(new DefaultFilesOptions { FileProvider = files });
-                    app.UseStaticFiles(new StaticFileOptions { FileProvider = files });
+                    // Re-checked on every load (an unchanged file is a cheap
+                    // 304), so the panel is the new one right after an update.
+                    app.UseStaticFiles(new StaticFileOptions
+                    {
+                        FileProvider = files,
+                        OnPrepareResponse = c => c.Context.Response.Headers.CacheControl = "no-cache"
+                    });
                 }
             }
             else if (!options.CloudGateEndpointsEnabled)

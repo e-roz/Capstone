@@ -17,6 +17,10 @@
 ; Running a newer AimParkSetup.exe over an old one updates in place: the
 ; program files are replaced; settings, gate reader links, photos and the
 ; database are kept.
+;
+; The server runs this itself for automatic updates (SiteUpdater.cs), with
+; /VERYSILENT /SUPPRESSMSGBOXES and nobody watching: never add a plain MsgBox,
+; use SuppressibleMsgBox so an unattended update can't hang on a dialog.
 
 #ifndef AppVersion
   #define AppVersion "1.0.0"
@@ -281,9 +285,9 @@ begin
   begin
     if not InstallPostgres() then
     begin
-      MsgBox('The local database (PostgreSQL) could not be installed.' + #13#10 +
+      SuppressibleMsgBox('The local database (PostgreSQL) could not be installed.' + #13#10 +
         'Install PostgreSQL 17 from postgresql.org, then run this setup again.' + #13#10#13#10 +
-        'Details are in the setup log: ' + ExpandConstant('{log}'), mbError, MB_OK);
+        'Details are in the setup log: ' + ExpandConstant('{log}'), mbError, MB_OK, IDOK);
       exit;
     end;
     SavePostgresSettings();
@@ -292,8 +296,8 @@ begin
   InstallService();
 
   if not WaitForServer() then
-    MsgBox('AimPark was installed, but it isn''t answering yet.' + #13#10 +
+    SuppressibleMsgBox('AimPark was installed, but it isn''t answering yet.' + #13#10 +
       'Wait a minute and open the AimPark Guard Panel shortcut. If it still' + #13#10 +
       'doesn''t open, check Event Viewer > Windows Logs > Application for "AimParkSite".',
-      mbInformation, MB_OK);
+      mbInformation, MB_OK, IDOK);
 end;
