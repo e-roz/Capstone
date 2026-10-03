@@ -22,6 +22,7 @@ namespace AimPark.API.Services
         private readonly IPaymentService _paymentService;
         private readonly INotificationService _notificationService;
         private readonly IFileStorageService _fileStorage;
+        private readonly IAdminUserService _adminUsers;
         private readonly AppDbContext _db;
 
         public ViolationService(
@@ -32,8 +33,10 @@ namespace AimPark.API.Services
             IPaymentService paymentService,
             INotificationService notificationService,
             IFileStorageService fileStorage,
+            IAdminUserService adminUsers,
             AppDbContext db)
         {
+            _adminUsers = adminUsers;
             _fileStorage = fileStorage;
             _rules = rules;
             _violations = violations;
@@ -114,6 +117,16 @@ namespace AimPark.API.Services
 
         // ---------- Violations ----------
 
+        /// <summary>
+        /// The shortest appeal deadline any violation gets. A rule whose
+        /// suspension starts at once still leaves the user this long to contest
+        /// it — stopping someone today and hearing them out are separate things.
+        /// </summary>
+        public const int MinimumAppealDays = 3;
+
+        /// <summary>The number of Accountable violations that costs a user their RFID card.</summary>
+        public const int StrikesBeforeRevoke = 3;
+
         // POST /api/admin/violations
         public async Task<ActionResult<object>> IssueAsync(IssueViolationDto dto, Guid adminUserId, CancellationToken ct)
         {
@@ -128,20 +141,8 @@ namespace AimPark.API.Services
             if (rule is null)
                 return new NotFoundObjectResult(new { message = "Policy rule not found." });
 
-            var suspensionType = rule.DefaultSuspensionType;
-            if (!string.IsNullOrWhiteSpace(dto.SuspensionTypeOverride))
-            {
-                if (!Enum.TryParse<SuspensionType>(dto.SuspensionTypeOverride, true, out suspensionType))
-                    return new BadRequestObjectResult(new { message = "Invalid suspension type override." });
-            }
-
-            var suspensionDays = dto.SuspensionDaysOverride ?? rule.DefaultSuspensionDays;
-            if (suspensionType == SuspensionType.Temporary && (suspensionDays is null || suspensionDays <= 0))
-                return new BadRequestObjectResult(new { message = "Temporary suspension requires a positive number of days." });
-
-            var penaltyAmount = dto.PenaltyAmountOverride ?? rule.DefaultPenaltyAmount;
-            if (penaltyAmount < 0)
-                return new BadRequestObjectResult(new { message = "Penalty amount must be zero or greater." });
+            if (!rule.IsActive)
+                return new BadRequestObjectResult(new { message = "This policy rule is inactive." });
 
             if (dto.ParkingLogId is not null)
             {
@@ -150,7 +151,15 @@ namespace AimPark.API.Services
                     return new NotFoundObjectResult(new { message = "Parking log not found." });
             }
 
+            // The rule is the penalty. No overrides: two people who broke the
+            // same rule get the same consequence.
+            var suspensionType = rule.DefaultSuspensionType;
+            var suspensionDays = suspensionType == SuspensionType.Temporary ? rule.DefaultSuspensionDays : null;
+
             var now = DateTime.UtcNow;
+            var windowDays = Math.Max(0, rule.AppealWindowDays);
+            var isImmediate = windowDays == 0;
+
             var violation = new Violation
             {
                 Id = Guid.NewGuid(),
@@ -158,11 +167,13 @@ namespace AimPark.API.Services
                 PolicyRuleId = rule.Id,
                 ParkingLogId = dto.ParkingLogId,
                 Description = dto.Description.Trim(),
-                PenaltyAmount = penaltyAmount,
+                PenaltyAmount = rule.DefaultPenaltyAmount,
                 SuspensionType = suspensionType,
-                SuspensionDays = suspensionType == SuspensionType.Temporary ? suspensionDays : null,
+                SuspensionDays = suspensionDays,
                 Status = ViolationStatus.Issued,
                 IssuedByUserId = adminUserId,
+                RfidTagIdAtIssue = user.RfidTagId,
+                AppealDeadline = now.AddDays(Math.Max(MinimumAppealDays, windowDays)),
                 CreatedAt = now,
                 UpdatedAt = now
             };
@@ -170,27 +181,21 @@ namespace AimPark.API.Services
             await _violations.AddAsync(violation, ct);
             await _violations.SaveAsync(ct);
 
-            // Per rule, not per system: a rule an admin marked as immediate
-            // starts biting now, and everything else gets its window.
-            var windowDays = Math.Max(0, dto.AppealWindowDaysOverride ?? rule.AppealWindowDays);
-            var isImmediate = windowDays == 0;
-            var suspensionStartsAt =
-                isImmediate ? (DateTime?)null : DateTime.UtcNow.AddDays(windowDays);
+            // The suspension is scheduled for the end of the rule's window, so
+            // it bites at the same moment the violation turns Accountable. A
+            // rule with no window suspends at once.
+            var suspensionStartsAt = isImmediate ? (DateTime?)null : now.AddDays(windowDays);
 
             if (suspensionType != SuspensionType.None)
+            {
                 ApplySuspension(user, suspensionType, suspensionDays, suspensionStartsAt);
+                _users.Update(user);
+                await _users.SaveAsync(ct);
+            }
 
-            _users.Update(user);
-            await _users.SaveAsync(ct);
-
-            await _paymentService.CreateForViolationAsync(violation, ct);
-
-            // Without this the user never learns they were penalised, which also
-            // makes the appeal window meaningless — they cannot contest something
-            // they have not been told about.
-            // Says when the card stops working and that appealing holds it off,
-            // because a message that only announces a penalty gives the reader
-            // no reason to open the app before it lands on them.
+            // No fine yet. It is raised when the violation becomes Accountable,
+            // so a violation that is dismissed or appealed successfully never
+            // shows up as money owed.
             var suspensionNote = (suspensionType, isImmediate) switch
             {
                 (SuspensionType.None, _) => string.Empty,
@@ -199,9 +204,9 @@ namespace AimPark.API.Services
                 // Somebody whose card has already stopped working will assume
                 // otherwise, and that assumption is what stops them appealing.
                 (SuspensionType.Permanent, true) =>
-                    " Your RFID access has been suspended, effective now. You can still appeal this.",
+                    " Your RFID access has been suspended, effective now.",
                 (SuspensionType.Temporary, true) =>
-                    $" Your RFID access has been suspended for {suspensionDays} day(s), effective now. You can still appeal this.",
+                    $" Your RFID access has been suspended for {suspensionDays} day(s), effective now.",
 
                 (SuspensionType.Permanent, false) =>
                     $" Your RFID access will be suspended on {suspensionStartsAt:MMM d}. Appeal before then and it is put on hold until a decision is made.",
@@ -209,11 +214,15 @@ namespace AimPark.API.Services
                     $" Your RFID access will be suspended for {suspensionDays} day(s) starting {suspensionStartsAt:MMM d}. Appeal before then and it is put on hold until a decision is made.",
             };
 
+            var penaltyNote = violation.PenaltyAmount > 0
+                ? $" If it stands, a penalty of ₱{violation.PenaltyAmount:0.00} applies."
+                : string.Empty;
+
             await _notificationService.NotifyUserAsync(
                 user.Id,
                 NotificationType.Violation,
                 $"Violation: {rule.Title}",
-                $"A penalty of ₱{penaltyAmount:0.00} has been issued.{suspensionNote} Open the app to view details or appeal.",
+                $"A violation has been issued to you.{penaltyNote}{suspensionNote} You can appeal until {violation.AppealDeadline:MMM d}. Open the app to view details or appeal.",
                 new Dictionary<string, string> { ["violationId"] = violation.Id.ToString() },
                 ct);
 
@@ -226,129 +235,140 @@ namespace AimPark.API.Services
 
         // GET /api/violations/{id}
         public Task<ActionResult<ViolationDetailResponse>> GetMyViolationDetailAsync(Guid userId, Guid violationId, CancellationToken ct)
-            => GetViolationDetailAsync(v => v.Id == violationId && v.UserId == userId, ct);
+            => GetViolationDetailAsync(v => v.Id == violationId && v.UserId == userId, forAdmin: false, ct);
 
         // GET /api/admin/violations
-        public Task<ActionResult<ViolationListResponse>> ListAllAsync(string? status, int page, int pageSize, CancellationToken ct)
+        public Task<ActionResult<ViolationListResponse>> ListAllAsync(
+            string? status, string? search, Guid? userId, Guid? ruleId,
+            int page, int pageSize, CancellationToken ct)
         {
             var query = _db.Set<Violation>().AsNoTracking();
+
             if (!string.IsNullOrWhiteSpace(status) && Enum.TryParse<ViolationStatus>(status, true, out var parsedStatus))
                 query = query.Where(v => v.Status == parsedStatus);
+
+            if (userId is not null)
+                query = query.Where(v => v.UserId == userId);
+
+            if (ruleId is not null)
+                query = query.Where(v => v.PolicyRuleId == ruleId);
+
+            // One box for every way an admin knows a person: their name, their
+            // student number, or the tag number off the card in their hand.
+            if (!string.IsNullOrWhiteSpace(search))
+            {
+                var term = search.Trim().ToLower();
+                query = query.Where(v =>
+                    v.User.FullName.ToLower().Contains(term) ||
+                    (v.User.StudentNumber != null && v.User.StudentNumber.ToLower().Contains(term)) ||
+                    (v.User.RfidTagId != null && v.User.RfidTagId.ToLower().Contains(term)) ||
+                    (v.RfidTagIdAtIssue != null && v.RfidTagIdAtIssue.ToLower().Contains(term)));
+            }
 
             return ListViolationsAsync(query, page, pageSize, ct);
         }
 
         // GET /api/admin/violations/{id}
         public Task<ActionResult<ViolationDetailResponse>> GetDetailForAdminAsync(Guid violationId, CancellationToken ct)
-            => GetViolationDetailAsync(v => v.Id == violationId, ct);
+            => GetViolationDetailAsync(v => v.Id == violationId, forAdmin: true, ct);
 
         // PUT /api/admin/violations/{id}/dismiss
-        public async Task<ActionResult<object>> DismissAsync(Guid violationId, Guid adminUserId, CancellationToken ct)
+        public async Task<ActionResult<object>> DismissAsync(
+            Guid violationId, Guid adminUserId, ViolationReasonDto dto, CancellationToken ct)
         {
+            if (string.IsNullOrWhiteSpace(dto.Reason))
+                return new BadRequestObjectResult(new { message = "A reason is required to dismiss a violation." });
+
             var violation = await _violations.FindAsync(v => v.Id == violationId, ct);
             if (violation is null)
                 return new NotFoundObjectResult(new { message = "Violation not found." });
 
-            if (violation.Status is ViolationStatus.Overturned or ViolationStatus.Dismissed)
-                return new BadRequestObjectResult(new { message = "This violation is already resolved." });
+            // Accountable and Appealed are decided cases. Dismissing one would
+            // quietly undo a decision that the user was already told about.
+            if (violation.Status is not (ViolationStatus.Issued or ViolationStatus.PendingAppeal))
+                return new BadRequestObjectResult(new { message = "Only an Issued or Pending Appeal violation can be dismissed." });
 
+            var now = DateTime.UtcNow;
             violation.Status = ViolationStatus.Dismissed;
-            violation.UpdatedAt = DateTime.UtcNow;
+            violation.DismissedAt = now;
+            violation.DismissedByUserId = adminUserId;
+            violation.DismissReason = dto.Reason.Trim();
+            violation.UpdatedAt = now;
             _violations.Update(violation);
-            await _violations.SaveAsync(ct);
 
-            if (violation.SuspensionType != SuspensionType.None)
+            // A waiting appeal has nothing left to decide. Left Pending, it sat
+            // in the appeals queue forever.
+            var appeal = await _appeals.FindAsync(
+                a => a.ViolationId == violationId && a.Status == AppealStatus.Pending, ct);
+            if (appeal is not null)
             {
-                var user = await _users.FindAsync(u => u.Id == violation.UserId, ct);
-                if (user is not null)
-                {
-                    ReverseSuspension(user);
-                    _users.Update(user);
-                    await _users.SaveAsync(ct);
-                }
+                appeal.Status = AppealStatus.Dismissed;
+                appeal.DecidedByUserId = adminUserId;
+                appeal.DecidedAt = now;
+                appeal.AdminNotes = violation.DismissReason;
+                _appeals.Update(appeal);
             }
 
+            await _violations.SaveAsync(ct);
+
+            await LiftSuspensionIfNothingElseHoldsAsync(violation, ct);
+
+            // There should be no fine before Accountable; this only cleans up
+            // one raised under the old process.
             await _paymentService.WaiveForViolationAsync(violationId, ct);
 
             await _notificationService.NotifyUserAsync(
                 violation.UserId,
                 NotificationType.Violation,
                 "Violation dismissed",
-                "A violation on your record has been dismissed and its penalty waived.",
+                $"A violation on your record has been dismissed. No penalty applies. Reason: {violation.DismissReason}",
                 new Dictionary<string, string> { ["violationId"] = violation.Id.ToString() },
                 ct);
 
             return new OkObjectResult(new { message = "Violation dismissed." });
         }
 
-        // PUT /api/admin/violations/{id}
-        public async Task<ActionResult<object>> UpdateAsync(
-            Guid violationId, Guid adminUserId, UpdateViolationDto dto, CancellationToken ct)
+        // PUT /api/admin/violations/{id}/accountable
+        public async Task<ActionResult<object>> MakeAccountableAsync(
+            Guid violationId, Guid adminUserId, ViolationReasonDto dto, CancellationToken ct)
         {
-            if (string.IsNullOrWhiteSpace(dto.Description))
-                return new BadRequestObjectResult(new { message = "Description is required." });
-
-            if (dto.PenaltyAmount < 0)
-                return new BadRequestObjectResult(new { message = "Penalty amount must be zero or greater." });
-
-            if (!Enum.TryParse<SuspensionType>(dto.SuspensionType, true, out var suspensionType))
-                return new BadRequestObjectResult(new { message = "Invalid suspension type." });
-
-            if (suspensionType == SuspensionType.Temporary && (dto.SuspensionDays is null || dto.SuspensionDays <= 0))
-                return new BadRequestObjectResult(new { message = "Temporary suspension requires a positive number of days." });
+            if (string.IsNullOrWhiteSpace(dto.Reason))
+                return new BadRequestObjectResult(new { message = "A reason is required." });
 
             var violation = await _violations.FindAsync(v => v.Id == violationId, ct);
             if (violation is null)
                 return new NotFoundObjectResult(new { message = "Violation not found." });
 
-            // Editable only while untouched. Once it has been appealed or decided,
-            // this row is the thing both sides argued about.
+            // Not while an appeal is waiting: that has to be read and rejected,
+            // not skipped over.
             if (violation.Status != ViolationStatus.Issued)
-                return new BadRequestObjectResult(new
-                {
-                    message = "Only a violation still in Issued status can be edited."
-                });
+                return new BadRequestObjectResult(new { message = "Only an Issued violation can be made accountable directly." });
 
-            var previousSuspension = violation.SuspensionType;
+            var revoked = await MarkAccountableAsync(
+                violation, $"Marked by admin: {dto.Reason.Trim()}", adminUserId, startSuspensionNow: true, ct);
 
-            violation.Description = dto.Description.Trim();
-            violation.PenaltyAmount = dto.PenaltyAmount;
-            violation.SuspensionType = suspensionType;
-            violation.SuspensionDays = suspensionType == SuspensionType.Temporary ? dto.SuspensionDays : null;
-            violation.UpdatedAt = DateTime.UtcNow;
-
-            _violations.Update(violation);
-            await _violations.SaveAsync(ct);
-
-            // Correcting the penalty has to correct the access consequence too,
-            // or a user stays locked out over a suspension that was withdrawn.
-            if (previousSuspension != suspensionType)
+            return new OkObjectResult(new
             {
-                var user = await _users.FindAsync(u => u.Id == violation.UserId, ct);
-                if (user is not null)
-                {
-                    if (suspensionType == SuspensionType.None)
-                        ReverseSuspension(user);
-                    else
-                        ApplySuspension(user, suspensionType, violation.SuspensionDays);
+                message = revoked
+                    ? "User is now accountable. This was their third accountable violation, so their RFID card was revoked."
+                    : "User is now accountable."
+            });
+        }
 
-                    _users.Update(user);
-                    await _users.SaveAsync(ct);
-                }
-            }
+        // Run by ViolationDeadlineService.
+        public async Task<int> PromoteLapsedAsync(DateTime now, CancellationToken ct)
+        {
+            var lapsed = await _db.Set<Violation>()
+                .Where(v => v.Status == ViolationStatus.Issued && v.AppealDeadline <= now)
+                .OrderBy(v => v.AppealDeadline)
+                .ToListAsync(ct);
 
-            // The penalty may have moved, so the outstanding fee has to follow.
-            await _paymentService.UpdateViolationAmountAsync(violation.Id, dto.PenaltyAmount, ct);
+            // The suspension was scheduled at issue to start at the end of the
+            // rule's window, so it is already in force — only the case closes.
+            foreach (var violation in lapsed)
+                await MarkAccountableAsync(violation, "Appeal deadline passed", null, startSuspensionNow: false, ct);
 
-            await _notificationService.NotifyUserAsync(
-                violation.UserId,
-                NotificationType.Violation,
-                "Violation updated",
-                $"A violation on your record was corrected. Penalty is now ₱{dto.PenaltyAmount:0.00}.",
-                new Dictionary<string, string> { ["violationId"] = violation.Id.ToString() },
-                ct);
-
-            return new OkObjectResult(new { message = "Violation updated." });
+            return lapsed.Count;
         }
 
         // ---------- Appeals ----------
@@ -365,6 +385,10 @@ namespace AimPark.API.Services
 
             if (violation.Status != ViolationStatus.Issued)
                 return new BadRequestObjectResult(new { message = "This violation cannot be appealed." });
+
+            // The deadline job may not have run yet; the deadline is still the deadline.
+            if (DateTime.UtcNow > violation.AppealDeadline)
+                return new BadRequestObjectResult(new { message = "The appeal period for this violation has ended." });
 
             var alreadyAppealed = await _appeals.ExistsAsync(a => a.ViolationId == violationId, ct);
             if (alreadyAppealed)
@@ -395,7 +419,7 @@ namespace AimPark.API.Services
 
             await _appeals.AddAsync(appeal, ct);
 
-            violation.Status = ViolationStatus.Appealed;
+            violation.Status = ViolationStatus.PendingAppeal;
             violation.UpdatedAt = DateTime.UtcNow;
             _violations.Update(violation);
 
@@ -413,7 +437,7 @@ namespace AimPark.API.Services
                 var user = await _users.FindAsync(u => u.Id == userId, ct);
                 if (user is not null
                     && RfidAccess.IsSuspensionPending(user, now)
-                    && !await HasOtherSuspendingViolationAsync(userId, violationId, ct))
+                    && !await HasOtherSuspendingViolationAsync(userId, violationId, now, ct))
                 {
                     RfidAccess.Reactivate(user, now);
                     _users.Update(user);
@@ -465,6 +489,10 @@ namespace AimPark.API.Services
                 {
                     AppealId = a.Id,
                     ViolationId = a.ViolationId,
+                    PolicyRuleTitle = a.Violation.PolicyRule.Title,
+                    UserFullName = a.Violation.User.FullName,
+                    RfidTagId = a.Violation.RfidTagIdAtIssue ?? a.Violation.User.RfidTagId,
+                    ViolationStatus = a.Violation.Status.ToString(),
                     ReasonText = a.ReasonText,
                     Status = a.Status.ToString(),
                     AdminNotes = a.AdminNotes,
@@ -509,6 +537,10 @@ namespace AimPark.API.Services
         // PUT /api/admin/violations/appeals/{id}/decide
         public async Task<ActionResult<object>> DecideAppealAsync(Guid appealId, Guid adminUserId, DecideAppealDto dto, CancellationToken ct)
         {
+            // Rejecting means the user stays punished; they are owed the reason.
+            if (!dto.Approve && string.IsNullOrWhiteSpace(dto.AdminNotes))
+                return new BadRequestObjectResult(new { message = "A reason is required to reject an appeal." });
+
             var appeal = await _appeals.FindAsync(a => a.Id == appealId, ct);
             if (appeal is null)
                 return new NotFoundObjectResult(new { message = "Appeal not found." });
@@ -520,66 +552,56 @@ namespace AimPark.API.Services
             if (violation is null)
                 return new NotFoundObjectResult(new { message = "Violation not found." });
 
+            if (violation.Status != ViolationStatus.PendingAppeal)
+                return new BadRequestObjectResult(new { message = "This violation is no longer waiting on an appeal." });
+
+            var notes = string.IsNullOrWhiteSpace(dto.AdminNotes) ? null : dto.AdminNotes.Trim();
+            var now = DateTime.UtcNow;
+
             appeal.Status = dto.Approve ? AppealStatus.Approved : AppealStatus.Denied;
-            appeal.AdminNotes = dto.AdminNotes;
+            appeal.AdminNotes = notes;
             appeal.DecidedByUserId = adminUserId;
-            appeal.DecidedAt = DateTime.UtcNow;
+            appeal.DecidedAt = now;
             _appeals.Update(appeal);
 
-            violation.Status = dto.Approve ? ViolationStatus.Overturned : ViolationStatus.Upheld;
-            violation.UpdatedAt = DateTime.UtcNow;
-            _violations.Update(violation);
-
-            await _appeals.SaveAsync(ct);
-
-            if (violation.SuspensionType != SuspensionType.None)
+            if (!dto.Approve)
             {
-                var user = await _users.FindAsync(u => u.Id == violation.UserId, ct);
-                if (user is not null)
+                await _appeals.SaveAsync(ct);
+
+                // Submitting the appeal lifted the pending suspension. Losing
+                // it puts it back, and it starts now rather than on the
+                // original date, which by the time an appeal has been read is
+                // usually in the past.
+                var revoked = await MarkAccountableAsync(
+                    violation, $"Appeal rejected: {notes}", adminUserId, startSuspensionNow: true, ct);
+
+                return new OkObjectResult(new
                 {
-                    if (dto.Approve)
-                    {
-                        // Only if nothing else is holding them suspended — see
-                        // HasOtherSuspendingViolationAsync.
-                        if (!await HasOtherSuspendingViolationAsync(violation.UserId, violation.Id, ct))
-                        {
-                            ReverseSuspension(user);
-                            _users.Update(user);
-                            await _users.SaveAsync(ct);
-                        }
-                    }
-                    else
-                    {
-                        // Submitting the appeal lifted the pending suspension.
-                        // Losing it puts it back, and it starts now rather than
-                        // on the original date, which by the time an appeal has
-                        // been read is usually in the past.
-                        ApplySuspension(user, violation.SuspensionType, violation.SuspensionDays);
-                        _users.Update(user);
-                        await _users.SaveAsync(ct);
-                    }
-                }
+                    message = revoked
+                        ? "Appeal rejected. This was the user's third accountable violation, so their RFID card was revoked."
+                        : "Appeal rejected. The user is now accountable."
+                });
             }
 
-            if (dto.Approve)
-                await _paymentService.WaiveForViolationAsync(violation.Id, ct);
+            violation.Status = ViolationStatus.Appealed;
+            violation.UpdatedAt = now;
+            _violations.Update(violation);
+            await _appeals.SaveAsync(ct);
+
+            await LiftSuspensionIfNothingElseHoldsAsync(violation, ct);
+            await _paymentService.WaiveForViolationAsync(violation.Id, ct);
 
             // An appeal the user never hears back on is worse than no appeal.
-            var notes = string.IsNullOrWhiteSpace(dto.AdminNotes) ? "" : $" Note: {dto.AdminNotes}";
-
+            var noteText = notes is null ? "" : $" Note: {notes}";
             await _notificationService.NotifyUserAsync(
                 violation.UserId,
                 NotificationType.Violation,
-                dto.Approve ? "Appeal approved" : "Appeal denied",
-                dto.Approve
-                    ? $"Your appeal was approved. The violation has been overturned and the penalty waived.{notes}"
-                    : violation.SuspensionType != SuspensionType.None
-                        ? $"Your appeal was reviewed and the violation stands. Your RFID access is now suspended.{notes}"
-                        : $"Your appeal was reviewed and the violation stands.{notes}",
+                "Appeal approved",
+                $"Your appeal was approved. The violation has been cleared and no penalty applies.{noteText}",
                 new Dictionary<string, string> { ["violationId"] = violation.Id.ToString() },
                 ct);
 
-            return new OkObjectResult(new { message = "Appeal decided." });
+            return new OkObjectResult(new { message = "Appeal accepted. The violation is cleared." });
         }
 
         // ---------- Helpers ----------
@@ -590,12 +612,105 @@ namespace AimPark.API.Services
         /// value lives and where an admin can set it to zero for a rule that
         /// has to stop somebody today.
         /// </summary>
-        /// <remarks>
-        /// Only violations schedule ahead. An admin suspending an account by
-        /// hand is a deliberate act about that account, not an automatic penalty
-        /// attached to a rule, and takes effect at once.
-        /// </remarks>
         public const int DefaultAppealWindowDays = 3;
+
+        /// <summary>
+        /// Closes a case against the user: status, timestamps, the fine, the
+        /// suspension if asked, the three-strike check, and the notice. The one
+        /// path every route to Accountable goes through, so none of them can
+        /// forget a step.
+        /// </summary>
+        /// <param name="actorUserId">The admin responsible, or null when the deadline lapsed.</param>
+        /// <param name="startSuspensionNow">
+        /// True when the suspension should bite from now — a rejected appeal
+        /// (submitting it lifted the scheduled one) or an admin cutting the
+        /// window short. False when the scheduled suspension already started.
+        /// </param>
+        /// <returns>True if this cost the user their RFID card.</returns>
+        private async Task<bool> MarkAccountableAsync(
+            Violation violation, string reason, Guid? actorUserId, bool startSuspensionNow, CancellationToken ct)
+        {
+            var now = DateTime.UtcNow;
+            violation.Status = ViolationStatus.Accountable;
+            violation.AccountableAt = now;
+            violation.AccountableByUserId = actorUserId;
+            violation.AccountableReason = reason;
+            violation.UpdatedAt = now;
+            _violations.Update(violation);
+            await _violations.SaveAsync(ct);
+
+            var user = await _users.FindAsync(u => u.Id == violation.UserId, ct);
+
+            if (user is not null && startSuspensionNow && violation.SuspensionType != SuspensionType.None)
+            {
+                ApplySuspension(user, violation.SuspensionType, violation.SuspensionDays);
+                _users.Update(user);
+                await _users.SaveAsync(ct);
+            }
+
+            // The fine exists from here on, never before.
+            var hasFine = violation.PenaltyAmount > 0
+                && !await _db.Set<PaymentTransaction>().AnyAsync(p => p.ViolationId == violation.Id, ct);
+            if (hasFine)
+                await _paymentService.CreateForViolationAsync(violation, ct);
+
+            var revoked = user is not null && await EnforceStrikesAsync(user, violation, actorUserId, ct);
+
+            var parts = new List<string> { "You are accountable for this violation." };
+            if (violation.PenaltyAmount > 0)
+                parts.Add($"A penalty of ₱{violation.PenaltyAmount:0.00} is now due.");
+            if (violation.SuspensionType != SuspensionType.None && !revoked)
+                parts.Add("Your RFID access is suspended as the rule requires.");
+            if (reason.StartsWith("Appeal rejected"))
+                parts.Insert(0, "Your appeal was reviewed and the violation stands.");
+
+            await _notificationService.NotifyUserAsync(
+                violation.UserId,
+                NotificationType.Violation,
+                "Violation upheld",
+                string.Join(' ', parts),
+                new Dictionary<string, string> { ["violationId"] = violation.Id.ToString() },
+                ct);
+
+            return revoked;
+        }
+
+        /// <summary>
+        /// Revokes the user's RFID card once they have
+        /// <see cref="StrikesBeforeRevoke"/> Accountable violations, whatever
+        /// rules those were.
+        /// </summary>
+        /// <remarks>
+        /// Counts Accountable only — never a violation still open to appeal —
+        /// so nobody loses their card over a case they could yet win. Since
+        /// Accountable is final, the count never goes back down. A user with no
+        /// card has nothing to take and is skipped.
+        /// </remarks>
+        private async Task<bool> EnforceStrikesAsync(User user, Violation trigger, Guid? actorUserId, CancellationToken ct)
+        {
+            var strikes = await _db.Set<Violation>()
+                .CountAsync(v => v.UserId == user.Id && v.Status == ViolationStatus.Accountable, ct);
+
+            if (strikes < StrikesBeforeRevoke)
+                return false;
+
+            if (!await _adminUsers.RevokeForViolationLimitAsync(user, actorUserId ?? Guid.Empty, ct))
+                return false;
+
+            trigger.RfidRevokedAt = DateTime.UtcNow;
+            _violations.Update(trigger);
+            await _db.SaveChangesAsync(ct);
+
+            await _notificationService.NotifyUserAsync(
+                user.Id,
+                NotificationType.Violation,
+                "RFID card revoked",
+                $"You now have {strikes} accountable violations, so your RFID card has been revoked. Please see the parking office.",
+                new Dictionary<string, string> { ["violationId"] = trigger.Id.ToString() },
+                ct);
+
+            return true;
+        }
 
         /// <param name="startsAt">
         /// When the suspension begins. Null means immediately.
@@ -617,26 +732,59 @@ namespace AimPark.API.Services
             user.UpdatedAt = now;
         }
 
-        private static void ReverseSuspension(User user)
-            => RfidAccess.Reactivate(user, DateTime.UtcNow);
+        /// <summary>
+        /// Lifts the suspension a cleared violation carried — unless another
+        /// violation is still holding the card.
+        /// </summary>
+        /// <remarks>
+        /// Dismiss used to lift it unconditionally, so dismissing one violation
+        /// unlocked a card that a different one had legitimately locked.
+        /// </remarks>
+        private async Task LiftSuspensionIfNothingElseHoldsAsync(Violation violation, CancellationToken ct)
+        {
+            if (violation.SuspensionType == SuspensionType.None)
+                return;
+
+            var now = DateTime.UtcNow;
+            if (await HasOtherSuspendingViolationAsync(violation.UserId, violation.Id, now, ct))
+                return;
+
+            var user = await _users.FindAsync(u => u.Id == violation.UserId, ct);
+            if (user is null || user.RfidStatus != RfidStatus.Suspended)
+                return;
+
+            RfidAccess.Reactivate(user, now);
+            _users.Update(user);
+            await _users.SaveAsync(ct);
+        }
 
         /// <summary>
         /// Whether any other violation still justifies keeping this user
         /// suspended.
         /// </summary>
         /// <remarks>
-        /// Guards the two places that lift a suspension. Without it, appealing
-        /// the second of two suspending violations would unlock the card that
-        /// the first one legitimately locked.
+        /// An Issued one always does (its suspension is scheduled or running).
+        /// An Accountable one does while its suspension could still be running:
+        /// permanent, or temporary and not yet served. A served one does not —
+        /// otherwise one old, finished suspension would keep every later
+        /// lifted one in force.
         /// </remarks>
-        private Task<bool> HasOtherSuspendingViolationAsync(
-            Guid userId, Guid exceptViolationId, CancellationToken ct)
-            => _db.Set<Violation>().AnyAsync(
-                v => v.UserId == userId
-                     && v.Id != exceptViolationId
-                     && v.SuspensionType != SuspensionType.None
-                     && (v.Status == ViolationStatus.Issued || v.Status == ViolationStatus.Upheld),
-                ct);
+        private async Task<bool> HasOtherSuspendingViolationAsync(
+            Guid userId, Guid exceptViolationId, DateTime now, CancellationToken ct)
+        {
+            var others = await _db.Set<Violation>().AsNoTracking()
+                .Where(v => v.UserId == userId
+                         && v.Id != exceptViolationId
+                         && v.SuspensionType != SuspensionType.None
+                         && (v.Status == ViolationStatus.Issued || v.Status == ViolationStatus.Accountable))
+                .Select(v => new { v.Status, v.SuspensionType, v.SuspensionDays, v.AccountableAt })
+                .ToListAsync(ct);
+
+            return others.Any(v =>
+                v.Status == ViolationStatus.Issued
+                || v.SuspensionType == SuspensionType.Permanent
+                || (v.AccountableAt ?? now).AddDays(v.SuspensionDays ?? 0) > now);
+        }
 
         private static BadRequestObjectResult? ValidateRuleDto(
             UpsertPolicyRuleDto dto,
@@ -679,7 +827,15 @@ namespace AimPark.API.Services
                 .Select(v => new ViolationSummaryResponse
                 {
                     ViolationId = v.Id,
+                    PolicyRuleId = v.PolicyRuleId,
                     PolicyRuleTitle = v.PolicyRule.Title,
+                    UserId = v.UserId,
+                    UserFullName = v.User.FullName,
+                    StudentNumber = v.User.StudentNumber,
+                    // The card it was issued against, not whatever the user
+                    // holds now — a revoked card would otherwise blank the history.
+                    RfidTagId = v.RfidTagIdAtIssue ?? v.User.RfidTagId,
+                    AppealDeadline = v.AppealDeadline,
                     Status = v.Status.ToString(),
                     PenaltyAmount = v.PenaltyAmount,
                     SuspensionType = v.SuspensionType.ToString(),
@@ -723,26 +879,45 @@ namespace AimPark.API.Services
         }
 
         private async Task<ActionResult<ViolationDetailResponse>> GetViolationDetailAsync(
-            System.Linq.Expressions.Expression<Func<Violation, bool>> predicate, CancellationToken ct)
+            System.Linq.Expressions.Expression<Func<Violation, bool>> predicate, bool forAdmin, CancellationToken ct)
         {
-            var violation = await _db.Set<Violation>().AsNoTracking()
+            var row = await _db.Set<Violation>().AsNoTracking()
                 .Where(predicate)
-                .Select(v => new ViolationDetailResponse
-                {
-                    ViolationId = v.Id,
-                    PolicyRuleTitle = v.PolicyRule.Title,
-                    Description = v.Description,
-                    PenaltyAmount = v.PenaltyAmount,
-                    SuspensionType = v.SuspensionType.ToString(),
-                    SuspensionDays = v.SuspensionDays,
-                    Status = v.Status.ToString(),
-                    CreatedAt = v.CreatedAt,
-                    UpdatedAt = v.UpdatedAt
-                })
+                .Include(v => v.PolicyRule)
+                .Include(v => v.User)
                 .FirstOrDefaultAsync(ct);
 
-            if (violation is null)
+            if (row is null)
                 return new NotFoundObjectResult(new { message = "Violation not found." });
+
+            var violation = new ViolationDetailResponse
+            {
+                ViolationId = row.Id,
+                PolicyRuleTitle = row.PolicyRule.Title,
+                Description = row.Description,
+                PenaltyAmount = row.PenaltyAmount,
+                SuspensionType = row.SuspensionType.ToString(),
+                SuspensionDays = row.SuspensionDays,
+                Status = row.Status.ToString(),
+                CreatedAt = row.CreatedAt,
+                UpdatedAt = row.UpdatedAt,
+                AppealDeadline = row.AppealDeadline,
+                Rule = ToRuleResponse(row.PolicyRule),
+                UserId = row.UserId,
+                UserFullName = row.User.FullName,
+                StudentNumber = row.User.StudentNumber,
+                RfidTagId = row.User.RfidTagId,
+                RfidTagIdAtIssue = row.RfidTagIdAtIssue,
+                RfidStatus = row.User.RfidStatus.ToString(),
+                AccountableAt = row.AccountableAt,
+                AccountableReason = row.AccountableReason,
+                DismissedAt = row.DismissedAt,
+                DismissReason = row.DismissReason,
+                RfidRevokedAt = row.RfidRevokedAt
+            };
+
+            violation.AccountableCount = await _db.Set<Violation>()
+                .CountAsync(v => v.UserId == row.UserId && v.Status == ViolationStatus.Accountable, ct);
 
             // Same join as the list, for the same reason — plus the amount and the
             // deadline, because this is the screen someone opens to find out what
@@ -765,6 +940,8 @@ namespace AimPark.API.Services
 
             if (appeal is not null)
             {
+                violation.AppealId = appeal.Id;
+                violation.AppealCreatedAt = appeal.CreatedAt;
                 violation.AppealStatus = appeal.Status.ToString();
                 violation.AppealReasonText = appeal.ReasonText;
                 violation.AppealAdminNotes = appeal.AdminNotes;
@@ -776,6 +953,33 @@ namespace AimPark.API.Services
 
                 foreach (var item in evidence)
                     violation.AppealEvidenceUrls.Add(await _fileStorage.GetFileUrlAsync(item.StoragePath, ct));
+            }
+
+            // Who did what is for the admin timeline. The user sees what
+            // happened and when, not which staff member pressed the button.
+            if (forAdmin)
+            {
+                var actorIds = new[]
+                    {
+                        (Guid?)row.IssuedByUserId, row.AccountableByUserId,
+                        row.DismissedByUserId, appeal?.DecidedByUserId
+                    }
+                    .Where(id => id is not null && id != Guid.Empty)
+                    .Select(id => id!.Value)
+                    .Distinct()
+                    .ToList();
+
+                var names = await _db.Set<User>().AsNoTracking()
+                    .Where(u => actorIds.Contains(u.Id))
+                    .ToDictionaryAsync(u => u.Id, u => u.FullName, ct);
+
+                string? NameOf(Guid? id) =>
+                    id is { } value && names.TryGetValue(value, out var name) ? name : null;
+
+                violation.IssuedByName = NameOf(row.IssuedByUserId);
+                violation.AccountableByName = NameOf(row.AccountableByUserId);
+                violation.DismissedByName = NameOf(row.DismissedByUserId);
+                violation.AppealDecidedByName = NameOf(appeal?.DecidedByUserId);
             }
 
             return new OkObjectResult(violation);

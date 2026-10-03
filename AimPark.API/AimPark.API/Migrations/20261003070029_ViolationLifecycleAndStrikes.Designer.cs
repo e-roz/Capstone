@@ -3,6 +3,7 @@ using System;
 using AimPark.API.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -11,9 +12,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace AimPark.API.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20261003070029_ViolationLifecycleAndStrikes")]
+    partial class ViolationLifecycleAndStrikes
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -1631,50 +1634,10 @@ namespace AimPark.API.Migrations
                     b.ToTable("ViolationAppeals");
                 });
 
-            modelBuilder.Entity("AimPark.API.Entities.VisitorCard", b =>
-                {
-                    b.Property<string>("RfidTagId")
-                        .HasMaxLength(64)
-                        .HasColumnType("character varying(64)");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<string>("Label")
-                        .IsRequired()
-                        .HasMaxLength(20)
-                        .HasColumnType("character varying(20)");
-
-                    b.Property<string>("Note")
-                        .HasMaxLength(200)
-                        .HasColumnType("character varying(200)");
-
-                    b.Property<string>("State")
-                        .IsRequired()
-                        .HasMaxLength(20)
-                        .HasColumnType("character varying(20)");
-
-                    b.Property<DateTime>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.HasKey("RfidTagId");
-
-                    b.HasIndex("Label")
-                        .IsUnique();
-
-                    b.ToTable("VisitorCards");
-                });
-
             modelBuilder.Entity("AimPark.API.Entities.VisitorPass", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid");
-
-                    b.Property<DateTime?>("CardCollectedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<Guid?>("CardCollectedByUserId")
                         .HasColumnType("uuid");
 
                     b.Property<string>("ContactNumber")

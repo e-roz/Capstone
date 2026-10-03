@@ -20,8 +20,9 @@ namespace AimPark.API.Entities
 
         public string Description { get; set; } = string.Empty;
 
-        // Snapshot from the rule at issue time — admin-overridable, and later rule
-        // changes never retroactively alter an already-issued violation.
+        // Snapshot from the rule at issue time, so later rule changes never
+        // retroactively alter an already-issued violation. Never overridden:
+        // the rule is the penalty.
         public decimal PenaltyAmount { get; set; }
         public SuspensionType SuspensionType { get; set; }
         public int? SuspensionDays { get; set; }
@@ -30,6 +31,35 @@ namespace AimPark.API.Entities
 
         // Admin who issued this — no FK, audit-style reference
         public Guid IssuedByUserId { get; set; }
+
+        /// <summary>
+        /// The card the user held when this was issued. Kept because the card
+        /// can change — and the third strike takes it away — and the record
+        /// should still say which card it was.
+        /// </summary>
+        public string? RfidTagIdAtIssue { get; set; }
+
+        /// <summary>
+        /// Last moment the user can appeal. If they have not by then, the
+        /// violation becomes Accountable on its own.
+        /// </summary>
+        public DateTime AppealDeadline { get; set; }
+
+        // When and why it became Accountable. AccountableByUserId is null when
+        // the deadline lapsed — nobody pressed anything.
+        public DateTime? AccountableAt { get; set; }
+        public Guid? AccountableByUserId { get; set; }
+        public string? AccountableReason { get; set; }
+
+        public DateTime? DismissedAt { get; set; }
+        public Guid? DismissedByUserId { get; set; }
+        public string? DismissReason { get; set; }
+
+        /// <summary>
+        /// Set on the violation that was the user's third Accountable one and
+        /// cost them their RFID card.
+        /// </summary>
+        public DateTime? RfidRevokedAt { get; set; }
 
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
         public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;

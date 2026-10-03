@@ -172,7 +172,9 @@ namespace AimPark.API.Services
             return transaction;
         }
 
-        // Called by ViolationService.DecideAppealAsync (approved) / DismissAsync.
+        // Called by ViolationService when an appeal is accepted or a violation dismissed.
+        // Normally a no-op now that the fine is only raised on Accountable; it
+        // still cleans up a fine raised under the old process.
         public async Task WaiveForViolationAsync(Guid violationId, CancellationToken ct)
         {
             var payment = await _payments.FindAsync(p => p.ViolationId == violationId, ct);
@@ -186,18 +188,6 @@ namespace AimPark.API.Services
                 return;
 
             payment.Status = PaymentStatus.Waived;
-            _payments.Update(payment);
-            await _payments.SaveAsync(ct);
-        }
-
-        // Called by ViolationService.UpdateAsync when a penalty is corrected.
-        public async Task UpdateViolationAmountAsync(Guid violationId, decimal amountDue, CancellationToken ct)
-        {
-            var payment = await _payments.FindAsync(p => p.ViolationId == violationId, ct);
-            if (payment is null || payment.Status != PaymentStatus.Pending)
-                return;
-
-            payment.AmountDue = amountDue;
             _payments.Update(payment);
             await _payments.SaveAsync(ct);
         }

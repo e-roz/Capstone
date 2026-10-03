@@ -323,6 +323,15 @@ namespace AimPark.API.Services
             return new OkObjectResult(new { message });
         }
 
+        // Called by ViolationService on a user's third Accountable violation.
+        public async Task<bool> RevokeForViolationLimitAsync(User user, Guid actorUserId, CancellationToken ct)
+        {
+            var (ok, _) = await RevokeCardAsync(
+                user, actorUserId, RfidRevokeReason.ViolationLimit,
+                "Third accountable violation", ct);
+            return ok;
+        }
+
         // POST /api/admin/users/bulk-revoke-rfid
         //
         // Built for the end-of-year graduation sweep: dozens of cards coming

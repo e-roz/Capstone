@@ -24,7 +24,7 @@ final policyRulesProvider =
 @Deprecated('Will be removed in 3.0. Use Ref instead')
 // ignore: unused_element
 typedef PolicyRulesRef = AutoDisposeFutureProviderRef<List<PolicyRule>>;
-String _$violationListHash() => r'9524b62a5502711b52572229376d8eb35333933c';
+String _$violationListHash() => r'351c7bd3e5d151fe6ac0d5a28a4da24ee3d56e71';
 
 /// See also [violationList].
 @ProviderFor(violationList)
@@ -42,6 +42,166 @@ final violationListProvider =
 @Deprecated('Will be removed in 3.0. Use Ref instead')
 // ignore: unused_element
 typedef ViolationListRef = AutoDisposeFutureProviderRef<ViolationListPage>;
+String _$violationDetailHash() => r'4d7e47a5bada1ba0cee9d99dc770c84f391560c3';
+
+/// Copied from Dart SDK
+class _SystemHash {
+  _SystemHash._();
+
+  static int combine(int hash, int value) {
+    // ignore: parameter_assignments
+    hash = 0x1fffffff & (hash + value);
+    // ignore: parameter_assignments
+    hash = 0x1fffffff & (hash + ((0x0007ffff & hash) << 10));
+    return hash ^ (hash >> 6);
+  }
+
+  static int finish(int hash) {
+    // ignore: parameter_assignments
+    hash = 0x1fffffff & (hash + ((0x03ffffff & hash) << 3));
+    // ignore: parameter_assignments
+    hash = hash ^ (hash >> 11);
+    return 0x1fffffff & (hash + ((0x00003fff & hash) << 15));
+  }
+}
+
+/// One violation with everything the View dialog needs: the user, the full
+/// rule, the appeal and the timeline.
+///
+/// Copied from [violationDetail].
+@ProviderFor(violationDetail)
+const violationDetailProvider = ViolationDetailFamily();
+
+/// One violation with everything the View dialog needs: the user, the full
+/// rule, the appeal and the timeline.
+///
+/// Copied from [violationDetail].
+class ViolationDetailFamily extends Family<AsyncValue<ViolationDetail>> {
+  /// One violation with everything the View dialog needs: the user, the full
+  /// rule, the appeal and the timeline.
+  ///
+  /// Copied from [violationDetail].
+  const ViolationDetailFamily();
+
+  /// One violation with everything the View dialog needs: the user, the full
+  /// rule, the appeal and the timeline.
+  ///
+  /// Copied from [violationDetail].
+  ViolationDetailProvider call(String violationId) {
+    return ViolationDetailProvider(violationId);
+  }
+
+  @override
+  ViolationDetailProvider getProviderOverride(
+    covariant ViolationDetailProvider provider,
+  ) {
+    return call(provider.violationId);
+  }
+
+  static const Iterable<ProviderOrFamily>? _dependencies = null;
+
+  @override
+  Iterable<ProviderOrFamily>? get dependencies => _dependencies;
+
+  static const Iterable<ProviderOrFamily>? _allTransitiveDependencies = null;
+
+  @override
+  Iterable<ProviderOrFamily>? get allTransitiveDependencies =>
+      _allTransitiveDependencies;
+
+  @override
+  String? get name => r'violationDetailProvider';
+}
+
+/// One violation with everything the View dialog needs: the user, the full
+/// rule, the appeal and the timeline.
+///
+/// Copied from [violationDetail].
+class ViolationDetailProvider
+    extends AutoDisposeFutureProvider<ViolationDetail> {
+  /// One violation with everything the View dialog needs: the user, the full
+  /// rule, the appeal and the timeline.
+  ///
+  /// Copied from [violationDetail].
+  ViolationDetailProvider(String violationId)
+    : this._internal(
+        (ref) => violationDetail(ref as ViolationDetailRef, violationId),
+        from: violationDetailProvider,
+        name: r'violationDetailProvider',
+        debugGetCreateSourceHash: const bool.fromEnvironment('dart.vm.product')
+            ? null
+            : _$violationDetailHash,
+        dependencies: ViolationDetailFamily._dependencies,
+        allTransitiveDependencies:
+            ViolationDetailFamily._allTransitiveDependencies,
+        violationId: violationId,
+      );
+
+  ViolationDetailProvider._internal(
+    super._createNotifier, {
+    required super.name,
+    required super.dependencies,
+    required super.allTransitiveDependencies,
+    required super.debugGetCreateSourceHash,
+    required super.from,
+    required this.violationId,
+  }) : super.internal();
+
+  final String violationId;
+
+  @override
+  Override overrideWith(
+    FutureOr<ViolationDetail> Function(ViolationDetailRef provider) create,
+  ) {
+    return ProviderOverride(
+      origin: this,
+      override: ViolationDetailProvider._internal(
+        (ref) => create(ref as ViolationDetailRef),
+        from: from,
+        name: null,
+        dependencies: null,
+        allTransitiveDependencies: null,
+        debugGetCreateSourceHash: null,
+        violationId: violationId,
+      ),
+    );
+  }
+
+  @override
+  AutoDisposeFutureProviderElement<ViolationDetail> createElement() {
+    return _ViolationDetailProviderElement(this);
+  }
+
+  @override
+  bool operator ==(Object other) {
+    return other is ViolationDetailProvider && other.violationId == violationId;
+  }
+
+  @override
+  int get hashCode {
+    var hash = _SystemHash.combine(0, runtimeType.hashCode);
+    hash = _SystemHash.combine(hash, violationId.hashCode);
+
+    return _SystemHash.finish(hash);
+  }
+}
+
+@Deprecated('Will be removed in 3.0. Use Ref instead')
+// ignore: unused_element
+mixin ViolationDetailRef on AutoDisposeFutureProviderRef<ViolationDetail> {
+  /// The parameter `violationId` of this provider.
+  String get violationId;
+}
+
+class _ViolationDetailProviderElement
+    extends AutoDisposeFutureProviderElement<ViolationDetail>
+    with ViolationDetailRef {
+  _ViolationDetailProviderElement(super.provider);
+
+  @override
+  String get violationId => (origin as ViolationDetailProvider).violationId;
+}
+
 String _$violationLogListHash() => r'55231a23e1711f8a4b54d8e57a6e1c467756efd7';
 
 /// See also [violationLogList].
@@ -116,7 +276,7 @@ final policyRuleActionsProvider =
 
 typedef _$PolicyRuleActions = AutoDisposeNotifier<AsyncValue<void>>;
 String _$violationsQueryNotifierHash() =>
-    r'a9c63e94e2eebcc12b9582f6b206b1c19824523c';
+    r'4345802f4327df180055350523e64a44ab913bd3';
 
 /// See also [ViolationsQueryNotifier].
 @ProviderFor(ViolationsQueryNotifier)
@@ -179,7 +339,7 @@ final appealsQueryNotifierProvider =
     );
 
 typedef _$AppealsQueryNotifier = AutoDisposeNotifier<AppealsQuery>;
-String _$violationActionsHash() => r'409f0770711cfbc288dddc75e409a47c50da8c94';
+String _$violationActionsHash() => r'081cadbab58781fcb8402d928922d0da133a5cdf';
 
 /// See also [ViolationActions].
 @ProviderFor(ViolationActions)

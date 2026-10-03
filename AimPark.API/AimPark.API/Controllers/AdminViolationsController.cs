@@ -22,30 +22,36 @@ namespace AimPark.API.Controllers
         public Task<ActionResult<object>> Issue([FromBody] IssueViolationDto dto, CancellationToken ct)
             => _violationService.IssueAsync(dto, GetAdminUserId(), ct);
 
+        /// <summary>
+        /// <paramref name="search"/> matches the user's name, student number
+        /// or RFID tag; <paramref name="userId"/> narrows to one user's whole
+        /// history; <paramref name="ruleId"/> to everyone who broke one rule.
+        /// </summary>
         [HttpGet]
         public Task<ActionResult<ViolationListResponse>> List(
             [FromQuery] string? status = null,
+            [FromQuery] string? search = null,
+            [FromQuery] Guid? userId = null,
+            [FromQuery] Guid? ruleId = null,
             [FromQuery] int page = 1,
             [FromQuery] int pageSize = 20,
             CancellationToken ct = default)
-            => _violationService.ListAllAsync(status, page, pageSize, ct);
+            => _violationService.ListAllAsync(status, search, userId, ruleId, page, pageSize, ct);
 
         [HttpGet("{violationId:guid}")]
         public Task<ActionResult<ViolationDetailResponse>> GetDetail(Guid violationId, CancellationToken ct)
             => _violationService.GetDetailForAdminAsync(violationId, ct);
 
-        /// <summary>
-        /// Corrects an issued violation in place, rather than forcing a
-        /// dismiss-and-reissue that would leave a bogus record on the user.
-        /// </summary>
-        [HttpPut("{violationId:guid}")]
-        public Task<ActionResult<object>> Update(
-            Guid violationId, [FromBody] UpdateViolationDto dto, CancellationToken ct)
-            => _violationService.UpdateAsync(violationId, GetAdminUserId(), dto, ct);
-
         [HttpPut("{violationId:guid}/dismiss")]
-        public Task<ActionResult<object>> Dismiss(Guid violationId, CancellationToken ct)
-            => _violationService.DismissAsync(violationId, GetAdminUserId(), ct);
+        public Task<ActionResult<object>> Dismiss(
+            Guid violationId, [FromBody] ViolationReasonDto dto, CancellationToken ct)
+            => _violationService.DismissAsync(violationId, GetAdminUserId(), dto, ct);
+
+        /// <summary>Makes the user accountable now, without waiting for the appeal deadline.</summary>
+        [HttpPut("{violationId:guid}/accountable")]
+        public Task<ActionResult<object>> MakeAccountable(
+            Guid violationId, [FromBody] ViolationReasonDto dto, CancellationToken ct)
+            => _violationService.MakeAccountableAsync(violationId, GetAdminUserId(), dto, ct);
 
         [HttpGet("appeals")]
         public Task<ActionResult<ViolationAppealListResponse>> ListAppeals(

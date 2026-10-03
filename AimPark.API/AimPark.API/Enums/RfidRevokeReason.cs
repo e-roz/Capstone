@@ -12,6 +12,12 @@ namespace AimPark.API.Enums
         Damaged,
         Lost,
         Stolen,
+
+        /// <summary>
+        /// Taken automatically on the user's third Accountable violation.
+        /// The card itself is fine and goes back into circulation.
+        /// </summary>
+        ViolationLimit,
         Other
     }
 }

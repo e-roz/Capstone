@@ -157,6 +157,8 @@ class ApiEndpoints {
       '/api/admin/violations/$violationId';
   static String dismissViolation(String violationId) =>
       '/api/admin/violations/$violationId/dismiss';
+  static String makeViolationAccountable(String violationId) =>
+      '/api/admin/violations/$violationId/accountable';
   static const violationAppeals = '/api/admin/violations/appeals';
   static String decideAppeal(String appealId) =>
       '/api/admin/violations/appeals/$appealId/decide';

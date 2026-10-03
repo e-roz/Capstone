@@ -125,11 +125,13 @@ abstract class StatusIntents {
         // `Paid` arrives here because a settled violation shows its payment
         // state in place of its appeal state. Without it the badge fell through
         // to the default and a fine the user had just paid stayed red.
-        'resolved' || 'dismissed' || 'overturned' || 'paid' =>
+        //
+        // `Appealed` is the appeal *won*; `Pending Appeal` is still waiting.
+        'resolved' || 'dismissed' || 'appealed' || 'approved' || 'paid' =>
           StatusIntent.success,
-        'appealed' => StatusIntent.warning,
-        'upheld' || 'denied' => StatusIntent.danger,
-        'pending' => StatusIntent.info,
+        'pendingappeal' || 'pending appeal' => StatusIntent.warning,
+        'accountable' || 'denied' => StatusIntent.danger,
+        'pending' || 'issued' => StatusIntent.info,
         _ => StatusIntent.danger,
       };
 

@@ -97,15 +97,57 @@ class ViolationsQuery {
   final int pageSize;
   final String? status;
 
-  const ViolationsQuery({this.page = 1, this.pageSize = 20, this.status});
+  /// Matches name, student number or RFID tag.
+  final String? search;
 
-  ViolationsQuery copyWith(
-          {int? page, int? pageSize, String? status, bool clearStatus = false}) =>
+  /// Narrows to everyone who broke one rule.
+  final String? ruleId;
+
+  /// Narrows to one user's whole history. [userName] is only for the chip
+  /// that shows the filter is on.
+  final String? userId;
+  final String? userName;
+
+  const ViolationsQuery({
+    this.page = 1,
+    this.pageSize = 20,
+    this.status,
+    this.search,
+    this.ruleId,
+    this.userId,
+    this.userName,
+  });
+
+  ViolationsQuery copyWith({
+    int? page,
+    int? pageSize,
+    String? status,
+    bool clearStatus = false,
+    String? search,
+    String? ruleId,
+    bool clearRule = false,
+    String? userId,
+    String? userName,
+    bool clearUser = false,
+  }) =>
       ViolationsQuery(
         page: page ?? this.page,
         pageSize: pageSize ?? this.pageSize,
         status: clearStatus ? null : (status ?? this.status),
+        search: search ?? this.search,
+        ruleId: clearRule ? null : (ruleId ?? this.ruleId),
+        userId: clearUser ? null : (userId ?? this.userId),
+        userName: clearUser ? null : (userName ?? this.userName),
       );
+
+  Map<String, dynamic> toParams() => {
+        'page': page,
+        'pageSize': pageSize,
+        'status': ?status,
+        if (search != null && search!.isNotEmpty) 'search': search,
+        'ruleId': ?ruleId,
+        'userId': ?userId,
+      };
 }
 
 @riverpod
@@ -116,6 +158,16 @@ class ViolationsQueryNotifier extends _$ViolationsQueryNotifier {
   void setPage(int page) => state = state.copyWith(page: page);
   void setStatus(String? status) => state = state.copyWith(
       status: status, clearStatus: status == null, page: 1);
+  void setSearch(String search) =>
+      state = state.copyWith(search: search, page: 1);
+  void setRule(String? ruleId) =>
+      state = state.copyWith(ruleId: ruleId, clearRule: ruleId == null, page: 1);
+
+  /// Shows one user's entire violation history. Clears the other filters so
+  /// the history is not silently cut down to one status or rule.
+  void showUser(String userId, String userName) => state = ViolationsQuery(
+      pageSize: state.pageSize, userId: userId, userName: userName);
+  void clearUser() => state = state.copyWith(clearUser: true, page: 1);
 }
 
 @riverpod
@@ -123,15 +175,20 @@ Future<ViolationListPage> violationList(Ref ref) async {
   final query = ref.watch(violationsQueryNotifierProvider);
   final dio = ref.watch(dioProvider);
 
-  final params = <String, dynamic>{
-    'page': query.page,
-    'pageSize': query.pageSize,
-    if (query.status != null) 'status': query.status,
-  };
+  final params = query.toParams();
 
   final response =
       await dio.get(ApiEndpoints.violations, queryParameters: params);
   return ViolationListPage.fromJson(response.data as Map<String, dynamic>);
+}
+
+/// One violation with everything the View dialog needs: the user, the full
+/// rule, the appeal and the timeline.
+@riverpod
+Future<ViolationDetail> violationDetail(Ref ref, String violationId) async {
+  final dio = ref.watch(dioProvider);
+  final response = await dio.get(ApiEndpoints.violation(violationId));
+  return ViolationDetail.fromJson(response.data as Map<String, dynamic>);
 }
 
 // ── Violation logs (System Logs module) ─────────────────────────────────────
@@ -232,15 +289,12 @@ class ViolationActions extends _$ViolationActions {
   @override
   AsyncValue<void> build() => const AsyncData(null);
 
-  /// Overrides are optional — omitting one falls back to the policy rule's
-  /// default. The API always supported them; the dialog just never sent them.
+  /// The rule decides the penalty, suspension and appeal window — there are
+  /// no overrides to send.
   Future<String?> issue({
     required String userId,
     required String policyRuleId,
     required String description,
-    double? penaltyAmountOverride,
-    String? suspensionTypeOverride,
-    int? suspensionDaysOverride,
   }) =>
       _run(() async {
         final dio = ref.read(dioProvider);
@@ -248,36 +302,25 @@ class ViolationActions extends _$ViolationActions {
           'userId': userId,
           'policyRuleId': policyRuleId,
           'description': description,
-          'penaltyAmountOverride': ?penaltyAmountOverride,
-          'suspensionTypeOverride': ?suspensionTypeOverride,
-          'suspensionDaysOverride': ?suspensionDaysOverride,
         });
         return (res.data as Map<String, dynamic>)['message']?.toString();
       });
 
-  /// Corrects an issued violation in place, instead of dismissing and
-  /// re-issuing — which left a bogus dismissed row on the user's record.
-  Future<String?> update({
-    required String violationId,
-    required String description,
-    required double penaltyAmount,
-    required String suspensionType,
-    int? suspensionDays,
-  }) =>
+  /// For a violation that should never have been issued. Reason required.
+  Future<String?> dismiss(String violationId, String reason) => _run(() async {
+        final dio = ref.read(dioProvider);
+        final res = await dio.put(ApiEndpoints.dismissViolation(violationId),
+            data: {'reason': reason});
+        return (res.data as Map<String, dynamic>)['message']?.toString();
+      });
+
+  /// Makes the user accountable now, without waiting for the appeal deadline.
+  Future<String?> makeAccountable(String violationId, String reason) =>
       _run(() async {
         final dio = ref.read(dioProvider);
-        final res = await dio.put(ApiEndpoints.violation(violationId), data: {
-          'description': description,
-          'penaltyAmount': penaltyAmount,
-          'suspensionType': suspensionType,
-          'suspensionDays': suspensionDays,
-        });
-        return (res.data as Map<String, dynamic>)['message']?.toString();
-      });
-
-  Future<String?> dismiss(String violationId) => _run(() async {
-        final dio = ref.read(dioProvider);
-        final res = await dio.put(ApiEndpoints.dismissViolation(violationId));
+        final res = await dio.put(
+            ApiEndpoints.makeViolationAccountable(violationId),
+            data: {'reason': reason});
         return (res.data as Map<String, dynamic>)['message']?.toString();
       });
 

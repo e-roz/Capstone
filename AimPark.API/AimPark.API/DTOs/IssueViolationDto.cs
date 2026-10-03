@@ -1,26 +1,15 @@
 namespace AimPark.API.DTOs
 {
+    /// <summary>
+    /// What happened and to whom. The penalty, suspension and appeal window
+    /// all come from the policy rule — there are deliberately no override
+    /// fields, so the same rule always means the same punishment.
+    /// </summary>
     public class IssueViolationDto
     {
         public Guid UserId { get; set; }
         public Guid PolicyRuleId { get; set; }
         public string Description { get; set; } = string.Empty;
         public Guid? ParkingLogId { get; set; }
-
-        // Optional overrides — if omitted, the referenced PolicyRule's defaults are used.
-        public decimal? PenaltyAmountOverride { get; set; }
-        public string? SuspensionTypeOverride { get; set; }
-        public int? SuspensionDaysOverride { get; set; }
-
-        /// <summary>
-        /// Days before the suspension starts, overriding the rule's own window.
-        /// Zero suspends immediately.
-        /// </summary>
-        /// <remarks>
-        /// For the case the rule cannot anticipate: the same rule broken in a
-        /// way that has to stop today. Left null the rule decides, which is the
-        /// normal path.
-        /// </remarks>
-        public int? AppealWindowDaysOverride { get; set; }
     }
 }

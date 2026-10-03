@@ -68,7 +68,7 @@ abstract final class Standing {
   /// testers raised.
   static bool countsAgainstUser(ViolationSummary v) {
     final status = v.status.toLowerCase();
-    return status != 'dismissed' && status != 'overturned';
+    return status != 'dismissed' && status != 'appealed';
   }
 
   /// Whether a violation should still be holding the standing meter down.
@@ -86,11 +86,11 @@ abstract final class Standing {
   /// Whether a violation is still open — issued, or under appeal — and so is
   /// something the user has to do something about.
   ///
-  /// `Upheld` is closed: the appeal was heard and lost, and there is nothing
+  /// `Accountable` is closed: the case went against the user, and there is nothing
   /// left to act on but the fee, which the balance covers separately.
   static bool isOpen(ViolationSummary v) {
     final status = v.status.toLowerCase();
-    return status == 'issued' || status == 'appealed';
+    return status == 'issued' || status == 'pendingappeal';
   }
 
   static StandingTier tierFor(ViolationListResult? violations) {
