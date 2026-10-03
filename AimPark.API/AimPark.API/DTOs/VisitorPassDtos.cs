@@ -36,6 +36,16 @@ namespace AimPark.API.DTOs
         public DateTime ExpiresAt { get; set; }
         public DateTime? ReturnedAt { get; set; }
 
+        /// <summary>
+        /// When a guard confirmed the card was back. Null after
+        /// <see cref="ReturnedAt"/> means the visitor left and the card is
+        /// "not yet returned".
+        /// </summary>
+        public DateTime? CardCollectedAt { get; set; }
+
+        /// <summary>What is written on the card, e.g. "V1".</summary>
+        public string? CardLabel { get; set; }
+
         /// <summary>Who handed the card over, for the log.</summary>
         public string? IssuedByName { get; set; }
 

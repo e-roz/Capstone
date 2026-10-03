@@ -267,6 +267,19 @@ namespace AimPark.API.Services
             if (tagInUse)
                 return new BadRequestObjectResult(new { message = "This RFID tag is already assigned to another user." });
 
+            // A visitor card is lent to a different stranger every day. Giving
+            // it to a user too would let the gate read it as theirs, logging a
+            // visitor's car under the user's name and billing them for it.
+            var visitorCard = await _db.Set<VisitorCard>().AsNoTracking()
+                .Where(c => c.RfidTagId == tagId)
+                .Select(c => c.Label)
+                .FirstOrDefaultAsync(ct);
+            if (visitorCard is not null)
+                return new BadRequestObjectResult(new
+                {
+                    message = $"This is visitor card {visitorCard}. Remove it from the visitor cards first, or use another card."
+                });
+
             // A card revoked as lost/stolen/damaged stays blocked forever — see
             // RfidCardState. Everything else (graduated, no longer needed) left
             // a Free row behind, which a straight reassignment now clears.

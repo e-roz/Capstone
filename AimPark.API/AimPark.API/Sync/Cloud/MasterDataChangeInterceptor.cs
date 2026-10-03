@@ -85,7 +85,7 @@ namespace AimPark.API.Sync.Cloud
 
         private static bool IsGateData(Microsoft.EntityFrameworkCore.ChangeTracking.EntityEntry entry) => entry.Entity switch
         {
-            User or Vehicle or VisitorPass or ParkingSlot or ParkingRate => true,
+            User or Vehicle or VisitorPass or VisitorCard or ParkingSlot or ParkingRate => true,
 
             // Not read by a gate decision, but Security works the incident
             // queue at the guard post: a driver's report and an admin's

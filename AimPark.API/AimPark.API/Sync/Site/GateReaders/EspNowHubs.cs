@@ -390,7 +390,11 @@ namespace AimPark.API.Sync.Site.GateReaders
         /// "Sent" is not "opened": if the node can't be reached the hub says
         /// ERR:NOT_DELIVERED, which shows on the node's row.
         /// </summary>
-        public string? OpenManually(string port, string node, string openedBy)
+        /// <param name="logAsManual">
+        /// False when the caller logs the opening itself, e.g. a visitor the
+        /// guard just registered at this gate.
+        /// </param>
+        public string? OpenManually(string port, string node, string openedBy, bool logAsManual = true)
         {
             node = node.ToUpperInvariant();
             HubSession? session;
@@ -410,6 +414,9 @@ namespace AimPark.API.Sync.Site.GateReaders
                 return $"{node} is offline. Check its power, then open the barrier by hand.";
             if (!session.Conversation.Open(node))
                 return $"Could not write to the hub on {port}.";
+
+            if (!logAsManual)
+                return null;
 
             if (deviceId is Guid device)
                 _readers.RecordManualOpen(port, node, device, openedBy);

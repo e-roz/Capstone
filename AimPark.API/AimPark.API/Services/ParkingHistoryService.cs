@@ -768,6 +768,22 @@ namespace AimPark.API.Services
                 }
             }
 
+            // A visitor's pass ends when they leave, in the same save, so the
+            // card can be lent to the next visitor straight away. Whether the
+            // card itself came back is tracked apart — see CardCollectedAt.
+            if (log.VisitorPassId is not null)
+            {
+                var pass = await _db.Set<VisitorPass>()
+                    .FirstOrDefaultAsync(p => p.Id == log.VisitorPassId, ct);
+
+                if (pass is not null && pass.ReturnedAt is null)
+                {
+                    pass.Status = VisitorPassStatus.Returned;
+                    pass.ReturnedAt = log.ExitTime;
+                    pass.UpdatedAt = DateTime.UtcNow;
+                }
+            }
+
             await _logs.SaveAsync(ct);
 
             await AnnounceSlotOpenedAsync(ct);

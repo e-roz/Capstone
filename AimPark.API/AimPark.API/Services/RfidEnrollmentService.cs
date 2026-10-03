@@ -83,7 +83,8 @@ namespace AimPark.API.Services
                 DeviceName = scan.DeviceName,
                 IsAssigned = holder is not null,
                 AssignedToUserId = holder?.Id,
-                AssignedToName = holder?.FullName
+                AssignedToName = holder?.FullName,
+                VisitorCardLabel = await VisitorCardLabelAsync(scan.RfidTagId, ct)
             });
         }
 
@@ -109,8 +110,15 @@ namespace AimPark.API.Services
                 DeviceName = "USB reader",
                 IsAssigned = holder is not null,
                 AssignedToUserId = holder?.Id,
-                AssignedToName = holder?.FullName
+                AssignedToName = holder?.FullName,
+                VisitorCardLabel = await VisitorCardLabelAsync(tag, ct)
             });
         }
+
+        private Task<string?> VisitorCardLabelAsync(string tag, CancellationToken ct) =>
+            _db.Set<VisitorCard>().AsNoTracking()
+                .Where(c => c.RfidTagId == tag)
+                .Select(c => c.Label)
+                .FirstOrDefaultAsync(ct);
     }
 }

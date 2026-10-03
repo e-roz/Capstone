@@ -76,6 +76,26 @@ class ApiEndpoints {
   static const visitorPasses = '/api/security/visitor-passes';
   static String returnVisitorPass(String passId) =>
       '/api/security/visitor-passes/$passId/return';
+  static String confirmVisitorCardReturned(String passId) =>
+      '/api/security/visitor-passes/$passId/card-returned';
+
+  /// Every visitor card and where it is, for the guard.
+  static const securityVisitorCards = '/api/security/visitor-cards';
+
+  /// Idle visitor cards tapped at a gate, waiting for the guard to fill in the
+  /// visitor. Site server only.
+  static const visitorRegistrations = '/api/site/visitor-registrations';
+  static String visitorRegistration(String id) =>
+      '/api/site/visitor-registrations/$id';
+
+  // Admin – the cards set aside for lending to visitors.
+  static const visitorCards = '/api/admin/visitor-cards';
+  static String visitorCard(String rfidTagId) =>
+      '/api/admin/visitor-cards/$rfidTagId';
+  static String blockVisitorCard(String rfidTagId) =>
+      '/api/admin/visitor-cards/$rfidTagId/block';
+  static String unblockVisitorCard(String rfidTagId) =>
+      '/api/admin/visitor-cards/$rfidTagId/unblock';
 
   // Security: attempts the automatic RFID+ALPR check turned away.
   static String dismissGateAccessAttempt(String attemptId) =>

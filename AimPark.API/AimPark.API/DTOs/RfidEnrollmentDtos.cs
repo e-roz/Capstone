@@ -47,5 +47,12 @@ namespace AimPark.API.DTOs
 
         public Guid? AssignedToUserId { get; set; }
         public string? AssignedToName { get; set; }
+
+        /// <summary>
+        /// Set when the card is one of the guard post's visitor cards: its
+        /// label. Such a card can't be given to a user, and only it can be
+        /// lent to a visitor.
+        /// </summary>
+        public string? VisitorCardLabel { get; set; }
     }
 }

@@ -14,6 +14,14 @@ class VisitorPass {
   final DateTime issuedAt;
   final DateTime expiresAt;
   final DateTime? returnedAt;
+
+  /// When a guard confirmed the card was back in the drawer. Null after
+  /// [returnedAt] means the visitor left with it still in hand.
+  final DateTime? cardCollectedAt;
+
+  /// What is written on the card, e.g. "V1".
+  final String? cardLabel;
+
   final String? issuedByName;
 
   /// True while the visitor's vehicle is still in the lot. A card must not be
@@ -34,12 +42,17 @@ class VisitorPass {
     required this.issuedAt,
     required this.expiresAt,
     required this.returnedAt,
+    required this.cardCollectedAt,
+    required this.cardLabel,
     required this.issuedByName,
     required this.isInside,
     required this.slotCode,
   });
 
   bool get isActive => status == 'Active';
+
+  /// The visitor tapped out, but nobody has confirmed the card is back.
+  bool get cardNotYetReturned => returnedAt != null && cardCollectedAt == null;
 
   factory VisitorPass.fromJson(Map<String, dynamic> json) => VisitorPass(
         passId: json['passId']?.toString() ?? '',
@@ -55,6 +68,10 @@ class VisitorPass {
         returnedAt: json['returnedAt'] == null
             ? null
             : DateTime.parse(json['returnedAt'].toString()),
+        cardCollectedAt: json['cardCollectedAt'] == null
+            ? null
+            : DateTime.parse(json['cardCollectedAt'].toString()),
+        cardLabel: json['cardLabel']?.toString(),
         issuedByName: json['issuedByName']?.toString(),
         isInside: json['isInside'] as bool? ?? false,
         slotCode: json['slotCode']?.toString(),

@@ -4,18 +4,27 @@ import 'package:intl/intl.dart';
 
 import '../core/utils/responsive.dart';
 import '../models/security.dart';
+import '../models/visitor_card.dart';
 import '../providers/security_provider.dart';
+import '../providers/visitor_cards_provider.dart';
 import '../theme/theme.dart';
 import '../widgets/rfid_scan_field.dart';
 import '../widgets/ui/ui.dart';
+import '../widgets/visitor_details_fields.dart';
 
 const _passStatuses = ['Active', 'Returned', 'Expired'];
 
-/// The drawer of spare RFID cards, and who is holding them.
+/// The drawer of visitor cards, and who is holding them.
+///
+/// Cards are normally lent at the gate: tapping an idle visitor card pops the
+/// visitor form wherever the guard is (see `VisitorRegistrationWatcher`), and
+/// the visitor's exit tap ends the pass. "Issue a card" here is the desk
+/// fallback for when a gate reader is down.
 ///
 /// Defaults to the Active filter rather than to everything, because the
 /// question a guard actually has is "which of my cards are out?" — the history
-/// matters at the end of the day, and the missing card matters now.
+/// matters at the end of the day, and the missing card matters now. Cards
+/// released at the exit but not handed back show in the strip on top.
 class VisitorPassesScreen extends ConsumerWidget {
   const VisitorPassesScreen({super.key});
 
@@ -26,8 +35,8 @@ class VisitorPassesScreen extends ConsumerWidget {
 
     return AppPage(
       title: 'Visitor Passes',
-      subtitle: 'Lend a spare RFID card to a guest, and take it back when they '
-          'leave.',
+      subtitle: 'Tap an idle visitor card at the entry gate to lend it. The '
+          "visitor's exit tap releases it; mark it returned once it is back.",
       body: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -45,7 +54,10 @@ class VisitorPassesScreen extends ConsumerWidget {
               IconButton(
                 icon: const Icon(Icons.refresh),
                 tooltip: 'Refresh',
-                onPressed: () => ref.invalidate(visitorPassListProvider),
+                onPressed: () {
+                  ref.invalidate(visitorPassListProvider);
+                  ref.invalidate(visitorCardsProvider);
+                },
               ),
               const SizedBox(width: AppSpacing.x2),
               FilledButton.icon(
@@ -56,6 +68,7 @@ class VisitorPassesScreen extends ConsumerWidget {
             ],
           ),
           const SizedBox(height: AppSpacing.headingGap),
+          const _CardStrip(),
           Expanded(
             child: AsyncView(
               value: ref.watch(visitorPassListProvider),
@@ -68,7 +81,7 @@ class VisitorPassesScreen extends ConsumerWidget {
                     ? 'No cards are out'
                     : 'No visitor passes',
                 message: query.status == 'Active'
-                    ? 'Every spare card is in the drawer. Issue one when a guest arrives.'
+                    ? 'Every visitor card is in the drawer. Tap one at the entry gate when a guest arrives.'
                     : 'Clear the filter to see every pass ever issued.',
                 action: FilledButton.icon(
                   onPressed: () => _showIssueDialog(context, ref),
@@ -116,7 +129,7 @@ class VisitorPassesScreen extends ConsumerWidget {
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setState) => AlertDialog(
-          title: const Text('Issue a Visitor Card'),
+          title: const Text('Issue a Visitor Card at the Desk'),
           content: SizedBox(
             width: context.dialogWidth(440),
             child: Form(
@@ -128,52 +141,21 @@ class VisitorPassesScreen extends ConsumerWidget {
                   children: [
                     const AppRequiredNote(),
                     RfidScanField(controller: cardCtrl),
-                    const SizedBox(height: AppSpacing.x3),
-                    TextFormField(
-                      controller: nameCtrl,
-                      textCapitalization: TextCapitalization.words,
-                      decoration: const InputDecoration(
-                        label: AppFieldLabel('Visitor name', isRequired: true),
-                      ),
-                      validator: (v) => (v == null || v.trim().isEmpty)
-                          ? 'The name is required'
-                          : null,
+                    const SizedBox(height: AppSpacing.x2),
+                    Text(
+                      'Only a registered visitor card works. Usually you '
+                      'don\'t need this: tap the card at the entry gate and '
+                      'the form pops up there.',
+                      style: Theme.of(ctx).textTheme.bodySmall,
                     ),
                     const SizedBox(height: AppSpacing.x3),
-                    TextFormField(
-                      controller: plateCtrl,
-                      textCapitalization: TextCapitalization.characters,
-                      decoration: const InputDecoration(
-                        label: AppFieldLabel('Plate number', isRequired: true),
-                        helperText:
-                            'What is on the car. This is what the gate check '
-                            'will compare against.',
-                      ),
-                      validator: (v) => (v == null || v.trim().isEmpty)
-                          ? 'The plate is required'
-                          : null,
-                    ),
-                    const SizedBox(height: AppSpacing.x3),
-                    DropdownButtonFormField<String>(
-                      initialValue: vehicleType,
-                      decoration: const InputDecoration(
-                        label: AppFieldLabel('Vehicle type', isRequired: true),
-                        helperText: 'Decides which bays they can be given.',
-                      ),
-                      items: const [
-                        DropdownMenuItem(value: 'Car', child: Text('Car')),
-                        DropdownMenuItem(
-                            value: 'Motorcycle', child: Text('Motorcycle')),
-                      ],
-                      onChanged: (v) => setState(() => vehicleType = v!),
-                    ),
-                    const SizedBox(height: AppSpacing.x3),
-                    TextFormField(
-                      controller: purposeCtrl,
-                      decoration: const InputDecoration(
-                        label: AppFieldLabel('Purpose of visit'),
-                        helperText: 'Who or what they are here for.',
-                      ),
+                    VisitorDetailsFields(
+                      name: nameCtrl,
+                      plate: plateCtrl,
+                      purpose: purposeCtrl,
+                      vehicleType: vehicleType,
+                      onVehicleTypeChanged: (v) =>
+                          setState(() => vehicleType = v),
                     ),
                   ],
                 ),
@@ -211,7 +193,109 @@ class VisitorPassesScreen extends ConsumerWidget {
         .showSnackBar(SnackBar(content: Text(msg ?? 'Card issued.')));
     ref.invalidate(visitorPassListProvider);
     ref.invalidate(visitorsOnSiteCountProvider);
+    ref.invalidate(visitorCardsProvider);
   }
+}
+
+/// Every visitor card at a glance: in the drawer, out, or released at the
+/// exit but not handed back — the last being the one a guard has to chase.
+class _CardStrip extends ConsumerWidget {
+  const _CardStrip();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final cards = ref.watch(visitorCardsProvider()).valueOrNull;
+    if (cards == null) return const SizedBox.shrink();
+
+    final t = context.tokens;
+    final text = Theme.of(context).textTheme;
+
+    if (cards.isEmpty) {
+      return Padding(
+        padding: const EdgeInsets.only(bottom: AppSpacing.headingGap),
+        child: Text(
+          'No visitor cards are registered yet. An admin adds them under '
+          'System > Visitor Cards.',
+          style: text.bodySmall?.copyWith(color: t.text.secondary),
+        ),
+      );
+    }
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: AppSpacing.headingGap),
+      child: Wrap(
+        spacing: AppSpacing.x2,
+        runSpacing: AppSpacing.x2,
+        children: [for (final card in cards) _CardChip(card: card)],
+      ),
+    );
+  }
+}
+
+class _CardChip extends ConsumerWidget {
+  const _CardChip({required this.card});
+
+  final VisitorCard card;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final text = Theme.of(context).textTheme;
+    final t = context.tokens;
+
+    final intent = switch (card.whereabouts) {
+      'InDrawer' => StatusIntent.success,
+      'OutWithVisitor' => StatusIntent.info,
+      'NotYetReturned' => StatusIntent.warning,
+      _ => StatusIntent.danger,
+    };
+
+    final who = switch (card.whereabouts) {
+      'OutWithVisitor' || 'NotYetReturned' => card.lastVisitorName,
+      _ => null,
+    };
+
+    return AppCard(
+      padding: const EdgeInsets.symmetric(
+          horizontal: AppSpacing.x3, vertical: AppSpacing.x2),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(card.label, style: text.titleSmall),
+          const SizedBox(width: AppSpacing.x2),
+          StatusPill.of(visitorCardWhereaboutsLabel(card.whereabouts),
+              intent: intent, dense: true),
+          if (who != null) ...[
+            const SizedBox(width: AppSpacing.x2),
+            Text(who,
+                style: text.bodySmall?.copyWith(color: t.text.secondary)),
+          ],
+          if (card.whereabouts == 'NotYetReturned' &&
+              card.lastPassId != null) ...[
+            const SizedBox(width: AppSpacing.x2),
+            AppRowAction(
+              label: 'Card returned',
+              icon: Icons.inventory_2_outlined,
+              intent: StatusIntent.neutral,
+              onPressed: () => _confirmReturned(context, ref, card.lastPassId!),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+Future<void> _confirmReturned(
+    BuildContext context, WidgetRef ref, String passId) async {
+  final msg = await ref
+      .read(visitorPassActionsProvider.notifier)
+      .confirmCardReturned(passId);
+
+  if (!context.mounted) return;
+  ScaffoldMessenger.of(context)
+      .showSnackBar(SnackBar(content: Text(msg ?? 'Card marked as returned.')));
+  ref.invalidate(visitorPassListProvider);
+  ref.invalidate(visitorCardsProvider);
 }
 
 class _PassCard extends ConsumerWidget {
@@ -248,7 +332,7 @@ class _PassCard extends ConsumerWidget {
                     Text(pass.visitorName, style: text.titleSmall),
                     const SizedBox(height: 2),
                     Text(
-                      'Card ${pass.rfidTagId} · ${pass.plateNumber} · ${pass.vehicleType}',
+                      '${pass.cardLabel == null ? 'Card ${pass.rfidTagId}' : 'Card ${pass.cardLabel}'} · ${pass.plateNumber} · ${pass.vehicleType}',
                       style: text.bodySmall?.copyWith(color: t.text.secondary),
                     ),
                   ],
@@ -261,6 +345,14 @@ class _PassCard extends ConsumerWidget {
                   dense: true,
                   showDot: false,
                   icon: Icons.directions_car_outlined,
+                ),
+              if (pass.cardNotYetReturned)
+                StatusPill.of(
+                  'Card not yet returned',
+                  intent: StatusIntent.warning,
+                  dense: true,
+                  showDot: false,
+                  icon: Icons.credit_card_off_outlined,
                 ),
             ],
           ),
@@ -284,34 +376,46 @@ class _PassCard extends ConsumerWidget {
               ),
               if (pass.returnedAt case final returned?)
                 _Meta(
-                  label: 'Returned',
+                  label: 'Left',
                   value: DateFormat('MMM d, HH:mm').format(returned.toLocal()),
                 ),
               if (pass.issuedByName case final by?)
                 _Meta(label: 'Issued by', value: by),
             ],
           ),
-          if (pass.returnedAt == null) ...[
+          // Inside: the exit tap ends the pass, nothing to press. Not inside
+          // and never entered: the guard can cancel it with the card in hand.
+          if (pass.returnedAt == null && !pass.isInside) ...[
             const SizedBox(height: AppSpacing.x4),
             Row(
               mainAxisAlignment: MainAxisAlignment.end,
               children: [
-                if (pass.isInside)
-                  Expanded(
-                    child: Text(
-                      'Their vehicle is still inside. Log the exit at the gate '
-                      'first, then take the card back.',
-                      style:
-                          text.bodySmall?.copyWith(color: t.text.secondary),
-                    ),
-                  ),
                 AppRowAction(
                   label: 'Take card back',
                   icon: Icons.assignment_return_outlined,
                   intent: StatusIntent.neutral,
-                  // The server refuses this too. Disabled here as well so the
-                  // guard is not invited to press something that cannot work.
-                  onPressed: pass.isInside ? null : () => _returnPass(context, ref),
+                  onPressed: () => _returnPass(context, ref),
+                ),
+              ],
+            ),
+          ],
+          if (pass.cardNotYetReturned) ...[
+            const SizedBox(height: AppSpacing.x4),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                Expanded(
+                  child: Text(
+                    'The visitor tapped out. Mark the card returned once it is '
+                    'back in the drawer.',
+                    style: text.bodySmall?.copyWith(color: t.text.secondary),
+                  ),
+                ),
+                AppRowAction(
+                  label: 'Card returned',
+                  icon: Icons.inventory_2_outlined,
+                  intent: StatusIntent.neutral,
+                  onPressed: () => _confirmReturned(context, ref, pass.passId),
                 ),
               ],
             ),
@@ -331,6 +435,7 @@ class _PassCard extends ConsumerWidget {
         .showSnackBar(SnackBar(content: Text(msg ?? 'Card returned.')));
     ref.invalidate(visitorPassListProvider);
     ref.invalidate(visitorsOnSiteCountProvider);
+    ref.invalidate(visitorCardsProvider);
   }
 }
 

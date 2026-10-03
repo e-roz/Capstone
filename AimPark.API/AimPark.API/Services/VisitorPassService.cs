@@ -27,7 +27,7 @@ namespace AimPark.API.Services
         public async Task<ActionResult<VisitorPassResponse>> IssueAsync(
             IssueVisitorPassDto dto, Guid issuedByUserId, CancellationToken ct)
         {
-            var tag = dto.RfidTagId?.Trim() ?? string.Empty;
+            var tag = RfidTag.Normalize(dto.RfidTagId);
             if (ValidationHelper.HasEmptyFields(tag, dto.VisitorName, dto.PlateNumber))
                 return new BadRequestObjectResult(new
                 {
@@ -49,6 +49,23 @@ namespace AimPark.API.Services
                     message = "That card is assigned to a registered user. Use a spare visitor card."
                 });
 
+            // Only the cards an admin set aside for visitors. Anything else is
+            // somebody's own card, a blocked one, or a card nobody knows about.
+            var card = await _db.Set<VisitorCard>().AsNoTracking()
+                .FirstOrDefaultAsync(c => c.RfidTagId == tag, ct);
+
+            if (card is null)
+                return new ConflictObjectResult(new
+                {
+                    message = "That card isn't registered as a visitor card. Use one of the visitor cards, or ask an admin to register it."
+                });
+
+            if (card.State == VisitorCardState.Blocked)
+                return new ConflictObjectResult(new
+                {
+                    message = $"Visitor card {card.Label} is blocked. Use a different card."
+                });
+
             await ExpireStalePassesAsync(ct);
 
             var alreadyOut = await _passes.ExistsAsync(
@@ -58,6 +75,19 @@ namespace AimPark.API.Services
                 return new ConflictObjectResult(new
                 {
                     message = "That card is already out with another visitor. Take it back first, or use a different card."
+                });
+
+            // An expired pass is no longer Active, but its car may still be
+            // parked. The exit tap finds that car through this card, so the
+            // card stays with it until it leaves.
+            var carStillInside = await _db.Set<ParkingLog>()
+                .AnyAsync(l => l.ExitTime == null
+                            && l.VisitorPass != null && l.VisitorPass.RfidTagId == tag, ct);
+
+            if (carStillInside)
+                return new ConflictObjectResult(new
+                {
+                    message = "The last visitor on that card is still parked inside. Use a different card."
                 });
 
             var now = DateTime.UtcNow;
@@ -84,6 +114,9 @@ namespace AimPark.API.Services
                 CreatedAt = now,
                 UpdatedAt = now
             };
+
+            // The guard is holding the card, so whoever had it last gave it back.
+            await MarkCollectedAsync(tag, issuedByUserId, now, ct);
 
             await _passes.AddAsync(pass, ct);
             await _passes.SaveAsync(ct);
@@ -127,14 +160,17 @@ namespace AimPark.API.Services
             });
         }
 
-        public async Task<ActionResult<object>> ReturnAsync(Guid passId, CancellationToken ct)
+        public async Task<ActionResult<object>> ReturnAsync(Guid passId, Guid takenBackByUserId, CancellationToken ct)
         {
             var pass = await _passes.FindAsync(p => p.Id == passId, ct);
             if (pass is null)
                 return new NotFoundObjectResult(new { message = "Visitor pass not found." });
 
             if (pass.ReturnedAt is not null)
-                return new BadRequestObjectResult(new { message = "That card has already been handed back." });
+                return new BadRequestObjectResult(new
+                {
+                    message = "This pass has already ended. Use \"Card returned\" once the card is back in the drawer."
+                });
 
             // Taking the card back while the car is still in the lot would leave
             // an open session nothing can close: exit is resolved from the card,
@@ -150,6 +186,8 @@ namespace AimPark.API.Services
 
             pass.ReturnedAt = DateTime.UtcNow;
             pass.Status = VisitorPassStatus.Returned;
+            pass.CardCollectedAt = pass.ReturnedAt;
+            pass.CardCollectedByUserId = takenBackByUserId;
             pass.UpdatedAt = DateTime.UtcNow;
 
             _passes.Update(pass);
@@ -158,9 +196,53 @@ namespace AimPark.API.Services
             return new OkObjectResult(new { message = "Card returned." });
         }
 
+        public async Task<ActionResult<object>> ConfirmCardReturnedAsync(
+            Guid passId, Guid confirmedByUserId, CancellationToken ct)
+        {
+            var pass = await _passes.FindAsync(p => p.Id == passId, ct);
+            if (pass is null)
+                return new NotFoundObjectResult(new { message = "Visitor pass not found." });
+
+            if (pass.ReturnedAt is null)
+                return new BadRequestObjectResult(new
+                {
+                    message = "This visitor hasn't left yet. The card is released when they tap out at the gate."
+                });
+
+            if (pass.CardCollectedAt is not null)
+                return new OkObjectResult(new { message = "That card was already marked as returned." });
+
+            pass.CardCollectedAt = DateTime.UtcNow;
+            pass.CardCollectedByUserId = confirmedByUserId;
+            pass.UpdatedAt = DateTime.UtcNow;
+
+            _passes.Update(pass);
+            await _passes.SaveAsync(ct);
+
+            return new OkObjectResult(new { message = "Card marked as back in the drawer." });
+        }
+
+        /// <summary>
+        /// Closes the "not yet returned" flag on whatever pass last held this
+        /// card. Nothing is saved here; the caller's save carries it.
+        /// </summary>
+        private async Task MarkCollectedAsync(string tag, Guid byUserId, DateTime now, CancellationToken ct)
+        {
+            var uncollected = await _db.Set<VisitorPass>()
+                .Where(p => p.RfidTagId == tag && p.ReturnedAt != null && p.CardCollectedAt == null)
+                .ToListAsync(ct);
+
+            foreach (var earlier in uncollected)
+            {
+                earlier.CardCollectedAt = now;
+                earlier.CardCollectedByUserId = byUserId;
+                earlier.UpdatedAt = now;
+            }
+        }
+
         public async Task<ActionResult<TagLookupResponse>> LookupTagAsync(string rfidTagId, CancellationToken ct)
         {
-            var tag = rfidTagId?.Trim() ?? string.Empty;
+            var tag = RfidTag.Normalize(rfidTagId);
             if (string.IsNullOrWhiteSpace(tag))
                 return new BadRequestObjectResult(new { message = "A card number is required." });
 
@@ -216,6 +298,23 @@ namespace AimPark.API.Services
                 .Where(p => p.RfidTagId == tag)
                 .OrderByDescending(p => p.IssuedAt)
                 .FirstOrDefaultAsync(ct);
+
+            var card = await _db.Set<VisitorCard>().AsNoTracking()
+                .FirstOrDefaultAsync(c => c.RfidTagId == tag, ct);
+
+            // A visitor card between visitors. The last pass on it belongs to
+            // somebody who has left, so showing their name would be wrong.
+            if (card is not null && (pass is null || pass.Status != VisitorPassStatus.Active))
+                return new OkObjectResult(new TagLookupResponse
+                {
+                    Holder = "Visitor",
+                    Name = $"Visitor card {card.Label}",
+                    Affiliation = "Not lent to anyone",
+                    AccessAllowed = false,
+                    DeniedReason = card.State == VisitorCardState.Blocked
+                        ? $"Visitor card {card.Label} is blocked."
+                        : "Not lent to anyone yet. Tap it at the entry gate to register the visitor."
+                });
 
             if (pass is null)
                 return new OkObjectResult(new TagLookupResponse
@@ -357,6 +456,11 @@ namespace AimPark.API.Services
                 IssuedAt = pass.IssuedAt,
                 ExpiresAt = pass.ExpiresAt,
                 ReturnedAt = pass.ReturnedAt,
+                CardCollectedAt = pass.CardCollectedAt,
+                CardLabel = await _db.Set<VisitorCard>().AsNoTracking()
+                    .Where(c => c.RfidTagId == pass.RfidTagId)
+                    .Select(c => c.Label)
+                    .FirstOrDefaultAsync(ct),
                 IssuedByName = issuedBy,
                 IsInside = session is not null,
                 SlotCode = session?.SlotCode

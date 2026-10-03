@@ -13,6 +13,7 @@ import '../providers/security_provider.dart';
 import '../providers/theme_provider.dart';
 import '../providers/violations_provider.dart';
 import '../theme/theme.dart';
+import 'visitor_registration_watcher.dart';
 
 /// The panel's frame: a light top bar carrying the workspace mark, a
 /// segmented pill for the four destination groups, and the account menu —
@@ -49,6 +50,15 @@ class _AdminShellState extends ConsumerState<AdminShell> {
     final groups = navGroupsFor(role);
     final activeGroup = _groupFor(location, groups);
 
+    // Wraps both layouts at the same spot, so resizing the window does not
+    // drop a visitor form that is open.
+    return VisitorRegistrationWatcher(
+      child: _frame(context, t, location, email, groups, activeGroup),
+    );
+  }
+
+  Widget _frame(BuildContext context, AppTokens t, String location,
+      String? email, List<NavGroup> groups, NavGroup? activeGroup) {
     if (context.isCompact) {
       final items = [for (final g in groups) ...g.items];
       final selected = _flatIndex(location, items);

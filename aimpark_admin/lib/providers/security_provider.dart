@@ -162,6 +162,17 @@ class VisitorPassActions extends _$VisitorPassActions {
     });
   }
 
+  /// The card released at the exit is back in the drawer.
+  Future<String?> confirmCardReturned(String passId) async {
+    return _run(() async {
+      final dio = ref.read(dioProvider);
+      final res =
+          await dio.post(ApiEndpoints.confirmVisitorCardReturned(passId));
+      return (res.data as Map<String, dynamic>)['message']?.toString() ??
+          'Card marked as returned.';
+    });
+  }
+
   Future<String?> _run(Future<String?> Function() fn) async {
     state = const AsyncLoading();
     try {

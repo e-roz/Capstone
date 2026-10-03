@@ -75,18 +75,29 @@ namespace AimPark.API.Sync.Site.GateReaders
             }
             else
             {
+                // A visitor card is shared: the pass before this tap belongs to
+                // somebody who has already left, unless this tap is the exit
+                // that just closed it.
                 var pass = await _db.Set<VisitorPass>().AsNoTracking()
                     .Where(p => p.RfidTagId == tag)
                     .OrderByDescending(p => p.IssuedAt)
-                    .Select(p => new { p.Id, p.VisitorName, p.PlateNumber })
+                    .Select(p => new { p.Id, p.VisitorName, p.PlateNumber, p.ReturnedAt })
                     .FirstOrDefaultAsync(ct);
 
-                if (pass is not null)
+                if (pass is not null && (pass.ReturnedAt is null || pass.ReturnedAt >= tappedAt))
                 {
                     tap.PersonKind = GateTapPersonKind.Visitor;
                     tap.PersonName = pass.VisitorName;
                     tap.VisitorPassId = pass.Id;
                     plates = [pass.PlateNumber];
+                }
+                else if (await _db.Set<VisitorCard>().AsNoTracking()
+                             .Where(c => c.RfidTagId == tag)
+                             .Select(c => c.Label)
+                             .FirstOrDefaultAsync(ct) is { } label)
+                {
+                    tap.PersonKind = GateTapPersonKind.Visitor;
+                    tap.PersonName = $"Visitor card {label} (not lent yet)";
                 }
             }
 

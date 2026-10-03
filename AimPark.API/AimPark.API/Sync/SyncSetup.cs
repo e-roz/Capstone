@@ -81,6 +81,7 @@ namespace AimPark.API.Sync
             // the background loop holds open.
             services.AddScoped<GateTapHandler>();
             services.AddScoped<GateTapRecorder>();
+            services.AddSingleton<PendingVisitorRegistrations>();
             services.AddSingleton<CameraFrames>();
             services.AddHostedService(sp => sp.GetRequiredService<CameraFrames>());
             services.AddSingleton<UsbGateReaders>();
@@ -91,6 +92,17 @@ namespace AimPark.API.Sync
             services.AddSingleton<EspNowHubs>();
             services.AddHostedService(sp => sp.GetRequiredService<EspNowHubs>());
             services.AddSingleton<AimPark.API.Interfaces.ISlotSensors>(sp => sp.GetRequiredService<EspNowHubs>());
+
+            // Keeps this PC on the newest release, installed when the gates are quiet.
+            services.AddHttpClient(Site.Updates.SiteUpdater.HttpClientName, c =>
+            {
+                c.Timeout = TimeSpan.FromMinutes(15);
+                c.DefaultRequestHeaders.UserAgent.ParseAdd("AimPark-SiteServer");
+                c.DefaultRequestHeaders.Accept.ParseAdd("application/vnd.github+json");
+            });
+            services.AddSingleton<Site.Updates.UpdateSignal>();
+            services.AddSingleton<Site.Updates.SiteUpdateStatus>();
+            services.AddHostedService<Site.Updates.SiteUpdater>();
         }
 
         private static void AddCloud(IServiceCollection services)

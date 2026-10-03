@@ -20,6 +20,9 @@ class RfidScan {
   final String? assignedToUserId;
   final String? assignedToName;
 
+  /// Set when the card is one of the guard post's visitor cards: its label.
+  final String? visitorCardLabel;
+
   const RfidScan({
     required this.scanId,
     required this.rfidTagId,
@@ -28,6 +31,7 @@ class RfidScan {
     required this.isAssigned,
     required this.assignedToUserId,
     required this.assignedToName,
+    this.visitorCardLabel,
   });
 
   factory RfidScan.fromJson(Map<String, dynamic> json) => RfidScan(
@@ -38,5 +42,6 @@ class RfidScan {
         isAssigned: json['isAssigned'] == true,
         assignedToUserId: json['assignedToUserId']?.toString(),
         assignedToName: json['assignedToName']?.toString(),
+        visitorCardLabel: json['visitorCardLabel']?.toString(),
       );
 }
