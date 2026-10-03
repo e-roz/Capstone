@@ -11,7 +11,12 @@ using Microsoft.EntityFrameworkCore;
 namespace AimPark.API.Sync.Site.GateReaders
 {
     /// <summary>What a tap at a USB gate reader came to.</summary>
-    public record GateTapOutcome(bool Opened, string Direction, string Message);
+    /// <param name="AwaitingVisitorCard">
+    /// Set when the card was an idle visitor card: its label. The barrier stays
+    /// shut and the guard is asked for the visitor's details — see
+    /// <see cref="PendingVisitorRegistrations"/>.
+    /// </param>
+    public record GateTapOutcome(bool Opened, string Direction, string Message, string? AwaitingVisitorCard = null);
 
     /// <summary>
     /// Turns one card tap at a USB reader into an entry or an exit.
@@ -87,6 +92,30 @@ namespace AimPark.API.Sync.Site.GateReaders
                     loggedByUserId: null, loggedByDeviceId: deviceId, ct);
 
                 return Describe(exit, "OUT");
+            }
+
+            // A visitor card nobody is holding yet: the guard has to say who is
+            // in the car before it opens anything. A card already lent at the
+            // desk falls through to the ordinary visitor entry.
+            var card = await _db.Set<VisitorCard>().AsNoTracking()
+                .FirstOrDefaultAsync(c => c.RfidTagId == tag, ct);
+
+            if (card is not null)
+            {
+                if (card.State == VisitorCardState.Blocked)
+                    return new GateTapOutcome(false, "IN",
+                        $"Visitor card {card.Label} is blocked. Keep it and lend a different card.");
+
+                var now = DateTime.UtcNow;
+                var lent = await _db.Set<VisitorPass>().AsNoTracking()
+                    .AnyAsync(p => p.RfidTagId == tag
+                                && p.Status == VisitorPassStatus.Active
+                                && p.ExpiresAt > now, ct);
+
+                if (!lent)
+                    return new GateTapOutcome(false, "IN",
+                        $"Visitor card {card.Label}. Waiting for the guard to enter the visitor's details.",
+                        AwaitingVisitorCard: card.Label);
             }
 
             var entry = await _parking.LogEntryAsync(

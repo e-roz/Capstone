@@ -3,6 +3,7 @@ using System.Text.Json;
 using AimPark.API.Data;
 using AimPark.API.Entities;
 using AimPark.API.Enums;
+using AimPark.API.Helpers;
 using Microsoft.EntityFrameworkCore;
 
 namespace AimPark.API.Sync.Site.GateReaders
@@ -161,7 +162,11 @@ namespace AimPark.API.Sync.Site.GateReaders
         /// The guard's override: opens the barrier without a card. Returns
         /// false when that reader isn't connected.
         /// </summary>
-        public bool OpenManually(string port, string openedBy)
+        /// <param name="logAsManual">
+        /// False when the caller logs the opening itself, e.g. a visitor the
+        /// guard just registered at this gate.
+        /// </param>
+        public bool OpenManually(string port, string openedBy, bool logAsManual = true)
         {
             Session? session;
             lock (_lock) _sessions.TryGetValue(port, out session);
@@ -169,7 +174,8 @@ namespace AimPark.API.Sync.Site.GateReaders
             if (session is null || !session.TrySend("CMD:OPEN"))
                 return false;
 
-            RecordManualOpen(port, null, session.Binding.DeviceId, openedBy);
+            if (logAsManual)
+                RecordManualOpen(port, null, session.Binding.DeviceId, openedBy);
             return true;
         }
 
@@ -327,10 +333,15 @@ namespace AimPark.API.Sync.Site.GateReaders
                 outcome = await handler.HandleAsync(deviceId, tag, ct);
 
                 var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-                readerName = await db.Set<GateDevice>().AsNoTracking()
+                var device = await db.Set<GateDevice>().AsNoTracking()
                     .Where(d => d.Id == deviceId)
-                    .Select(d => d.Name)
+                    .Select(d => new { d.Name, d.Gate })
                     .FirstOrDefaultAsync(ct);
+                readerName = device?.Name;
+
+                if (outcome.AwaitingVisitorCard is { } label && device is not null)
+                    scope.ServiceProvider.GetService<PendingVisitorRegistrations>()?.Add(
+                        RfidTag.Normalize(tag), label, device.Gate, port, node, deviceId, readerName);
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
@@ -365,6 +376,10 @@ namespace AimPark.API.Sync.Site.GateReaders
                 using var scope = _scopes.CreateScope();
                 outcome = await scope.ServiceProvider.GetRequiredService<GateTapHandler>()
                     .HandleAsync(gate, boardId, tag, ct);
+
+                if (outcome.AwaitingVisitorCard is { } label)
+                    scope.ServiceProvider.GetService<PendingVisitorRegistrations>()?.Add(
+                        RfidTag.Normalize(tag), label, gate, port, node, boardId, readerName);
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
@@ -389,6 +404,22 @@ namespace AimPark.API.Sync.Site.GateReaders
 
             _ = RecordForLiveLogAsync(
                 (recorder, token) => recorder.RecordManualOpenAsync(gate, EspNowHubs.BoardName(gate), openedBy, token),
+                _stopping);
+        }
+
+        /// <summary>
+        /// Logs the barrier opening for a visitor the guard just registered
+        /// from a pending tap — as the tap it really was, under the visitor's
+        /// name, rather than as a guard opening it by hand.
+        /// </summary>
+        public void RecordVisitorEntry(PendingVisitorRegistration pending, GateTapOutcome outcome)
+        {
+            Record(new GateReaderTap(DateTime.UtcNow, pending.Port, pending.ReaderName, pending.RfidTagId,
+                outcome.Direction, outcome.Opened, outcome.Message, pending.Node));
+
+            _ = RecordForLiveLogAsync(
+                (recorder, token) => recorder.RecordTapAsync(
+                    pending.Gate, pending.ReaderName, pending.RfidTagId, DateTime.UtcNow, outcome, token),
                 _stopping);
         }
 

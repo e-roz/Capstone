@@ -37,6 +37,7 @@ namespace AimPark.API.Sync.Site
             await ApplyRatesAsync(snapshot.ParkingRates, ct);
             await ApplySlotsAsync(snapshot.ParkingSlots, ct);
             await ApplyVisitorPassesAsync(snapshot.VisitorPasses, ct);
+            await ApplyVisitorCardsAsync(snapshot.VisitorCards, ct);
             await ApplyIncidentsAsync(snapshot.Incidents, snapshot.IncidentEvidence, ct);
         }
 
@@ -322,6 +323,35 @@ namespace AimPark.API.Sync.Site
 
             if (added)
                 await _db.SaveChangesAsync(ct);
+        }
+
+        /// <summary>
+        /// Registered and blocked only by an admin in the cloud, so the cloud's
+        /// list is the whole truth: anything missing from it was removed.
+        /// </summary>
+        private async Task ApplyVisitorCardsAsync(List<VisitorCard> cards, CancellationToken ct)
+        {
+            var local = await _db.Set<VisitorCard>().ToDictionaryAsync(c => c.RfidTagId, ct);
+            var incoming = cards.ToDictionary(c => c.RfidTagId);
+
+            // Labels are unique, so removals go first — a card removed and its
+            // label given to a new one must not collide with itself.
+            var removed = local.Values.Where(c => !incoming.ContainsKey(c.RfidTagId)).ToList();
+            if (removed.Count > 0)
+            {
+                _db.Set<VisitorCard>().RemoveRange(removed);
+                await _db.SaveChangesAsync(ct);
+            }
+
+            foreach (var source in incoming.Values)
+            {
+                if (!local.TryGetValue(source.RfidTagId, out var card))
+                    _db.Set<VisitorCard>().Add(source);
+                else
+                    _db.Entry(card).CurrentValues.SetValues(source);
+            }
+
+            await _db.SaveChangesAsync(ct);
         }
 
         private async Task ApplyVisitorPassesAsync(List<VisitorPass> passes, CancellationToken ct)

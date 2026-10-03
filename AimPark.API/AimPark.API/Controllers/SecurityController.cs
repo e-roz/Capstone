@@ -27,12 +27,15 @@ namespace AimPark.API.Controllers
     {
         private readonly IVisitorPassService _visitorPasses;
         private readonly IGateAccessAttemptService _gateAccessAttempts;
+        private readonly IVisitorCardService _visitorCards;
 
         public SecurityController(
-            IVisitorPassService visitorPasses, IGateAccessAttemptService gateAccessAttempts)
+            IVisitorPassService visitorPasses, IGateAccessAttemptService gateAccessAttempts,
+            IVisitorCardService visitorCards)
         {
             _visitorPasses = visitorPasses;
             _gateAccessAttempts = gateAccessAttempts;
+            _visitorCards = visitorCards;
         }
 
         /// <summary>
@@ -60,10 +63,23 @@ namespace AimPark.API.Controllers
             CancellationToken ct = default)
             => _visitorPasses.ListAsync(status, page, pageSize, ct);
 
-        /// <summary>Takes a card back, freeing it for the next visitor.</summary>
+        /// <summary>Ends a pass whose car never went in, with the card back in hand.</summary>
         [HttpPost("visitor-passes/{passId:guid}/return")]
         public Task<ActionResult<object>> ReturnPass(Guid passId, CancellationToken ct)
-            => _visitorPasses.ReturnAsync(passId, ct);
+            => _visitorPasses.ReturnAsync(passId, GetUserId(), ct);
+
+        /// <summary>The card released at the exit is back in the drawer.</summary>
+        [HttpPost("visitor-passes/{passId:guid}/card-returned")]
+        public Task<ActionResult<object>> ConfirmCardReturned(Guid passId, CancellationToken ct)
+            => _visitorPasses.ConfirmCardReturnedAsync(passId, GetUserId(), ct);
+
+        /// <summary>
+        /// Every visitor card and where it is: in the drawer, out with a
+        /// visitor, or released at the exit but not handed back yet.
+        /// </summary>
+        [HttpGet("visitor-cards")]
+        public Task<ActionResult<List<VisitorCardResponse>>> ListVisitorCards(CancellationToken ct)
+            => _visitorCards.ListAsync(ct);
 
         /// <summary>
         /// Taps the automatic RFID+ALPR check turned away. Unreviewed only by

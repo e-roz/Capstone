@@ -81,6 +81,7 @@ namespace AimPark.API.Sync
             // the background loop holds open.
             services.AddScoped<GateTapHandler>();
             services.AddScoped<GateTapRecorder>();
+            services.AddSingleton<PendingVisitorRegistrations>();
             services.AddSingleton<CameraFrames>();
             services.AddHostedService(sp => sp.GetRequiredService<CameraFrames>());
             services.AddSingleton<UsbGateReaders>();

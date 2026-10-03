@@ -123,7 +123,8 @@ const navGroups = <NavGroup>[
       label: 'Visitor Passes',
       route: '/visitors',
       moduleLabel: 'Visitor RFID Access',
-      description: 'Lend spare RFID cards to guests and take them back.',
+      description: 'Visitor cards tapped at the gate, who has each one, and '
+          'which are not back yet.',
       roles: {StaffRole.admin, StaffRole.security},
     ),
     NavItem(
@@ -221,6 +222,13 @@ const navGroups = <NavGroup>[
       route: '/rfid-cards',
       description:
           'Physical cards revoked from an account and not yet reissued.',
+    ),
+    NavItem(
+      icon: Icons.style_outlined,
+      selectedIcon: Icons.style,
+      label: 'Visitor Cards',
+      route: '/visitor-cards',
+      description: 'The cards kept at the guard post for lending to visitors.',
     ),
     NavItem(
       icon: Icons.notifications_outlined,

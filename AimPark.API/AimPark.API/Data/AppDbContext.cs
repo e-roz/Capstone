@@ -32,6 +32,7 @@ namespace AimPark.API.Data
         public DbSet<SystemErrorLog> SystemErrorLogs { get; set; }
         public DbSet<VisitorPass> VisitorPasses { get; set; }
         public DbSet<RfidCard> RfidCards { get; set; }
+        public DbSet<VisitorCard> VisitorCards { get; set; }
         public DbSet<AlprReading> AlprReadings { get; set; }
         public DbSet<GateAccessAttempt> GateAccessAttempts { get; set; }
         public DbSet<SyncOutboxEntry> SyncOutbox { get; set; }
@@ -655,6 +656,20 @@ namespace AimPark.API.Data
 
                 entity.Property(c => c.UpdatedAt)
                       .HasDefaultValueSql("NOW()");
+            });
+
+            modelBuilder.Entity<VisitorCard>(entity =>
+            {
+                entity.HasKey(c => c.RfidTagId);
+
+                entity.Property(c => c.RfidTagId).HasMaxLength(64);
+                entity.Property(c => c.Label).IsRequired().HasMaxLength(20);
+                entity.Property(c => c.Note).HasMaxLength(200);
+                entity.Property(c => c.State).HasConversion<string>().HasMaxLength(20);
+
+                // The guard calls a card by what is written on it; two "V1"s
+                // would leave them guessing which one is missing.
+                entity.HasIndex(c => c.Label).IsUnique();
             });
 
             modelBuilder.Entity<ViolationAppeal>(entity =>

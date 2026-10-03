@@ -68,6 +68,7 @@ namespace AimPark.API.Sync.Cloud
                 Users = users,
                 Vehicles = vehicles,
                 VisitorPasses = await _db.Set<VisitorPass>().AsNoTracking().ToListAsync(ct),
+                VisitorCards = await _db.Set<VisitorCard>().AsNoTracking().ToListAsync(ct),
                 GateDevices = await _db.Set<GateDevice>().AsNoTracking().ToListAsync(ct),
                 ParkingSlots = await _db.Set<ParkingSlot>().AsNoTracking().ToListAsync(ct),
                 ParkingRates = await _db.Set<ParkingRate>().AsNoTracking().ToListAsync(ct),

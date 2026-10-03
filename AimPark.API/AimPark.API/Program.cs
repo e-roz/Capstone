@@ -240,6 +240,7 @@ else
 builder.Services.AddScoped<SimulatedPaymentGateway>();
 builder.Services.AddScoped<IViolationService, ViolationService>();
 builder.Services.AddScoped<IVisitorPassService, VisitorPassService>();
+builder.Services.AddScoped<IVisitorCardService, VisitorCardService>();
 builder.Services.AddScoped<IReportService, ReportService>();
 builder.Services.AddScoped<IBackupService, BackupService>();
 builder.Services.AddScoped<IDeviceTokenService, DeviceTokenService>();

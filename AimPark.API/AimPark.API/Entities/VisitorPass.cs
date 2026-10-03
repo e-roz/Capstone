@@ -26,7 +26,10 @@ namespace AimPark.API.Entities
     {
         public Guid Id { get; set; } = Guid.NewGuid();
 
-        /// <summary>The physical card handed over. Freed again on return.</summary>
+        /// <summary>
+        /// The physical card handed over — always a registered
+        /// <see cref="VisitorCard"/>. Freed again on exit.
+        /// </summary>
         public string RfidTagId { get; set; } = string.Empty;
 
         public string VisitorName { get; set; } = string.Empty;
@@ -59,8 +62,22 @@ namespace AimPark.API.Entities
         /// </summary>
         public DateTime ExpiresAt { get; set; }
 
-        /// <summary>Null while the card is still out.</summary>
+        /// <summary>
+        /// When the pass stopped holding the card: the exit tap, or a guard
+        /// taking it back before the car ever went in. Null while it is still out.
+        /// </summary>
         public DateTime? ReturnedAt { get; set; }
+
+        /// <summary>
+        /// When a guard confirmed the physical card was back in the drawer.
+        /// The exit tap releases the pass but cannot see whether the visitor
+        /// handed the card over, so until this is set the card reads
+        /// "Not yet returned". Lending the card again sets it too — tapping it
+        /// proves it came back.
+        /// </summary>
+        public DateTime? CardCollectedAt { get; set; }
+
+        public Guid? CardCollectedByUserId { get; set; }
 
         public VisitorPassStatus Status { get; set; } = VisitorPassStatus.Active;
 

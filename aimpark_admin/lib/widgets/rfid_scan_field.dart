@@ -302,6 +302,14 @@ class _StatusStrip extends StatelessWidget {
         );
       }
 
+      if (s.visitorCardLabel case final label?) {
+        return (
+          StatusIntent.info,
+          Icons.style_outlined,
+          'Read ${s.rfidTagId} — this is visitor card $label.',
+        );
+      }
+
       if (userId != null && s.isAssigned && s.assignedToUserId == userId) {
         return (
           StatusIntent.info,

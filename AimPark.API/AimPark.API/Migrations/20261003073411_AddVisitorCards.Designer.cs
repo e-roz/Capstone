@@ -3,6 +3,7 @@ using System;
 using AimPark.API.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -11,9 +12,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace AimPark.API.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20261003073411_AddVisitorCards")]
+    partial class AddVisitorCards
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -1512,18 +1515,6 @@ namespace AimPark.API.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
-                    b.Property<DateTime?>("AccountableAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<Guid?>("AccountableByUserId")
-                        .HasColumnType("uuid");
-
-                    b.Property<string>("AccountableReason")
-                        .HasColumnType("text");
-
-                    b.Property<DateTime>("AppealDeadline")
-                        .HasColumnType("timestamp with time zone");
-
                     b.Property<DateTime>("CreatedAt")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("timestamp with time zone")
@@ -1532,15 +1523,6 @@ namespace AimPark.API.Migrations
                     b.Property<string>("Description")
                         .IsRequired()
                         .HasColumnType("text");
-
-                    b.Property<string>("DismissReason")
-                        .HasColumnType("text");
-
-                    b.Property<DateTime?>("DismissedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<Guid?>("DismissedByUserId")
-                        .HasColumnType("uuid");
 
                     b.Property<Guid>("IssuedByUserId")
                         .HasColumnType("uuid");
@@ -1553,12 +1535,6 @@ namespace AimPark.API.Migrations
 
                     b.Property<Guid>("PolicyRuleId")
                         .HasColumnType("uuid");
-
-                    b.Property<DateTime?>("RfidRevokedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<string>("RfidTagIdAtIssue")
-                        .HasColumnType("text");
 
                     b.Property<string>("Status")
                         .IsRequired()

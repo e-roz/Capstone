@@ -32,6 +32,10 @@ namespace AimPark.API.Sync
         public List<SyncUser> Users { get; set; } = [];
         public List<SyncVehicle> Vehicles { get; set; } = [];
         public List<VisitorPass> VisitorPasses { get; set; } = [];
+
+        /// <summary>The cards a gate tap may treat as "visitor card, ask the guard".</summary>
+        public List<VisitorCard> VisitorCards { get; set; } = [];
+
         public List<GateDevice> GateDevices { get; set; } = [];
         public List<ParkingSlot> ParkingSlots { get; set; } = [];
         public List<ParkingRate> ParkingRates { get; set; } = [];
