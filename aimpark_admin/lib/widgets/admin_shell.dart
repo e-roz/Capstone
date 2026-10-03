@@ -13,6 +13,7 @@ import '../providers/security_provider.dart';
 import '../providers/theme_provider.dart';
 import '../providers/violations_provider.dart';
 import '../theme/theme.dart';
+import 'site_update_banner.dart';
 import 'visitor_registration_watcher.dart';
 
 /// The panel's frame: a light top bar carrying the workspace mark, a
@@ -87,7 +88,12 @@ class _AdminShellState extends ConsumerState<AdminShell> {
             ),
           ),
         ),
-        body: widget.child,
+        body: Column(
+          children: [
+            const SiteUpdateBanner(),
+            Expanded(child: widget.child),
+          ],
+        ),
       );
     }
 
@@ -104,6 +110,7 @@ class _AdminShellState extends ConsumerState<AdminShell> {
           if (activeGroup != null && activeGroup.items.length > 1)
             _SubNav(group: activeGroup, location: location),
           Divider(height: 1, color: t.border.normal),
+          const SiteUpdateBanner(),
           Expanded(child: widget.child),
         ],
       ),

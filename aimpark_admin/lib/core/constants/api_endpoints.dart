@@ -109,6 +109,7 @@ class ApiEndpoints {
   // Security – USB gate readers plugged into the guard post's PC. Only the
   // site server answers these; the cloud says to use the guard post's panel.
   static const siteStatus = '/api/site/status';
+  static const siteUpdateInstall = '/api/site/update/install';
   static const gateReaders = '/api/site/gate-readers';
   static String gateReader(String port) => '/api/site/gate-readers/$port';
   static String openGateReader(String port) =>

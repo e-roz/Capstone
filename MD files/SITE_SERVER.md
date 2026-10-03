@@ -373,6 +373,23 @@ It needs the .NET 8 SDK, Flutter and Inno Setup 6, and downloads the PostgreSQL 
 
 **Update:** run the newer `AimParkSetup-x.y.z.exe` over the old one. The program is replaced; the settings (`C:\ProgramData\AimPark`), reader links, photos and database are kept, and new tables are added on start. The gate is down for about 30 seconds.
 
+**Automatic updates (1.2.0 and later):** the guard PC updates itself, like a phone app.
+
+- Every 30 minutes it looks at the GitHub releases tagged `site-installer-v*`. When there's a newer one, it downloads `AimParkSetup-x.y.z.exe` to `C:\ProgramData\AimPark\updates` and checks it against the release's `.sha256` file.
+- It installs only when no car has tapped for 5 minutes, and either it's between 1 and 5 AM or the download is a day old. The guard can press **Update now** on the banner (it then waits for one quiet minute), but can't skip the update.
+- The panel shows a banner on every screen while an update is ready or installing, and reloads itself when the new version is up.
+- If an install fails, the old version keeps running, the banner says so, and it tries again after 6 hours. Details are in `C:\ProgramData\AimPark\updates\install.log`.
+- Only the installed service installs updates. `dotnet run` on a developer PC never does.
+- Settings live in `Site:Updates` (`Enabled`, `NightStartHour`, `NightEndHour`, `QuietMinutes`, `UpdateNowQuietMinutes`, `DeadlineHours`, `CheckEveryMinutes`).
+
+**Publishing an update** (from the developer PC, after testing the installer here): commit and push, then run
+
+```
+powershell -ExecutionPolicy Bypass -File site-server\installer\publish-release.ps1 -Version 1.2.1
+```
+
+It builds the installer, writes the checksum, asks you to type the version again, and publishes the release. Every guard PC on an older version then installs it at its next quiet time, so publishing is the moment the update goes out. A guard PC on 1.1.0 or older has no updater: install 1.2.0 on it by hand once.
+
 **Uninstall:** Windows Settings → Apps → *AimPark Site Server*. It removes the service and the firewall rule, and keeps PostgreSQL, the database and `C:\ProgramData\AimPark`.
 
 The guard panel built by the installer works at **any** address of the PC (`localhost` or its network address), so step 2 below is only needed for the ALPR app's server address. The steps below are the manual way, for development.
