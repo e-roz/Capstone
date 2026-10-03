@@ -101,10 +101,18 @@ class UserDashboardScreen extends ConsumerWidget {
     // used to arrive as a push and then live only in the Alerts tab and two
     // taps down inside Profile, so anyone who missed the push found out when
     // their card stopped opening the gate. It now sits on the first screen.
-    final openViolations =
-        (violations?.violations ?? const <ViolationSummary>[])
-            .where(Standing.isOpen)
-            .length;
+    final openList = (violations?.violations ?? const <ViolationSummary>[])
+        .where(Standing.isOpen)
+        .toList();
+    final openViolations = openList.length;
+    // The soonest deadline the user can still beat, for the card below.
+    final appealDeadlines = openList
+        .where((v) => v.canAppeal && v.appealDeadline != null)
+        .map((v) => v.appealDeadline!)
+        .toList()
+      ..sort();
+    final nextAppealDeadline =
+        appealDeadlines.isEmpty ? null : appealDeadlines.first;
     final unpaid = (paymentsAsync.valueOrNull?.payments ?? const <Payment>[])
         .where((p) => !p.isPaid && p.status.toLowerCase() != 'waived')
         .toList();
@@ -159,6 +167,7 @@ class UserDashboardScreen extends ConsumerWidget {
                 const SizedBox(height: AppSpacing.md),
                 _ViolationCard(
                   count: openViolations,
+                  appealDeadline: nextAppealDeadline,
                   onTap: () => context.push('/home/user/violations'),
                 ),
               ],
@@ -726,9 +735,17 @@ class _PaymentDueCard extends StatelessWidget {
 /// Shown only when a violation is open. Tappable in full — the whole card is
 /// the way in, so there is no small chevron to aim at.
 class _ViolationCard extends StatelessWidget {
-  const _ViolationCard({required this.count, required this.onTap});
+  const _ViolationCard({
+    required this.count,
+    required this.appealDeadline,
+    required this.onTap,
+  });
 
   final int count;
+
+  /// The soonest deadline among the violations that can still be appealed.
+  /// Null when every open one is already waiting on a decision.
+  final DateTime? appealDeadline;
   final VoidCallback onTap;
 
   @override
@@ -761,8 +778,13 @@ class _ViolationCard extends StatelessWidget {
                 const SizedBox(height: 6),
                 Text('Review and appeal', style: context.text.titleMedium),
                 const SizedBox(height: 2),
+                // Used to say access was unaffected, which was not true for
+                // rules that suspend at once. The deadline is what matters.
                 Text(
-                  'Your access is unaffected while a violation is open.',
+                  appealDeadline == null
+                      ? 'Waiting on the parking office to decide your appeal.'
+                      : 'Appeal by ${Formatters.date(appealDeadline!)} · '
+                          '${appealTimeLeft(appealDeadline!)}',
                   style: context.text.bodySmall,
                 ),
               ],

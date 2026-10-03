@@ -659,7 +659,8 @@ namespace AimPark.API.Services
             var parts = new List<string> { "You are accountable for this violation." };
             if (violation.PenaltyAmount > 0)
                 parts.Add($"A penalty of ₱{violation.PenaltyAmount:0.00} is now due.");
-            if (violation.SuspensionType != SuspensionType.None && !revoked)
+            if (violation.SuspensionType != SuspensionType.None && !revoked
+                && user?.RfidStatus != RfidStatus.Revoked)
                 parts.Add("Your RFID access is suspended as the rule requires.");
             if (reason.StartsWith("Appeal rejected"))
                 parts.Insert(0, "Your appeal was reviewed and the violation stands.");
@@ -718,6 +719,11 @@ namespace AimPark.API.Services
         private static void ApplySuspension(
             User user, SuspensionType suspensionType, int? suspensionDays, DateTime? startsAt = null)
         {
+            // A revoked user has no card to suspend, and writing Suspended over
+            // Revoked would hide why they lost access.
+            if (user.RfidStatus == RfidStatus.Revoked)
+                return;
+
             var now = DateTime.UtcNow;
             var effectiveFrom = startsAt ?? now;
 

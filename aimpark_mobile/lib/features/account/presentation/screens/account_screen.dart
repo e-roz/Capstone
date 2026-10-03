@@ -236,10 +236,13 @@ class _AccessStatusCard extends StatelessWidget {
     // the card still opens the gate and the user can still appeal. Showing that
     // as a flat red "Suspended" would tell them the fight is already lost.
     final pending = status.hasPendingSuspension;
+    final revoked = status.rfidStatus.toLowerCase() == 'revoked';
 
-    final intent = pending
-        ? StatusIntent.warning
-        : StatusIntents.rfid(status.rfidStatus);
+    final intent = revoked
+        ? StatusIntent.danger
+        : pending
+            ? StatusIntent.warning
+            : StatusIntents.rfid(status.rfidStatus);
     final isActive = intent == StatusIntent.success;
 
     return AppListRow(
@@ -250,14 +253,21 @@ class _AccessStatusCard extends StatelessWidget {
               : Icons.gpp_bad_rounded,
       intent: intent,
       title: 'RFID Access',
-      subtitle: pending
+      subtitle: revoked
+          ? 'Revoked after 3 accountable violations. Please see the parking '
+              'office.'
+          : pending
           ? 'Still works until ${Formatters.date(status.suspensionStartsAt!)}. '
               'Appeal your violation before then.'
           : status.rfidTagId == null
               ? null
               : 'Tag ${status.rfidTagId}',
       trailing: AppStatusBadge(
-        label: pending ? 'Suspending soon' : status.rfidStatus,
+        label: revoked
+            ? 'Revoked'
+            : pending
+                ? 'Suspending soon'
+                : status.rfidStatus,
         intent: intent,
       ),
       showChevron: false,

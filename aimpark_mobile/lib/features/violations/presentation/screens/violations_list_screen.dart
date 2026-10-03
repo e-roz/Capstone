@@ -93,9 +93,11 @@ class _ViolationRow extends StatelessWidget {
     return AppListRow(
       icon: Icons.gavel_rounded,
       title: violation.policyRuleTitle,
-      subtitle:
-          '${Formatters.peso(violation.penaltyAmount)} · '
-          '${Formatters.date(violation.createdAt)}',
+      subtitle: violation.canAppeal && violation.appealDeadline != null
+          ? '${Formatters.peso(violation.penaltyAmount)} · Appeal: '
+              '${appealTimeLeft(violation.appealDeadline!)}'
+          : '${Formatters.peso(violation.penaltyAmount)} · '
+              '${Formatters.date(violation.createdAt)}',
       trailing: AppStatusBadge(
         label: violation.displayStatus,
         intent: StatusIntents.violation(violation.displayStatus),

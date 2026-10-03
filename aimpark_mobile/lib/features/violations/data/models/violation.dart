@@ -5,6 +5,16 @@ String violationStatusLabel(String status) => switch (status.toLowerCase()) {
       _ => status,
     };
 
+/// How long is left to appeal, in words: "3 days left", "1 day left",
+/// "less than a day left", or "ended".
+String appealTimeLeft(DateTime deadline, {DateTime? now}) {
+  final remaining = deadline.difference(now ?? DateTime.now());
+  if (remaining <= Duration.zero) return 'ended';
+  if (remaining < const Duration(days: 1)) return 'less than a day left';
+  final days = (remaining.inHours / 24).ceil();
+  return '$days ${days == 1 ? 'day' : 'days'} left';
+}
+
 class ViolationSummary {
   const ViolationSummary({
     required this.violationId,
@@ -13,6 +23,7 @@ class ViolationSummary {
     required this.penaltyAmount,
     required this.suspensionType,
     required this.createdAt,
+    this.appealDeadline,
     this.paymentStatus,
     this.paidAt,
   });
@@ -23,6 +34,14 @@ class ViolationSummary {
   final double penaltyAmount;
   final String suspensionType;
   final DateTime createdAt;
+
+  /// Last moment the user can appeal. After it the violation becomes final.
+  final DateTime? appealDeadline;
+
+  /// Issued, not appealed yet, and the deadline has not passed.
+  bool get canAppeal =>
+      status.toLowerCase() == 'issued' &&
+      (appealDeadline == null || DateTime.now().isBefore(appealDeadline!));
 
   /// Settlement state of the penalty: `Pending`, `Paid`, `Waived`, or null when
   /// no transaction was raised. Deliberately not folded into [status], which is
@@ -54,6 +73,9 @@ class ViolationSummary {
       penaltyAmount: (json['penaltyAmount'] as num).toDouble(),
       suspensionType: json['suspensionType'] as String,
       createdAt: DateTime.parse(json['createdAt'] as String),
+      appealDeadline: json['appealDeadline'] == null
+          ? null
+          : DateTime.parse(json['appealDeadline'] as String).toLocal(),
       paymentStatus: json['paymentStatus'] as String?,
       paidAt: json['paidAt'] == null
           ? null
@@ -143,7 +165,7 @@ class ViolationDetail {
       updatedAt: DateTime.parse(json['updatedAt'] as String),
       appealDeadline: json['appealDeadline'] == null
           ? null
-          : DateTime.parse(json['appealDeadline'] as String),
+          : DateTime.parse(json['appealDeadline'] as String).toLocal(),
       paymentStatus: json['paymentStatus'] as String?,
       paidAt: json['paidAt'] == null
           ? null

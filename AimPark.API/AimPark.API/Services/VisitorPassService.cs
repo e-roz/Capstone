@@ -187,7 +187,9 @@ namespace AimPark.API.Services
                 var pendingAlert = await GetPendingAlertAsync(userId: user.Id, visitorPassId: null, ct);
 
                 var denied =
-                    user.AccountStatus != AccountStatus.Active
+                    user.AccountStatus == AccountStatus.Revoked
+                        ? "RFID revoked after three accountable violations."
+                        : user.AccountStatus != AccountStatus.Active
                         ? "This account is not approved."
                         : RfidAccess.IsSuspendedNow(user, nowUtc)
                             ? "RFID access is suspended."

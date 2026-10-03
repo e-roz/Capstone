@@ -15,6 +15,7 @@ import '../widgets/ui/ui.dart';
 const _statuses = [
   AppFilterOption('Active', 'Active'),
   AppFilterOption('Suspended', 'Suspended'),
+  AppFilterOption('Revoked', 'Revoked'),
   AppFilterOption('PendingReview', 'Pending review'),
   AppFilterOption('Rejected', 'Rejected'),
   AppFilterOption('Archived', 'Archived'),
@@ -339,7 +340,10 @@ Future<void> _bulkRevokeRfid(BuildContext context, WidgetRef ref) async {
       queryParameters: {'page': 1, 'pageSize': 500});
   final page = UserListPage.fromJson(res.data as Map<String, dynamic>);
   final candidates = page.users
-      .where((u) => !u.isDeleted && u.rfidStatus != 'Unassigned')
+      .where((u) =>
+          !u.isDeleted &&
+          u.rfidStatus != 'Unassigned' &&
+          u.rfidStatus != 'Revoked')
       .toList();
 
   if (!context.mounted) return;

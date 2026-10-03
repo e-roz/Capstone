@@ -985,7 +985,11 @@ namespace AimPark.API.Services
                         }) { StatusCode = 403 };
                 }
 
-                if (existing.RegistrationStep == RegistrationStep.Completed && existing.AccountStatus == AccountStatus.Active)
+                // Revoked users lost parking access, not their account: they
+                // still sign in to see their violations and pay. Without this
+                // they fell through to "Resume registration".
+                if (existing.RegistrationStep == RegistrationStep.Completed
+                    && existing.AccountStatus is AccountStatus.Active or AccountStatus.Revoked)
                 {
                     if (_guardPost.RefuseIfGuard(existing) is { } guardPost)
                         return guardPost;
