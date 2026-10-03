@@ -63,37 +63,8 @@ namespace AimPark.API.Sync
         /// </summary>
         public string GuardPanelUrl { get; set; } = string.Empty;
 
-        /// <summary>Site mode: how the guard PC updates itself. See <see cref="Site.Updates.SiteUpdater"/>.</summary>
-        public SiteUpdateOptions Updates { get; set; } = new();
-
         public bool IsSite => Mode == SiteMode.Site;
 
         public bool IsCloud => Mode == SiteMode.Cloud;
-    }
-
-    /// <summary>The <c>Site:Updates</c> section.</summary>
-    public class SiteUpdateOptions
-    {
-        /// <summary>False: never looks for a new version.</summary>
-        public bool Enabled { get; set; } = true;
-
-        /// <summary>The GitHub releases the guard PC installers are published to.</summary>
-        public string ReleasesUrl { get; set; } = "https://api.github.com/repos/e-roz/Capstone/releases";
-
-        public int CheckEveryMinutes { get; set; } = 30;
-
-        /// <summary>Local hour the night window opens (inclusive) and closes (exclusive).</summary>
-        public int NightStartHour { get; set; } = 1;
-
-        public int NightEndHour { get; set; } = 5;
-
-        /// <summary>No gate tap for this long counts as quiet.</summary>
-        public int QuietMinutes { get; set; } = 5;
-
-        /// <summary>After "Update now", a shorter quiet spell is enough.</summary>
-        public int UpdateNowQuietMinutes { get; set; } = 1;
-
-        /// <summary>A lot with no quiet night still updates this long after the download.</summary>
-        public int DeadlineHours { get; set; } = 24;
     }
 }
