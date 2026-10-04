@@ -16,7 +16,8 @@ class NavItem {
   final IconData icon;
   final IconData selectedIcon;
 
-  /// What the sidebar calls it — kept short, because the rail is 248px wide.
+  /// What the sidebar calls it — kept short, because the sidebar is 248px wide.
+  /// The page's own title uses the same words, so the two always match.
   final String label;
 
   final String route;
@@ -81,8 +82,9 @@ List<String> routesFor(StaffRole role) => [
     ];
 
 /// Destinations grouped by *what the admin is doing*, not by what the API calls
-/// them. Eleven flat entries force a re-read of the whole list every time;
-/// labelled groups let the eye jump straight to the right third.
+/// them: the gates, the people, enforcement, money, looking back, and keeping
+/// the system itself running. No group runs past seven entries, so the sidebar
+/// reads as a handful of short lists rather than one long one.
 class NavGroup {
   const NavGroup(this.label, this.items);
 
@@ -100,11 +102,12 @@ const navGroups = <NavGroup>[
       selectedIcon: Icons.space_dashboard,
       label: 'Overview',
       route: '/dashboard',
-      description: 'System status at a glance.',
+      description:
+          'System status at a glance.',
       roles: {StaffRole.admin, StaffRole.security},
     ),
   ]),
-  NavGroup('Gate', [
+  NavGroup('Gates', [
     NavItem(
       icon: Icons.badge_outlined,
       selectedIcon: Icons.badge,
@@ -114,8 +117,22 @@ const navGroups = <NavGroup>[
       description:
           'Look up a card, check the vehicle matches, and log entry or exit.',
       // Security only — not in the capstone document as an admin feature.
-      // Admin still has Parking for the same manual entry/exit ability.
+      // Admin still has Parking for the same manual entry/exit ability. Listed
+      // first so it heads the guard's sidebar; Admin never sees it, so Parking
+      // still leads theirs.
       roles: {StaffRole.security},
+    ),
+    NavItem(
+      icon: Icons.local_parking_outlined,
+      selectedIcon: Icons.local_parking,
+      label: 'Parking',
+      route: '/parking',
+      description:
+          'Live bay occupancy, and manual entry and exit logging.',
+      // Security gets the live map read-only. Creating bays, changing their
+      // status and logging by hand stay Admin: the screen hides those for a
+      // guard rather than showing them disabled.
+      roles: {StaffRole.admin, StaffRole.security},
     ),
     NavItem(
       icon: Icons.person_add_alt_outlined,
@@ -123,97 +140,68 @@ const navGroups = <NavGroup>[
       label: 'Visitor Passes',
       route: '/visitors',
       moduleLabel: 'Visitor RFID Access',
-      description: 'Visitor cards tapped at the gate, who has each one, and '
+      description:
+          'Visitor cards tapped at the gate, who has each one, and '
           'which are not back yet.',
       roles: {StaffRole.admin, StaffRole.security},
+    ),
+    NavItem(
+      icon: Icons.style_outlined,
+      selectedIcon: Icons.style,
+      label: 'Visitor Cards',
+      route: '/visitor-cards',
+      description:
+          'The cards kept at the guard post for lending to visitors.',
     ),
     NavItem(
       icon: Icons.sensors_outlined,
       selectedIcon: Icons.sensors,
       label: 'Devices',
       route: '/gate-devices',
-      description: 'Register the RFID readers and ALPR cameras at each gate, '
+      description:
+          'Register the RFID readers and ALPR cameras at each gate, '
           'and the keys they use to connect.',
       roles: {StaffRole.admin, StaffRole.security},
+    ),
+    NavItem(
+      icon: Icons.dns_outlined,
+      selectedIcon: Icons.dns,
+      label: 'Site Server',
+      route: '/site-server',
+      description:
+          'The guard post PC that syncs with the cloud, and its key.',
     ),
     NavItem(
       icon: Icons.usb_outlined,
       selectedIcon: Icons.usb,
       label: 'Gate Readers',
       route: '/gate-readers',
-      description: 'Link the card readers plugged into this PC to their gates, '
+      description:
+          'Link the card readers plugged into this PC to their gates, '
           'watch taps, and open a gate by hand.',
       // Security only: the readers are cabled to the guard post's PC, and the
       // screen only works on the panel that PC serves.
       roles: {StaffRole.security},
     ),
   ]),
-  NavGroup('Operations', [
+  NavGroup('People', [
     NavItem(
       icon: Icons.pending_actions_outlined,
       selectedIcon: Icons.pending_actions,
-      label: 'Pending Registrations',
+      label: 'Registrations',
       route: '/pending',
-      description: 'Review submitted documents and approve or reject accounts.',
+      moduleLabel: 'Pending Registrations',
+      description:
+          'Review submitted documents and approve or reject accounts.',
     ),
-    NavItem(
-      icon: Icons.local_parking_outlined,
-      selectedIcon: Icons.local_parking,
-      label: 'Parking',
-      route: '/parking',
-      description: 'Live bay occupancy, and manual entry and exit logging.',
-      // Security gets the live map read-only. Creating bays, changing their
-      // status and logging by hand stay Admin: the screen hides those for a
-      // guard rather than showing them disabled.
-      roles: {StaffRole.admin, StaffRole.security},
-    ),
-    NavItem(
-      icon: Icons.payments_outlined,
-      selectedIcon: Icons.payments,
-      label: 'Payments',
-      route: '/payments',
-      moduleLabel: 'Payment Monitoring',
-      description: 'Track transactions, collected fees and outstanding balances.',
-    ),
-  ]),
-  NavGroup('Enforcement', [
-    NavItem(
-      icon: Icons.gavel_outlined,
-      selectedIcon: Icons.gavel,
-      label: 'Violations',
-      route: '/violations',
-      moduleLabel: 'Violation Tracking',
-      description: 'Document offences and enforce parking suspensions.',
-    ),
-    NavItem(
-      icon: Icons.rule_outlined,
-      selectedIcon: Icons.rule,
-      label: 'Policy Rules',
-      route: '/policy-rules',
-      moduleLabel: 'Policy & Rule Management',
-      description: 'Define regulations, penalties and suspension defaults.',
-    ),
-    NavItem(
-      icon: Icons.report_outlined,
-      selectedIcon: Icons.report,
-      label: 'Incidents',
-      route: '/incidents',
-      moduleLabel: 'Incidents & Appeals',
-      description: 'Review reported incidents and decide violation appeals.',
-      // Security reports what they see on the ground and follows it up. The
-      // appeals half of the module is admin work, and the screen hides that tab
-      // for them rather than the whole destination being withheld.
-      roles: {StaffRole.admin, StaffRole.security},
-    ),
-  ]),
-  NavGroup('System', [
     NavItem(
       icon: Icons.people_outline,
       selectedIcon: Icons.people,
-      label: 'User Management',
+      label: 'Users',
       route: '/users',
       moduleLabel: 'Manage Users',
-      description: 'Verify credentials and control RFID access permissions.',
+      description:
+          'Verify credentials and control RFID access permissions.',
     ),
     NavItem(
       icon: Icons.credit_card_outlined,
@@ -223,38 +211,68 @@ const navGroups = <NavGroup>[
       description:
           'Physical cards revoked from an account and not yet reissued.',
     ),
+  ]),
+  NavGroup('Enforcement', [
     NavItem(
-      icon: Icons.style_outlined,
-      selectedIcon: Icons.style,
-      label: 'Visitor Cards',
-      route: '/visitor-cards',
-      description: 'The cards kept at the guard post for lending to visitors.',
+      icon: Icons.gavel_outlined,
+      selectedIcon: Icons.gavel,
+      label: 'Violations',
+      route: '/violations',
+      moduleLabel: 'Violation Tracking',
+      description:
+          'Document offences and enforce parking suspensions.',
     ),
     NavItem(
-      icon: Icons.notifications_outlined,
-      selectedIcon: Icons.notifications,
-      label: 'Notifications',
-      route: '/notifications',
-      moduleLabel: 'Notifications Management',
-      description: 'Broadcast parking announcements and policy updates.',
-      // Security sees the inbox half only - "Receive Notifications" in the
-      // spec. The screen hides the Sent tab and the Broadcast button for them.
+      icon: Icons.report_outlined,
+      selectedIcon: Icons.report,
+      label: 'Incidents',
+      route: '/incidents',
+      moduleLabel: 'Incidents & Appeals',
+      description:
+          'Review reported incidents and decide violation appeals.',
+      // Security reports what they see on the ground and follows it up. The
+      // appeals half of the module is admin work, and the screen hides that tab
+      // for them rather than the whole destination being withheld.
       roles: {StaffRole.admin, StaffRole.security},
     ),
     NavItem(
-      icon: Icons.bar_chart_outlined,
-      selectedIcon: Icons.bar_chart,
-      label: 'Reports',
-      route: '/reports',
-      moduleLabel: 'Reports & Monitoring',
-      description: 'Usage summaries, trends and generated reports.',
+      icon: Icons.rule_outlined,
+      selectedIcon: Icons.rule,
+      label: 'Policy Rules',
+      route: '/policy-rules',
+      moduleLabel: 'Policy & Rule Management',
+      description:
+          'Define regulations, penalties and suspension defaults.',
+    ),
+  ]),
+  NavGroup('Payments', [
+    NavItem(
+      icon: Icons.payments_outlined,
+      selectedIcon: Icons.payments,
+      label: 'Payments',
+      route: '/payments',
+      moduleLabel: 'Payment Monitoring',
+      description:
+          'Track transactions, collected fees and outstanding balances.',
     ),
     NavItem(
       icon: Icons.receipt_long_outlined,
       selectedIcon: Icons.receipt_long,
       label: 'Payment Log',
       route: '/payment-log',
-      description: 'Itemized payment history for a date range, with export.',
+      description:
+          'Itemized payment history for a date range, with export.',
+    ),
+  ]),
+  NavGroup('Insights', [
+    NavItem(
+      icon: Icons.bar_chart_outlined,
+      selectedIcon: Icons.bar_chart,
+      label: 'Reports',
+      route: '/reports',
+      moduleLabel: 'Reports & Monitoring',
+      description:
+          'Usage summaries, trends and generated reports.',
     ),
     NavItem(
       icon: Icons.history_outlined,
@@ -267,22 +285,30 @@ const navGroups = <NavGroup>[
       // — the API refuses them the other two, and the screen hides them.
       roles: {StaffRole.admin, StaffRole.security},
     ),
+  ]),
+  NavGroup('System', [
+    NavItem(
+      icon: Icons.notifications_outlined,
+      selectedIcon: Icons.notifications,
+      label: 'Notifications',
+      route: '/notifications',
+      moduleLabel: 'Notifications Management',
+      description:
+          'Broadcast parking announcements and policy updates.',
+      // Security sees the inbox half only - "Receive Notifications" in the
+      // spec. The screen hides the Sent tab and the Broadcast button for them.
+      roles: {StaffRole.admin, StaffRole.security},
+    ),
     NavItem(
       icon: Icons.backup_outlined,
       selectedIcon: Icons.backup,
       label: 'Backup & Restore',
       route: '/backup',
       moduleLabel: 'Data Backup & Restore',
-      description: 'Save a copy of the database, or put a saved copy back.',
+      description:
+          'Save a copy of the database, or put a saved copy back.',
       // Admin only, and deliberately not shared with Security: a restore
       // replaces every row in the database.
-    ),
-    NavItem(
-      icon: Icons.dns_outlined,
-      selectedIcon: Icons.dns,
-      label: 'Site Server',
-      route: '/site-server',
-      description: 'The guard post PC that syncs with the cloud, and its key.',
     ),
   ]),
 ];

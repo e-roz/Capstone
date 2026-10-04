@@ -55,7 +55,7 @@ class _PendingRegistrationsScreenState
   @override
   Widget build(BuildContext context) {
     return AppPage(
-      title: 'Pending Registrations',
+      title: 'Registrations',
       subtitle: 'Applications waiting on a decision.',
       actions: [
         IconButton(

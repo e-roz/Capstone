@@ -80,7 +80,7 @@ class _IncidentsPage extends ConsumerWidget {
         : null;
 
     return AppPage(
-      title: showAppeals ? 'Incidents & Appeals' : 'Incident Reports',
+      title: 'Incidents',
       subtitle: showAppeals
           ? 'Reports raised by users and security staff, and appeals against '
               'issued violations.'

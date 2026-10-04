@@ -32,7 +32,7 @@ class UserManagementScreen extends ConsumerWidget {
     final notifier = ref.read(usersQueryNotifierProvider.notifier);
 
     return AppPage(
-      title: 'User Management',
+      title: 'Users',
       subtitle: 'Everyone with an AimPark account, and the state of it.',
       actions: [
         OutlinedButton.icon(

@@ -215,7 +215,7 @@ class _CardStrip extends ConsumerWidget {
         padding: const EdgeInsets.only(bottom: AppSpacing.headingGap),
         child: Text(
           'No visitor cards are registered yet. An admin adds them under '
-          'System > Visitor Cards.',
+          'Gates > Visitor Cards.',
           style: text.bodySmall?.copyWith(color: t.text.secondary),
         ),
       );

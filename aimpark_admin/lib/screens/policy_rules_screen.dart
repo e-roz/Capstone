@@ -35,7 +35,7 @@ class PolicyRulesScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     return AppPage(
-      title: 'Policy & Rule Management',
+      title: 'Policy Rules',
       subtitle:
           'The regulations violations are issued against, and what each one costs.',
       actions: [

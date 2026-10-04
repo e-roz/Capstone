@@ -18,7 +18,7 @@ class ViolationsScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     return AppPage(
-      title: 'Violation Tracking',
+      title: 'Violations',
       subtitle: 'Offences on record, who they belong to, and where each case '
           'stands. Open one to decide it.',
       actions: [
