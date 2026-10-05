@@ -26,6 +26,9 @@ namespace AimPark.API.Sync
             services.Configure<SiteOptions>(section);
             services.AddScoped<SyncSuppression>();
             services.AddSingleton<GuardPostSignIn>();
+            // Filled only on the cloud, but registered on both so the sync
+            // controller and hub resolve wherever they are mapped.
+            services.AddSingleton<SiteLinkState>();
 
             services.AddAuthorization(o => o.AddPolicy(SitePolicies.SiteServer, p => p
                 .RequireRole(ApiKeyDefaults.DeviceRole)
@@ -75,6 +78,8 @@ namespace AimPark.API.Sync
             services.AddScoped<SnapshotApplier>();
             services.AddHostedService<SiteOutboxPusher>();
             services.AddHostedService<SiteMasterDataSync>();
+            services.AddScoped<DeviceHealthReport>();
+            services.AddHostedService<SiteHealthPusher>();
 
             // Barrier readers plugged into this PC by USB. One instance, since
             // the Gate Readers screen reads and changes the same connections

@@ -8,12 +8,14 @@ import 'package:flutter/material.dart';
 class Breakpoints {
   Breakpoints._();
 
-  /// Below this the nav rail becomes a drawer behind a hamburger button;
-  /// an expanded rail would leave almost no room for content.
+  /// Below this the sidebar becomes a drawer behind a hamburger button;
+  /// even the icon rail would leave almost no room for content.
   static const double compact = 600;
 
-  /// Below this the rail shows icons only instead of icons plus labels.
-  static const double medium = 900;
+  /// Below this the sidebar shows icons only instead of icons plus labels.
+  /// 1024 rather than 900, so a small laptop gets the icon rail and keeps the
+  /// 176px a labelled sidebar would cost for its tables.
+  static const double medium = 1024;
 }
 
 extension ResponsiveContext on BuildContext {
@@ -22,7 +24,7 @@ extension ResponsiveContext on BuildContext {
   /// Phone-sized: navigation collapses into a drawer.
   bool get isCompact => screenWidth < Breakpoints.compact;
 
-  /// Tablet / small laptop: rail visible but unlabelled.
+  /// Tablet / small laptop: sidebar shrinks to an unlabelled icon rail.
   bool get isMedium => screenWidth < Breakpoints.medium;
 
   double get screenHeight => MediaQuery.sizeOf(this).height;

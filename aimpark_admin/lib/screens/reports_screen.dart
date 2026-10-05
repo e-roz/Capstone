@@ -37,7 +37,7 @@ class ReportsScreen extends ConsumerWidget {
         breakdown.hasValue;
 
     return AppPage(
-      title: 'Reports & Monitoring',
+      title: 'Reports',
       subtitle: 'Usage, revenue and enforcement across the whole system.',
       scrollable: true,
       actions: [

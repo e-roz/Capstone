@@ -139,6 +139,10 @@ class ApiEndpoints {
   // Admin and Security – every device the guard post depends on. Site server only.
   static const deviceHealth = '/api/site/device-health';
 
+  // Admin and Security – the guard post as the cloud sees it: connected or
+  // not, when it last sent, and its latest device list. Cloud answers.
+  static const siteLink = '/api/site-link';
+
   // Security – the Overview's live gate log and camera. Site server only.
   static const liveGateTaps = '/api/site/live-gate/taps';
   static String liveGateTapPhoto(String tapId) =>

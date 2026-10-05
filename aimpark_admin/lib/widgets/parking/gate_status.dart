@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import '../../core/constants/api_endpoints.dart';
+import '../../models/device_health.dart';
 import '../../models/gate_reader.dart';
 import '../../models/gate_tap_event.dart';
 import '../../theme/theme.dart';
@@ -15,8 +16,9 @@ final _clock = DateFormat('HH:mm');
 ///
 /// Read from the guard post's server: its Gate Readers link (reader, port,
 /// errors), the camera feed, and today's gate log. Opened from the cloud
-/// panel none of that answers, and [known] is false — the map then shows
-/// "unknown", never "down".
+/// panel none of that answers; there the map builds it instead from the
+/// device list the guard post relays through the cloud ([fromRelayed]), and
+/// only says "unknown" — never "down" — when nothing has been relayed.
 class GateStatus {
   const GateStatus({
     required this.gate,
@@ -32,6 +34,7 @@ class GateStatus {
     this.refused = 0,
     this.countsCapped = false,
     this.recent = const [],
+    this.relayed = false,
   });
 
   final int gate;
@@ -58,6 +61,10 @@ class GateStatus {
 
   /// Newest first.
   final List<GateTapEvent> recent;
+
+  /// Built from the device list the guard post sends the cloud, not read
+  /// from the guard post itself. Devices are known; today's traffic is not.
+  final bool relayed;
 
   GateTapEvent? get last => recent.isEmpty ? null : recent.first;
 
@@ -164,6 +171,39 @@ class GateStatus {
   }
 
   static const _historyPage = 100;
+
+  /// One gate's reader and camera, from the device list the guard post sends
+  /// the cloud — what the online panel has instead of the guard post's own
+  /// endpoints.
+  ///
+  /// Rows name their gate in [DeviceHealth.boundTo] ("Gate 2",
+  /// "Reader 1 (Gate 2)", "COM5 · Reader 1 (Gate 2)"). A gate with no reader
+  /// row reads as down, as it does at the guard post: nothing is taking taps.
+  factory GateStatus.fromRelayed(int gate, List<DeviceHealth> devices) {
+    final atGate = RegExp(r'\bGate ' '$gate' r'\b');
+    bool here(DeviceHealth d) => d.boundTo != null && atGate.hasMatch(d.boundTo!);
+
+    final reader = devices
+        .where((d) => (d.kind == 'gateNode' || d.kind == 'gateReader') && here(d))
+        // An online one wins, so a spare unplugged reader doesn't hide a working one.
+        .fold<DeviceHealth?>(null, (best, d) => best == null || (d.online && !best.online) ? d : best);
+    final cameras = devices.where((d) => d.kind == 'camera' && here(d)).toList();
+
+    return GateStatus(
+      gate: gate,
+      known: true,
+      relayed: true,
+      reader: reader?.online ?? false,
+      camera: cameras.isEmpty ? null : cameras.any((c) => c.online),
+      readerName: reader?.name,
+      readerError: reader == null
+          ? 'No reader linked to Gate $gate'
+          : reader.online
+              ? null
+              : reader.lastError ?? 'Not answering',
+      lastTapAt: null,
+    );
+  }
 }
 
 /// "just now", "2m ago", "3h ago".

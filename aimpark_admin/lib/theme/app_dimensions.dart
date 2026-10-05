@@ -173,7 +173,7 @@ class AppSizes {
   static const double sidebarCollapsed = 72;
 
   /// Height of the top bar above page content.
-  static const double topBarHeight = 60;
+  static const double topBarHeight = 56;
 
   /// Table row height. 44 rather than Material's 52: an admin scanning for one
   /// row among sixty is served better by seeing more of them at once than by
