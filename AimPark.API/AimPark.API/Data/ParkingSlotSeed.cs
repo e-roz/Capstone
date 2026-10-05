@@ -8,6 +8,10 @@ namespace AimPark.API.Data
     // column, with its three four-wheel bays at the top; Gate 2's are the right
     // column, with its three four-wheel bays at the bottom.
     //
+    // Codes run across the whole lot — C1–C6, M1–M12 — because the model is one
+    // parking area: a driver never sees "Gate 1's C1" and "Gate 2's C1". The
+    // gate field stays, since allocation still steers by it.
+    //
     // Guids are kept from the original 20-bay seed so parking logs that already
     // reference a bay keep resolving. When the lot went from 20 bays to 18, the
     // eighth motorcycle bay at each gate (…010, …020) became that gate's third
@@ -20,26 +24,26 @@ namespace AimPark.API.Data
         public static ParkingSlot[] GetSeedSlots() =>
         [
             // Gate 1 — left column
-            Build(1, 1, "G1-C1", VehicleType.Car),
-            Build(2, 1, "G1-C2", VehicleType.Car),
-            Build(10, 1, "G1-C3", VehicleType.Car),
-            Build(3, 1, "G1-M1", VehicleType.Motorcycle),
-            Build(4, 1, "G1-M2", VehicleType.Motorcycle),
-            Build(5, 1, "G1-M3", VehicleType.Motorcycle),
-            Build(6, 1, "G1-M4", VehicleType.Motorcycle),
-            Build(7, 1, "G1-M5", VehicleType.Motorcycle),
-            Build(8, 1, "G1-M6", VehicleType.Motorcycle),
+            Build(1, 1, "C1", VehicleType.Car),
+            Build(2, 1, "C2", VehicleType.Car),
+            Build(10, 1, "C3", VehicleType.Car),
+            Build(3, 1, "M1", VehicleType.Motorcycle),
+            Build(4, 1, "M2", VehicleType.Motorcycle),
+            Build(5, 1, "M3", VehicleType.Motorcycle),
+            Build(6, 1, "M4", VehicleType.Motorcycle),
+            Build(7, 1, "M5", VehicleType.Motorcycle),
+            Build(8, 1, "M6", VehicleType.Motorcycle),
 
             // Gate 2 — right column
-            Build(13, 2, "G2-M1", VehicleType.Motorcycle),
-            Build(14, 2, "G2-M2", VehicleType.Motorcycle),
-            Build(15, 2, "G2-M3", VehicleType.Motorcycle),
-            Build(16, 2, "G2-M4", VehicleType.Motorcycle),
-            Build(17, 2, "G2-M5", VehicleType.Motorcycle),
-            Build(18, 2, "G2-M6", VehicleType.Motorcycle),
-            Build(11, 2, "G2-C1", VehicleType.Car),
-            Build(12, 2, "G2-C2", VehicleType.Car),
-            Build(20, 2, "G2-C3", VehicleType.Car),
+            Build(13, 2, "M7", VehicleType.Motorcycle),
+            Build(14, 2, "M8", VehicleType.Motorcycle),
+            Build(15, 2, "M9", VehicleType.Motorcycle),
+            Build(16, 2, "M10", VehicleType.Motorcycle),
+            Build(17, 2, "M11", VehicleType.Motorcycle),
+            Build(18, 2, "M12", VehicleType.Motorcycle),
+            Build(11, 2, "C4", VehicleType.Car),
+            Build(12, 2, "C5", VehicleType.Car),
+            Build(20, 2, "C6", VehicleType.Car),
         ];
 
         private static ParkingSlot Build(int index, int gate, string slotCode, VehicleType vehicleType) => new()

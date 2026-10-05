@@ -25,12 +25,15 @@ namespace AimPark.API.Controllers
         private readonly SnapshotBuilder _snapshots;
         private readonly EventIngestor _ingestor;
         private readonly IFileStorageService _files;
+        private readonly SiteLinkState _link;
 
-        public SiteSyncController(SnapshotBuilder snapshots, EventIngestor ingestor, IFileStorageService files)
+        public SiteSyncController(
+            SnapshotBuilder snapshots, EventIngestor ingestor, IFileStorageService files, SiteLinkState link)
         {
             _snapshots = snapshots;
             _ingestor = ingestor;
             _files = files;
+            _link = link;
         }
 
         /// <summary>Everything a gate decision reads, for the site's own copy.</summary>
@@ -43,7 +46,19 @@ namespace AimPark.API.Controllers
         public async Task<ActionResult<object>> Events([FromBody] SiteEventBatch batch, CancellationToken ct)
         {
             var skipped = await _ingestor.IngestAsync(batch, ct);
+            _link.Pushed();
             return Ok(new { skipped });
+        }
+
+        /// <summary>
+        /// The guard post's device list — hub, boards, readers, cameras — sent
+        /// every few seconds so the online panel can show it.
+        /// </summary>
+        [HttpPost("health")]
+        public ActionResult Health([FromBody] SiteHealthReport report)
+        {
+            _link.Health(report.Devices);
+            return NoContent();
         }
 
         /// <summary>A short-lived link to an incident attachment, for the guard post to show.</summary>

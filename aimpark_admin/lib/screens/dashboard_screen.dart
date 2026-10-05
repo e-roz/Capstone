@@ -99,7 +99,7 @@ class DashboardScreen extends ConsumerWidget {
               children: [
                 _MetricRow(summary: summary, range: range),
                 const SizedBox(height: AppSpacing.gutter),
-                const LiveParkingMapCard(compact: true, showOpenLink: true),
+                const ParkingSummaryCard(),
                 const SizedBox(height: AppSpacing.gutter),
                 _TwoUp(
                   leftFlex: 5,

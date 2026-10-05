@@ -115,7 +115,7 @@ class SecurityOverviewScreen extends ConsumerWidget {
           const SizedBox(height: AppSpacing.gutter),
           const _GateCameras(),
           const SizedBox(height: AppSpacing.gutter),
-          const LiveParkingMapCard(compact: true, showOpenLink: true),
+          const ParkingSummaryCard(),
           const SizedBox(height: AppSpacing.sectionGap),
           if (wide)
             Row(
