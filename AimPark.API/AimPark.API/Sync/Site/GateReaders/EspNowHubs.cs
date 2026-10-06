@@ -2,6 +2,7 @@ using System.IO.Ports;
 using System.Text.Json;
 using AimPark.API.Data;
 using AimPark.API.Entities;
+using AimPark.API.Enums;
 using Microsoft.EntityFrameworkCore;
 
 namespace AimPark.API.Sync.Site.GateReaders
@@ -210,14 +211,16 @@ namespace AimPark.API.Sync.Site.GateReaders
         public bool Unbind(string port)
         {
             HubSession? old;
+            HubBinding? binding;
             lock (_lock)
             {
-                if (!_bindings.Remove(port)) return false;
+                if (!_bindings.Remove(port, out binding)) return false;
                 _sessions.Remove(port, out old);
             }
 
             old?.Stop();
             SaveBindings();
+            _ = ReleaseSlotsAsync(binding.Slots.Values.ToList(), _stopping);
             return true;
         }
 
@@ -255,14 +258,16 @@ namespace AimPark.API.Sync.Site.GateReaders
             if (await session.Conversation.ForgetAsync(node) is { } problem)
                 return problem;
 
+            List<Guid> released = [];
             lock (_lock)
                 if (_bindings.TryGetValue(port, out var binding))
                 {
                     binding.Gates.Remove(node);
                     foreach (var sensor in binding.Slots.Keys.Where(s => HubProtocol.BoardOf(s) == node).ToList())
-                        binding.Slots.Remove(sensor);
+                        if (binding.Slots.Remove(sensor, out var slot)) released.Add(slot);
                 }
             SaveBindings();
+            await ReleaseSlotsAsync(released, _stopping);
             return null;
         }
 
@@ -342,10 +347,13 @@ namespace AimPark.API.Sync.Site.GateReaders
             }
 
             HubSession? session;
+            List<Guid> released = [];
             lock (_lock)
             {
                 if (!_bindings.TryGetValue(port, out var binding))
                     return $"{port} isn't linked as a hub.";
+                if (binding.Slots.TryGetValue(node, out var before) && before != slotId)
+                    released.Add(before);
 
                 if (slotId is Guid id)
                 {
@@ -354,6 +362,7 @@ namespace AimPark.API.Sync.Site.GateReaders
                     foreach (var other in _bindings.Values)
                         foreach (var taken in other.Slots.Where(s => s.Value == id).Select(s => s.Key).ToList())
                             other.Slots.Remove(taken);
+                    released.Remove(id);
                     binding.Slots[node] = id;
                 }
                 else
@@ -365,10 +374,13 @@ namespace AimPark.API.Sync.Site.GateReaders
             }
 
             SaveBindings();
+            await ReleaseSlotsAsync(released, ct);
 
             var reading = session?.Conversation.Nodes().FirstOrDefault(n => n.Node == node);
-            if (slotId is not null && reading is { Online: true, Occupied: bool occupied })
-                await ApplySlotAsync(port, node, occupied, ct);
+            if (slotId is not null && reading is { Fault: true })
+                await ApplySlotAsync(port, node, (current, _) => SlotSensorRule.Lost(current), false, ct);
+            else if (slotId is not null && reading is { Online: true, Occupied: bool occupied })
+                await ApplySlotAsync(port, node, SlotSensorRule.Next, occupied, ct);
 
             return null;
         }
@@ -548,7 +560,8 @@ namespace AimPark.API.Sync.Site.GateReaders
             session.Conversation = new HubConversation(
                 send: session.TrySend,
                 answerTap: (node, uid, ct) => AnswerTapAsync(port, node, uid, ct),
-                slotSeen: (node, occupied, _, ct) => ApplySlotAsync(port, node, occupied, ct),
+                slotSeen: (node, occupied, _, ct) => ApplySlotAsync(port, node, SlotSensorRule.Next, occupied, ct),
+                slotLost: (node, ct) => ApplySlotAsync(port, node, (current, _) => SlotSensorRule.Lost(current), false, ct),
                 log: message => _logger.LogInformation("Hub on {Port}: {Message}", port, message));
 
             lock (_lock) _sessions[port] = session;
@@ -655,11 +668,13 @@ namespace AimPark.API.Sync.Site.GateReaders
         }
 
         /// <summary>
-        /// A sensor's reading, applied to its slot under <see cref="SlotSensorRule"/>.
+        /// A sensor's reading, or its loss, applied to its slot under <see cref="SlotSensorRule"/>.
         /// Saved through the ordinary context, so the outbox carries it to the
         /// cloud and allocation sees it at once.
         /// </summary>
-        private async Task ApplySlotAsync(string port, string node, bool occupied, CancellationToken ct)
+        private async Task ApplySlotAsync(
+            string port, string node, Func<ParkingSlotStatus, bool, ParkingSlotStatus?> rule, bool occupied,
+            CancellationToken ct)
         {
             Guid? slotId;
             lock (_lock)
@@ -672,7 +687,7 @@ namespace AimPark.API.Sync.Site.GateReaders
             var slot = await db.Set<ParkingSlot>().FirstOrDefaultAsync(s => s.Id == watched, ct);
             if (slot is null) return;
 
-            if (SlotSensorRule.Next(slot.Status, occupied) is not { } status)
+            if (rule(slot.Status, occupied) is not { } status)
                 return;
 
             slot.Status = status;
@@ -681,6 +696,39 @@ namespace AimPark.API.Sync.Site.GateReaders
 
             _logger.LogInformation("Slot {Slot} is now {Status}, from sensor {Node} on {Port}",
                 slot.SlotCode, status, node, port);
+        }
+
+        /// <summary>
+        /// Slots no sensor watches any more. One left at No signal would stay
+        /// there for good, so it goes back to Available: the gates keep it from here.
+        /// </summary>
+        private async Task ReleaseSlotsAsync(IReadOnlyCollection<Guid> slotIds, CancellationToken ct)
+        {
+            if (slotIds.Count == 0) return;
+            try
+            {
+                lock (_lock)
+                    slotIds = slotIds.Where(id => !_bindings.Values.Any(b => b.Slots.ContainsValue(id))).ToList();
+                if (slotIds.Count == 0) return;
+
+                using var scope = _scopes.CreateScope();
+                var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+                var stuck = await db.Set<ParkingSlot>()
+                    .Where(s => slotIds.Contains(s.Id) && s.Status == ParkingSlotStatus.NoSignal)
+                    .ToListAsync(ct);
+                if (stuck.Count == 0) return;
+
+                foreach (var slot in stuck)
+                {
+                    slot.Status = ParkingSlotStatus.Available;
+                    slot.UpdatedAt = DateTime.UtcNow;
+                }
+                await db.SaveChangesAsync(ct);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                _logger.LogWarning(ex, "Couldn't free slots no sensor watches any more");
+            }
         }
 
         private static Guid? BoundTo(HubBinding binding, HubNodeView node) => node.Kind switch

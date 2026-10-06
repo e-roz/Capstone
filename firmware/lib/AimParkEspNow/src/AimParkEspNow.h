@@ -88,7 +88,7 @@ enum MsgType : uint8_t {
 
 // Bumped whenever Packet changes, so a board on old firmware is ignored
 // rather than misread. Reflash every board together.
-constexpr uint8_t PROTOCOL_VERSION = 3;
+constexpr uint8_t PROTOCOL_VERSION = 4;
 constexpr size_t UID_CHARS = 20;   // a 10-byte UID in hex
 
 // One sensor board watches several slots, each with its own HC-SR04.
@@ -122,6 +122,7 @@ struct __attribute__((packed)) Packet {
       uint8_t  slotCount;
       uint16_t occupiedMask;           // Bit i set = slot i + 1 occupied.
       uint16_t distanceMm[MAX_SLOTS];  // 0 = nothing in range.
+      uint16_t faultMask;              // Bit i set = sensor i + 1 has heard no echo for a while.
     };
     Diag diag;                         // PONG only.
   };
@@ -129,8 +130,8 @@ struct __attribute__((packed)) Packet {
 
 // PING and PONG share the SLOT bytes, so boards on the previous build still
 // read every packet the same size: they ignore a PING rather than reject it.
-static_assert(sizeof(Packet) == 50, "Packet changed size: bump PROTOCOL_VERSION and reflash every board");
-static_assert(sizeof(Diag) <= 1 + 2 + 2 * MAX_SLOTS, "Diag must fit in the SLOT bytes");
+static_assert(sizeof(Packet) == 52, "Packet changed size: bump PROTOCOL_VERSION and reflash every board");
+static_assert(sizeof(Diag) <= 1 + 2 + 2 * MAX_SLOTS + 2, "Diag must fit in the SLOT bytes");
 
 struct Incoming {
   uint8_t mac[6];

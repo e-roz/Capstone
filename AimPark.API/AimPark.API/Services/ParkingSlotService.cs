@@ -72,6 +72,10 @@ namespace AimPark.API.Services
             if (!Enum.TryParse<ParkingSlotStatus>(dto.Status, true, out var newStatus))
                 return new BadRequestObjectResult(new { message = "Invalid status value." });
 
+            // Only a bay's sensor can say it has lost its signal.
+            if (newStatus == ParkingSlotStatus.NoSignal)
+                return new BadRequestObjectResult(new { message = "No signal is set by the slot's sensor, not by hand." });
+
             var slot = await _slots.FindAsync(s => s.Id == slotId, ct);
             if (slot is null)
                 return new NotFoundObjectResult(new { message = "Slot not found." });

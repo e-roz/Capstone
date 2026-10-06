@@ -12,7 +12,8 @@ namespace AimPark.API.Sync.Site.GateReaders
         DateTime? LastTapAt,
         bool? Occupied,
         int? DistanceCm,
-        DateTime? SlotChangedAt);
+        DateTime? SlotChangedAt,
+        bool Fault = false);
 
     /// <summary>
     /// One connection test: of the hub itself (<see cref="HubProtocol.HubName"/>)
@@ -69,6 +70,7 @@ namespace AimPark.API.Sync.Site.GateReaders
         private readonly Func<string, bool> _send;
         private readonly Func<string, string, CancellationToken, Task<bool>> _answerTap;
         private readonly Func<string, bool, int, CancellationToken, Task> _slotSeen;
+        private readonly Func<string, CancellationToken, Task>? _slotLost;
         private readonly Func<DateTime> _now;
         private readonly Action<string>? _log;
 
@@ -116,16 +118,19 @@ namespace AimPark.API.Sync.Site.GateReaders
         /// <param name="send">Writes one line to the hub. False when it couldn't.</param>
         /// <param name="answerTap">A card at a gate node: true to open.</param>
         /// <param name="slotSeen">A sensor's reading: occupied or not, and the distance in cm.</param>
+        /// <param name="slotLost">A sensor stopped reading: it hears no echo, or its board went offline.</param>
         public HubConversation(
             Func<string, bool> send,
             Func<string, string, CancellationToken, Task<bool>> answerTap,
             Func<string, bool, int, CancellationToken, Task> slotSeen,
             Func<DateTime>? now = null,
-            Action<string>? log = null)
+            Action<string>? log = null,
+            Func<string, CancellationToken, Task>? slotLost = null)
         {
             _send = send;
             _answerTap = answerTap;
             _slotSeen = slotSeen;
+            _slotLost = slotLost;
             _now = now ?? (() => DateTime.UtcNow);
             _log = log;
 
@@ -272,16 +277,36 @@ namespace AimPark.API.Sync.Site.GateReaders
                         var node = NodeFor(slot.Node);
                         node.Online = true;
                         node.LastSeenAt = now;
-                        if (node.Occupied != slot.Occupied) node.SlotChangedAt = now;
+                        if (node.Occupied != slot.Occupied || node.Fault) node.SlotChangedAt = now;
                         node.Occupied = slot.Occupied;
                         node.DistanceCm = slot.DistanceCm;
+                        node.Fault = false;
                     }
                     // Every reading goes through, STATUS repeats included: the
                     // slot may have been changed under the sensor since (a car
                     // logged out at the gate while the bay is still taken).
                     return InOrder(slot.Node, ct, token => _slotSeen(slot.Node, slot.Occupied, slot.DistanceCm, token));
 
+                case HubSlotFault fault:
+                    lock (_lock)
+                    {
+                        // The board is fine — it said so — but this one sensor isn't.
+                        var board = NodeFor(HubProtocol.BoardOf(fault.Node));
+                        board.Online = true;
+                        board.LastSeenAt = now;
+
+                        var node = NodeFor(fault.Node);
+                        node.Online = true;
+                        node.LastSeenAt = now;
+                        if (!node.Fault) node.SlotChangedAt = now;
+                        node.Fault = true;
+                        node.Occupied = null;
+                        node.DistanceCm = null;
+                    }
+                    return SlotLost(fault.Node, ct);
+
                 case HubPresence presence:
+                    List<string> lost = [];
                     lock (_lock)
                     {
                         // A sensor board comes and goes with all its sensors.
@@ -304,10 +329,13 @@ namespace AimPark.API.Sync.Site.GateReaders
                             {
                                 if (node.Online) node.WentOfflineAt = now;
                                 node.Online = false;
+                                node.Fault = false;
+                                if (node.Kind == HubNodeKind.Sensor) lost.Add(node.Name);
                             }
                         }
                     }
-                    return Task.CompletedTask;
+                    // Its sensors' bays can no longer be vouched for either way.
+                    return Task.WhenAll(lost.Select(name => SlotLost(name, ct)));
 
                 case HubNodeError error:
                     lock (_lock)
@@ -609,9 +637,12 @@ namespace AimPark.API.Sync.Site.GateReaders
                     .Select(n => new HubNodeView(
                         n.Name, n.Kind, n.Online, n.LastSeenAt, n.WentOfflineAt,
                         n.LastError, n.LastErrorAt, n.LastTapAt,
-                        n.Occupied, n.DistanceCm, n.SlotChangedAt))
+                        n.Occupied, n.DistanceCm, n.SlotChangedAt, n.Fault))
                     .ToList();
         }
+
+        private Task SlotLost(string node, CancellationToken ct) =>
+            _slotLost is null ? Task.CompletedTask : InOrder(node, ct, token => _slotLost(node, token));
 
         private Node NodeFor(string name)
         {
@@ -665,6 +696,7 @@ namespace AimPark.API.Sync.Site.GateReaders
             public bool? Occupied { get; set; }
             public int? DistanceCm { get; set; }
             public DateTime? SlotChangedAt { get; set; }
+            public bool Fault { get; set; }
         }
     }
 }

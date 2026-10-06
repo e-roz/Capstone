@@ -1,6 +1,7 @@
 // AimPark — wireless slot sensor board
 // ESP32 + one HC-SR04 per parking slot, looking down at the slot. Tells the
-// hub whenever any slot turns occupied or free, and repeats every slot's state
+// hub whenever any slot turns occupied or free, or a sensor stops answering
+// (unplugged or broken: no echo at all), and repeats every slot's state
 // every few seconds as a heartbeat, so the hub catches up after either one
 // restarts.
 //
@@ -39,6 +40,12 @@ static_assert(SLOT_COUNT <= MAX_SLOTS, "More slots than a packet carries");
 // Serial Monitor open and adjust.
 const uint16_t MIN_VALID_MM   = 1;
 const uint16_t OCCUPIED_MAX_MM = 50;
+// The farthest a working sensor reads: the empty floor under it, plus room.
+// Anything beyond is not an echo off this bay — usually an ECHO pin left
+// floating by an unplugged sensor (34 and 35 have no pull resistor) — and is
+// treated like no echo at all. Every sensor over an empty bay must read under
+// this; check with the Serial Monitor before raising or lowering it.
+const uint16_t MAX_VALID_MM    = 400;
 
 // Quick to call a slot occupied, slower to call it free, so a dropped echo
 // under a parked car doesn't clear it. Counted in full scans of every sensor.
@@ -46,6 +53,10 @@ const uint8_t OCCUPIED_CONFIRM_SCANS = 2;
 // Three scans (about 1.7 s) still rides out one or two missed echoes while
 // a car leaving shows as free quickly enough for the guard.
 const uint8_t FREE_CONFIRM_SCANS     = 3;
+// A working sensor always hears something, if only the floor. One that hears
+// nothing this many scans in a row (about 3 s) is unplugged or broken: the
+// hub is told, and its slot keeps its last state instead of turning free.
+const uint8_t FAULT_CONFIRM_SCANS    = 6;
 
 // Sensors fire one at a time with this gap, so one's echo isn't heard by the
 // next. A full scan of 9 takes about half a second.
@@ -63,6 +74,8 @@ bool linkUp = false;
 bool occupied[SLOT_COUNT];
 uint8_t occupiedStreak[SLOT_COUNT];
 uint8_t freeStreak[SLOT_COUNT];
+uint8_t noEchoStreak[SLOT_COUNT];
+bool fault[SLOT_COUNT];
 uint16_t distanceMm[SLOT_COUNT];
 
 unsigned long lastReportAt = 0;
@@ -81,7 +94,7 @@ uint16_t readDistanceMm(uint8_t slot) {
   unsigned long echoUs = pulseIn(ECHO_PINS[slot], HIGH, ECHO_TIMEOUT_US);
   if (echoUs == 0) return 0;
   uint16_t mm = (uint16_t)(echoUs * 343UL / 2000UL);   // Sound: 0.343 mm/us, there and back.
-  return (mm < MIN_VALID_MM) ? 0 : mm;
+  return (mm < MIN_VALID_MM || mm > MAX_VALID_MM) ? 0 : mm;
 }
 
 // Reads every sensor once. Returns true if any slot's confirmed state changed.
@@ -91,8 +104,27 @@ bool scan() {
   for (uint8_t i = 0; i < SLOT_COUNT; i++) {
     uint16_t mm = readDistanceMm(i);
     distanceMm[i] = mm;
-    bool seesCar = (mm > 0 && mm <= OCCUPIED_MAX_MM);
 
+    // No echo says nothing about a car, so it counts toward neither streak.
+    if (mm == 0) {
+      if (noEchoStreak[i] < 255) noEchoStreak[i]++;
+      if (!fault[i] && noEchoStreak[i] >= FAULT_CONFIRM_SCANS) {
+        fault[i] = true;
+        changed = true;
+        Serial.printf("Slot %u FAULT (no echo)\n", i + 1);
+      }
+      delay(SETTLE_MS);
+      continue;
+    }
+
+    noEchoStreak[i] = 0;
+    if (fault[i]) {
+      fault[i] = false;
+      changed = true;
+      Serial.printf("Slot %u answering again\n", i + 1);
+    }
+
+    bool seesCar = (mm <= OCCUPIED_MAX_MM);
     if (seesCar) {
       freeStreak[i] = 0;
       if (occupiedStreak[i] < 255) occupiedStreak[i]++;
@@ -119,19 +151,19 @@ bool scan() {
 void printDistances() {
   Serial.print(" ");
   for (uint8_t i = 0; i < SLOT_COUNT; i++) {
-    if (distanceMm[i] == 0) Serial.printf(" %u:--", i + 1);
+    if (fault[i])                Serial.printf(" %u:!!", i + 1);
+    else if (distanceMm[i] == 0) Serial.printf(" %u:--", i + 1);
     else                    Serial.printf(" %u:%u.%ucm", i + 1, distanceMm[i] / 10, distanceMm[i] % 10);
     Serial.print(occupied[i] ? "*" : " ");
   }
   Serial.println();
 }
 
-// For the hub's connection test. A sensor over an empty bay still echoes off
-// the floor, so one that hears nothing at all is unplugged or miswired.
+// For the hub's connection test: the sensors that have stopped answering.
 void fillDiagnostics(Diag& diag) {
   diag.slotCount = SLOT_COUNT;
   for (uint8_t i = 0; i < SLOT_COUNT; i++)
-    if (distanceMm[i] == 0) diag.noEchoMask |= (uint16_t)1 << i;
+    if (fault[i]) diag.noEchoMask |= (uint16_t)1 << i;
 }
 
 // ── To the hub ───────────────────────────────────────────────────────────────
@@ -140,6 +172,7 @@ void report() {
   p.slotCount = SLOT_COUNT;
   for (uint8_t i = 0; i < SLOT_COUNT; i++) {
     if (occupied[i]) p.occupiedMask |= (uint16_t)1 << i;
+    if (fault[i])    p.faultMask    |= (uint16_t)1 << i;
     p.distanceMm[i] = distanceMm[i];
   }
 
@@ -160,7 +193,8 @@ void setup() {
     pinMode(ECHO_PINS[i], INPUT);
     digitalWrite(TRIG_PINS[i], LOW);
     occupied[i] = false;
-    occupiedStreak[i] = freeStreak[i] = 0;
+    occupiedStreak[i] = freeStreak[i] = noEchoStreak[i] = 0;
+    fault[i] = false;
     distanceMm[i] = 0;
   }
 
@@ -174,7 +208,8 @@ void setup() {
 
   // Settle on what the sensors see before the first report, rather than
   // telling the hub every slot is free and correcting it a second later.
-  for (uint8_t i = 0; i < FREE_CONFIRM_SCANS; i++) scan();
+  // Long enough to catch a sensor that is already unplugged.
+  for (uint8_t i = 0; i < FAULT_CONFIRM_SCANS; i++) scan();
   printDistances();
   Serial.println("Ready.");
   report();

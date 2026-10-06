@@ -29,6 +29,21 @@ public class HubProtocolTests
         Assert.Equal(distance, slot.DistanceCm);
     }
 
+    [Theory]
+    [InlineData("S1/3 SLOT:FAULT 0.0", "S1/3")]
+    [InlineData("S2/9 SLOT:FAULT", "S2/9")]
+    public void ReadsASensorThatHearsNothing(string line, string node)
+    {
+        var fault = Assert.IsType<HubSlotFault>(HubProtocol.Parse(line));
+        Assert.Equal(node, fault.Node);
+    }
+
+    [Fact]
+    public void AFaultFromABoardIsNotASlot()
+    {
+        Assert.IsType<HubUnknown>(HubProtocol.Parse("S1 SLOT:FAULT 0.0"));
+    }
+
     [Fact]
     public void ReadsPresenceAndErrors()
     {
@@ -91,6 +106,7 @@ internal sealed class FakeHub
     public DateTime Now = new(2026, 10, 1, 8, 0, 0, DateTimeKind.Utc);
     public readonly ConcurrentQueue<string> Sent = new();
     public readonly ConcurrentQueue<(string Node, bool Occupied, int Distance)> Slots = new();
+    public readonly ConcurrentQueue<string> Lost = new();
     public Func<string, string, Task<bool>> Answer = (_, _) => Task.FromResult(true);
 
     public HubConversation Server { get; }
@@ -101,7 +117,8 @@ internal sealed class FakeHub
             send: line => { Sent.Enqueue(line); return true; },
             answerTap: (node, uid, _) => Answer(node, uid),
             slotSeen: (node, occupied, cm, _) => { Slots.Enqueue((node, occupied, cm)); return Task.CompletedTask; },
-            now: () => Now);
+            now: () => Now,
+            slotLost: (node, _) => { Lost.Enqueue(node); return Task.CompletedTask; });
     }
 
     /// <summary>Opens the port and boots, the way the hub does on Windows.</summary>
@@ -256,7 +273,51 @@ public class HubConversationTests
         Assert.False(hub.Node("S1/2").Online);
         Assert.True(hub.Node("S2/1").Online);              // Another board: untouched.
         Assert.Equal(true, hub.Node("S1/1").Occupied);     // Last known, kept for the screen.
-        Assert.Equal(3, hub.Slots.Count);                  // Nothing new to apply to any slot.
+        Assert.Equal(3, hub.Slots.Count);                  // No reading to apply to any slot…
+        Assert.Equal(["S1/1", "S1/2"], hub.Lost.Order());  // …but its bays can't be vouched for.
+    }
+
+    [Fact]
+    public async Task AnOfflineWhileSettlingLosesNoSlots()
+    {
+        var hub = new FakeHub();
+        await hub.BootAsync();
+        await hub.Say("S1/1 SLOT:FREE 0.0");
+
+        await hub.Say("S1 OFFLINE");   // Just rebooted: not heard yet, not gone.
+
+        Assert.Empty(hub.Lost);
+    }
+
+    [Fact]
+    public async Task ASensorThatHearsNothingIsDownOnItsOwn()
+    {
+        var hub = new FakeHub();
+        await hub.BootAsync();
+        await hub.Say("S1/2 SLOT:FREE 9.0");
+        await hub.Say("S1/3 SLOT:OCCUPIED 3.0");
+
+        await hub.Say("S1/3 SLOT:FAULT 0.0");
+
+        Assert.Equal(["S1/3"], hub.Lost);
+        Assert.True(hub.Node("S1/3").Fault);
+        Assert.Null(hub.Node("S1/3").Occupied);   // A guess would be wrong half the time.
+        Assert.True(hub.Node("S1").Online);       // Its board said so itself.
+        Assert.False(hub.Node("S1/2").Fault);     // Its neighbours are fine.
+    }
+
+    [Fact]
+    public async Task ASensorAnsweringAgainReadsAsUsual()
+    {
+        var hub = new FakeHub();
+        await hub.BootAsync();
+        await hub.Say("S1/3 SLOT:FAULT 0.0");
+
+        await hub.Say("S1/3 SLOT:OCCUPIED 3.0");
+
+        Assert.False(hub.Node("S1/3").Fault);
+        Assert.Equal(true, hub.Node("S1/3").Occupied);
+        Assert.Equal([("S1/3", true, 3)], hub.Slots);
     }
 
     [Fact]
@@ -396,5 +457,28 @@ public class SlotSensorRuleTests
     public void OutOfServiceIsNeverOverridden(bool occupied)
     {
         Assert.Null(SlotSensorRule.Next(ParkingSlotStatus.OutOfService, occupied));
+    }
+
+    [Theory]
+    [InlineData(ParkingSlotStatus.Available)]
+    [InlineData(ParkingSlotStatus.Occupied)]
+    public void ASensorThatStopsReadingTakesItsBayOutOfTheCount(ParkingSlotStatus current)
+    {
+        Assert.Equal(ParkingSlotStatus.NoSignal, SlotSensorRule.Lost(current));
+    }
+
+    [Fact]
+    public void LosingTheSignalLeavesOutOfServiceAlone()
+    {
+        Assert.Null(SlotSensorRule.Lost(ParkingSlotStatus.OutOfService));
+        Assert.Null(SlotSensorRule.Lost(ParkingSlotStatus.NoSignal));
+    }
+
+    [Theory]
+    [InlineData(true, ParkingSlotStatus.Occupied)]
+    [InlineData(false, ParkingSlotStatus.Available)]
+    public void AReadingBringsANoSignalBayBack(bool occupied, ParkingSlotStatus expected)
+    {
+        Assert.Equal(expected, SlotSensorRule.Next(ParkingSlotStatus.NoSignal, occupied));
     }
 }
