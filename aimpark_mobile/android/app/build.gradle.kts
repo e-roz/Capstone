@@ -67,22 +67,25 @@ android {
 
     buildTypes {
         release {
-            // Fails loudly rather than silently signing with the debug key —
-            // that silent fallback is exactly what let release builds go out
-            // signed with an unpinned key in the first place, which breaks
-            // in-app self-update the moment a build comes from a different
-            // machine. See key.properties (gitignored) and MD files/MOBILE_UPDATES.md.
+            // Left unsigned when key.properties is missing, rather than
+            // falling back to the debug key — that silent fallback is exactly
+            // what let release builds go out signed with an unpinned key in
+            // the first place, which breaks in-app self-update the moment a
+            // build comes from a different machine. See key.properties
+            // (gitignored) and MD files/MOBILE_UPDATES.md.
             //
             // This is currently the same debug key as before (copied, not
             // regenerated) specifically so Google Sign-In's registered
             // certificate fingerprint doesn't change.
-            signingConfig = if (keyPropertiesFile.exists()) {
-                signingConfigs.getByName("release")
-            } else {
-                throw GradleException(
-                    "android/key.properties is missing. Release builds must be signed " +
-                        "with the pinned release key — see MD files/MOBILE_UPDATES.md.",
-                )
+            //
+            // Not an eager `throw` here: this block is evaluated during
+            // Gradle's configuration phase for *every* invocation, including
+            // an unrelated `assembleDebug` (e.g. mobile.yml's compile check),
+            // which has no business needing a release signing key at all. The
+            // loud failure for an actual signed-release attempt without the
+            // key lives below, gated on the task graph instead.
+            if (keyPropertiesFile.exists()) {
+                signingConfig = signingConfigs.getByName("release")
             }
 
             // Release is minified by R8, which hard-fails on references it
@@ -92,6 +95,24 @@ android {
                 "proguard-rules.pro",
             )
         }
+    }
+}
+
+// Fails loudly, rather than quietly producing an unsigned (or debug-signed)
+// APK, specifically when the requested build actually needs the release
+// signing key — never for an unrelated task like a debug compile check.
+gradle.taskGraph.whenReady {
+    val wantsSignedRelease = allTasks.any { task ->
+        task.project == project &&
+            (task.name.startsWith("assembleRelease") ||
+                task.name.startsWith("bundleRelease") ||
+                task.name.startsWith("packageRelease"))
+    }
+    if (wantsSignedRelease && !keyPropertiesFile.exists()) {
+        throw GradleException(
+            "android/key.properties is missing. Release builds must be signed " +
+                "with the pinned release key — see MD files/MOBILE_UPDATES.md.",
+        )
     }
 }
 
