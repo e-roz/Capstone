@@ -164,7 +164,9 @@ namespace AimPark.API.Controllers
                         lastErrorAt = n.Node.LastErrorAt,
                         lastTapAt = n.Node.LastTapAt,
                         occupied = n.Node.Occupied,
-                        distanceCm = n.Node.DistanceCm
+                        distanceCm = n.Node.DistanceCm,
+                        // Sensors: unplugged or broken, though its board answers.
+                        fault = n.Node.Fault
                     })
                 }),
                 readers = devices,

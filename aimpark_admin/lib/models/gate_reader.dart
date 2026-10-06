@@ -78,6 +78,9 @@ class HubNode {
   final bool? occupied;
   final int? distanceCm;
 
+  /// Sensors: not answering (unplugged or broken), though its board is online.
+  final bool fault;
+
   const HubNode({
     required this.node,
     required this.kind,
@@ -92,6 +95,7 @@ class HubNode {
     required this.lastTapAt,
     required this.occupied,
     required this.distanceCm,
+    this.fault = false,
   });
 
   bool get isGate => kind == 'gate';
@@ -120,6 +124,7 @@ class HubNode {
         lastTapAt: _date(json['lastTapAt']),
         occupied: json['occupied'] as bool?,
         distanceCm: (json['distanceCm'] as num?)?.toInt(),
+        fault: json['fault'] as bool? ?? false,
       );
 }
 

@@ -264,12 +264,12 @@ wired exactly like `aimpark_gate_reader`.
 | server → hub | `G1 RESULT:OPEN` / `G1 RESULT:SHUT` | The answer to that tap |
 | server → hub | `G2 CMD:OPEN` | Guard's "Open gate" |
 | hub → server | `S1/3 SLOT:OCCUPIED 3.7` / `S1/3 SLOT:FREE 0.0` | Slot 3 on board S1 changed; distance in cm, 0 = nothing in range. Every slot is printed once when its board comes online |
-| hub → server | `S1/3 SLOT:FAULT 0.0` | Sensor 3 on S1 has heard no echo for about 3 s: unplugged or broken. Its bay goes to No signal and isn't counted free; its next OCCUPIED/FREE line clears it |
+| hub → server | `S1/3 SLOT:FAULT 0.0` | Sensor 3 on S1 hasn't answered for about 3 s (its ECHO line never rises after a trigger): unplugged, unpowered or broken. An empty bay with no echo back still reads FREE. Its bay goes to No signal and isn't counted free; its next OCCUPIED/FREE line clears it |
 | hub → server | `G1 ONLINE` / `G1 OFFLINE` | Node came up, or missed three heartbeats (≈16 s). A sensor board going offline leaves its slots unknown, not free |
 | hub → server | `G1 ERR:NOT_DELIVERED` | A RESULT or CMD didn't reach the node |
 | server → hub | `STATUS` | Hub prints every node's state |
 | server → hub | `DIAG` | Connection test of the hub: `DIAG HUB id=… proto=4 up=… heap=… reset=… channel=1 nodes=… fails=…` |
-| server → hub | `DIAG G1` | Pings G1 over the air: `DIAG G1 rtt=… rssi=… noderssi=… up=… heap=… reset=… fails=… packets=… drops=…`, plus `rc522=92` on a gate (`00`/`FF` = reader not wired) or `sensors=9 noecho=0000` on a sensor board (bit set = that sensor has heard no echo for about 3 s), or `DIAG G1 FAIL NOT_PAIRED` / `NOT_DELIVERED` / `NO_REPLY` |
+| server → hub | `DIAG G1` | Pings G1 over the air: `DIAG G1 rtt=… rssi=… noderssi=… up=… heap=… reset=… fails=… packets=… drops=…`, plus `rc522=92` on a gate (`00`/`FF` = reader not wired) or `sensors=9 noecho=0000` on a sensor board (bit set = that sensor hasn't answered for about 3 s), or `DIAG G1 FAIL NOT_PAIRED` / `NOT_DELIVERED` / `NO_REPLY` |
 | hub → server | `# ...` | Comments for a person reading the monitor |
 
 `rssi` is how loud the board is at the hub and `noderssi` the hub at the board,

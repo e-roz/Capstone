@@ -539,6 +539,7 @@ class _GateReadersScreenState extends ConsumerState<GateReadersScreen> {
     final (label, intent) = switch (n) {
       HubNode(online: false) when !n.isLinked => ('Offline', StatusIntent.neutral),
       HubNode(online: false) => ('Offline', StatusIntent.danger),
+      HubNode(fault: true) => ('Not answering', StatusIntent.danger),
       _ when recentError => ('Missed a message', StatusIntent.warning),
       _ => ('Online', StatusIntent.success),
     };
@@ -564,12 +565,14 @@ class _GateReadersScreenState extends ConsumerState<GateReadersScreen> {
         : const <HubNode>[];
 
     final reading = switch (n) {
+      HubNode(isSensor: true, fault: true) => "No signal: check this sensor's wiring",
       HubNode(isSensor: true, occupied: true) => 'Vehicle at ${n.distanceCm ?? '?'} cm',
       HubNode(isSensor: true, occupied: false) => 'Empty',
       HubNode(isSensor: true) => 'No reading yet',
       HubNode(isSensorBoard: true) when sensorsOnBoard.isEmpty => 'No reading yet',
       HubNode(isSensorBoard: true) =>
-        '${sensorsOnBoard.where((o) => o.occupied == true).length} of ${sensorsOnBoard.length} slots taken',
+        '${sensorsOnBoard.where((o) => o.occupied == true).length} of ${sensorsOnBoard.length} slots taken'
+            '${sensorsOnBoard.any((o) => o.fault) ? ' · ${sensorsOnBoard.where((o) => o.fault).length} not answering' : ''}',
       HubNode(lastTapAt: final at?) => 'Last tap ${DateFormat('HH:mm:ss').format(at.toLocal())}',
       _ => '—',
     };
