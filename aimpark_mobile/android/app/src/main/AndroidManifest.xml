@@ -2,6 +2,10 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <!-- Android 13+ requires an explicit runtime permission to show notifications. -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- Android 8+ requires this, plus the user's one-time "allow from this
+         source" approval, before the in-app updater can open the system
+         package installer. See lib/core/update/. -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
     <application
         android:label="AimPark"
         android:name="${applicationName}"
@@ -45,6 +49,20 @@
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />
+
+        <!-- Exposes the downloaded update APK (in the app's own cache dir) to the
+             system installer via a content:// URI. Distinct authority from
+             image_picker's own FileProvider, which is scoped to its own cache
+             use case and isn't reusable here. -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/update_file_paths" />
+        </provider>
     </application>
     <!-- Required to query activities that can process text, see:
          https://developer.android.com/training/package-visibility and

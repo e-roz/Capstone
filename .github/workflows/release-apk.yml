@@ -60,6 +60,19 @@ jobs:
           keytool -list -v -keystore "$HOME/.android/debug.keystore" \
             -alias androiddebugkey -storepass android -keypass android | grep SHA1
 
+          # android/app/build.gradle.kts now requires a pinned key.properties
+          # for the release signingConfig (see MD files/MOBILE_UPDATES.md) —
+          # the in-app self-updater only works when every release is signed
+          # with the same certificate, so the previous silent "fall back to
+          # whichever debug key this machine happens to have" is gone, and a
+          # build with no key.properties now fails loudly instead.
+          cat > android/key.properties <<KEYPROPS
+          storeFile=$HOME/.android/debug.keystore
+          storePassword=android
+          keyAlias=androiddebugkey
+          keyPassword=android
+          KEYPROPS
+
       - uses: actions/setup-java@v4
         with:
           distribution: temurin

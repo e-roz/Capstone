@@ -8,6 +8,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../../core/network/dio_client.dart';
 import '../../../../core/theme/theme.dart';
+import '../../../../core/update/update_provider.dart';
 import '../../../../core/utils/jwt_utils.dart';
 import '../../../../core/widgets/widgets.dart';
 import '../../../notifications/presentation/providers/push_registration_provider.dart';
@@ -101,6 +102,13 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
     if (mounted) {
       context.go(destination);
     }
+
+    // Runs for every destination, not just a signed-in one — an outdated app
+    // sitting on the login screen still needs to hear about it. Fired after
+    // navigation, same as push registration below, since the dialog it may
+    // show uses the root navigator rather than this (about to be disposed)
+    // screen's context.
+    unawaited(ref.read(updateCheckerProvider.notifier).checkOnLaunch());
 
     // A returning user with a stored session never passes through the login
     // screen, so this is the only place their device gets (re)registered for

@@ -23,6 +23,11 @@ mono_crash.*
 [Rr]elease/
 [Rr]eleases/
 
+# Not a .NET build output — the mobile app's update manifest, fetched by the
+# in-app updater (aimpark_mobile/lib/core/update/). See MD files/MOBILE_UPDATES.md.
+!aimpark_mobile/release/
+!aimpark_mobile/release/update.json
+
 [Dd]ebug/x64/
 [Dd]ebugPublic/x64/
 [Rr]elease/x64/
