@@ -19,6 +19,18 @@ namespace AimPark.API.DTOs
         // straight to its payment. Null while the session is still open — the
         // transaction is only created on exit.
         public Guid? PaymentId { get; set; }
+
+        // The ALPR-confirmed plate for this session. Null for a manually
+        // logged entry (no camera involved) — never a mismatched plate, since
+        // a mismatch is refused at the gate and never becomes a log at all.
+        public string? AlprPlateNumber { get; set; }
+
+        // Which of the caller's own vehicles this session is attributed to —
+        // worked out from AlprPlateNumber at read time (see
+        // ParkingHistoryService.AttributeVehicle). Null when it can't be
+        // determined (no plate and more than one vehicle on the account, or a
+        // plate that no longer matches any vehicle on file).
+        public Guid? VehicleId { get; set; }
     }
 
     /// <summary>

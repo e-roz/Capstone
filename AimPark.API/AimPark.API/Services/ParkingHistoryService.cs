@@ -37,13 +37,33 @@ namespace AimPark.API.Services
             _db = db;
         }
 
-        // GET /api/parking/history?page=1&pageSize=20
-        public async Task<ActionResult<ParkingHistoryResponse>> GetMyHistoryAsync(Guid userId, int page, int pageSize, CancellationToken ct)
+        // GET /api/parking/history?page=1&pageSize=20[&vehicleId=...]
+        public async Task<ActionResult<ParkingHistoryResponse>> GetMyHistoryAsync(Guid userId, Guid? vehicleId, int page, int pageSize, CancellationToken ct)
         {
             page = Math.Max(1, page);
             pageSize = Math.Clamp(pageSize, 1, 100);
 
+            var vehicles = await _db.Set<Vehicle>().AsNoTracking()
+                .Where(v => v.UserId == userId)
+                .Select(v => new { v.Id, v.PlateNumber })
+                .ToListAsync(ct);
+
             var query = _db.Set<ParkingLog>().AsNoTracking().Where(l => l.UserId == userId);
+
+            if (vehicleId is Guid wantedVehicleId)
+            {
+                var vehicle = vehicles.FirstOrDefault(v => v.Id == wantedVehicleId);
+                if (vehicle is null)
+                    return new NotFoundObjectResult(new { message = "Vehicle not found." });
+
+                // Mirrors AttributeVehicle's own rules exactly: a plate-less
+                // session only attributes to this vehicle when it's the only
+                // one the user has, since with two or more there's no way to
+                // tell them apart without a camera read.
+                query = vehicles.Count == 1
+                    ? query.Where(l => l.AlprPlateNumber == null || l.AlprPlateNumber == vehicle.PlateNumber)
+                    : query.Where(l => l.AlprPlateNumber == vehicle.PlateNumber);
+            }
 
             var totalCount = await query.CountAsync(ct);
 
@@ -60,9 +80,13 @@ namespace AimPark.API.Services
                     PaymentId = _db.Set<PaymentTransaction>()
                         .Where(p => p.ParkingLogId == l.Id)
                         .Select(p => (Guid?)p.Id)
-                        .FirstOrDefault()
+                        .FirstOrDefault(),
+                    AlprPlateNumber = l.AlprPlateNumber
                 })
                 .ToListAsync(ct);
+
+            foreach (var entry in logs)
+                entry.VehicleId = AttributeVehicle(entry.AlprPlateNumber, vehicles.Select(v => (v.Id, v.PlateNumber)).ToList());
 
             return new OkObjectResult(new ParkingHistoryResponse
             {
@@ -71,6 +95,34 @@ namespace AimPark.API.Services
                 Page = page,
                 PageSize = pageSize
             });
+        }
+
+        /// <summary>
+        /// Works out which of the user's own vehicles a session belongs to.
+        /// There's no VehicleId column on ParkingLog (see the type's remarks
+        /// for why), so this is recomputed from the ALPR-confirmed plate every
+        /// time history is read, rather than stored.
+        /// </summary>
+        /// <remarks>
+        /// A matched plate always wins. Failing that, a plate-less (manually
+        /// logged) session can only be attributed when the user has exactly
+        /// one vehicle — with two or more there's no way to tell which one
+        /// was actually driven in without a camera read.
+        /// </remarks>
+        public static Guid? AttributeVehicle(string? alprPlate, IReadOnlyList<(Guid Id, string Plate)> vehicles)
+        {
+            if (!string.IsNullOrWhiteSpace(alprPlate))
+            {
+                var normalizedPlate = IdentifierNormalizer.NormalizePlate(alprPlate);
+                foreach (var vehicle in vehicles)
+                {
+                    if (IdentifierNormalizer.NormalizePlate(vehicle.Plate) == normalizedPlate)
+                        return vehicle.Id;
+                }
+                return null;
+            }
+
+            return vehicles.Count == 1 ? vehicles[0].Id : null;
         }
 
         // GET /api/admin/parking/active-sessions — vehicles currently inside

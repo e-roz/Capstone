@@ -9,10 +9,18 @@ class ParkingRepository {
 
   final Dio _dio;
 
-  Future<ParkingHistoryResult> getHistory({int page = 1, int pageSize = 20}) async {
+  Future<ParkingHistoryResult> getHistory({
+    int page = 1,
+    int pageSize = 20,
+    String? vehicleId,
+  }) async {
     final response = await _dio.get(
       ApiEndpoints.parkingHistory,
-      queryParameters: {'page': page, 'pageSize': pageSize},
+      queryParameters: {
+        'page': page,
+        'pageSize': pageSize,
+        'vehicleId': ?vehicleId,
+      },
     );
     return ParkingHistoryResult.fromJson(response.data as Map<String, dynamic>);
   }

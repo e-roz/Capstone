@@ -254,7 +254,9 @@ GoRouter appRouter(Ref ref) {
       // routes of their own for the first time.
       GoRoute(
         path: '/home/user/parking-history',
-        builder: (context, state) => const ParkingHistoryScreen(),
+        builder: (context, state) => ParkingHistoryScreen(
+          vehicleId: state.uri.queryParameters['vehicle'],
+        ),
       ),
       GoRoute(
         path: '/home/user/notifications',

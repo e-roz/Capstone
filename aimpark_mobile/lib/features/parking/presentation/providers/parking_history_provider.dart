@@ -64,3 +64,24 @@ class ParkingHistoryNotifier extends _$ParkingHistoryNotifier {
     state = await AsyncValue.guard(() => ref.read(parkingRepositoryProvider).getHistory());
   }
 }
+
+/// One vehicle's most recent session, for the Home screen's vehicle card.
+///
+/// Deliberately its own request rather than reading off
+/// [parkingHistoryNotifierProvider]'s page of the 20 most recent
+/// *account-wide* logs — a second vehicle's last visit can easily be older
+/// than that, which would make its "last seen" come back empty even though a
+/// session exists.
+@riverpod
+Future<ParkingHistoryEntry?> vehicleLatestSession(Ref ref, String vehicleId) async {
+  final result = await ref
+      .watch(parkingRepositoryProvider)
+      .getHistory(vehicleId: vehicleId, pageSize: 1);
+  return result.logs.isEmpty ? null : result.logs.first;
+}
+
+/// The parking-history screen, filtered to one vehicle.
+@riverpod
+Future<ParkingHistoryResult> vehicleHistory(Ref ref, String vehicleId) {
+  return ref.watch(parkingRepositoryProvider).getHistory(vehicleId: vehicleId);
+}

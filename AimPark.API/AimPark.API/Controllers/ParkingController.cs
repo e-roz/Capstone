@@ -43,8 +43,9 @@ namespace AimPark.API.Controllers
         public Task<ActionResult<ParkingHistoryResponse>> GetHistory(
             [FromQuery] int page = 1,
             [FromQuery] int pageSize = 20,
+            [FromQuery] Guid? vehicleId = null,
             CancellationToken ct = default)
-            => _parkingHistoryService.GetMyHistoryAsync(GetUserId(), page, pageSize, ct);
+            => _parkingHistoryService.GetMyHistoryAsync(GetUserId(), vehicleId, page, pageSize, ct);
 
         private Guid GetUserId()
             => Guid.Parse(User.FindFirst(ClaimTypes.NameIdentifier)!.Value);

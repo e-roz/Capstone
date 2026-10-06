@@ -5,7 +5,7 @@ namespace AimPark.API.Interfaces
 {
     public interface IParkingHistoryService
     {
-        Task<ActionResult<ParkingHistoryResponse>> GetMyHistoryAsync(Guid userId, int page, int pageSize, CancellationToken ct);
+        Task<ActionResult<ParkingHistoryResponse>> GetMyHistoryAsync(Guid userId, Guid? vehicleId, int page, int pageSize, CancellationToken ct);
         Task<ActionResult<List<ActiveParkingSessionResponse>>> ListActiveSessionsAsync(CancellationToken ct);
         /// <summary>
         /// Records a vehicle entering. Exactly one of the two caller ids is set:

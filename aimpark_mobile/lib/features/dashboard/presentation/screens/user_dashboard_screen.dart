@@ -13,9 +13,11 @@ import '../../../parking/presentation/providers/parking_history_provider.dart';
 import '../../../parking/presentation/widgets/availability_freshness.dart';
 import '../../../payments/data/models/payment.dart';
 import '../../../payments/presentation/providers/payments_provider.dart';
+import '../../../vehicles/presentation/providers/vehicles_provider.dart';
 import '../../../violations/data/models/violation.dart';
 import '../../../violations/presentation/providers/violations_provider.dart';
 import '../../domain/standing.dart';
+import '../widgets/vehicle_status_card.dart';
 
 /// Home tab body inside [UserShell]. Streak/points/standing are derived
 /// client-side from real parking history and violation data — there's no
@@ -49,6 +51,7 @@ class UserDashboardScreen extends ConsumerWidget {
     final historyAsync = ref.watch(parkingHistoryNotifierProvider);
     final violationsAsync = ref.watch(violationsNotifierProvider);
     final paymentsAsync = ref.watch(paymentsNotifierProvider);
+    final vehiclesAsync = ref.watch(myVehiclesProvider);
     // Availability is the one number people open this app for.
     final availability = ref.watch(parkingAvailabilityNotifierProvider).valueOrNull;
 
@@ -65,7 +68,8 @@ class UserDashboardScreen extends ConsumerWidget {
     final isFirstLoad =
         !(settled(profileAsync) &&
             settled(historyAsync) &&
-            settled(violationsAsync));
+            settled(violationsAsync) &&
+            settled(vehiclesAsync));
 
     // Only when nothing at all came back. One failed provider still leaves a
     // useful screen, so it degrades rather than blocking the other two.
@@ -137,6 +141,8 @@ class UserDashboardScreen extends ConsumerWidget {
                 radius: AppRadius.lg,
               ),
               const SizedBox(height: AppSpacing.md),
+              const AppSkeleton.block(height: 72),
+              const SizedBox(height: AppSpacing.md),
               const AppSkeleton.block(height: 96),
             ] else ...[
               _Header(
@@ -145,12 +151,13 @@ class UserDashboardScreen extends ConsumerWidget {
               ),
               const SizedBox(height: AppSpacing.md),
               _HeroCard(
-                entry: history?.currentlyParked,
                 availability: availability,
                 onTap: onNavigateToParking,
                 onRefresh: () =>
                     ref.refresh(parkingAvailabilityNotifierProvider.future),
               ),
+              const SizedBox(height: AppSpacing.md),
+              const VehicleStatusCard(),
 
               // Alerts only exist when they are true. An account with nothing
               // owed and nothing open drops straight from the hero to standing.
@@ -217,7 +224,7 @@ class UserDashboardScreen extends ConsumerWidget {
     );
   }
 
-  /// Home reads five providers; a pull-to-refresh here should reload all of
+  /// Home reads six providers; a pull-to-refresh here should reload all of
   /// them rather than whichever one the gesture happened to land on.
   Future<void> _refresh(WidgetRef ref) async {
     await Future.wait([
@@ -226,7 +233,12 @@ class UserDashboardScreen extends ConsumerWidget {
       ref.read(violationsNotifierProvider.notifier).refresh(),
       ref.read(paymentsNotifierProvider.notifier).refresh(),
       ref.refresh(parkingAvailabilityNotifierProvider.future),
+      ref.refresh(myVehiclesProvider.future),
     ]);
+    // Invalidating rather than refreshing: the family has one entry per
+    // vehicle, and refresh() only targets a single one. invalidate() clears
+    // all of them, so whichever vehicle the card is showing re-fetches too.
+    ref.invalidate(vehicleLatestSessionProvider);
   }
 }
 
@@ -315,19 +327,23 @@ class _Header extends StatelessWidget {
 }
 
 /// The one full-bleed brand surface on the screen: a 135° indigo-to-mint wash
-/// carrying the parking state, the live slot count and the way into Parking.
+/// carrying the live slot count and the way into Parking.
+///
+/// A specific vehicle's own "parked now"/slot/duration used to live here too,
+/// guessed at the account level from whichever session happened to be open —
+/// which [VehicleStatusCard] now answers properly, scoped to an actual
+/// vehicle. What's left here is genuinely lot-wide and has nowhere else to
+/// go: the live "X slots free" count, same as before.
 ///
 /// Everything inside reads `brand.onSolid` rather than the ordinary text
 /// tokens — on a colour-fill card those would be near-black, and unreadable.
 class _HeroCard extends StatefulWidget {
   const _HeroCard({
-    required this.entry,
     required this.availability,
     required this.onTap,
     required this.onRefresh,
   });
 
-  final ParkingHistoryEntry? entry;
   final ParkingAvailability? availability;
   final VoidCallback onTap;
   final Future<void> Function() onRefresh;
@@ -373,8 +389,8 @@ class _HeroCardState extends State<_HeroCard>
     final muted = onSolid.withValues(alpha: 0.7);
     final hairline = onSolid.withValues(alpha: 0.18);
 
-    final isParked = widget.entry != null;
     final availability = widget.availability;
+    final isLotFull = availability?.isLotFull ?? false;
 
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
@@ -406,10 +422,7 @@ class _HeroCardState extends State<_HeroCard>
               Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  _Tag(
-                    label: isParked ? 'PARKED NOW' : 'NOT PARKED',
-                    onSolid: onSolid,
-                  ),
+                  _Tag(label: 'LIVE AVAILABILITY', onSolid: onSolid),
                   const Spacer(),
                   Container(
                     width: 54,
@@ -434,22 +447,22 @@ class _HeroCardState extends State<_HeroCard>
               ),
               const SizedBox(height: AppSpacing.sm + 6),
               Text(
-                isParked
-                    ? (widget.entry!.slotCode ?? 'Parked')
-                    : 'Ready to park',
+                availability == null
+                    ? '—'
+                    : isLotFull
+                        ? 'Full'
+                        : '${availability.availableSlots}',
                 style: AppTypography.tabular(
                   context.text.displayLarge!,
                 ).copyWith(color: onSolid),
               ),
               const SizedBox(height: 2),
               Text(
-                isParked
-                    ? Formatters.sessionRange(
-                        widget.entry!.entryTime,
-                        null,
-                        widget.entry!.duration,
-                      )
-                    : 'No active session',
+                availability == null
+                    ? 'Checking availability…'
+                    : isLotFull
+                        ? 'No bays free right now'
+                        : 'slots free right now',
                 style: context.text.bodyMedium?.copyWith(color: muted),
               ),
               const SizedBox(height: AppSpacing.md),
@@ -468,10 +481,7 @@ class _HeroCardState extends State<_HeroCard>
                 ],
               ),
               const SizedBox(height: AppSpacing.sm + 4),
-              _HeroCta(
-                label: isParked ? 'View session' : 'Find a slot',
-                onTap: widget.onTap,
-              ),
+              _HeroCta(label: 'Find a slot', onTap: widget.onTap),
             ],
           ),
         ),
@@ -480,6 +490,9 @@ class _HeroCardState extends State<_HeroCard>
   }
 }
 
+/// Just the freshness row now — the "X slots free" figure it used to carry
+/// moved up into the hero's own main display once this card stopped sharing
+/// that space with a vehicle's parked state.
 class _AvailabilityLine extends StatelessWidget {
   const _AvailabilityLine({
     required this.availability,
@@ -494,12 +507,7 @@ class _AvailabilityLine extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final a = availability;
-    if (a == null) {
-      return Text(
-        'Checking availability…',
-        style: context.text.titleMedium?.copyWith(color: muted),
-      );
-    }
+    if (a == null) return const SizedBox.shrink();
 
     final freshness = AvailabilityFreshness.of(a.fetchedAt);
     // On the wash the status tints would disappear, so freshness is carried by
@@ -507,34 +515,22 @@ class _AvailabilityLine extends StatelessWidget {
     // contrast to survive on a saturated background.
     final dot = context.tokens.status.of(freshness.intent).solid;
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+    return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Text(
-          a.isLotFull ? 'Lot is full' : '${a.availableSlots} slots free',
-          style: AppTypography.tabular(
-            context.text.titleMedium!,
-          ).copyWith(color: onSolid),
+        Container(
+          width: 6,
+          height: 6,
+          decoration: BoxDecoration(color: dot, shape: BoxShape.circle),
         ),
-        const SizedBox(height: 3),
-        Row(
-          children: [
-            Container(
-              width: 6,
-              height: 6,
-              decoration: BoxDecoration(color: dot, shape: BoxShape.circle),
-            ),
-            const SizedBox(width: 6),
-            Flexible(
-              child: Text(
-                freshness.label(a.fetchedAt),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: context.text.bodySmall?.copyWith(color: muted),
-              ),
-            ),
-          ],
+        const SizedBox(width: 6),
+        Flexible(
+          child: Text(
+            freshness.label(a.fetchedAt),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: context.text.bodySmall?.copyWith(color: muted),
+          ),
         ),
       ],
     );

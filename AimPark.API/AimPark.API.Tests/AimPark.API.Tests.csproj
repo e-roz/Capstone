@@ -12,6 +12,11 @@
   <ItemGroup>
     <PackageReference Include="coverlet.collector" Version="6.0.0" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.InMemory" Version="8.0.28" />
+    <!-- Pinned explicitly: without it, NuGet resolves this project's copy of
+         Relational down to 8.0.11 (the version AimPark.API's Npgsql package
+         pulls in transitively), which doesn't match what InMemory 8.0.28
+         compiles against and breaks UseInMemoryDatabase at compile time. -->
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Relational" Version="8.0.28" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.8.0" />
     <PackageReference Include="xunit" Version="2.5.3" />
     <PackageReference Include="xunit.runner.visualstudio" Version="2.5.3" />

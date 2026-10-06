@@ -5,6 +5,8 @@ class ParkingHistoryEntry {
     this.slotCode,
     this.exitTime,
     this.paymentId,
+    this.alprPlateNumber,
+    this.vehicleId,
   });
 
   final String logId;
@@ -15,6 +17,17 @@ class ParkingHistoryEntry {
   /// The fee raised for this session. Null while the session is still open —
   /// the transaction is only created on exit.
   final String? paymentId;
+
+  /// The ALPR-confirmed plate for this session. Null for a manually logged
+  /// entry — never a mismatched plate, since a mismatch is refused at the
+  /// gate and never becomes a log at all.
+  final String? alprPlateNumber;
+
+  /// Which of the signed-in user's own vehicles this session is attributed
+  /// to, worked out server-side from [alprPlateNumber]. Null when it can't
+  /// be determined (no plate and more than one vehicle on the account, or a
+  /// plate that no longer matches any vehicle on file).
+  final String? vehicleId;
 
   bool get isOpen => exitTime == null;
 
@@ -27,6 +40,8 @@ class ParkingHistoryEntry {
       entryTime: DateTime.parse(json['entryTime'] as String),
       exitTime: json['exitTime'] == null ? null : DateTime.parse(json['exitTime'] as String),
       paymentId: json['paymentId'] as String?,
+      alprPlateNumber: json['alprPlateNumber'] as String?,
+      vehicleId: json['vehicleId'] as String?,
     );
   }
 }
