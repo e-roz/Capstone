@@ -15,8 +15,7 @@ UpdateManifest _manifest({
     'build': build,
     'apk_url': 'https://example.com/app.apk',
     'mandatory': mandatory,
-    if (minSupportedVersion != null)
-      'min_supported_version': minSupportedVersion,
+    'min_supported_version': ?minSupportedVersion,
   });
 }
 
