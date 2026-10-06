@@ -161,7 +161,7 @@ abstract class StatusIntents {
         'available' => StatusIntent.success,
         'occupied' => StatusIntent.brand,
         'reserved' => StatusIntent.info,
-        'outofservice' || 'out of service' => StatusIntent.neutral,
+        'outofservice' || 'out of service' || 'nosignal' => StatusIntent.neutral,
         _ => StatusIntent.neutral,
       };
 

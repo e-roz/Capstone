@@ -28,6 +28,9 @@ namespace AimPark.API.Sync.Site.GateReaders
     /// <summary><c>S1/3 SLOT:OCCUPIED 3.7</c> — a slot changed, or a STATUS reply. Distance rounded to whole cm.</summary>
     public record HubSlot(string Node, bool Occupied, int DistanceCm) : HubLine;
 
+    /// <summary><c>S1/3 SLOT:FAULT 0.0</c> — the sensor hears no echo at all: unplugged or broken. Its board is fine.</summary>
+    public record HubSlotFault(string Node) : HubLine;
+
     /// <summary><c>G1 ONLINE</c> / <c>G1 OFFLINE</c>.</summary>
     public record HubPresence(string Node, bool Online) : HubLine;
 
@@ -228,10 +231,11 @@ namespace AimPark.API.Sync.Site.GateReaders
 
             if (rest.StartsWith("SLOT:", StringComparison.Ordinal))
             {
-                // "OCCUPIED 3.7" or "FREE 0.0". The distance is a nicety; the word is the reading.
+                // "OCCUPIED 3.7", "FREE 0.0" or "FAULT 0.0". The distance is a nicety; the word is the reading.
                 if (KindOf(node) != HubNodeKind.Sensor) return new HubUnknown(line);
                 var parts = rest[5..].Split(' ', StringSplitOptions.RemoveEmptyEntries);
                 if (parts.Length == 0) return new HubUnknown(line);
+                if (parts[0] == "FAULT") return new HubSlotFault(node);
 
                 bool occupied;
                 if (parts[0] == "OCCUPIED") occupied = true;

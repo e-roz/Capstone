@@ -1230,7 +1230,9 @@ class _BayState extends State<_Bay> {
 
     final tooltip = [
       silent
-          ? '${slot.slotCode} · Sensor has no signal (last seen ${_statusLabel(slot.status).toLowerCase()})'
+          ? slot.status == 'NoSignal'
+              ? '${slot.slotCode} · Sensor has no signal: not counted free'
+              : '${slot.slotCode} · Sensor has no signal (last seen ${_statusLabel(slot.status).toLowerCase()})'
           : '${slot.slotCode} · ${_statusLabel(slot.status)}',
       slot.isMotorcycle ? 'Motorcycle bay' : slot.vehicleType == 'Car' ? 'Four-wheel bay' : 'Any vehicle',
       if (session != null) session.userName,
@@ -1649,6 +1651,7 @@ String _shortCode(String code) => code.replaceFirst(RegExp(r'^G\d+-'), '');
 String _statusLabel(String status) => switch (status) {
   'Available' => 'Free',
   'OutOfService' => 'Out of service',
+  'NoSignal' => 'No signal',
   _ => status,
 };
 
@@ -1694,7 +1697,8 @@ class _SensorCoverage {
   bool confirms(ParkingSlot s) => live?.contains(_key(s.gate, s.slotCode)) ?? true;
 
   /// Out-of-service bays keep their own look: someone closed them on purpose.
-  bool silent(ParkingSlot s) => s.status != 'OutOfService' && !confirms(s);
+  /// No signal is the server's own word for it: the sensor stopped answering.
+  bool silent(ParkingSlot s) => s.status == 'NoSignal' || (s.status != 'OutOfService' && !confirms(s));
 
   /// Free bays in [group]: the server's count, from cars tapped in and out,
   /// but never more than the bays a live sensor sees empty.

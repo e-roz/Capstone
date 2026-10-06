@@ -10,6 +10,8 @@
 //   server -> hub      G2 CMD:OPEN              the guard's "Open gate" button
 //   hub    -> server   S1/3 SLOT:OCCUPIED 3.7   slot 3 on board S1 changed;
 //   hub    -> server   S1/3 SLOT:FREE 0.0       distance in cm, 0 = nothing in range
+//   hub    -> server   S1/3 SLOT:FAULT 0.0      sensor 3 on S1 hears no echo (unplugged
+//                                               or broken); OCCUPIED/FREE clears it
 //   hub    -> server   G1 ONLINE / G1 OFFLINE   a node came up or went quiet
 //   hub    -> server   G1 ERR:NOT_DELIVERED     a RESULT/CMD didn't reach it
 //   server -> hub      STATUS                   every paired board (PAIRED line,
@@ -24,7 +26,7 @@
 //   server -> hub      PING                         answered: HUB <id> <protocol>
 // Diagnostics, for the panel's connection test:
 //   server -> hub      DIAG                         the hub's own health:
-//   hub    -> server   DIAG HUB id=… proto=3 up=… heap=… reset=… nodes=… fails=…
+//   hub    -> server   DIAG HUB id=… proto=4 up=… heap=… reset=… nodes=… fails=…
 //   server -> hub      DIAG G1                      ping the board over the air:
 //   hub    -> server   DIAG G1 rtt=… rssi=… noderssi=… up=… heap=… reset=…
 //                               fails=… packets=… drops=… [rc522=… | sensors=… noecho=…]
@@ -71,6 +73,7 @@ struct NodeState {
   uint8_t slotCount = 0;
   int8_t occupied[MAX_SLOTS];
   uint16_t distanceMm[MAX_SLOTS];
+  bool fault[MAX_SLOTS];        // The sensor hears no echo: unplugged or broken.
 
   NodeState() { forgetSlots(); }
   void forgetSlots() {
@@ -78,6 +81,7 @@ struct NodeState {
     for (uint8_t i = 0; i < MAX_SLOTS; i++) {
       occupied[i] = -1;
       distanceMm[i] = 0;
+      fault[i] = false;
     }
   }
 };
@@ -165,10 +169,11 @@ void printPaired(const NodeState& n) {
   Serial.printf("PAIRED %s %s %s\n", n.name, macToId(n.mac).c_str(), roleName(n.role));
 }
 
-// Slots are numbered from 1, as printed on the model.
+// Slots are numbered from 1, as printed on the model. A faulted sensor's
+// occupancy is only its last good reading, so FAULT is all that is said.
 void printSlot(const NodeState& n, uint8_t slot) {
   Serial.printf("%s/%u SLOT:%s %u.%u\n", n.name, slot + 1,
-                n.occupied[slot] == 1 ? "OCCUPIED" : "FREE",
+                n.fault[slot] ? "FAULT" : n.occupied[slot] == 1 ? "OCCUPIED" : "FREE",
                 n.distanceMm[slot] / 10, n.distanceMm[slot] % 10);
 }
 
@@ -274,8 +279,10 @@ void handlePacket(const Incoming& in) {
       s.slotCount = (p.slotCount < MAX_SLOTS) ? p.slotCount : MAX_SLOTS;
       for (uint8_t slot = 0; slot < s.slotCount; slot++) {
         int8_t occupied = (p.occupiedMask >> slot) & 1;
-        bool changed = (occupied != s.occupied[slot]);
+        bool fault = (p.faultMask >> slot) & 1;
+        bool changed = (occupied != s.occupied[slot]) || (fault != s.fault[slot]);
         s.occupied[slot] = occupied;
+        s.fault[slot] = fault;
         s.distanceMm[slot] = p.distanceMm[slot];
         if (changed) printSlot(s, slot);   // Heartbeats that change nothing stay quiet.
       }

@@ -161,6 +161,8 @@ class StatusIntents {
         // Red reads "taken" from across the guard house; orange "not in use".
         'Occupied' => StatusIntent.danger,
         'OutOfService' => StatusIntent.warning,
+        // Grey like the map: nothing is known about the bay.
+        'NoSignal' => StatusIntent.neutral,
         _ => StatusIntent.neutral,
       };
 

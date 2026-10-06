@@ -169,11 +169,13 @@ String? deviceFixTip(DeviceHealth d, DeviceHealthReport report) {
       'Answers aren\'t reaching $node. Move it closer to the hub or check its power.',
     'gateNode' =>
       'Check $node\'s power. It rejoins within a few seconds of booting.',
+    'slotSensor' when error.contains('no echo') =>
+      '$node hears nothing: plug its sensor back in or replace it. Its slot shows No signal and isn\'t counted free until then.',
     'slotSensor' => d.online
         ? 'Readings aren\'t reaching $node. Check its power.'
-        : 'Check $node\'s wiring. Its slot keeps its last status until then.',
+        : 'Check $node\'s wiring. Its slot shows No signal and isn\'t counted free until then.',
     'sensorBoard' =>
-      'Check $node\'s power. Its slots keep their last status until it rejoins.',
+      'Check $node\'s power. Its slots show No signal and aren\'t counted free until it rejoins.',
     'gateReader' when error.contains('hub') =>
       'Link this port as a hub in Gate → Gate Readers.',
     'gateReader' =>

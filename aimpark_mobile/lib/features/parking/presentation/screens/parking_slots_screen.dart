@@ -43,7 +43,7 @@ enum _SlotState {
     if (myCode != null && slot.slotCode == myCode) return yours;
     return switch (slot.status.toLowerCase()) {
       'available' => free,
-      'outofservice' || 'out of service' => outOfService,
+      'outofservice' || 'out of service' || 'nosignal' => outOfService,
       _ => taken,
     };
   }

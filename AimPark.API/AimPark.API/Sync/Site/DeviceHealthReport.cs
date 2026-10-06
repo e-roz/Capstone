@@ -135,13 +135,16 @@ namespace AimPark.API.Sync.Site
                             recentError ? nodeError : null, recentError ? node.LastErrorAt : null,
                             DependsOn: hubId,
                             Detail: sensors.Count == 0 ? "No reading yet"
-                                : $"{sensors.Count(n => n.Node.Occupied == true)} of {sensors.Count} slots taken"));
+                                : $"{sensors.Count(n => n.Node.Occupied == true)} of {sensors.Count} slots taken"
+                                  + (sensors.Count(n => n.Node.Fault) is > 0 and var faulted
+                                      ? $"; {faulted} sensor{(faulted == 1 ? "" : "s")} not answering" : "")));
                     }
                     else if (node.Kind == HubNodeKind.Sensor)
                     {
                         var slot = boundTo is Guid s && slots.TryGetValue(s, out var found) ? found : null;
                         var detail = slot?.Status == ParkingSlotStatus.OutOfService
                             ? "Slot is out of service; readings are ignored."
+                            : node.Fault ? "Hears no echo: unplugged or broken."
                             : node.Occupied switch
                             {
                                 true => $"Sees a vehicle at {node.DistanceCm} cm",
@@ -154,8 +157,10 @@ namespace AimPark.API.Sync.Site
                             boundTo is null ? null
                                 : slot is null ? "A slot no longer on this server"
                                 : $"Slot {slot.SlotCode} (Gate {slot.Gate})",
-                            boundTo is not null, hubUp && node.Online, node.LastSeenAt,
-                            recentError ? nodeError : null, recentError ? node.LastErrorAt : null,
+                            // A sensor with no echo is down on its own, though its board answers.
+                            boundTo is not null, hubUp && node.Online && !node.Fault, node.LastSeenAt,
+                            node.Fault ? "No echo: check this sensor's wiring" : recentError ? nodeError : null,
+                            node.Fault ? node.SlotChangedAt : recentError ? node.LastErrorAt : null,
                             DependsOn: $"node:{hub.Port}:{HubProtocol.BoardOf(node.Node)}", Detail: detail,
                             Occupied: node.Occupied, DistanceCm: node.DistanceCm));
                     }
