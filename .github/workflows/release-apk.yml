@@ -25,6 +25,11 @@ defaults:
   run:
     working-directory: aimpark_mobile
 
+# The repo's default token is read-only; this workflow is the one place that
+# actually needs to create a release and upload an asset to it.
+permissions:
+  contents: write
+
 jobs:
   build:
     name: Build signed APK
