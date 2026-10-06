@@ -200,7 +200,11 @@ void setup() {
 
   for (uint8_t i = 0; i < SLOT_COUNT; i++) {
     pinMode(TRIG_PINS[i], OUTPUT);
-    pinMode(ECHO_PINS[i], INPUT);
+    // Held low, so an unplugged sensor's ECHO line reads as never rising
+    // rather than floating into ghost readings. 34 and 35 have no internal
+    // pull: there only the divider's 2k to GND holds it.
+    bool hasPull = ECHO_PINS[i] < 34;
+    pinMode(ECHO_PINS[i], hasPull ? INPUT_PULLDOWN : INPUT);
     digitalWrite(TRIG_PINS[i], LOW);
     occupied[i] = false;
     occupiedStreak[i] = freeStreak[i] = missingStreak[i] = 0;
