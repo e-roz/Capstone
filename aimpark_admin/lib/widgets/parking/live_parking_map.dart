@@ -1,14 +1,13 @@
 import 'dart:async';
+import 'dart:math';
 
-import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
-import '../../core/constants/api_endpoints.dart';
 import '../../core/network/dio_client.dart';
-import '../../models/gate_reader.dart';
+import '../../models/device_health.dart';
 import '../../models/parking_slot.dart';
 import '../../models/site_link.dart';
 import '../../providers/device_health_provider.dart';
@@ -77,11 +76,6 @@ class _LiveParkingMapCardState extends ConsumerState<LiveParkingMapCard> {
   bool _healthInFlight = false;
   Map<int, GateStatus> _health = const {1: GateStatus.unknown1, 2: GateStatus.unknown2};
 
-  /// Slots whose sensor has no signal: its board lost power or the hub is
-  /// gone. They keep their last status, but the map greys them out so a
-  /// dead sensor never passes for a parked car.
-  Set<String> _silent = const {};
-
   @override
   void initState() {
     super.initState();
@@ -109,32 +103,10 @@ class _LiveParkingMapCardState extends ConsumerState<LiveParkingMapCard> {
     if (_healthInFlight) return;
     _healthInFlight = true;
     try {
-      final dio = ref.read(dioProvider);
-      final (health, silent) = await (GateStatus.fetch(dio), _silentSensors(dio)).wait;
-      if (mounted) {
-        setState(() {
-          _health = health;
-          _silent = silent;
-        });
-      }
+      final health = await GateStatus.fetch(ref.read(dioProvider));
+      if (mounted) setState(() => _health = health);
     } finally {
       _healthInFlight = false;
-    }
-  }
-
-  /// The slots a linked sensor watches but can't hear from. From the cloud
-  /// panel nothing answers, and no slot is greyed out. Never throws.
-  static Future<Set<String>> _silentSensors(Dio dio) async {
-    try {
-      final res = await dio.get(ApiEndpoints.gateReaders);
-      final state = GateReadersState.fromJson(res.data as Map<String, dynamic>);
-      return {
-        for (final hub in state.hubs)
-          for (final n in hub.nodes)
-            if (n.isSensor && n.boundTo != null && !n.online) n.boundTo!,
-      };
-    } on DioException {
-      return const {};
     }
   }
 
@@ -146,17 +118,6 @@ class _LiveParkingMapCardState extends ConsumerState<LiveParkingMapCard> {
         : GateStatus.fromRelayed(gate, link.devices);
     showGateDetails(context, status: status, dio: ref.read(dioProvider));
   }
-
-  /// Bays whose sensor the guard post reports as silent, by slot code — the
-  /// relayed list names a sensor's slot ("Slot C4 (Gate 2)"), not its id.
-  static Set<String> _relayedSilent(SiteLink link) => {
-        for (final d in link.devices)
-          if (d.kind == 'slotSensor' && d.bound && !d.online)
-            ?_slotCodeOf(d.boundTo),
-      };
-
-  static String? _slotCodeOf(String? boundTo) =>
-      boundTo == null ? null : RegExp(r'^Slot (\S+)').firstMatch(boundTo)?.group(1);
 
   void _refresh() {
     // A refresh still in flight is left to finish rather than stacked.
@@ -175,14 +136,15 @@ class _LiveParkingMapCardState extends ConsumerState<LiveParkingMapCard> {
     final link = ref.watch(siteLinkProvider).valueOrNull;
 
     // At the guard post its own server answers and the map is first-hand.
-    // Online, gate devices and quiet sensors come from the list the guard
-    // post relays through the cloud.
+    // Online, gate devices come from the list the guard post relays through
+    // the cloud.
     final atGuardPost = _health.values.any((h) => h.known);
     final relayed = !atGuardPost && link != null && link.reportsHealth;
     final health = relayed
         ? {for (final g in _health.keys) g: GateStatus.fromRelayed(g, link.devices)}
         : _health;
-    final silent = relayed ? _relayedSilent(link) : _silent;
+    // A bay reads free or taken only while a sensor vouches for it.
+    final coverage = _SensorCoverage.from(ref.watch(deviceHealthProvider), link);
     final stale = !atGuardPost && link != null && link.stale;
     final sessions = {
       for (final s in ref.watch(activeParkingSessionsProvider).valueOrNull ??
@@ -203,6 +165,7 @@ class _LiveParkingMapCardState extends ConsumerState<LiveParkingMapCard> {
           link: link,
           updatedAt: _updatedAt,
           failing: slots.hasError,
+          sensors: coverage.count(slots.valueOrNull?.slots),
         ),
         if (widget.showOpenLink)
           TextButton(
@@ -220,8 +183,8 @@ class _LiveParkingMapCardState extends ConsumerState<LiveParkingMapCard> {
           title: 'No bays configured',
           message: 'Add a slot to start tracking the lot.',
         ),
-        data: (availability) => _SilentSensors(
-          slots: silent,
+        data: (availability) => _Coverage(
+          coverage: coverage,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
@@ -272,9 +235,11 @@ class ParkingSummaryCard extends ConsumerWidget {
     final link = ref.watch(siteLinkProvider).valueOrNull;
     // At the guard post its own server lists the devices; online, the cloud
     // relays the same list.
-    final local = ref.watch(deviceHealthProvider).report;
+    final deviceHealth = ref.watch(deviceHealthProvider);
+    final local = deviceHealth.report;
     final atGuardPost = local != null;
     final devices = local?.devices ?? (link != null && link.reportsHealth ? link.devices : null);
+    final coverage = _SensorCoverage.from(deviceHealth, link);
     final stale = !atGuardPost && link != null && link.stale;
 
     return AppSectionCard(
@@ -283,7 +248,13 @@ class ParkingSummaryCard extends ConsumerWidget {
       icon: Icons.local_parking_outlined,
       padding: const EdgeInsets.all(AppSpacing.cardPadding),
       actions: [
-        _SyncBadge(atGuardPost: atGuardPost, link: link, updatedAt: null, failing: slots.hasError),
+        _SyncBadge(
+          atGuardPost: atGuardPost,
+          link: link,
+          updatedAt: null,
+          failing: slots.hasError,
+          sensors: coverage.count(slots.valueOrNull?.slots),
+        ),
         TextButton(
           onPressed: () => context.go('/parking'),
           child: const Text('Open parking map'),
@@ -295,13 +266,19 @@ class ParkingSummaryCard extends ConsumerWidget {
         loading: const SkeletonBlock(height: 96),
         data: (availability) {
           final usable = availability.slots.where((s) => s.status != 'OutOfService').toList();
-          final free = availability.availableSlots.clamp(0, usable.length);
-          final inBays = usable.where((s) => s.status == 'Occupied').length;
-          final notInBay = (usable.length - free) - inBays;
+          final free = coverage.free(usable, availability.availableSlots);
+          final noSignal = usable.where(coverage.silent).length;
+          final inBays = usable.where((s) => s.status == 'Occupied' && coverage.confirms(s)).length;
+          final notInBay = (usable.length - free - noSignal - inBays).clamp(0, usable.length);
+          final freeNotes = [
+            if (notInBay == 1) '1 car inside not yet in a bay',
+            if (notInBay > 1) '$notInBay cars inside not yet in a bay',
+            if (noSignal > 0) '$noSignal with no sensor signal',
+          ];
 
           (int, int) freeOf(bool Function(ParkingSlot) where, int? fromServer) {
             final group = usable.where(where).toList();
-            return (fromServer ?? group.where((s) => s.status == 'Available').length, group.length);
+            return (coverage.free(group, fromServer), group.length);
           }
 
           final (cars, carTotal) = freeOf((s) => s.vehicleType == 'Car', availability.availableCars);
@@ -364,12 +341,11 @@ class ParkingSummaryCard extends ConsumerWidget {
                     stat(
                       'FREE NOW',
                       '$free of ${usable.length}',
-                      color: free == 0 && usable.isNotEmpty ? t.status.danger.fg : null,
-                      note: notInBay > 0
-                          ? (notInBay == 1
-                              ? '1 car inside not yet in a bay'
-                              : '$notInBay cars inside not yet in a bay')
+                      // Nothing to vouch for a bay is not a full lot.
+                      color: free == 0 && usable.isNotEmpty && noSignal < usable.length
+                          ? t.status.danger.fg
                           : null,
+                      note: freeNotes.isEmpty ? null : freeNotes.join('\n'),
                     ),
                     stat('FOUR-WHEEL', '$cars / $carTotal', note: 'free'),
                     stat('MOTORCYCLE', '$bikes / $bikeTotal', note: 'free'),
@@ -396,6 +372,7 @@ class _SyncBadge extends StatelessWidget {
     required this.link,
     required this.updatedAt,
     required this.failing,
+    required this.sensors,
   });
 
   final bool atGuardPost;
@@ -405,12 +382,24 @@ class _SyncBadge extends StatelessWidget {
   final DateTime? updatedAt;
   final bool failing;
 
+  /// Usable bays a live sensor vouches for, of all of them. Null when no
+  /// device list reached this panel, and the badge can't say.
+  final (int live, int total)? sensors;
+
   @override
   Widget build(BuildContext context) {
     final link = this.link;
+    final sensors = this.sensors;
+    // The server answering is not the lot reporting: "Live" over bays no
+    // sensor can see would pass a dead hub off as an empty lot.
+    final sensorsDown = sensors != null && sensors.$1 < sensors.$2;
+    final sensorsLabel = sensors == null || sensors.$1 == 0
+        ? 'Sensors offline'
+        : '${sensors.$1} of ${sensors.$2} sensors live';
 
     final (intent, label, pulse) = switch (link) {
       _ when failing => (StatusIntent.warning, 'Reconnecting', false),
+      _ when atGuardPost && sensorsDown => (StatusIntent.warning, sensorsLabel, false),
       _ when atGuardPost => (
           StatusIntent.success,
           updatedAt == null ? 'Live' : 'Live · ${_ago(DateTime.now().difference(updatedAt!))}',
@@ -424,9 +413,15 @@ class _SyncBadge extends StatelessWidget {
               : 'Guard post offline since ${_clock.format(link.staleSince!.toLocal())}',
           false,
         ),
+      _ when sensorsDown => (StatusIntent.warning, sensorsLabel, false),
       _ when link.age == null => (StatusIntent.success, 'Guard post connected', true),
       _ => (StatusIntent.success, 'Synced from guard post · ${_ago(link.age!)}', true),
     };
+    final icon = label == sensorsLabel
+        ? Icons.sensors_off_rounded
+        : intent == StatusIntent.warning
+            ? Icons.cloud_off_rounded
+            : Icons.schedule_rounded;
 
     final t = context.tokens;
     final text = Theme.of(context).textTheme;
@@ -446,7 +441,7 @@ class _SyncBadge extends StatelessWidget {
             _PulseDot(color: c.solid)
           else
             Icon(
-              intent == StatusIntent.warning ? Icons.cloud_off_rounded : Icons.schedule_rounded,
+              icon,
               size: 12,
               color: c.solid,
             ),
@@ -1219,11 +1214,9 @@ class _BayState extends State<_Bay> {
     final text = Theme.of(context).textTheme;
     final slot = widget.slot;
     final session = widget.session;
-    // No sensor signal: shown grey, whatever it last read, until it is back.
-    // At the guard post quiet sensors are known by slot id; online, by the
-    // slot code the relayed device list names.
-    final quiet = _SilentSensors.of(context);
-    final silent = quiet.contains(slot.slotId) || quiet.contains(_shortCode(slot.slotCode));
+    // No sensor signal: shown grey, whatever it last read, until a linked
+    // sensor is heard from again.
+    final silent = _Coverage.of(context).silent(slot);
     final c = silent ? t.status.neutral : t.status.of(StatusIntents.slot(slot.status));
 
     final occupied = !silent && slot.status == 'Occupied';
@@ -1427,18 +1420,23 @@ class _Summary extends StatelessWidget {
     // The count is cars inside the lot, from the server: a car that tapped in
     // counts until it taps out, even while its bay shows green (driving to it,
     // parked elsewhere, lifted out of the model).
+    // Bays no live sensor vouches for are neither free nor taken: they are
+    // left out of both, and counted on their own.
+    final coverage = _Coverage.of(context);
     final usable = slots.where((s) => s.status != 'OutOfService').toList();
-    final free = availability.availableSlots.clamp(0, usable.length);
-    final occupied = usable.length - free;
+    final free = coverage.free(usable, availability.availableSlots);
+    final noSignal = usable.where(coverage.silent).length;
+    final occupied = (usable.length - free - noSignal).clamp(0, usable.length);
     final down = slots.length - usable.length;
     // Cars that tapped in but no sensor sees in a bay yet — driving to one,
     // or parked off the model. Said out loud, so a "16 free" over a map of
     // eighteen green bays doesn't look like a bug.
-    final inBays = usable.where((s) => s.status == 'Occupied').length;
-    final notInBay = occupied - inBays;
+    final inBays = usable.where((s) => s.status == 'Occupied' && coverage.confirms(s)).length;
+    final notInBay = (occupied - inBays).clamp(0, occupied);
     final ratio = usable.isEmpty ? 0.0 : occupied / usable.length;
 
     final intent = switch (ratio) {
+      _ when usable.isNotEmpty && noSignal == usable.length => StatusIntent.neutral,
       >= 0.95 => StatusIntent.danger,
       >= 0.8 => StatusIntent.warning,
       _ => StatusIntent.success,
@@ -1446,7 +1444,7 @@ class _Summary extends StatelessWidget {
 
     (int, int) freeOf(bool Function(ParkingSlot) where, int? fromServer) {
       final group = usable.where(where).toList();
-      return (fromServer ?? group.where((s) => s.status == 'Available').length, group.length);
+      return (coverage.free(group, fromServer), group.length);
     }
 
     return Column(
@@ -1488,6 +1486,19 @@ class _Summary extends StatelessWidget {
                 ? '1 car inside not yet in a bay'
                 : '$notInBay cars inside not yet in a bay',
             style: AppTypography.tabular(text.bodySmall!.copyWith(color: t.text.secondary)),
+          ),
+        ],
+        if (noSignal > 0) ...[
+          const SizedBox(height: AppSpacing.x1),
+          Row(
+            children: [
+              Icon(Icons.sensors_off_rounded, size: 12, color: t.status.neutral.fg),
+              const SizedBox(width: AppSpacing.x1),
+              Text(
+                '$noSignal with no sensor signal',
+                style: AppTypography.tabular(text.bodySmall!.copyWith(color: t.text.secondary)),
+              ),
+            ],
           ),
         ],
         const SizedBox(height: AppSpacing.x5),
@@ -1642,17 +1653,78 @@ String _statusLabel(String status) => switch (status) {
 };
 
 
-/// The slots whose sensor has gone quiet, for every bay on the map to read
-/// without passing it down through each layer.
-class _SilentSensors extends InheritedWidget {
-  const _SilentSensors({required this.slots, required super.child});
+/// Which bays a live sensor vouches for right now.
+///
+/// A bay reads free or taken only while a sensor linked to it is online.
+/// Every other usable bay is "No sensor signal" — the hub unplugged, its
+/// board off, or no sensor ever linked to it — so a lot nobody can see never
+/// passes for an empty one.
+class _SensorCoverage {
+  const _SensorCoverage(this.live);
 
-  final Set<String> slots;
+  /// No device list reached this panel (a guard post too old to send one):
+  /// bays show what the server says, as they always did.
+  static const unknown = _SensorCoverage(null);
 
-  static Set<String> of(BuildContext context) =>
-      context.dependOnInheritedWidgetOfExactType<_SilentSensors>()?.slots ?? const {};
+  /// `<gate>|<slot code>` of each bay a bound, online sensor watches.
+  final Set<String>? live;
+
+  /// At the guard post its own server lists the devices; online, the cloud
+  /// relays the same list.
+  factory _SensorCoverage.from(DeviceHealthState local, SiteLink? link) {
+    if (local.report case final report?) return _SensorCoverage.of(report.devices);
+    if (link != null && link.reportsHealth) return _SensorCoverage.of(link.devices);
+    // Still finding out where this panel is (no answer from either yet):
+    // grey until a sensor is heard from, never green on a guess.
+    if (local.atGuardPost && link == null) return const _SensorCoverage({});
+    return unknown;
+  }
+
+  /// A sensor names its bay as "Slot G1-C4 (Gate 1)". Both gates have a C4,
+  /// so the gate is part of the key.
+  factory _SensorCoverage.of(List<DeviceHealth> devices) => _SensorCoverage({
+        for (final d in devices)
+          if (d.kind == 'slotSensor' && d.bound && d.online && d.boundTo != null)
+            if (RegExp(r'^Slot (.+) \(Gate (\d+)\)$').firstMatch(d.boundTo!) case final m?)
+              _key(int.parse(m.group(2)!), m.group(1)!),
+      });
+
+  static String _key(int gate, String slotCode) => '$gate|$slotCode';
+
+  bool confirms(ParkingSlot s) => live?.contains(_key(s.gate, s.slotCode)) ?? true;
+
+  /// Out-of-service bays keep their own look: someone closed them on purpose.
+  bool silent(ParkingSlot s) => s.status != 'OutOfService' && !confirms(s);
+
+  /// Free bays in [group]: the server's count, from cars tapped in and out,
+  /// but never more than the bays a live sensor sees empty.
+  int free(List<ParkingSlot> group, int? fromServer) {
+    final seenFree = group.where((s) => s.status == 'Available' && confirms(s)).length;
+    final free = fromServer ?? seenFree;
+    return (live == null ? free : min(free, seenFree)).clamp(0, group.length);
+  }
+
+  /// Usable bays vouched for, of all of them, for the header badge.
+  (int, int)? count(List<ParkingSlot>? slots) {
+    if (live == null || slots == null) return null;
+    final usable = slots.where((s) => s.status != 'OutOfService').toList();
+    return (usable.where(confirms).length, usable.length);
+  }
+}
+
+/// The sensor coverage, for every bay on the map to read without passing it
+/// down through each layer.
+class _Coverage extends InheritedWidget {
+  const _Coverage({required this.coverage, required super.child});
+
+  final _SensorCoverage coverage;
+
+  static _SensorCoverage of(BuildContext context) =>
+      context.dependOnInheritedWidgetOfExactType<_Coverage>()?.coverage ?? _SensorCoverage.unknown;
 
   @override
-  bool updateShouldNotify(_SilentSensors old) =>
-      old.slots.length != slots.length || !old.slots.containsAll(slots);
+  bool updateShouldNotify(_Coverage old) {
+    final (a, b) = (old.coverage.live, coverage.live);
+    return a == null || b == null ? a != b : a.length != b.length || !a.containsAll(b);
+  }
 }
