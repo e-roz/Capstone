@@ -79,7 +79,7 @@ final appPackageInfoProvider = FutureProvider<PackageInfo>.internal(
 @Deprecated('Will be removed in 3.0. Use Ref instead')
 // ignore: unused_element
 typedef AppPackageInfoRef = FutureProviderRef<PackageInfo>;
-String _$updateCheckerHash() => r'26c9939c0c52c8ad0a5815ae43ad0bd04e88ae0d';
+String _$updateCheckerHash() => r'c3399652236ac4df87638ac7a4e9f5b5edd3e928';
 
 /// Runs the update check and owns when the "Update available" dialog gets
 /// shown.
