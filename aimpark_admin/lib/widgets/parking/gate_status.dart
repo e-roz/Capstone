@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import '../../core/constants/api_endpoints.dart';
+import '../../core/utils/ph_time.dart';
 import '../../models/device_health.dart';
 import '../../models/gate_reader.dart';
 import '../../models/gate_tap_event.dart';
@@ -102,14 +103,16 @@ class GateStatus {
           }
         : null;
 
-    final startOfToday = DateUtils.dateOnly(DateTime.now());
+    // Today as the guard post counts it: from midnight in Manila.
+    final now = manilaNow();
+    final startOfToday = DateTime.utc(now.year, now.month, now.day);
     final taps = historyJson is Map
         ? [
             for (final t in historyJson['taps'] as List? ?? const [])
               GateTapEvent.fromJson(t as Map<String, dynamic>),
           ]
         : <GateTapEvent>[];
-    final today = taps.where((t) => !t.at.toLocal().isBefore(startOfToday)).toList();
+    final today = taps.where((t) => !manila(t.at).isBefore(startOfToday)).toList();
     // A full page that is still all today means the day had more than we read.
     final capped = taps.length >= _historyPage && today.length == taps.length;
 
@@ -221,7 +224,7 @@ String ago(DateTime? at) {
 String _subject(GateTapEvent t) => t.cameraPlate ?? t.registeredPlates?.split(',').first.trim() ?? t.who;
 
 /// "ABC 1234 · ENTERED · 08:42".
-String lastEventLine(GateTapEvent t) => '${_subject(t)} · ${t.outcomeLabel} · ${_clock.format(t.at.toLocal())}';
+String lastEventLine(GateTapEvent t) => '${_subject(t)} · ${t.outcomeLabel} · ${_clock.format(manila(t.at))}';
 
 /// Green, red, or grey for unknown.
 Color deviceColor(BuildContext context, bool? ok) {
@@ -521,7 +524,7 @@ class _TapRow extends StatelessWidget {
           SizedBox(
             width: 44,
             child: Text(
-              _clock.format(tap.at.toLocal()),
+              _clock.format(manila(tap.at)),
               style: AppTypography.tabular(text.bodySmall!.copyWith(color: t.text.secondary)),
             ),
           ),

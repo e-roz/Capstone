@@ -28,6 +28,7 @@ class ParkingScreen extends ConsumerWidget {
       subtitle: 'Live bay status across both gates.',
       scrollable: true,
       actions: [
+        const ParkingStatus(),
         if (isAdmin) ...[
           OutlinedButton.icon(
             icon: const Icon(Icons.login, size: AppSizes.iconSm),

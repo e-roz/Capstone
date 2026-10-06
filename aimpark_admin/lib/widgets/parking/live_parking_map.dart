@@ -7,6 +7,7 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
 import '../../core/network/dio_client.dart';
+import '../../core/utils/ph_time.dart';
 import '../../models/device_health.dart';
 import '../../models/parking_slot.dart';
 import '../../models/site_link.dart';
@@ -47,7 +48,6 @@ class LiveParkingMapCard extends ConsumerStatefulWidget {
     super.key,
     this.compact = false,
     this.onBayTap,
-    this.showOpenLink = false,
   });
 
   /// Smaller bays and no plate on them; for the overview screens.
@@ -55,9 +55,6 @@ class LiveParkingMapCard extends ConsumerStatefulWidget {
 
   /// Called when a bay is clicked, e.g. to change its status. Null = read-only.
   final void Function(ParkingSlot slot)? onBayTap;
-
-  /// Adds an "Open map" link to the full Parking screen.
-  final bool showOpenLink;
 
   @override
   ConsumerState<LiveParkingMapCard> createState() => _LiveParkingMapCardState();
@@ -69,9 +66,7 @@ class _LiveParkingMapCardState extends ConsumerState<LiveParkingMapCard> {
   static const _healthEvery = Duration(seconds: 5);
 
   Timer? _timer;
-  Timer? _ticker;
   Timer? _healthTimer;
-  DateTime? _updatedAt;
 
   bool _healthInFlight = false;
   Map<int, GateStatus> _health = const {1: GateStatus.unknown1, 2: GateStatus.unknown2};
@@ -82,16 +77,11 @@ class _LiveParkingMapCardState extends ConsumerState<LiveParkingMapCard> {
     _timer = Timer.periodic(_refreshEvery, (_) => _refresh());
     _checkHealth();
     _healthTimer = Timer.periodic(_healthEvery, (_) => _checkHealth());
-    // Keeps "updated 2s ago" honest between refreshes.
-    _ticker = Timer.periodic(const Duration(seconds: 1), (_) {
-      if (mounted) setState(() {});
-    });
   }
 
   @override
   void dispose() {
     _timer?.cancel();
-    _ticker?.cancel();
     _healthTimer?.cancel();
     super.dispose();
   }
@@ -128,10 +118,6 @@ class _LiveParkingMapCardState extends ConsumerState<LiveParkingMapCard> {
 
   @override
   Widget build(BuildContext context) {
-    ref.listen(parkingSlotsProvider, (_, next) {
-      if (next.hasValue && !next.isLoading) _updatedAt = DateTime.now();
-    });
-
     final slots = ref.watch(parkingSlotsProvider);
     final link = ref.watch(siteLinkProvider).valueOrNull;
 
@@ -152,27 +138,9 @@ class _LiveParkingMapCardState extends ConsumerState<LiveParkingMapCard> {
         if (s.slotCode != null) s.slotCode!: s,
     };
 
-    return AppSectionCard(
-      title: 'Parking map',
-      subtitle: atGuardPost
-          ? 'Bay status from this guard post.'
-          : 'Bay status reported by the guard post.',
-      icon: Icons.local_parking_outlined,
-      padding: const EdgeInsets.all(AppSpacing.cardPadding),
-      actions: [
-        _SyncBadge(
-          atGuardPost: atGuardPost,
-          link: link,
-          updatedAt: _updatedAt,
-          failing: slots.hasError,
-          sensors: coverage.count(slots.valueOrNull?.slots),
-        ),
-        if (widget.showOpenLink)
-          TextButton(
-            onPressed: () => context.go('/parking'),
-            child: const Text('Open map'),
-          ),
-      ],
+    // No header of its own: the clock and the status badge sit in the page
+    // header ([ParkingStatus]), next to the page's actions.
+    return AppCard(
       child: AsyncView(
         value: slots,
         onRetry: () => ref.invalidate(parkingSlotsProvider),
@@ -190,6 +158,10 @@ class _LiveParkingMapCardState extends ConsumerState<LiveParkingMapCard> {
             children: [
               if (stale) ...[
                 _StaleBanner(since: link.staleSince),
+                const SizedBox(height: AppSpacing.x3),
+              ] else if (coverage.count(availability.slots) case (0, > 0)) ...[
+                // Said once here, so the bays need not each repeat it.
+                const _NoSignalBanner(),
                 const SizedBox(height: AppSpacing.x3),
               ],
               // Dimmed, not hidden: the last known bays are still the best
@@ -211,6 +183,65 @@ class _LiveParkingMapCardState extends ConsumerState<LiveParkingMapCard> {
           ),
         ),
       ),
+    );
+  }
+}
+
+// ── Page header status ───────────────────────────────────────────────────────
+
+/// The Philippine clock and how far to trust the bays, for the Parking page's
+/// header: "Live", "Sensors offline", "Guard post offline since 10:42"…
+class ParkingStatus extends ConsumerStatefulWidget {
+  const ParkingStatus({super.key});
+
+  @override
+  ConsumerState<ParkingStatus> createState() => _ParkingStatusState();
+}
+
+class _ParkingStatusState extends ConsumerState<ParkingStatus> {
+  Timer? _ticker;
+  DateTime? _updatedAt;
+
+  @override
+  void initState() {
+    super.initState();
+    // Keeps "Live · 2s ago" honest between refreshes.
+    _ticker = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (mounted) setState(() {});
+    });
+  }
+
+  @override
+  void dispose() {
+    _ticker?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    ref.listen(parkingSlotsProvider, (_, next) {
+      if (next.hasValue && !next.isLoading) _updatedAt = DateTime.now();
+    });
+
+    final slots = ref.watch(parkingSlotsProvider);
+    final link = ref.watch(siteLinkProvider).valueOrNull;
+    final deviceHealth = ref.watch(deviceHealthProvider);
+    final coverage = _SensorCoverage.from(deviceHealth, link);
+
+    return Wrap(
+      spacing: AppSpacing.x3,
+      runSpacing: AppSpacing.x1,
+      crossAxisAlignment: WrapCrossAlignment.center,
+      children: [
+        const _PhClock(),
+        _SyncBadge(
+          atGuardPost: deviceHealth.report != null,
+          link: link,
+          updatedAt: _updatedAt,
+          failing: slots.hasError,
+          sensors: coverage.count(slots.valueOrNull?.slots),
+        ),
+      ],
     );
   }
 }
@@ -276,14 +307,11 @@ class ParkingSummaryCard extends ConsumerWidget {
             if (noSignal > 0) '$noSignal with no sensor signal',
           ];
 
-          (int, int) freeOf(bool Function(ParkingSlot) where, int? fromServer) {
-            final group = usable.where(where).toList();
-            return (coverage.free(group, fromServer), group.length);
-          }
-
-          final (cars, carTotal) = freeOf((s) => s.vehicleType == 'Car', availability.availableCars);
-          final (bikes, bikeTotal) =
-              freeOf((s) => s.vehicleType != 'Car', availability.availableMotorcycles);
+          final (cars, carTotal, carsSilent) =
+              coverage.freeOf(usable.where((s) => s.vehicleType == 'Car'), availability.availableCars);
+          final (bikes, bikeTotal, bikesSilent) = coverage.freeOf(
+              usable.where((s) => s.vehicleType != 'Car'), availability.availableMotorcycles);
+          String freeNote(int silent) => silent > 0 ? 'free · $silent no signal' : 'free';
 
           Widget stat(String label, String value, {String? note, Color? color}) => SizedBox(
                 width: 150,
@@ -347,8 +375,8 @@ class ParkingSummaryCard extends ConsumerWidget {
                           : null,
                       note: freeNotes.isEmpty ? null : freeNotes.join('\n'),
                     ),
-                    stat('FOUR-WHEEL', '$cars / $carTotal', note: 'free'),
-                    stat('MOTORCYCLE', '$bikes / $bikeTotal', note: 'free'),
+                    stat('FOUR-WHEEL', '$cars / $carTotal', note: freeNote(carsSilent)),
+                    stat('MOTORCYCLE', '$bikes / $bikeTotal', note: freeNote(bikesSilent)),
                     gate(1),
                     gate(2),
                   ],
@@ -410,7 +438,7 @@ class _SyncBadge extends StatelessWidget {
           StatusIntent.warning,
           link.staleSince == null
               ? 'Guard post offline'
-              : 'Guard post offline since ${_clock.format(link.staleSince!.toLocal())}',
+              : 'Guard post offline since ${_clock.format(manila(link.staleSince!))}',
           false,
         ),
       _ when sensorsDown => (StatusIntent.warning, sensorsLabel, false),
@@ -472,7 +500,7 @@ class _StaleBanner extends StatelessWidget {
     final c = t.status.warning;
     final when = since == null
         ? 'from before the guard post went quiet'
-        : 'from ${_clock.format(since!.toLocal())}';
+        : 'from ${_clock.format(manila(since!))}';
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: AppSpacing.x3, vertical: AppSpacing.x2),
@@ -492,6 +520,86 @@ class _StaleBanner extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// No bay has a live sensor: the hub is unplugged, or every board is off.
+/// Said once above the map instead of on each of the eighteen bays.
+class _NoSignalBanner extends StatelessWidget {
+  const _NoSignalBanner();
+
+  @override
+  Widget build(BuildContext context) {
+    final t = context.tokens;
+    final text = Theme.of(context).textTheme;
+    final c = t.status.neutral;
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.x3, vertical: AppSpacing.x2),
+      decoration: BoxDecoration(
+        color: c.bg,
+        borderRadius: AppRadii.smAll,
+        border: Border.all(color: c.border),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.sensors_off_rounded, size: AppSizes.iconSm, color: c.fg),
+          const SizedBox(width: AppSpacing.x2),
+          Expanded(
+            child: Text(
+              'No sensor signal from any bay. Check the hub and sensor boards.',
+              style: text.bodyMedium?.copyWith(color: c.fg),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// The date and time in the Philippines, ticking each second. On a narrow
+/// screen only the time, so the header keeps room for the badge.
+class _PhClock extends StatefulWidget {
+  const _PhClock();
+
+  @override
+  State<_PhClock> createState() => _PhClockState();
+}
+
+class _PhClockState extends State<_PhClock> {
+  static final _full = DateFormat('EEE, MMM d, y · h:mm:ss a');
+  static final _short = DateFormat('h:mm:ss a');
+
+  Timer? _timer;
+
+  @override
+  void initState() {
+    super.initState();
+    _timer = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (mounted) setState(() {});
+    });
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final t = context.tokens;
+    final text = Theme.of(context).textTheme;
+    final now = manilaNow();
+    final wide = MediaQuery.sizeOf(context).width >= 900;
+
+    return Tooltip(
+      message: 'Philippine time (UTC+8)',
+      child: Text(
+        (wide ? _full : _short).format(now),
+        style: AppTypography.tabular(text.labelMedium!.copyWith(color: t.text.secondary)),
       ),
     );
   }
@@ -590,29 +698,56 @@ class _MapWithSummary extends StatelessWidget {
       onGateTap: onGateTap,
     );
     final summary = _Summary(slots: slots, availability: availability);
+    final lotWidth = _LotMap.widthFor(compact: compact);
 
     return LayoutBuilder(
       builder: (context, box) {
-        final sideBySide = box.maxWidth >= 860;
+        // The lot keeps the shape of the real one; the numbers sit right
+        // beside it rather than across a stretch of empty page.
+        final sideBySide = box.maxWidth >= lotWidth + AppSpacing.x8 + 340;
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             if (sideBySide)
+              // The gates' details go under the numbers, beside the lot,
+              // rather than under it with the page's right side left empty.
               Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Expanded(flex: 3, child: map),
-                  const SizedBox(width: AppSpacing.x6),
-                  Expanded(flex: 2, child: summary),
+                  SizedBox(width: lotWidth, child: map),
+                  const SizedBox(width: AppSpacing.x8),
+                  Expanded(
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 880),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          summary,
+                          const SizedBox(height: AppSpacing.x8),
+                          Text('GATE HEALTH', style: _eyebrow(context)),
+                          const SizedBox(height: AppSpacing.x3),
+                          _GateTiles(health: health, onTap: onGateTap),
+                        ],
+                      ),
+                    ),
+                  ),
                 ],
               )
             else ...[
-              map,
+              // On a phone the whole lot shrinks to fit rather than scroll.
+              Center(
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: SizedBox(width: lotWidth, child: map),
+                ),
+              ),
               const SizedBox(height: AppSpacing.x5),
               summary,
+              const SizedBox(height: AppSpacing.x5),
+              Text('GATE HEALTH', style: _eyebrow(context)),
+              const SizedBox(height: AppSpacing.x2),
+              _GateTiles(health: health, onTap: onGateTap),
             ],
-            const SizedBox(height: AppSpacing.x5),
-            _GateTiles(health: health, onTap: onGateTap),
             if (unplaced.isNotEmpty) ...[
               const SizedBox(height: AppSpacing.x5),
               _Unplaced(slots: unplaced, sessions: sessions, onBayTap: onBayTap),
@@ -675,17 +810,31 @@ class _LotMap extends StatelessWidget {
   final Map<int, GateStatus> health;
   final void Function(int gate) onGateTap;
 
+  // A stall seen from above is about 2.5 m wide and 5 m deep, and the aisle
+  // between the two rows about as wide as a stall is deep. The bays keep
+  // that shape instead of stretching across the screen.
+  static double _bayLength(bool compact) => compact ? 112 : 164;
+  static double _bayWidth(bool compact) => compact ? 46 : 64;
+  static double _laneWidth(bool compact) => compact ? 104 : 150;
+  static const _padding = AppSpacing.x3;
+
+  /// The lot's full width, border included, for laying out beside it.
+  static double widthFor({required bool compact}) =>
+      _bayLength(compact) * 2 + _laneWidth(compact) + _padding * 2 + 2;
+
   @override
   Widget build(BuildContext context) {
     final t = context.tokens;
-    final bayHeight = compact ? 34.0 : 44.0;
-    final gap = compact ? AppSpacing.x1 + 2 : AppSpacing.x2;
+    final bayLength = _bayLength(compact);
+    final bayHeight = _bayWidth(compact);
+    final gap = compact ? AppSpacing.x1 + 1 : AppSpacing.x1 + 2;
 
     Widget column(List<ParkingSlot> bays, {required bool alignRight}) => Column(
       children: [
         for (var i = 0; i < _rows; i++) ...[
           if (i > 0) SizedBox(height: gap),
           SizedBox(
+            width: bayLength,
             height: bayHeight,
             child: i < bays.length
                 ? _Bay(
@@ -702,7 +851,8 @@ class _LotMap extends StatelessWidget {
     );
 
     return Container(
-      padding: const EdgeInsets.all(AppSpacing.x3),
+      width: widthFor(compact: compact),
+      padding: const EdgeInsets.all(_padding),
       decoration: BoxDecoration(
         color: t.surface.muted,
         borderRadius: AppRadii.mdAll,
@@ -715,15 +865,13 @@ class _LotMap extends StatelessWidget {
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Expanded(flex: 5, child: column(left, alignRight: false)),
-              Expanded(
-                flex: 3,
-                child: SizedBox(
-                  height: bayHeight * _rows + gap * (_rows - 1),
-                  child: const _DriveLane(),
-                ),
+              column(left, alignRight: false),
+              SizedBox(
+                width: _laneWidth(compact),
+                height: bayHeight * _rows + gap * (_rows - 1),
+                child: const _DriveLane(),
               ),
-              Expanded(flex: 5, child: column(right, alignRight: true)),
+              column(right, alignRight: true),
             ],
           ),
           SizedBox(height: gap + 2),
@@ -864,10 +1012,13 @@ class _GateRow extends StatelessWidget {
 
 /// "● Reader": the dot is green up, red down, grey unknown.
 class _DeviceWord extends StatelessWidget {
-  const _DeviceWord({required this.label, required this.ok});
+  const _DeviceWord({required this.label, required this.ok, this.onDark = true});
 
   final String label;
   final bool? ok;
+
+  /// On the black barrier block; false on a light card.
+  final bool onDark;
 
   @override
   Widget build(BuildContext context) {
@@ -885,7 +1036,7 @@ class _DeviceWord extends StatelessWidget {
         Text(
           label,
           style: Theme.of(context).textTheme.labelSmall?.copyWith(
-            color: ok == false ? t.status.danger.solid : t.text.inverse,
+            color: ok == false ? t.status.danger.solid : (onDark ? t.text.inverse : t.text.secondary),
             fontWeight: ok == false ? FontWeight.w700 : FontWeight.w500,
           ),
         ),
@@ -894,8 +1045,7 @@ class _DeviceWord extends StatelessWidget {
   }
 }
 
-/// One tile per gate under the map: which reader on which port, why it's
-/// down, today's traffic and the last thing that happened there.
+/// One small card per gate under GATE HEALTH, side by side when they fit.
 class _GateTiles extends StatelessWidget {
   const _GateTiles({required this.health, required this.onTap});
 
@@ -908,7 +1058,7 @@ class _GateTiles extends StatelessWidget {
     return LayoutBuilder(
       builder: (context, box) {
         final tiles = [for (final g in gates) _GateTile(status: health[g]!, onTap: () => onTap(g))];
-        if (box.maxWidth < 640) {
+        if (box.maxWidth < 420) {
           return Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
@@ -945,6 +1095,8 @@ class _GateTile extends StatefulWidget {
   State<_GateTile> createState() => _GateTileState();
 }
 
+/// One gate at a glance: is it working, which part isn't, and its last tap.
+/// Today's traffic and the reader's port are one click away, in the details.
 class _GateTileState extends State<_GateTile> {
   bool _hovered = false;
 
@@ -953,25 +1105,18 @@ class _GateTileState extends State<_GateTile> {
     final t = context.tokens;
     final text = Theme.of(context).textTheme;
     final s = widget.status;
-    final secondary = text.bodySmall?.copyWith(color: t.text.secondary);
-    final last = s.last;
 
-    final readerLine = [
-      s.readerName ?? 'Reader',
-      if (s.port != null) s.port!,
-    ].join(' · ');
+    final (intent, word) = switch (s) {
+      GateStatus(known: false) => (StatusIntent.neutral, 'Waiting'),
+      GateStatus(reader: false, camera: false) => (StatusIntent.danger, 'Offline'),
+      GateStatus(reader: false) => (StatusIntent.danger, 'Reader down'),
+      GateStatus(camera: false) => (StatusIntent.warning, 'Camera down'),
+      _ => (StatusIntent.success, 'Online'),
+    };
 
-    Widget line(IconData icon, Widget child) => Padding(
-      padding: const EdgeInsets.only(top: AppSpacing.x2),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Icon(icon, size: AppSizes.iconSm, color: t.text.tertiary),
-          const SizedBox(width: AppSpacing.x2),
-          Expanded(child: child),
-        ],
-      ),
-    );
+    final detail = !s.known
+        ? 'Waiting for the guard post'
+        : s.readerError ?? (s.relayed ? 'Reported by guard post' : 'Last tap ${ago(s.lastTapAt)}');
 
     return MouseRegion(
       cursor: SystemMouseCursors.click,
@@ -981,7 +1126,7 @@ class _GateTileState extends State<_GateTile> {
         onTap: widget.onTap,
         child: AnimatedContainer(
           duration: AppMotion.fast,
-          padding: const EdgeInsets.all(AppSpacing.x3),
+          padding: const EdgeInsets.all(AppSpacing.x4),
           decoration: BoxDecoration(
             color: t.surface.card,
             borderRadius: AppRadii.mdAll,
@@ -995,95 +1140,30 @@ class _GateTileState extends State<_GateTile> {
             children: [
               Row(
                 children: [
-                  Text('Gate ${s.gate}', style: text.titleSmall),
-                  const Spacer(),
-                  _DeviceChip(label: 'Reader', ok: s.reader),
+                  Text('Gate ${s.gate}', style: text.titleMedium),
                   const SizedBox(width: AppSpacing.x2),
-                  _DeviceChip(label: 'Camera', ok: s.camera),
-                  const SizedBox(width: AppSpacing.x1),
+                  StatusPill(label: word, intent: intent, dense: true),
+                  const Spacer(),
                   Icon(Icons.chevron_right, size: AppSizes.iconSm, color: t.text.tertiary),
                 ],
               ),
-              if (!s.known)
-                line(
-                  Icons.info_outline,
-                  Text('Waiting for the guard post to report its devices.', style: secondary),
-                )
-              else if (s.relayed)
-                line(
-                  Icons.contactless_outlined,
-                  Text.rich(
-                    TextSpan(
-                      text: s.readerName ?? 'Reader',
-                      style: text.bodySmall,
-                      children: [
-                        TextSpan(
-                          text: s.readerError == null ? '  · working' : '  ${s.readerError}',
-                          style: s.readerError == null
-                              ? secondary
-                              : text.bodySmall?.copyWith(color: t.status.danger.fg, fontWeight: FontWeight.w600),
-                        ),
-                      ],
-                    ),
-                  ),
-                )
-              else ...[
-                // 3 + 4: which reader, and why it's down.
-                line(
-                  Icons.contactless_outlined,
-                  Text.rich(
-                    TextSpan(
-                      text: readerLine,
-                      style: text.bodySmall,
-                      children: [
-                        if (s.readerError != null)
-                          TextSpan(
-                            text: '  ${s.readerError}',
-                            style: text.bodySmall?.copyWith(color: t.status.danger.fg, fontWeight: FontWeight.w600),
-                          )
-                        else
-                          TextSpan(text: '  · last tap ${ago(s.lastTapAt)}', style: secondary),
-                      ],
-                    ),
-                  ),
+              const SizedBox(height: AppSpacing.x3),
+              Wrap(
+                spacing: AppSpacing.x3,
+                children: [
+                  _DeviceWord(label: 'Reader', ok: s.reader, onDark: false),
+                  _DeviceWord(label: 'Camera', ok: s.camera, onDark: false),
+                ],
+              ),
+              const SizedBox(height: AppSpacing.x2),
+              Text(
+                detail,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: text.bodyMedium?.copyWith(
+                  color: s.readerError != null ? t.status.danger.fg : t.text.secondary,
                 ),
-                // 5: today's traffic.
-                line(
-                  Icons.swap_vert_rounded,
-                  Text.rich(
-                    TextSpan(
-                      style: AppTypography.tabular(text.bodySmall!),
-                      children: [
-                        TextSpan(text: '${s.entered}${s.countsCapped ? '+' : ''} in'),
-                        TextSpan(text: '  ·  ', style: secondary),
-                        TextSpan(text: '${s.exited}${s.countsCapped ? '+' : ''} out'),
-                        TextSpan(text: '  ·  ', style: secondary),
-                        TextSpan(
-                          text: '${s.refused}${s.countsCapped ? '+' : ''} refused',
-                          style: s.refused > 0
-                              ? TextStyle(color: t.status.danger.fg, fontWeight: FontWeight.w600)
-                              : null,
-                        ),
-                        TextSpan(text: '  today', style: secondary),
-                      ],
-                    ),
-                  ),
-                ),
-                // 6: the last thing that happened here.
-                line(
-                  Icons.history_rounded,
-                  last == null
-                      ? Text('No taps today', style: secondary)
-                      : Text(
-                          lastEventLine(last),
-                          overflow: TextOverflow.ellipsis,
-                          style: text.bodySmall?.copyWith(
-                            color: last.opened ? t.text.primary : t.status.danger.fg,
-                            fontWeight: last.opened ? null : FontWeight.w600,
-                          ),
-                        ),
-                ),
-              ],
+              ),
             ],
           ),
         ),
@@ -1216,7 +1296,8 @@ class _BayState extends State<_Bay> {
     final session = widget.session;
     // No sensor signal: shown grey, whatever it last read, until a linked
     // sensor is heard from again.
-    final silent = _Coverage.of(context).silent(slot);
+    final coverage = _Coverage.of(context);
+    final silent = coverage.silent(slot);
     final c = silent ? t.status.neutral : t.status.of(StatusIntents.slot(slot.status));
 
     final occupied = !silent && slot.status == 'Occupied';
@@ -1235,12 +1316,14 @@ class _BayState extends State<_Bay> {
       slot.isMotorcycle ? 'Motorcycle bay' : slot.vehicleType == 'Car' ? 'Four-wheel bay' : 'Any vehicle',
       if (session != null) session.userName,
       if (session?.plateNumber != null) session!.plateNumber!,
-      if (session != null) 'In since ${_clock.format(session.entryTime.toLocal())}',
+      if (session != null) 'In since ${_clock.format(manila(session.entryTime))}',
       if (widget.onTap != null) 'Click to change status',
     ].join('\n');
 
+    // With no bay heard from, the banner above the map says so once; each
+    // bay keeps its vehicle icon instead of repeating it eighteen times.
     final icon = Icon(
-      silent ? Icons.sensors_off_rounded : switch (slot.vehicleType) {
+      silent && !coverage.none ? Icons.sensors_off_rounded : switch (slot.vehicleType) {
         'Motorcycle' => Icons.two_wheeler_rounded,
         'Car' => Icons.directions_car_rounded,
         _ => Icons.local_parking_rounded,
@@ -1442,24 +1525,21 @@ class _Summary extends StatelessWidget {
       _ => StatusIntent.success,
     };
 
-    (int, int) freeOf(bool Function(ParkingSlot) where, int? fromServer) {
-      final group = usable.where(where).toList();
-      return (coverage.free(group, fromServer), group.length);
-    }
+    final note = AppTypography.tabular(text.bodyMedium!.copyWith(color: t.text.secondary));
 
-    return Column(
+    final occupancy = Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text('FREE NOW', style: _eyebrow(context)),
-        const SizedBox(height: AppSpacing.x1),
+        Text('OCCUPANCY', style: _eyebrow(context)),
+        const SizedBox(height: AppSpacing.x2),
         Text.rich(
           TextSpan(
             text: '$free',
-            style: AppTypography.tabular(text.displaySmall!.copyWith(color: t.status.of(intent).fg)),
+            style: AppTypography.tabular(text.displayMedium!.copyWith(color: t.status.of(intent).fg)),
             children: [
               TextSpan(
-                text: '  of ${usable.length} bays',
-                style: text.bodyMedium?.copyWith(color: t.text.secondary),
+                text: ' / ${usable.length} free',
+                style: text.titleMedium?.copyWith(color: t.text.secondary),
               ),
             ],
           ),
@@ -1469,50 +1549,52 @@ class _Summary extends StatelessWidget {
           borderRadius: AppRadii.fullAll,
           child: LinearProgressIndicator(
             value: ratio,
-            minHeight: 8,
+            minHeight: 10,
             backgroundColor: t.surface.muted,
             valueColor: AlwaysStoppedAnimation(t.status.of(intent).solid),
           ),
         ),
-        const SizedBox(height: AppSpacing.x1),
-        Text(
-          '$occupied taken · ${(ratio * 100).round()}% full',
-          style: AppTypography.tabular(text.bodySmall!.copyWith(color: t.text.secondary)),
-        ),
+        const SizedBox(height: AppSpacing.x2),
+        Text('$occupied taken · ${(ratio * 100).round()}% full', style: note),
         if (notInBay > 0) ...[
           const SizedBox(height: AppSpacing.x1),
           Text(
             notInBay == 1
                 ? '1 car inside not yet in a bay'
                 : '$notInBay cars inside not yet in a bay',
-            style: AppTypography.tabular(text.bodySmall!.copyWith(color: t.text.secondary)),
+            style: note,
           ),
         ],
         if (noSignal > 0) ...[
           const SizedBox(height: AppSpacing.x1),
           Row(
             children: [
-              Icon(Icons.sensors_off_rounded, size: 12, color: t.status.neutral.fg),
-              const SizedBox(width: AppSpacing.x1),
-              Text(
-                '$noSignal with no sensor signal',
-                style: AppTypography.tabular(text.bodySmall!.copyWith(color: t.text.secondary)),
-              ),
+              Icon(Icons.sensors_off_rounded, size: AppSizes.iconSm, color: t.status.neutral.fg),
+              const SizedBox(width: AppSpacing.x2),
+              Text('$noSignal with no sensor signal', style: note),
             ],
           ),
         ],
-        const SizedBox(height: AppSpacing.x5),
-        Text('BY VEHICLE', style: _eyebrow(context)),
-        const SizedBox(height: AppSpacing.x2),
+      ],
+    );
+
+    final vehicles = Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('VEHICLES', style: _eyebrow(context)),
+        const SizedBox(height: AppSpacing.x3),
         _FreeRow(
           icon: Icons.directions_car_rounded,
           label: 'Four-wheel',
-          counts: freeOf((s) => s.vehicleType == 'Car', availability.availableCars),
+          counts: coverage.freeOf(usable.where((s) => s.vehicleType == 'Car'), availability.availableCars),
         ),
         _FreeRow(
           icon: Icons.two_wheeler_rounded,
           label: 'Motorcycle',
-          counts: freeOf((s) => s.vehicleType != 'Car', availability.availableMotorcycles),
+          counts: coverage.freeOf(
+            usable.where((s) => s.vehicleType != 'Car'),
+            availability.availableMotorcycles,
+          ),
         ),
         if (down > 0) ...[
           const SizedBox(height: AppSpacing.x3),
@@ -1522,14 +1604,38 @@ class _Summary extends StatelessWidget {
               const SizedBox(width: AppSpacing.x2),
               Text(
                 '$down out of service',
-                style: text.bodySmall?.copyWith(color: t.status.danger.fg),
+                style: text.bodyMedium?.copyWith(color: t.status.danger.fg),
               ),
             ],
           ),
         ],
-        const SizedBox(height: AppSpacing.x5),
-        const _Legend(),
       ],
+    );
+
+    return LayoutBuilder(
+      builder: (context, box) => Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          // Side by side when the panel is wide, so the numbers spread over
+          // the space instead of running down one narrow strip.
+          if (box.maxWidth >= 620)
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(child: occupancy),
+                const SizedBox(width: AppSpacing.x8),
+                Expanded(child: vehicles),
+              ],
+            )
+          else ...[
+            occupancy,
+            const SizedBox(height: AppSpacing.x6),
+            vehicles,
+          ],
+          const SizedBox(height: AppSpacing.x5),
+          const _Legend(),
+        ],
+      ),
     );
   }
 }
@@ -1545,42 +1651,45 @@ class _FreeRow extends StatelessWidget {
 
   final IconData icon;
   final String label;
-  final (int free, int total) counts;
+  final (int free, int total, int noSignal) counts;
 
   @override
   Widget build(BuildContext context) {
     final t = context.tokens;
     final text = Theme.of(context).textTheme;
-    final (free, total) = counts;
-    final ratio = total == 0 ? 0.0 : (total - free) / total;
+    final (free, total, noSignal) = counts;
+    // The bar is the bays a sensor sees taken. Bays with no signal are not
+    // taken, and must not paint the lot red as if it were full.
+    final taken = (total - free - noSignal).clamp(0, total);
+    final ratio = total == 0 ? 0.0 : taken / total;
 
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: AppSpacing.x1),
+      padding: const EdgeInsets.symmetric(vertical: AppSpacing.x2),
       child: Row(
         children: [
-          Icon(icon, size: AppSizes.iconSm, color: t.text.secondary),
+          Icon(icon, size: AppSizes.iconMd, color: t.text.secondary),
           const SizedBox(width: AppSpacing.x2),
-          SizedBox(width: 92, child: Text(label, style: text.bodySmall)),
+          SizedBox(width: 104, child: Text(label, style: text.bodyMedium)),
           Expanded(
             child: ClipRRect(
               borderRadius: AppRadii.fullAll,
               child: LinearProgressIndicator(
                 value: ratio,
-                minHeight: 5,
+                minHeight: 8,
                 backgroundColor: t.surface.muted,
                 valueColor: AlwaysStoppedAnimation(
-                  t.status.of(free == 0 && total > 0 ? StatusIntent.danger : StatusIntent.accent).solid,
+                  t.status.of(free == 0 && taken > 0 ? StatusIntent.danger : StatusIntent.accent).solid,
                 ),
               ),
             ),
           ),
           const SizedBox(width: AppSpacing.x3),
           SizedBox(
-            width: 92,
+            width: 112,
             child: Text(
-              '$free / $total free',
+              noSignal > 0 ? '$free / $total free\n$noSignal no signal' : '$free / $total free',
               textAlign: TextAlign.right,
-              style: AppTypography.tabular(text.bodySmall!.copyWith(color: t.text.secondary)),
+              style: AppTypography.tabular(text.bodyMedium!.copyWith(color: t.text.secondary)),
             ),
           ),
         ],
@@ -1693,6 +1802,9 @@ class _SensorCoverage {
 
   bool confirms(ParkingSlot s) => live?.contains(_key(s.gate, s.slotCode)) ?? true;
 
+  /// A device list came, and no bay has a live sensor in it.
+  bool get none => live?.isEmpty ?? false;
+
   /// Out-of-service bays keep their own look: someone closed them on purpose.
   bool silent(ParkingSlot s) => s.status != 'OutOfService' && !confirms(s);
 
@@ -1702,6 +1814,12 @@ class _SensorCoverage {
     final seenFree = group.where((s) => s.status == 'Available' && confirms(s)).length;
     final free = fromServer ?? seenFree;
     return (live == null ? free : min(free, seenFree)).clamp(0, group.length);
+  }
+
+  /// Free, total and no-signal bays in [group], for one vehicle type.
+  (int, int, int) freeOf(Iterable<ParkingSlot> group, int? fromServer) {
+    final bays = group.toList();
+    return (free(bays, fromServer), bays.length, bays.where(silent).length);
   }
 
   /// Usable bays vouched for, of all of them, for the header badge.
