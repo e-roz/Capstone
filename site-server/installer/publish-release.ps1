@@ -32,8 +32,14 @@ $Sum = "$Exe.sha256"
 
 if (-not (Get-Command gh -ErrorAction SilentlyContinue)) { throw "The GitHub CLI (gh) isn't installed." }
 
+# "release not found" on stderr is the answer hoped for, but Windows
+# PowerShell 5.1 turns a native command's stderr into a terminating error
+# under "Stop", so the check runs under "Continue".
+$ErrorActionPreference = "Continue"
 gh release view $Tag --repo e-roz/Capstone 2>$null | Out-Null
-if ($LASTEXITCODE -eq 0) { throw "Release $Tag already exists. Pick a higher version." }
+$exists = $LASTEXITCODE -eq 0
+$ErrorActionPreference = "Stop"
+if ($exists) { throw "Release $Tag already exists. Pick a higher version." }
 
 if (-not $SkipBuild) {
     & (Join-Path $Here "build-installer.ps1") -Version $Version
@@ -50,6 +56,8 @@ if ($answer -ne $Version) { throw "Not published." }
 
 # Tag the commit this installer was built from (it must be pushed already).
 $commit = (git rev-parse HEAD).Trim()
+# gh reports upload progress on stderr: judged by its exit code, as above.
+$ErrorActionPreference = "Continue"
 gh release create $Tag $Exe $Sum --repo e-roz/Capstone --target $commit `
     --title "Guard PC installer $Version" `
     --notes "Guard PCs on 1.2.0 or later install this by themselves when the gates are quiet. A new guard PC: download AimParkSetup-$Version.exe and run it."
