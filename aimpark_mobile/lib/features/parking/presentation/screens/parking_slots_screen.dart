@@ -137,10 +137,10 @@ class _ParkingSlotsScreenState extends ConsumerState<ParkingSlotsScreen> {
 
     return AppScreen(
       body: AsyncView(
-        value: ref.watch(parkingAvailabilityProvider),
+        value: ref.watch(parkingAvailabilityNotifierProvider),
         onRefresh: () {
-          ref.invalidate(parkingAvailabilityProvider);
-          return ref.read(parkingAvailabilityProvider.future);
+          ref.invalidate(parkingAvailabilityNotifierProvider);
+          return ref.read(parkingAvailabilityNotifierProvider.future);
         },
         errorTitle: "Couldn't load slot availability",
         data: (availability) {

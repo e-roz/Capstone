@@ -24,26 +24,34 @@ final parkingRepositoryProvider =
 @Deprecated('Will be removed in 3.0. Use Ref instead')
 // ignore: unused_element
 typedef ParkingRepositoryRef = AutoDisposeProviderRef<ParkingRepository>;
-String _$parkingAvailabilityHash() =>
-    r'aa029b172b667d0064c4fc1f256f827d352a7625';
+String _$parkingAvailabilityNotifierHash() =>
+    r'f4aee40b9bc0ad1315bad893e60766c1fae968f1';
 
-/// See also [parkingAvailability].
-@ProviderFor(parkingAvailability)
-final parkingAvailabilityProvider =
-    AutoDisposeFutureProvider<ParkingAvailability>.internal(
-      parkingAvailability,
-      name: r'parkingAvailabilityProvider',
+/// The lot's free count, kept live while anything on screen watches it.
+///
+/// Re-fetched every [pollEvery] while the app is in the foreground, so a bay
+/// filling or emptying shows up without a pull-to-refresh. A poll that fails
+/// keeps the last count on screen rather than swapping it for an error — the
+/// freshness chip turns amber once that count is old enough to doubt.
+///
+/// Copied from [ParkingAvailabilityNotifier].
+@ProviderFor(ParkingAvailabilityNotifier)
+final parkingAvailabilityNotifierProvider =
+    AutoDisposeAsyncNotifierProvider<
+      ParkingAvailabilityNotifier,
+      ParkingAvailability
+    >.internal(
+      ParkingAvailabilityNotifier.new,
+      name: r'parkingAvailabilityNotifierProvider',
       debugGetCreateSourceHash: const bool.fromEnvironment('dart.vm.product')
           ? null
-          : _$parkingAvailabilityHash,
+          : _$parkingAvailabilityNotifierHash,
       dependencies: null,
       allTransitiveDependencies: null,
     );
 
-@Deprecated('Will be removed in 3.0. Use Ref instead')
-// ignore: unused_element
-typedef ParkingAvailabilityRef =
-    AutoDisposeFutureProviderRef<ParkingAvailability>;
+typedef _$ParkingAvailabilityNotifier =
+    AutoDisposeAsyncNotifier<ParkingAvailability>;
 String _$parkingHistoryNotifierHash() =>
     r'de1a2a68146a34a444c9ae863dc935443d844d6f';
 

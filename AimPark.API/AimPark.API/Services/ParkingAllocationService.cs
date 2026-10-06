@@ -134,9 +134,9 @@ namespace AimPark.API.Services
             var acceptable = tier.Select(t => (VehicleType?)t).ToArray();
             var now = DateTime.UtcNow;
 
-            // Cars inside count against the lot even when their bay looks
-            // empty: driving to it, parked elsewhere, or lifted out of the
-            // model without tapping out. See ParkingCapacity.
+            // A bay is room only while its sensor reads it empty and no car
+            // inside was given it — the same count the apps show. See
+            // ParkingCapacity.
             var room = await ParkingCapacity.LoadAsync(_db, ct);
             if (room.FreeOf(tier) <= 0)
                 return [];

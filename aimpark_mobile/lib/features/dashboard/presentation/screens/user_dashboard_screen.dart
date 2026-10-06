@@ -50,7 +50,7 @@ class UserDashboardScreen extends ConsumerWidget {
     final violationsAsync = ref.watch(violationsNotifierProvider);
     final paymentsAsync = ref.watch(paymentsNotifierProvider);
     // Availability is the one number people open this app for.
-    final availability = ref.watch(parkingAvailabilityProvider).valueOrNull;
+    final availability = ref.watch(parkingAvailabilityNotifierProvider).valueOrNull;
 
     // Home draws on three providers at once, so it needs its own answer to
     // "has anything arrived yet" rather than the single-provider AsyncView the
@@ -149,7 +149,7 @@ class UserDashboardScreen extends ConsumerWidget {
                 availability: availability,
                 onTap: onNavigateToParking,
                 onRefresh: () =>
-                    ref.refresh(parkingAvailabilityProvider.future),
+                    ref.refresh(parkingAvailabilityNotifierProvider.future),
               ),
 
               // Alerts only exist when they are true. An account with nothing
@@ -225,7 +225,7 @@ class UserDashboardScreen extends ConsumerWidget {
       ref.read(parkingHistoryNotifierProvider.notifier).refresh(),
       ref.read(violationsNotifierProvider.notifier).refresh(),
       ref.read(paymentsNotifierProvider.notifier).refresh(),
-      ref.refresh(parkingAvailabilityProvider.future),
+      ref.refresh(parkingAvailabilityNotifierProvider.future),
     ]);
   }
 }

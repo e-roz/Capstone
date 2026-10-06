@@ -85,12 +85,18 @@ class ParkingAvailability {
     required this.slots,
     required this.totalSlots,
     required this.availableSlots,
+    this.availableCars,
+    this.availableMotorcycles,
     DateTime? fetchedAt,
   }) : fetchedAt = fetchedAt ?? DateTime.now();
 
   final List<ParkingSlot> slots;
   final int totalSlots;
   final int availableSlots;
+
+  /// The server's per-type free counts. Null from a server older than them.
+  final int? availableCars;
+  final int? availableMotorcycles;
   final DateTime fetchedAt;
 
   factory ParkingAvailability.fromJson(Map<String, dynamic> json) {
@@ -100,6 +106,8 @@ class ParkingAvailability {
           .toList(),
       totalSlots: json['totalSlots'] as int,
       availableSlots: json['availableSlots'] as int,
+      availableCars: (json['availableCars'] as num?)?.toInt(),
+      availableMotorcycles: (json['availableMotorcycles'] as num?)?.toInt(),
       fetchedAt: DateTime.now(),
     );
   }
