@@ -23,14 +23,14 @@ class ParkingScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final availabilityAsync = ref.watch(parkingAvailabilityProvider);
+    final availabilityAsync = ref.watch(parkingAvailabilityNotifierProvider);
     final current =
         ref.watch(parkingHistoryNotifierProvider).valueOrNull?.currentlyParked;
 
     Future<void> refresh() async {
-      ref.invalidate(parkingAvailabilityProvider);
+      ref.invalidate(parkingAvailabilityNotifierProvider);
       await Future.wait([
-        ref.read(parkingAvailabilityProvider.future),
+        ref.read(parkingAvailabilityNotifierProvider.future),
         ref.read(parkingHistoryNotifierProvider.notifier).refresh(),
       ]);
     }

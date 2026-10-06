@@ -14,44 +14,35 @@ namespace AimPark.API.Services
     }
 
     /// <summary>
-    /// The free count is cars inside the lot, not green bays.
+    /// The free count is the bays a driver could pull into right now.
     /// </summary>
     /// <remarks>
-    /// A bay's colour is what its sensor sees, and the bay a driver is given at
-    /// the gate is only a recommendation: they may park in another, or be
-    /// driving there, or (on the miniature) be lifted out without tapping out.
-    /// Through all of that the car is still inside until its exit tap.
+    /// A bay is free when it reads Available and no car still inside was given
+    /// it. So the count follows the sensors — a car set down in a bay takes it,
+    /// tap or no tap — and a car that tapped in but hasn't parked yet still
+    /// takes the bay it was given. Occupied, No signal and Out of service bays
+    /// are never free: a sensor that has stopped reading proves nothing.
     ///
-    /// So the count moves with taps only: per bay type, the bays taken are the
-    /// open sessions given a bay of that type. One car is never counted twice,
-    /// wherever it parks; a car that entered but isn't parked still counts; and
-    /// a car seen with no tap (only possible on the miniature, set down by
-    /// hand) turns its bay red but takes nothing from the count. Out-of-service
-    /// bays aren't room. A session that was given no bay at all takes room from
-    /// the total only.
+    /// A car that parks in another bay than the one it was given holds both
+    /// until its exit tap. That errs toward "full", never toward sending a
+    /// driver to a bay that is taken. A session that was given no bay at all
+    /// takes room from the total only.
     /// </remarks>
     public static class ParkingCapacity
     {
-        /// <param name="bays">Every bay: its type (null = any vehicle) and status.</param>
-        /// <param name="sessionBayTypes">One per open session: the type of the bay it was given, or null when it was given none.</param>
+        /// <param name="bays">Every bay: its type (null = any vehicle), status, and whether an open session was given it.</param>
+        /// <param name="unplaced">Open sessions that were given no bay.</param>
         public static ParkingRoom Of(
-            IEnumerable<(VehicleType? Type, ParkingSlotStatus Status)> bays,
-            IEnumerable<(bool HasBay, VehicleType? Type)> sessionBayTypes)
+            IEnumerable<(VehicleType? Type, ParkingSlotStatus Status, bool Held)> bays, int unplaced = 0)
         {
             var bayList = bays.ToList();
-            var sessions = sessionBayTypes.ToList();
 
-            int FreeFor(VehicleType? type)
-            {
-                var inService = bayList.Count(b => b.Type == type && b.Status != ParkingSlotStatus.OutOfService);
-                var inside = sessions.Count(s => s.HasBay && s.Type == type);
-                return Math.Max(0, inService - inside);
-            }
+            int FreeFor(VehicleType? type) =>
+                bayList.Count(b => b.Type == type && b.Status == ParkingSlotStatus.Available && !b.Held);
 
             var cars = FreeFor(VehicleType.Car);
             var motorcycles = FreeFor(VehicleType.Motorcycle);
             var anyVehicle = FreeFor(null);
-            var unplaced = sessions.Count(s => !s.HasBay);
 
             return new ParkingRoom(Math.Max(0, cars + motorcycles + anyVehicle - unplaced), cars, motorcycles);
         }
@@ -60,16 +51,18 @@ namespace AimPark.API.Services
         public static async Task<ParkingRoom> LoadAsync(AppDbContext db, CancellationToken ct)
         {
             var bays = await db.Set<ParkingSlot>().AsNoTracking()
-                .Select(s => new { s.VehicleType, s.Status })
+                .Select(s => new { s.Id, s.VehicleType, s.Status })
                 .ToListAsync(ct);
 
             var sessions = await db.Set<ParkingLog>().AsNoTracking()
                 .Where(l => l.ExitTime == null)
-                .Select(l => new { HasBay = l.SlotId != null, Type = l.Slot != null ? l.Slot.VehicleType : null })
+                .Select(l => l.SlotId)
                 .ToListAsync(ct);
 
-            return Of(bays.Select(b => (b.VehicleType, b.Status)),
-                      sessions.Select(s => (s.HasBay, s.Type)));
+            var held = sessions.OfType<Guid>().ToHashSet();
+            var unplaced = sessions.Count(id => id is null);
+
+            return Of(bays.Select(b => (b.VehicleType, b.Status, held.Contains(b.Id))), unplaced);
         }
 
         /// <summary>The bays an open session was given: never offered to the next car.</summary>
