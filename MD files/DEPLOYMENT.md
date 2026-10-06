@@ -103,6 +103,15 @@ Upload to Google Drive, set the link to "anyone with the link", share it.
 > source, each machine signs with a different debug key, and Google Sign-In will
 > fail for them because the signature won't match the registered OAuth client.
 
+> **The app can now update itself in place** instead of everyone reinstalling
+> by hand — see **[MOBILE_UPDATES.md](MOBILE_UPDATES.md)** for the manifest
+> format and the release steps (tag a `v*` release, then edit
+> `aimpark_mobile/release/update.json`). `android/key.properties` (gitignored)
+> now pins the exact signing key release builds use — `flutter build apk
+> --release` fails loudly if it's missing rather than silently falling back to
+> whatever debug key happens to be on the machine. Create it once locally per
+> [MOBILE_UPDATES.md](MOBILE_UPDATES.md#signing-key).
+
 ---
 
 ## Automatic builds and deploys (GitHub Actions)
@@ -180,6 +189,11 @@ On your machine, in PowerShell:
 ```
 
 That copies the encoded key to your clipboard. Paste it as the secret value.
+
+The workflow also writes `android/key.properties` on the runner from that same
+restored keystore, matching the `key.properties` you create locally — see
+[MOBILE_UPDATES.md](MOBILE_UPDATES.md#signing-key). Nothing to add for this
+beyond the secret above.
 
 Run it from **Actions → Release APK → Run workflow**, or push a tag:
 

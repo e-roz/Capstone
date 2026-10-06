@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Scopes the update FileProvider (AndroidManifest.xml) to only the
+     cacheDir/updates subfolder the updater downloads APKs into. -->
+<paths>
+    <cache-path name="updates" path="updates/" />
+</paths>
