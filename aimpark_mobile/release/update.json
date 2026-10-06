@@ -1,9 +1,11 @@
 {
-  "version": "1.0.0",
-  "build": 1,
-  "apk_url": "https://github.com/e-roz/Capstone/releases/download/v1.0.0/app-release.apk",
+  "version": "1.0.1",
+  "build": 2,
+  "apk_url": "https://github.com/e-roz/Capstone/releases/download/v1.0.1/app-release.apk",
+  "apk_sha256": "1e4ee6a4760d81a26414d335c55763d695ac454a3ae3177e80bb480fcb214239",
+  "apk_size_bytes": 93441573,
   "mandatory": false,
   "release_notes": [
-    "Initial release"
+    "The app can now update itself — no more manual reinstalling"
   ]
 }
