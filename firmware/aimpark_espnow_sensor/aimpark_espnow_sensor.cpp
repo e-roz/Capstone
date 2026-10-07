@@ -29,9 +29,25 @@ using namespace aimpark;
 // One entry per slot, in slot order. Taken from the bench sketch SENSORS1.4.
 // 34 and 35 are input-only, which is fine for ECHO.
 const uint8_t SLOT_COUNT = 9;
-const uint8_t TRIG_PINS[SLOT_COUNT] = {13, 5, 4, 14, 2, 15, 18, 19, 21};
-const uint8_t ECHO_PINS[SLOT_COUNT] = {26, 25, 23, 27, 32, 33, 34, 35, 22};
+uint8_t TRIG_PINS[SLOT_COUNT] = {13, 5, 4, 14, 2, 15, 18, 19, 21};
+uint8_t ECHO_PINS[SLOT_COUNT] = {26, 25, 23, 27, 32, 33, 34, 35, 22};
 static_assert(SLOT_COUNT <= MAX_SLOTS, "More slots than a packet carries");
+
+// S1's GPIO 4 and 23 (slot 3) are damaged, so its third sensor is wired to
+// 16 and 17 instead. Found by MAC (README.md), since every sensor board runs this
+// same sketch; S2 keeps the table above.
+const uint8_t S1_MAC[6] = {0x58, 0x2A, 0xBD, 0xD7, 0x5C, 0xFC};
+const uint8_t S1_SLOT3_TRIG = 16;
+const uint8_t S1_SLOT3_ECHO = 17;
+
+void applyBoardPinOverrides() {
+  uint64_t efuse = ESP.getEfuseMac();   // First MAC byte in the lowest byte.
+  for (uint8_t i = 0; i < 6; i++)
+    if ((uint8_t)(efuse >> (8 * i)) != S1_MAC[i]) return;
+  TRIG_PINS[2] = S1_SLOT3_TRIG;
+  ECHO_PINS[2] = S1_SLOT3_ECHO;
+  Serial.println("S1 pin override: slot 3 on GPIO 16/17");
+}
 
 // ── Detection ────────────────────────────────────────────────────────────────
 // Sized for the miniature model: a car sits a few cm under the sensor. A
@@ -56,7 +72,9 @@ const uint8_t FAULT_CONFIRM_SCANS    = 6;
 // Sensors fire one at a time with this gap, so one's echo isn't heard by the
 // next. A full scan of 9 takes about half a second.
 const unsigned long SETTLE_MS = 50;
-const unsigned long ECHO_TIMEOUT_US = 10000;
+// How long an echo may last: 3500 us is about 60 cm there and back. Anything
+// farther is the empty floor or noise and counts as nothing.
+const unsigned long ECHO_TIMEOUT_US = 3500;
 // A fitted sensor raises ECHO once it has sent its burst: the clones on the
 // model take about 2.2 ms, echo or not. Not rising by this is no sensor at all.
 const unsigned long ECHO_START_US = 10000;
@@ -197,6 +215,7 @@ void setup() {
   Serial.begin(115200);
   delay(300);
   Serial.println("\nAimPark wireless slot sensor board");
+  applyBoardPinOverrides();
 
   for (uint8_t i = 0; i < SLOT_COUNT; i++) {
     pinMode(TRIG_PINS[i], OUTPUT);
