@@ -194,20 +194,24 @@ namespace AimPark.API.Sync.Site.GateReaders
                 (recorder, token) => recorder.RecordManualOpenAsync(deviceId, openedBy, token), _stopping);
         }
 
-        /// <summary>Serial ports on this PC, with Windows' name for each when it has one.</summary>
+        /// <summary>
+        /// Serial ports with a USB device plugged in, with Windows' name for
+        /// each. Ports with nothing on them (COM1, Bluetooth) are left out.
+        /// </summary>
         public static IReadOnlyList<(string Port, string? Description)> AvailablePorts()
         {
             var names = SerialPort.GetPortNames().Distinct(StringComparer.OrdinalIgnoreCase);
             var descriptions = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            var usbPorts = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var knowsUsb = false;
 
-            // "USB-SERIAL CH340 (COM4)" is how a person tells the reader apart
-            // from COM1, which every PC has and nothing is plugged into.
+            // "USB-SERIAL CH340 (COM4)" is how a person tells the hub apart.
             if (OperatingSystem.IsWindows())
             {
                 try
                 {
                     using var search = new System.Management.ManagementObjectSearcher(
-                        "SELECT Name FROM Win32_PnPEntity WHERE Name LIKE '%(COM%'");
+                        "SELECT Name, PNPDeviceID FROM Win32_PnPEntity WHERE Name LIKE '%(COM%'");
                     foreach (var item in search.Get())
                     {
                         var name = item["Name"]?.ToString();
@@ -216,15 +220,20 @@ namespace AimPark.API.Sync.Site.GateReaders
                         var open = name.LastIndexOf("(COM", StringComparison.Ordinal);
                         var port = name[(open + 1)..].TrimEnd(')');
                         descriptions[port] = name[..open].Trim();
+
+                        if (item["PNPDeviceID"]?.ToString()?.StartsWith("USB", StringComparison.OrdinalIgnoreCase) == true)
+                            usbPorts.Add(port);
                     }
+                    knowsUsb = true;
                 }
                 catch (Exception)
                 {
-                    // Names are a nicety. The port list stands without them.
+                    // Names are a nicety. Without them every port is listed.
                 }
             }
 
             return names
+                .Where(n => !knowsUsb || usbPorts.Contains(n))
                 .OrderBy(n => n.Length).ThenBy(n => n, StringComparer.OrdinalIgnoreCase)
                 .Select(n => (n, descriptions.TryGetValue(n, out var d) ? d : null))
                 .ToList();

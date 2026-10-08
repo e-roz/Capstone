@@ -33,9 +33,6 @@ class _GateReadersScreenState extends ConsumerState<GateReadersScreen> {
   /// Taps should appear about as fast as the barrier moves.
   static const _refreshEvery = Duration(seconds: 2);
 
-  /// The port dropdown's value for "this port is the hub".
-  static const _hubChoice = '__hub__';
-
   /// The port a development build plays the hub on. Not a real COM port, so
   /// the server never fights the simulator for it.
   static const _simulatedPort = 'SIM1';
@@ -100,16 +97,9 @@ class _GateReadersScreenState extends ConsumerState<GateReadersScreen> {
     await _load();
   }
 
-  Future<void> _link(String port, String deviceId) => _run(
-        (dio) => dio.put(ApiEndpoints.gateReader(port), data: {'deviceId': deviceId}),
-      );
-
   Future<void> _linkHub(String port) => _run(
         (dio) => dio.put(ApiEndpoints.gateReader(port), data: {'kind': 'hub'}),
       );
-
-  Future<void> _unlink(String port) =>
-      _run((dio) => dio.delete(ApiEndpoints.gateReader(port)));
 
   Future<void> _open(String port) =>
       _run((dio) => dio.post(ApiEndpoints.openGateReader(port)));
@@ -303,9 +293,9 @@ class _GateReadersScreenState extends ConsumerState<GateReadersScreen> {
                     ? const AppEmptyState(
                         icon: Icons.usb_off,
                         title: 'No serial ports found',
-                        message: 'Plug the reader or hub in by USB. If nothing '
-                            'appears, install its USB driver (CH340 or CP210x) '
-                            'or try another cable.',
+                        message: 'Plug the hub in by USB. It shows up here and links '
+                            'by itself. If nothing appears, install its USB driver '
+                            '(CH340 or CP210x) or try another cable.',
                       )
                     : AppDataTable(
                         minWidth: 820,
@@ -365,7 +355,6 @@ class _GateReadersScreenState extends ConsumerState<GateReadersScreen> {
   DataRow _portRow(GateReaderPort p, GateReadersState s) {
     final readers = s.readers;
     final hub = s.hubs.where((h) => h.port == p.port).firstOrNull;
-    final known = readers.any((r) => r.deviceId == p.deviceId);
 
     final (label, intent) = switch (p) {
       GateReaderPort(isLinked: false) => ('Not linked', StatusIntent.neutral),
@@ -377,33 +366,13 @@ class _GateReadersScreenState extends ConsumerState<GateReadersScreen> {
 
     return DataRow(cells: [
       DataCell(AppPrimaryCell(title: p.port, subtitle: p.description)),
-      DataCell(
-        DropdownButton<String>(
-          value: p.isHub ? _hubChoice : (known ? p.deviceId : null),
-          hint: Text(p.isLinked ? 'Reader no longer active' : 'Choose a reader or the hub'),
-          underline: const SizedBox.shrink(),
-          items: [
-            for (final r in readers)
-              DropdownMenuItem(
-                value: r.deviceId,
-                child: Text('${r.name} (Gate ${r.gate})'),
-              ),
-            const DropdownMenuItem(
-              value: _hubChoice,
-              child: Text('ESP-NOW hub (wireless gates and sensors)'),
-            ),
-          ],
-          onChanged: _busy
-              ? null
-              : (id) {
-                  if (id == _hubChoice && !p.isHub) {
-                    _linkHub(p.port);
-                  } else if (id != null && id != _hubChoice && id != p.deviceId) {
-                    _link(p.port, id);
-                  }
-                },
-        ),
-      ),
+      DataCell(Text(
+        p.isHub
+            ? 'ESP-NOW hub (wireless gates and sensors)'
+            : p.isLinked
+                ? (readers.where((r) => r.deviceId == p.deviceId).firstOrNull?.name ?? 'Card reader')
+                : 'Looking for the hub…',
+      )),
       DataCell(Tooltip(
         message: p.error ?? '',
         child: StatusPill(label: label, intent: intent, dense: true),
@@ -419,13 +388,6 @@ class _GateReadersScreenState extends ConsumerState<GateReadersScreen> {
               label: 'Open gate',
               icon: Icons.lock_open,
               onPressed: _busy ? null : () => _confirmOpen(() => _open(p.port)),
-            ),
-          if (p.isLinked)
-            AppRowAction(
-              label: 'Unlink',
-              icon: Icons.link_off,
-              intent: StatusIntent.danger,
-              onPressed: _busy ? null : () => _unlink(p.port),
             ),
         ],
       )),
