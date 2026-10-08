@@ -2,7 +2,7 @@
   "version": "1.0.4",
   "build": 5,
   "apk_url": "https://github.com/e-roz/Capstone/releases/download/v1.0.4/app-release.apk",
-  "apk_sha256": "",
+  "apk_sha256": "586e07547efd13ec26c0de0ed4e23140b192e30f1d46aab78f3076c42fcb6cca",
   "apk_size_bytes": 93540049,
   "mandatory": false,
   "release_notes": [
