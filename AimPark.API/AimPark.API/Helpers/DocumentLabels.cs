@@ -50,6 +50,10 @@ namespace AimPark.API.Helpers
 
             public static readonly string[] Expiry =
                 ["Expiration Date", "Expiry Date", "Exp Date", "Expiration"];
+
+            /// <summary>Prints as e.g. "License No." with "N01-23-456789" beneath.</summary>
+            public static readonly string[] Number =
+                ["License No", "Licence No", "Driver's License No"];
         }
 
         /// <summary>LTO Official Receipt.</summary>

@@ -21,6 +21,7 @@ namespace AimPark.API.DTOs
 
         public string? LicenseName { get; set; }
         public DateTime? LicenseExpiry { get; set; }
+        public string? LicenseNumber { get; set; }
 
         /// <summary>
         /// The plate, pre-filled from the receipt's OCR reading and editable by the

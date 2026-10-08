@@ -24,12 +24,27 @@ namespace AimPark.API.Helpers
         /// a valid card. The unique index depends on this too: "ABC 1234" and
         /// "ABC-1234" are two rows for one vehicle otherwise.
         /// </remarks>
-        public static string NormalizePlate(string? plate)
+        public static string NormalizePlate(string? plate) => Canonical(plate);
+
+        /// <summary>
+        /// The licence number as one comparable string. LTO prints it with dashes
+        /// ("N01-23-456789"); OCR drops or adds them, and a duplicate check that
+        /// compares raw strings is beaten by a single dash.
+        /// </summary>
+        public static string NormalizeLicenseNumber(string? number) => Canonical(number);
+
+        /// <summary>
+        /// Keeps the leading zero — student numbers are text, and "0123" is not
+        /// "123".
+        /// </summary>
+        public static string NormalizeStudentNumber(string? number) => Canonical(number);
+
+        private static string Canonical(string? value)
         {
-            if (string.IsNullOrWhiteSpace(plate))
+            if (string.IsNullOrWhiteSpace(value))
                 return string.Empty;
 
-            return new string(plate
+            return new string(value
                 .Where(char.IsLetterOrDigit)
                 .Select(char.ToUpperInvariant)
                 .ToArray());

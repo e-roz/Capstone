@@ -32,6 +32,8 @@ namespace AimPark.API.Services
         private readonly IDocumentExtractionService _extraction;
         private readonly IPreScreeningService _preScreening;
         private readonly GuardPostSignIn _guardPost;
+        private readonly DuplicateIdentityGuard _duplicates;
+        private readonly IUserActivityLogger _activity;
 
         public RegistrationService(
             IRepository<User> users,
@@ -45,9 +47,13 @@ namespace AimPark.API.Services
             ITokenService tokenService,
             IDocumentExtractionService extraction,
             IPreScreeningService preScreening,
-            GuardPostSignIn guardPost)
+            GuardPostSignIn guardPost,
+            DuplicateIdentityGuard duplicates,
+            IUserActivityLogger activity)
         {
             _guardPost = guardPost;
+            _duplicates = duplicates;
+            _activity = activity;
             _users = users;
             _vehicles = vehicles;
             _documents = documents;
@@ -452,6 +458,43 @@ namespace AimPark.API.Services
                 });
             }
 
+            OcrPayloadDto? PayloadFor(DocumentType type)
+                => payloads.TryGetValue(type, out var payload) ? payload : null;
+
+            var extracted = _extraction.Extract(
+                PayloadFor(identityType),
+                PayloadFor(DocumentType.License),
+                PayloadFor(DocumentType.OfficialReceipt),
+                user.FullName);
+
+            // A partial submission read only the documents it carried, so every
+            // other value came back null. Those are not missing — they were read
+            // from documents still on file — and leaving them null would empty the
+            // applicant's licence name and expiry because their receipt was blurry.
+            if (isRetake)
+            {
+                var previous = (await _verifications.GetAllAsync(v => v.UserId == userId, ct))
+                    .OrderByDescending(v => v.CreatedAt)
+                    .FirstOrDefault();
+
+                if (previous is not null)
+                    CarryForwardUnreadValues(extracted, previous);
+            }
+
+            // Before anything is stored. The photographed documents say what they
+            // say however the form is edited afterwards, so a number that already
+            // belongs to another account ends the attempt here — no files kept, no
+            // draft row, no attempt spent. The applicant stays on this step.
+            var duplicate = await _duplicates.FindAsync(
+                userId, "scan",
+                [extracted.StudentNumber],
+                [extracted.LicenseNumber],
+                [extracted.PlateNumber],
+                ct);
+
+            if (duplicate is not null)
+                return await RefuseDuplicateAsync(user, duplicate, ct);
+
             // Each scan replaces the stored images, so the reviewer sees the attempt
             // the user actually settled on rather than three sets of photos.
             //
@@ -482,29 +525,6 @@ namespace AimPark.API.Services
 
             await _documents.AddRangeAsync(documents, ct);
 
-            OcrPayloadDto? PayloadFor(DocumentType type)
-                => payloads.TryGetValue(type, out var payload) ? payload : null;
-
-            var extracted = _extraction.Extract(
-                PayloadFor(identityType),
-                PayloadFor(DocumentType.License),
-                PayloadFor(DocumentType.OfficialReceipt),
-                user.FullName);
-
-            // A partial submission read only the documents it carried, so every
-            // other value came back null. Those are not missing — they were read
-            // from documents still on file — and leaving them null would empty the
-            // applicant's licence name and expiry because their receipt was blurry.
-            if (isRetake)
-            {
-                var previous = (await _verifications.GetAllAsync(v => v.UserId == userId, ct))
-                    .OrderByDescending(v => v.CreatedAt)
-                    .FirstOrDefault();
-
-                if (previous is not null)
-                    CarryForwardUnreadValues(extracted, previous);
-            }
-
             var verification = new DocumentVerification
             {
                 UserId = userId,
@@ -514,6 +534,7 @@ namespace AimPark.API.Services
                 ExtractedSection = extracted.Section,
                 ExtractedSemester = extracted.Semester,
                 ExtractedLicenseName = extracted.LicenseName,
+                ExtractedLicenseNumber = extracted.LicenseNumber,
                 ExtractedLicenseExpiry = extracted.LicenseExpiry,
                 LicenseNameFound = extracted.LicenseNameFound,
                 ExtractedPlateNumber = extracted.PlateNumber,
@@ -571,6 +592,9 @@ namespace AimPark.API.Services
             verification.ConfirmedSemester = FuzzyText.TrimValue(dto.Semester);
             verification.ConfirmedLicenseName = FuzzyText.TrimValue(dto.LicenseName);
             verification.ConfirmedLicenseExpiry = dto.LicenseExpiry;
+
+            var committedLicense = IdentifierNormalizer.NormalizeLicenseNumber(dto.LicenseNumber);
+            verification.ConfirmedLicenseNumber = committedLicense.Length == 0 ? null : committedLicense;
             // Null rather than empty when the client sent no plate. Every reader of
             // this column takes a value to mean "the applicant committed to this",
             // and an empty string is not one — it silently outranked the server's
@@ -578,6 +602,33 @@ namespace AimPark.API.Services
             var committedPlate = IdentifierNormalizer.NormalizePlate(dto.PlateNumber);
             verification.ConfirmedPlateNumber = committedPlate.Length == 0 ? null : committedPlate;
             verification.ConfirmedRegistrationExpiry = dto.RegistrationExpiry;
+
+            // What was read is checked as well as what was typed. The paper still
+            // says what it says, so editing the form does not move the number off
+            // the original owner — and the typed value covers the case where
+            // nothing could be read at all.
+            var duplicate = await _duplicates.FindAsync(
+                userId, "confirm",
+                [verification.ExtractedStudentNumber, verification.ConfirmedStudentNumber],
+                [verification.ExtractedLicenseNumber, verification.ConfirmedLicenseNumber],
+                [verification.ExtractedPlateNumber, verification.ConfirmedPlateNumber],
+                ct);
+
+            if (duplicate is not null)
+                return await RefuseDuplicateAsync(user, duplicate, ct);
+
+            // A number the camera read is not the applicant's to rewrite. Small
+            // differences are OCR slips being corrected; a different number is a
+            // different document.
+            var rewritten = RewrittenIdentity(verification);
+            if (rewritten is not null)
+            {
+                return new BadRequestObjectResult(new
+                {
+                    message = $"The {rewritten} you entered does not match the one on your document. "
+                              + "Please retake the photo or correct only what was misread."
+                });
+            }
 
             // Counted here for the same reason the scan step counts them: the
             // allowance is what separates "photograph it again" from "this receipt
@@ -619,11 +670,114 @@ namespace AimPark.API.Services
             // just taken.
             user.DocumentRetakeJson = null;
 
+            var approved = TryAutoApprove(user, verification, vehicle);
+
             user.UpdatedAt = DateTime.UtcNow;
             _users.Update(user);
             await _users.SaveAsync(ct);
 
+            if (approved)
+            {
+                await _activity.LogAsync(
+                    user.Id, user.Email, UserActivities.AutoApproved,
+                    "Every check passed, nothing edited, no duplicates.", ct);
+                await _emailService.SendRegistrationApprovedEmailAsync(user.Email, user.FullName, ct);
+                return new OkObjectResult(new
+                {
+                    message = "Registration approved. You can now use your RFID to enter the parking area.",
+                    approved = true
+                });
+            }
+
             return new OkObjectResult(new { message = "Registration complete. Please wait for admin approval." });
+        }
+
+        /// <summary>
+        /// Lets a clean application through without a reviewer.
+        /// </summary>
+        /// <remarks>
+        /// "Clean" is decided by <see cref="AutoApprovalPolicy"/> from the same
+        /// checks panel a reviewer would have read. The duplicate guard has already
+        /// run by the time this does, so what reaches here is also not somebody
+        /// else's identifier.
+        ///
+        /// Only the person fields are copied across, as the admin approval does.
+        /// The enrolment end date is not set: nothing on the school form prints a
+        /// usable one, and it stays blank until somebody supplies it.
+        /// </remarks>
+        private bool TryAutoApprove(
+            User user, DocumentVerification verification, Vehicle? vehicle)
+        {
+            if (vehicle is null)
+                return false;
+
+            var checks = RegistrationChecks.Build(
+                user, [verification], [vehicle], DateTime.UtcNow);
+
+            var studentNumber = verification.ConfirmedStudentNumber ?? verification.ExtractedStudentNumber;
+            var licenseNumber = verification.ConfirmedLicenseNumber ?? verification.ExtractedLicenseNumber;
+
+            var identifiersPresent =
+                !string.IsNullOrWhiteSpace(licenseNumber)
+                && (user.Affiliation != Affiliation.Student || !string.IsNullOrWhiteSpace(studentNumber));
+
+            if (!AutoApprovalPolicy.ShouldAutoApprove(checks, identifiersPresent, Random.Shared.Next(100)))
+                return false;
+
+            user.AccountStatus = AccountStatus.Active;
+            user.VerificationStatus = VerificationStatus.Passed;
+            user.RejectionReason = null;
+            user.RejectedAt = null;
+            user.CanReapplyAt = null;
+            user.StudentNumber = studentNumber;
+            user.Section = verification.ConfirmedSection ?? verification.ExtractedSection;
+
+            verification.Result = VerificationStatus.Passed;
+            _verifications.Update(verification);
+            return true;
+        }
+
+        /// <summary>
+        /// Ends a scan or confirmation that carries another account's identifier.
+        /// </summary>
+        /// <remarks>
+        /// The applicant is told only that something is already registered. Which
+        /// field, and whose account, goes to the activity log for an administrator
+        /// — a repeated attempt from one person is the thing worth noticing.
+        /// </remarks>
+        private async Task<BadRequestObjectResult> RefuseDuplicateAsync(
+            User user, DuplicateHit hit, CancellationToken ct)
+        {
+            await _activity.LogAsync(
+                user.Id, user.Email, UserActivities.DuplicateIdentityBlocked,
+                $"{hit.Field} at {hit.Step} already belongs to account {hit.HolderUserId}.", ct);
+
+            return new BadRequestObjectResult(new { message = DuplicateIdentityGuard.ApplicantMessage });
+        }
+
+        // How far a typed identifier may drift from what the camera read before it
+        // is treated as a different number rather than an OCR slip.
+        private const int MaxIdentifierEdits = 2;
+
+        /// <summary>
+        /// Names the identity field the applicant rewrote beyond OCR noise, or null.
+        /// </summary>
+        private static string? RewrittenIdentity(DocumentVerification v)
+        {
+            static bool Rewritten(string? read, string? typed, Func<string?, string> normalise)
+            {
+                var a = normalise(read);
+                var b = normalise(typed);
+                return a.Length > 0 && b.Length > 0 && FuzzyText.EditDistance(a, b) > MaxIdentifierEdits;
+            }
+
+            if (Rewritten(v.ExtractedStudentNumber, v.ConfirmedStudentNumber, IdentifierNormalizer.NormalizeStudentNumber))
+                return "student number";
+
+            if (Rewritten(v.ExtractedLicenseNumber, v.ConfirmedLicenseNumber, IdentifierNormalizer.NormalizeLicenseNumber))
+                return "licence number";
+
+            return null;
         }
 
         /// <summary>
@@ -1129,6 +1283,7 @@ namespace AimPark.API.Services
             extracted.Semester ??= previous.ExtractedSemester;
             extracted.LicenseName ??= previous.ExtractedLicenseName;
             extracted.LicenseExpiry ??= previous.ExtractedLicenseExpiry;
+            extracted.LicenseNumber ??= previous.ExtractedLicenseNumber;
             extracted.LicenseNameFound ??= previous.LicenseNameFound;
             extracted.PlateNumber ??= previous.ExtractedPlateNumber;
             extracted.RegistrationExpiry ??= previous.ExtractedRegistrationExpiry;

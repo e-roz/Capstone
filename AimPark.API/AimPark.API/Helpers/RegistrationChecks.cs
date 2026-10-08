@@ -34,6 +34,8 @@ namespace AimPark.API.Helpers
         /// </remarks>
         public const int ExpiringSoonDays = 30;
 
+        public const string ClearVerdict = "Clear";
+
         public const string Passed = "Passed";
         public const string ExpiringSoon = "ExpiringSoon";
         public const string Failed = "Failed";
@@ -302,6 +304,7 @@ namespace AimPark.API.Helpers
             Compare(v.ExtractedStudentName, v.ConfirmedStudentName, "Name", identity: true);
             Compare(v.ExtractedStudentNumber, v.ConfirmedStudentNumber, "Student number", identity: true);
             Compare(v.ExtractedLicenseName, v.ConfirmedLicenseName, "Licence name", identity: true);
+            Compare(v.ExtractedLicenseNumber, v.ConfirmedLicenseNumber, "Licence number", identity: true);
             // Identity-weight, matching PreScreeningService.NoteUserEdits: there is
             // no plate photo left to corroborate the receipt reading, so an edit
             // here is the sole evidence behind what the gate will match on.
@@ -355,7 +358,7 @@ namespace AimPark.API.Helpers
             }
             else
             {
-                r.Verdict = "Clear";
+                r.Verdict = ClearVerdict;
                 r.Summary = $"Nothing contradicted itself — all {r.Total} checks passed";
             }
         }
