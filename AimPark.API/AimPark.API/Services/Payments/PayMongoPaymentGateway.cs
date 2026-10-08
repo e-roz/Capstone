@@ -216,7 +216,11 @@ namespace AimPark.API.Services.Payments
 
             if (timestamp is null) return false;
 
-            var provided = live ?? test;
+            // PayMongo always sends both fields and leaves the one that does not
+            // apply empty (<c>te=abc,li=</c> in test mode). Taking "live if
+            // present" would pick the empty string and refuse every test-mode
+            // callback, so the one that actually has a value is the signature.
+            var provided = !string.IsNullOrWhiteSpace(live) ? live : test;
             if (string.IsNullOrWhiteSpace(provided)) return false;
 
             using var hmac = new HMACSHA256(Encoding.UTF8.GetBytes(secret));
