@@ -23,6 +23,8 @@ const userActivityOptions = <String, String>{
   'Rejected': 'Rejected',
   'RfidAssigned': 'RFID assigned',
   'RfidRevoked': 'RFID revoked',
+  'DuplicateIdentityBlocked': 'Duplicate blocked',
+  'AutoApproved': 'Auto-approved',
 };
 
 class UserActivityQuery {

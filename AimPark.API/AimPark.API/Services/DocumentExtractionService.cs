@@ -13,6 +13,13 @@ namespace AimPark.API.Services
         private const int MinPlateLength = 5;
         private const int MaxPlateLength = 8;
 
+        // LTO numbers are a letter, then digits in groups: "N01-23-456789" is
+        // eleven characters. The bounds leave room for older formats and a stray
+        // OCR character, and the digit floor is what rejects a line of words.
+        private const int MinLicenseNumberLength = 9;
+        private const int MaxLicenseNumberLength = 15;
+        private const int MinLicenseNumberDigits = 7;
+
         public ExtractedValuesDto Extract(
             OcrPayloadDto? identity,
             OcrPayloadDto? license,
@@ -32,6 +39,8 @@ namespace AimPark.API.Services
             result.LicenseExpiry = DateExtraction.FindFullDate(
                 ValueAfterAnyLabel(
                     licenseLines, DocumentLabels.License.Expiry, allowNextLine: true, preferNextLine: true));
+
+            result.LicenseNumber = ExtractLicenseNumber(licenseLines);
 
             // Faculty and staff have no RAF, so the only trusted name to search
             // with is the one they typed at signup. Students always prefer the
@@ -244,6 +253,29 @@ namespace AimPark.API.Services
         }
 
         /// <summary>
+        /// The licence number, normalised so "N01-23-456789" and "N01 23 456789"
+        /// are one value.
+        /// </summary>
+        /// <remarks>
+        /// Shape is checked here, unlike the plate, because the caption prints
+        /// above its value and a missed read leaves the next line — a name or
+        /// address — standing in for it. A real number carries digits; a name does
+        /// not. Accepting only a plausible one means a bad read becomes "not found"
+        /// (typed by the user, sent to review) rather than a wrong value that could
+        /// collide with a stranger's account.
+        /// </remarks>
+        private static string? ExtractLicenseNumber(List<OcrLineDto> lines)
+        {
+            var raw = ValueAfterAnyLabel(lines, DocumentLabels.License.Number, allowNextLine: true);
+            var candidate = IdentifierNormalizer.NormalizeLicenseNumber(raw);
+
+            if (candidate.Length is < MinLicenseNumberLength or > MaxLicenseNumberLength)
+                return null;
+
+            return candidate.Count(char.IsDigit) >= MinLicenseNumberDigits ? candidate : null;
+        }
+
+        /// <summary>
         /// Reads the plate off the Official Receipt.
         /// </summary>
         /// <remarks>
@@ -347,6 +379,7 @@ namespace AimPark.API.Services
             FlagIfEmpty(result.Section, nameof(result.Section));
             FlagIfEmpty(result.Semester, nameof(result.Semester));
             FlagIfEmpty(result.LicenseName, nameof(result.LicenseName));
+            FlagIfEmpty(result.LicenseNumber, nameof(result.LicenseNumber));
             FlagIfEmpty(result.PlateNumber, nameof(result.PlateNumber));
             FlagIfEmpty(result.Color, nameof(result.Color));
 

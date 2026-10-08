@@ -50,6 +50,10 @@ namespace AimPark.API.DTOs
         public string? LicenseName { get; set; }
         public DateTime? LicenseExpiry { get; set; }
 
+        /// <summary>Normalised (no spaces or dashes). Used to catch one licence
+        /// being registered to two accounts.</summary>
+        public string? LicenseNumber { get; set; }
+
         /// <summary>
         /// Whether the RAF (or, for faculty/staff, the account's own name) was
         /// found printed on the licence. Null when there was nothing to check —

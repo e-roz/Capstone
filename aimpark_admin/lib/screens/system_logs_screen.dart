@@ -811,8 +811,8 @@ class _UserActivityTab extends ConsumerWidget {
   /// A failed login is the only row here that is a warning rather than a record.
   static StatusIntent _intent(String activity) => switch (activity) {
         'LoginFailed' => StatusIntent.danger,
-        'Login' || 'Approved' || 'Registered' => StatusIntent.success,
-        'Rejected' || 'RfidRevoked' => StatusIntent.warning,
+        'Login' || 'Approved' || 'AutoApproved' || 'Registered' => StatusIntent.success,
+        'Rejected' || 'RfidRevoked' || 'DuplicateIdentityBlocked' => StatusIntent.warning,
         _ => StatusIntent.info,
       };
 

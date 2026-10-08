@@ -45,6 +45,9 @@ namespace AimPark.API.Entities
         public string? ExtractedLicenseName { get; set; }
         public DateTime? ExtractedLicenseExpiry { get; set; }
 
+        /// <summary>Normalised. See <see cref="Helpers.IdentifierNormalizer.NormalizeLicenseNumber"/>.</summary>
+        public string? ExtractedLicenseNumber { get; set; }
+
         /// <summary>
         /// Whether the RAF (or account) name was found printed on the licence.
         /// Null means nothing could be checked; the reviewer decides by eye.
@@ -70,6 +73,7 @@ namespace AimPark.API.Entities
         public string? ConfirmedSemester { get; set; }
         public string? ConfirmedLicenseName { get; set; }
         public DateTime? ConfirmedLicenseExpiry { get; set; }
+        public string? ConfirmedLicenseNumber { get; set; }
         public string? ConfirmedPlateNumber { get; set; }
         public DateTime? ConfirmedRegistrationExpiry { get; set; }
 

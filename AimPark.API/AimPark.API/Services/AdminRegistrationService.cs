@@ -225,6 +225,25 @@ namespace AimPark.API.Services
                 });
             }
 
+            var latest = verifications.OrderByDescending(v => v.CreatedAt).FirstOrDefault();
+
+            // The unique index would refuse this anyway, with an unhandled database
+            // error. Say it properly instead, and before anything on the account
+            // has been changed.
+            var studentNumber = latest is null
+                ? null
+                : latest.ConfirmedStudentNumber ?? latest.ExtractedStudentNumber;
+
+            if (!string.IsNullOrWhiteSpace(studentNumber)
+                && await _users.ExistsAsync(u => u.Id != userId && u.StudentNumber == studentNumber, ct))
+            {
+                return new ConflictObjectResult(new
+                {
+                    message = "Another account already holds this student number. "
+                              + "Check the documents before approving, or reject this application."
+                });
+            }
+
             var oldStatus = user.AccountStatus.ToString();
             user.AccountStatus = AccountStatus.Active;
             user.VerificationStatus = VerificationStatus.Passed;
@@ -232,11 +251,10 @@ namespace AimPark.API.Services
             user.RejectedAt = null;
             user.CanReapplyAt = null;
 
-            var latest = verifications.OrderByDescending(v => v.CreatedAt).FirstOrDefault();
             if (latest is not null)
             {
                 user.EnrollmentValidUntil = dto.EnrollmentValidUntil;
-                user.StudentNumber = latest.ConfirmedStudentNumber ?? latest.ExtractedStudentNumber;
+                user.StudentNumber = studentNumber;
                 user.Section = latest.ConfirmedSection ?? latest.ExtractedSection;
 
                 // Only the most recent submission is marked. A reviewer approving

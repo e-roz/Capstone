@@ -34,11 +34,21 @@ namespace AimPark.API.Interfaces
         public const string RfidAssigned = "RfidAssigned";
         public const string RfidRevoked = "RfidRevoked";
 
+        /// <summary>
+        /// A registration step was stopped because the plate, student number or
+        /// licence number it read already belongs to another account.
+        /// </summary>
+        public const string DuplicateIdentityBlocked = "DuplicateIdentityBlocked";
+
+        /// <summary>The system approved a clean application without a reviewer.</summary>
+        public const string AutoApproved = "AutoApproved";
+
         /// <summary>Everything above, for the admin panel's filter dropdown.</summary>
         public static readonly string[] All =
         [
             Login, LoginFailed, Logout, Registered, StatusChanged,
-            Approved, Rejected, RfidAssigned, RfidRevoked
+            Approved, Rejected, RfidAssigned, RfidRevoked,
+            DuplicateIdentityBlocked, AutoApproved
         ];
     }
 }

@@ -39,6 +39,7 @@ class _RegisterConfirmScreenState extends ConsumerState<RegisterConfirmScreen> {
   late final TextEditingController _section;
   late final TextEditingController _semester;
   late final TextEditingController _licenseName;
+  late final TextEditingController _licenseNumber;
   late final TextEditingController _plateNumber;
   late final TextEditingController _color;
 
@@ -76,6 +77,7 @@ class _RegisterConfirmScreenState extends ConsumerState<RegisterConfirmScreen> {
     _section = TextEditingController(text: _extracted.section);
     _semester = TextEditingController(text: _extracted.semester);
     _licenseName = TextEditingController(text: _extracted.licenseName);
+    _licenseNumber = TextEditingController(text: _extracted.licenseNumber);
     _plateNumber = TextEditingController(text: _extracted.plateNumber);
     _color = TextEditingController(text: _extracted.color);
     _licenseExpiry = _extracted.licenseExpiry;
@@ -105,6 +107,7 @@ class _RegisterConfirmScreenState extends ConsumerState<RegisterConfirmScreen> {
     _section.dispose();
     _semester.dispose();
     _licenseName.dispose();
+    _licenseNumber.dispose();
     _plateNumber.dispose();
     _color.dispose();
     super.dispose();
@@ -126,6 +129,10 @@ class _RegisterConfirmScreenState extends ConsumerState<RegisterConfirmScreen> {
       fieldStillMissing(
         _extracted.flagFor('LicenseName'),
         _licenseName.text.trim().isEmpty,
+      ),
+      fieldStillMissing(
+        _extracted.flagFor('LicenseNumber'),
+        _licenseNumber.text.trim().isEmpty,
       ),
       fieldStillMissing(
         _extracted.flagFor('LicenseExpiry'),
@@ -180,19 +187,25 @@ class _RegisterConfirmScreenState extends ConsumerState<RegisterConfirmScreen> {
     setState(() => _isSubmitting = true);
     try {
       final repo = ref.read(authRepositoryProvider);
-      await repo.confirmDocuments({
+      final response = await repo.confirmDocuments({
         'verificationId': widget.result.verificationId,
         if (isStudent) 'studentNumber': _studentNumber.text.trim(),
         'studentName': _studentName.text.trim(),
         if (isStudent) 'section': _section.text.trim(),
         if (isStudent) 'semester': _semester.text.trim(),
         'licenseName': _licenseName.text.trim(),
+        'licenseNumber': _licenseNumber.text.trim(),
         'licenseExpiry': _licenseExpiry?.toIso8601String(),
         'plateNumber': _plateNumber.text.trim(),
         'registrationExpiry': _registrationExpiry?.toIso8601String(),
         'vehicleType': _vehicleType,
         'color': _color.text.trim(),
       });
+
+      // The server approves a clean application on the spot. Everything else
+      // still waits for a reviewer, so this is read rather than assumed.
+      final data = response.data;
+      final approved = data is Map && data['approved'] == true;
 
       // Last use of the registration token: point this phone at the new
       // account so the review decision can reach it as a push.
@@ -230,6 +243,7 @@ class _RegisterConfirmScreenState extends ConsumerState<RegisterConfirmScreen> {
           email: ref.read(registrationNotifierProvider).email,
           affiliation: ref.read(registrationNotifierProvider).affiliation.label,
           plateNumber: _plateNumber.text.trim(),
+          approved: approved,
         ),
       );
     } catch (e) {
@@ -370,6 +384,13 @@ class _RegisterConfirmScreenState extends ConsumerState<RegisterConfirmScreen> {
             controller: _licenseName,
             flag: _extracted.flagFor('LicenseName'),
             enabled: live,
+          ),
+          ScannedField(
+            label: 'Licence number',
+            controller: _licenseNumber,
+            flag: _extracted.flagFor('LicenseNumber'),
+            enabled: live,
+            textCapitalization: TextCapitalization.characters,
           ),
           ScannedDateField(
             label: 'Licence expiry',

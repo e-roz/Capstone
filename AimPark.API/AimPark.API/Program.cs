@@ -193,6 +193,7 @@ if (siteOptions.IsSite)
     builder.Services.AddScoped<IFileStorageService, AimPark.API.Sync.Site.CloudFileStorage>();
 else
     builder.Services.AddHttpClient<IFileStorageService, FileStorageService>();
+builder.Services.AddScoped<DuplicateIdentityGuard>();
 builder.Services.AddScoped<IRegistrationService, RegistrationService>();
 builder.Services.AddScoped<IAdminRegistrationService, AdminRegistrationService>();
 builder.Services.AddScoped<IAdminUserService, AdminUserService>();

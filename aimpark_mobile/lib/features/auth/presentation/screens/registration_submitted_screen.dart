@@ -16,12 +16,17 @@ class RegistrationSummary {
     this.email,
     this.affiliation,
     this.plateNumber,
+    this.approved = false,
   });
 
   final String? name;
   final String? email;
   final String? affiliation;
   final String? plateNumber;
+
+  /// The server approved this application without a reviewer. Everything else
+  /// is still waiting, and the screen must not say otherwise.
+  final bool approved;
 }
 
 /// The last screen of registration: what was submitted, and what happens now.
@@ -45,6 +50,7 @@ class RegistrationSubmittedScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final t = context.tokens;
     final s = summary;
+    final approved = s?.approved ?? false;
 
     final facts = <AppFact>[
       if (s?.name != null && s!.name!.isNotEmpty) AppFact('Name', s.name!),
@@ -75,14 +81,16 @@ class RegistrationSubmittedScreen extends StatelessWidget {
           ),
           const SizedBox(height: AppSpacing.md),
           Text(
-            'Application sent',
+            approved ? 'You are approved' : 'Application sent',
             textAlign: TextAlign.center,
             style: context.text.headlineLarge,
           ),
           const SizedBox(height: 6),
           Text(
-            'That is everything we need from you. The parking office reviews '
-            'it next.',
+            approved
+                ? 'Everything checked out, so no review was needed.'
+                : 'That is everything we need from you. The parking office '
+                    'reviews it next.',
             textAlign: TextAlign.center,
             style: context.text.bodyMedium?.copyWith(color: t.text.secondary),
           ),
@@ -108,9 +116,12 @@ class RegistrationSubmittedScreen extends StatelessWidget {
                 // and "approved" is the difference between the gate opening
                 // and not.
                 Text(
-                  'Your account is pending review, so you cannot park yet. '
-                  'Sign in any time to check the status — we will tell you as '
-                  'soon as a decision is recorded.',
+                  approved
+                      ? 'Sign in to start using your account. The parking office '
+                          'will give you your RFID card.'
+                      : 'Your account is pending review, so you cannot park yet. '
+                          'Sign in any time to check the status — we will tell you '
+                          'as soon as a decision is recorded.',
                   style: context.text.bodyMedium,
                 ),
               ],

@@ -53,6 +53,7 @@ class ExtractedValues {
     this.section,
     this.semester,
     this.licenseName,
+    this.licenseNumber,
     this.licenseExpiry,
     this.plateNumber,
     this.registrationExpiry,
@@ -67,6 +68,10 @@ class ExtractedValues {
   final String? semester;
 
   final String? licenseName;
+
+  /// Normalised by the server (no spaces or dashes). Compared against other
+  /// accounts, so a corrected value still has to be close to what was read.
+  final String? licenseNumber;
   final DateTime? licenseExpiry;
 
   final String? plateNumber;
@@ -100,6 +105,7 @@ class ExtractedValues {
       section: json['section'] as String?,
       semester: json['semester'] as String?,
       licenseName: json['licenseName'] as String?,
+      licenseNumber: json['licenseNumber'] as String?,
       licenseExpiry: _date(json['licenseExpiry']),
       plateNumber: json['plateNumber'] as String?,
       registrationExpiry: _date(json['registrationExpiry']),
