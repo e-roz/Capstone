@@ -81,7 +81,10 @@ namespace AimPark.API.Services.Payments
                                 quantity = 1
                             }
                         },
-                        payment_method_types = new[] { "gcash", "paymaya", "card" },
+                        // E-wallets only. Cards were left out on purpose: a card
+                        // flow is the one place a student could be asked for
+                        // numbers on a page we are answerable for.
+                        payment_method_types = new[] { "gcash", "paymaya" },
                         description,
                         // Ours, not theirs: it comes back on the callback and is
                         // the second way to find the row if an id ever gets lost.
@@ -147,7 +150,14 @@ namespace AimPark.API.Services.Payments
 
             // The only event that means money arrived. The rest — sessions
             // opened, payments failed, refunds — are not what this settles on.
-            if (type != "checkout_session.payment.paid") return false;
+            // They are still genuine, correctly signed messages, so they are
+            // reported as understood-but-not-paid rather than refused: a refusal
+            // is answered 400, and PayMongo retries a 400 for hours.
+            if (type != "checkout_session.payment.paid")
+            {
+                gatewayEvent = new GatewayEvent(string.Empty, false, null, null);
+                return true;
+            }
 
             var session = attributes.GetProperty("data");
             var checkoutId = session.GetProperty("id").GetString();
