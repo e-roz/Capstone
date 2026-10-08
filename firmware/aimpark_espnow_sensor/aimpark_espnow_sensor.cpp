@@ -29,9 +29,23 @@ using namespace aimpark;
 // One entry per slot, in slot order. Taken from the bench sketch SENSORS1.4.
 // 34 and 35 are input-only, which is fine for ECHO.
 const uint8_t SLOT_COUNT = 9;
-const uint8_t TRIG_PINS[SLOT_COUNT] = {13, 5, 4, 14, 2, 15, 18, 19, 21};
-const uint8_t ECHO_PINS[SLOT_COUNT] = {26, 25, 23, 27, 32, 33, 34, 35, 22};
+uint8_t TRIG_PINS[SLOT_COUNT] = {13, 5, 4, 14, 2, 15, 18, 19, 21};
+uint8_t ECHO_PINS[SLOT_COUNT] = {26, 25, 23, 27, 32, 33, 34, 35, 22};
 static_assert(SLOT_COUNT <= MAX_SLOTS, "More slots than a packet carries");
+
+// S1 was rewired: its sensor 3 (C3) moved from GPIO 4/23 to TRIG 16, ECHO 17.
+// Picked by the board's own MAC, so S2 keeps the table above.
+const uint8_t S1_MAC[6] = {0x58, 0x2A, 0xBD, 0xD7, 0x5C, 0xFC};
+
+void applyBoardPins() {
+  uint8_t mac[6];
+  esp_read_mac(mac, ESP_MAC_WIFI_STA);
+  if (memcmp(mac, S1_MAC, sizeof mac) == 0) {
+    TRIG_PINS[2] = 16;
+    ECHO_PINS[2] = 17;
+    Serial.println("S1 wiring: sensor 3 on TRIG 16, ECHO 17.");
+  }
+}
 
 // ── Detection ────────────────────────────────────────────────────────────────
 // Sized for the miniature model: a car sits a few cm under the sensor. A
@@ -197,6 +211,7 @@ void setup() {
   Serial.begin(115200);
   delay(300);
   Serial.println("\nAimPark wireless slot sensor board");
+  applyBoardPins();
 
   for (uint8_t i = 0; i < SLOT_COUNT; i++) {
     pinMode(TRIG_PINS[i], OUTPUT);
