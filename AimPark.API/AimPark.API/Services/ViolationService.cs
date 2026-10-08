@@ -15,6 +15,9 @@ namespace AimPark.API.Services
         private const int MaxEvidenceFiles = 5;
         private const long MaxEvidenceFileBytes = 5 * 1024 * 1024;
 
+        /// <summary>PayMongo refuses payments under this, so no fine may be set below it.</summary>
+        private const decimal MinimumOnlinePenalty = 20m;
+
         private readonly IRepository<PolicyRule> _rules;
         private readonly IRepository<Violation> _violations;
         private readonly IRepository<ViolationAppeal> _appeals;
@@ -808,6 +811,15 @@ namespace AimPark.API.Services
 
             if (dto.DefaultPenaltyAmount < 0)
                 return new BadRequestObjectResult(new { message = "Default penalty amount must be zero or greater." });
+
+            // Zero means no fine at all, which is fine. A fine of ₱1-₱19 is not:
+            // the payment provider refuses anything under ₱20, so the student
+            // would be billed an amount that cannot be paid online.
+            if (dto.DefaultPenaltyAmount > 0 && dto.DefaultPenaltyAmount < MinimumOnlinePenalty)
+                return new BadRequestObjectResult(new
+                {
+                    message = $"A penalty must be ₱{MinimumOnlinePenalty:0} or more (or zero for no fine). Online payment cannot take less."
+                });
 
             if (!Enum.TryParse(dto.DefaultSuspensionType, true, out suspensionType))
                 return new BadRequestObjectResult(new { message = "Invalid default suspension type." });

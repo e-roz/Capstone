@@ -64,7 +64,7 @@ namespace AimPark.API.Controllers
 
             if (payment.Status == PaymentStatus.Paid)
             {
-                return Redirect("/api/payments/return?status=paid");
+                return Redirect($"/api/payments/return?status=paid&payment={payment.Id}");
             }
 
             var what = payment.Source == PaymentSource.ParkingFee
@@ -104,17 +104,27 @@ namespace AimPark.API.Controllers
 
             await _payments.HandleGatewayCallbackAsync(body, headers, ct);
 
-            return Redirect("/api/payments/return?status=paid");
+            var paymentId = await _db.Set<PaymentTransaction>().AsNoTracking()
+                .Where(p => p.ProviderPaymentId == checkoutId)
+                .Select(p => (Guid?)p.Id)
+                .FirstOrDefaultAsync(ct);
+
+            return Redirect($"/api/payments/return?status=paid&payment={paymentId}");
         }
 
         [HttpPost("{checkoutId}/cancel")]
-        public IActionResult Cancel(string checkoutId)
+        public async Task<IActionResult> Cancel(string checkoutId, CancellationToken ct)
         {
             if (!IsEnabled) return NotFound();
 
+            var paymentId = await _db.Set<PaymentTransaction>().AsNoTracking()
+                .Where(p => p.ProviderPaymentId == checkoutId)
+                .Select(p => (Guid?)p.Id)
+                .FirstOrDefaultAsync(ct);
+
             // The bill stays as it is. Nothing was charged, and the app is free
             // to open a fresh checkout on it whenever the payer tries again.
-            return Redirect("/api/payments/return?status=cancelled");
+            return Redirect($"/api/payments/return?status=cancelled&payment={paymentId}");
         }
 
         private static string CheckoutPage(string checkoutId, string what, decimal amount) =>
