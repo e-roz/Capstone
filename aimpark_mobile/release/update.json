@@ -1,11 +1,11 @@
 {
-  "version": "1.0.3",
-  "build": 4,
-  "apk_url": "https://github.com/e-roz/Capstone/releases/download/v1.0.3/app-release.apk",
-  "apk_sha256": "6d5dd33bbd67346201281c76ac7381b989bc94626eb8d0c75a50c82123c9d9bf",
-  "apk_size_bytes": 93539949,
+  "version": "1.0.4",
+  "build": 5,
+  "apk_url": "https://github.com/e-roz/Capstone/releases/download/v1.0.4/app-release.apk",
+  "apk_sha256": "",
+  "apk_size_bytes": 93540049,
   "mandatory": false,
   "release_notes": [
-    "Registration now checks your documents more carefully and approves clean applications faster"
+    "Pay parking fees and fines with GCash or Maya, then tap Back to AimPark to see your receipt"
   ]
 }
