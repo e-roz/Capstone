@@ -113,18 +113,17 @@ namespace AimPark.API.Controllers
                 };
             }
 
-            // A linked port that has been unplugged still belongs on the
-            // list, marked disconnected, so the guard can see which one.
-            var missing = states.Select(s => s.Port)
-                .Concat(hubs.Select(h => h.Port))
-                .Where(p => !available.Any(a => Same(a.Port, p)))
-                .Distinct(StringComparer.OrdinalIgnoreCase);
+            // Only ports with a USB device plugged in are listed. An unplugged
+            // port drops off; its link is kept and picks up again when the
+            // cable returns. Only the simulated hub, which has no cable, stays.
+            var simulated = hubs.Where(h => h.Simulated)
+                .Select(h => h.Port)
+                .Where(p => !available.Any(a => Same(a.Port, p)));
 
             return Ok(new
             {
                 ports = available.Select(p => Port(p.Port, p.Description))
-                    .Concat(missing.Select(p => Port(p,
-                        hubs.Any(h => h.Simulated && Same(h.Port, p)) ? "Simulated hub" : "Not plugged in"))),
+                    .Concat(simulated.Select(p => Port(p, "Simulated hub"))),
                 hubs = hubs.Select(h => new
                 {
                     port = h.Port,
