@@ -89,8 +89,10 @@ namespace AimPark.API.Services.Payments
                         // Ours, not theirs: it comes back on the callback and is
                         // the second way to find the row if an id ever gets lost.
                         reference_number = payment.Id.ToString(),
-                        success_url = $"{baseUrl}/api/payments/return?status=paid",
-                        cancel_url = $"{baseUrl}/api/payments/return?status=cancelled"
+                        // The bill's id rides along so the page the payer lands
+                        // on can send them back to that exact bill in the app.
+                        success_url = $"{baseUrl}/api/payments/return?status=paid&payment={payment.Id}",
+                        cancel_url = $"{baseUrl}/api/payments/return?status=cancelled&payment={payment.Id}"
                     }
                 }
             };

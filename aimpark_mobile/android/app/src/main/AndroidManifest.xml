@@ -32,6 +32,15 @@
                 <action android:name="android.intent.action.MAIN"/>
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
+            <!-- The payment page's "Back to AimPark" button. The part after
+                 aimpark://open is an ordinary in-app route, which go_router
+                 opens as it would any other, e.g. /home/user/payments/<id>. -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+                <category android:name="android.intent.category.BROWSABLE"/>
+                <data android:scheme="aimpark" android:host="open"/>
+            </intent-filter>
             <!-- Lets a tapped push notification open the app and reach onMessageOpenedApp. -->
             <intent-filter>
                 <action android:name="FLUTTER_NOTIFICATION_CLICK" />

@@ -88,13 +88,21 @@ namespace AimPark.API.Controllers
         /// </remarks>
         [AllowAnonymous]
         [HttpGet("return")]
-        public ContentResult Return([FromQuery] string? status)
+        public ContentResult Return([FromQuery] string? status, [FromQuery] Guid? payment)
         {
             var paid = status == "paid";
             var heading = paid ? "Payment received" : "Payment cancelled";
             var line = paid
-                ? "You can close this page and go back to AimPark."
-                : "Nothing was charged. You can close this page and try again.";
+                ? "Tap the button to go back to AimPark."
+                : "Nothing was charged. Tap the button to go back and try again.";
+
+            // Opens the app on this bill. The payment id is bound as a Guid, so
+            // nothing but hex digits and dashes can reach the address below, and
+            // nothing in it is secret: the app asks the server for the bill with
+            // the student's own login, exactly as it would from the list.
+            var appLink = payment is { } id
+                ? $"aimpark://open/home/user/payments/{id}"
+                : "aimpark://open/home/user/payments";
 
             return Content(
                 "<!doctype html><html><head><meta charset=\"utf-8\">"
@@ -104,9 +112,16 @@ namespace AimPark.API.Controllers
                 + "place-items:center;min-height:100vh;background:#f6f7f9;color:#1a1c1e}"
                 + ".card{background:#fff;padding:32px 24px;border-radius:16px;max-width:320px;"
                 + "text-align:center;box-shadow:0 1px 3px rgba(0,0,0,.08)}"
-                + "h1{font-size:20px;margin:0 0 8px}p{margin:0;color:#5b6169;font-size:15px;line-height:1.5}"
+                + "h1{font-size:20px;margin:0 0 8px}p{margin:0 0 20px;color:#5b6169;font-size:15px;line-height:1.5}"
+                + "a.btn{display:block;padding:14px;border-radius:10px;background:#0057ff;color:#fff;"
+                + "text-decoration:none;font-weight:600;font-size:15px}"
                 + "</style></head><body><div class=\"card\">"
                 + $"<h1>{heading}</h1><p>{line}</p>"
+                + $"<a class=\"btn\" href=\"{appLink}\">Back to AimPark</a>"
+                // Browsers often refuse to open an app without a tap, so the
+                // button is the real way back; this is only a head start for the
+                // ones that allow it.
+                + $"<script>setTimeout(function(){{window.location.href='{appLink}';}},600);</script>"
                 + "</div></body></html>",
                 "text/html");
         }
