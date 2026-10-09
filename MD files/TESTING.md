@@ -60,7 +60,8 @@ Read this first. These are already known and deliberately not in v1.
 - **You must be approved before logging in.** Register, then ask the admin to approve you.
 - **One phone gets one account's pushes: the last one that logged in.** Testing two accounts on one phone? Only the most recent login receives notifications.
 - **Reminders can be late on the free server.** "Payment due tomorrow", "overdue" and "suspension started" are checked hourly while the server is awake, so after it has slept they arrive on the next wake-up.
-- **"A slot just opened" only goes to people who pressed "Notify me when a slot opens"** on the Parking tab while the lot was full, and not to anyone already parked.
+- **There is no "a slot just opened" push any more.** The "Notify me" feature was removed; the old buttons in installed apps do nothing.
+- **A driver who owes money is refused at the entry gate (`UNPAID_BALANCE`) but can always leave.** An unpaid parking fee blocks straight away; a violation fine blocks only after its due date. A payment in Processing does not block. The site server learns of payments from the cloud snapshot, so allow a moment after paying.
 
 ---
 

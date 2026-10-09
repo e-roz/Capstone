@@ -195,13 +195,19 @@ namespace AimPark.API.Sync.Cloud
             if (DateTime.UtcNow - push.CreatedAt > PushFreshness)
                 return;
 
+            // Slot-watch pushes no longer exist. A site that has not updated yet
+            // may still queue one; without the flag it would read as a push to
+            // everyone, so it is dropped here.
+#pragma warning disable CS0618 // deliberate: recognising the retired flag
+            if (push.ToSlotWatchers)
+                return;
+#pragma warning restore CS0618
+
             // A batch the site sends again must not buzz the phone again.
             if (!_sentPushes.TryClaim(push.Id))
                 return;
 
-            if (push.ToSlotWatchers)
-                await _push.SendToSlotWatchersAsync(push.Title, push.Body, push.Data, ct);
-            else if (push.TargetUserId is Guid userId)
+            if (push.TargetUserId is Guid userId)
                 await _push.SendToUserAsync(userId, push.Title, push.Body, push.Data, ct);
             else
                 await _push.SendToRoleAsync(push.TargetRole, push.Title, push.Body, push.Data, ct);

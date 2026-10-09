@@ -95,6 +95,15 @@ namespace AimPark.API.Sync.Cloud
             // A review made here has to reach the guard post's map.
             WrongBayFlag => true,
 
+            // Paying (or a fine being issued) changes who the gate lets in. The
+            // hourly reminder job only stamps its "sent" columns, which no gate
+            // decision reads, so those writes must not wake the site.
+            PaymentTransaction => entry.State != EntityState.Modified ||
+                                  entry.Properties.Any(p => p.IsModified && p.Metadata.Name is
+                                      nameof(PaymentTransaction.Status) or
+                                      nameof(PaymentTransaction.AmountDue) or
+                                      nameof(PaymentTransaction.DueAt)),
+
             // Every authenticated device request moves LastSeenAt, the site's
             // own included. Counting that would have the site re-download on
             // a loop driven by its own requests.

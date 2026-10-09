@@ -75,6 +75,8 @@ namespace AimPark.API.Sync
             services.AddSingleton<SnapshotSignal>();
             services.AddSingleton<SiteSyncStatus>();
             services.AddScoped<ISaveChangesInterceptor, SiteOutboxInterceptor>();
+            services.AddSingleton<SiteDues>();
+            services.AddScoped<AimPark.API.Interfaces.IEntryDues, SiteEntryDues>();
             services.AddScoped<SnapshotApplier>();
             services.AddHostedService<SiteOutboxPusher>();
             services.AddHostedService<SiteMasterDataSync>();
@@ -115,6 +117,7 @@ namespace AimPark.API.Sync
             services.AddSingleton<AimPark.API.Interfaces.ISlotSensors, AimPark.API.Interfaces.NoSlotSensors>();
             services.AddSignalR();
             services.AddSingleton<MasterDataChangeNotifier>();
+            services.AddScoped<AimPark.API.Interfaces.IEntryDues, AimPark.API.Interfaces.DbEntryDues>();
             services.AddSingleton<SentPushLedger>();
             // Clock-driven pushes: due tomorrow, overdue, suspension start/end.
             services.AddHostedService<AimPark.API.Services.NotificationReminderService>();
