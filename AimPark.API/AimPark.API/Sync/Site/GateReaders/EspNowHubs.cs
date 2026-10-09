@@ -3,6 +3,7 @@ using System.Text.Json;
 using AimPark.API.Data;
 using AimPark.API.Entities;
 using AimPark.API.Enums;
+using AimPark.API.Interfaces;
 using Microsoft.EntityFrameworkCore;
 
 namespace AimPark.API.Sync.Site.GateReaders
@@ -696,6 +697,13 @@ namespace AimPark.API.Sync.Site.GateReaders
 
             _logger.LogInformation("Slot {Slot} is now {Status}, from sensor {Node} on {Port}",
                 slot.SlotCode, status, node, port);
+
+            // Never throws: a wrong-bay check must not cost the bay its reading.
+            var wrongBay = scope.ServiceProvider.GetRequiredService<IWrongBayService>();
+            if (status == ParkingSlotStatus.Occupied)
+                await wrongBay.OnBayFilledAsync(slot.Id, ct);
+            else if (status == ParkingSlotStatus.Available)
+                await wrongBay.OnBayEmptiedAsync(slot.Id, ct);
         }
 
         /// <summary>

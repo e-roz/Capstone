@@ -131,6 +131,7 @@ namespace AimPark.API.Sync.Site
             var paymentIds = Ids(SyncKinds.PaymentTransaction);
             var notificationIds = Ids(SyncKinds.Notification);
             var tapIds = Ids(SyncKinds.GateTapEvent);
+            var flagIds = Ids(SyncKinds.WrongBayFlag);
 
             return new SiteEventBatch
             {
@@ -172,6 +173,9 @@ namespace AimPark.API.Sync.Site
 
                 GateTapEvents = await db.Set<GateTapEvent>().AsNoTracking()
                     .Where(t => tapIds.Contains(t.Id)).ToListAsync(ct),
+
+                WrongBayFlags = await db.Set<WrongBayFlag>().AsNoTracking()
+                    .Where(f => flagIds.Contains(f.Id)).ToListAsync(ct),
 
                 Pushes = rows
                     .Where(r => r.Kind == SyncKinds.Push && r.Payload is not null)

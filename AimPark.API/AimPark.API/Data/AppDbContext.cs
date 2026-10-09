@@ -38,6 +38,7 @@ namespace AimPark.API.Data
         public DbSet<SyncOutboxEntry> SyncOutbox { get; set; }
         public DbSet<GateTapEvent> GateTapEvents { get; set; }
         public DbSet<SlotWatch> SlotWatches { get; set; }
+        public DbSet<WrongBayFlag> WrongBayFlags { get; set; }
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -376,6 +377,9 @@ namespace AimPark.API.Data
 
                 entity.Property(l => l.AlprPlateNumber).HasMaxLength(20);
 
+                entity.Property(l => l.VehicleType)
+                      .HasConversion<string>();
+
                 entity.HasOne(l => l.AlprReading)
                       .WithMany()
                       .HasForeignKey(l => l.AlprReadingId)
@@ -444,6 +448,22 @@ namespace AimPark.API.Data
                 entity.HasOne(i => i.ReportedByUser)
                       .WithMany()
                       .HasForeignKey(i => i.ReportedByUserId)
+                      .OnDelete(DeleteBehavior.Cascade);
+            });
+
+            modelBuilder.Entity<WrongBayFlag>(entity =>
+            {
+                entity.HasKey(f => f.Id);
+
+                // "Is there a live warning on this bay?" on every sensor change.
+                entity.HasIndex(f => new { f.SlotId, f.BayClearedAt });
+
+                entity.Property(f => f.Status)
+                      .HasConversion<string>();
+
+                entity.HasOne(f => f.Slot)
+                      .WithMany()
+                      .HasForeignKey(f => f.SlotId)
                       .OnDelete(DeleteBehavior.Cascade);
             });
 

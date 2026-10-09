@@ -44,7 +44,28 @@ final activeParkingSessionsProvider =
 // ignore: unused_element
 typedef ActiveParkingSessionsRef =
     AutoDisposeFutureProviderRef<List<ActiveParkingSession>>;
-String _$parkingActionsHash() => r'91a193033b4185a789154978e45c3e29d4b0c520';
+String _$wrongBayFlagsHash() => r'b65f9ea7aca177e56a7eb10307bab3480f8c4a01';
+
+/// Bays that may hold the wrong kind of vehicle. Read alongside the bays, on
+/// the map's own refresh.
+///
+/// Copied from [wrongBayFlags].
+@ProviderFor(wrongBayFlags)
+final wrongBayFlagsProvider =
+    AutoDisposeFutureProvider<List<WrongBayFlag>>.internal(
+      wrongBayFlags,
+      name: r'wrongBayFlagsProvider',
+      debugGetCreateSourceHash: const bool.fromEnvironment('dart.vm.product')
+          ? null
+          : _$wrongBayFlagsHash,
+      dependencies: null,
+      allTransitiveDependencies: null,
+    );
+
+@Deprecated('Will be removed in 3.0. Use Ref instead')
+// ignore: unused_element
+typedef WrongBayFlagsRef = AutoDisposeFutureProviderRef<List<WrongBayFlag>>;
+String _$parkingActionsHash() => r'fa0471e16613b6b83d791c7d71efd0203a792ede';
 
 /// See also [ParkingActions].
 @ProviderFor(ParkingActions)

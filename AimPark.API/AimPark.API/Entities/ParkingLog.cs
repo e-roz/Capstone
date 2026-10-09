@@ -1,3 +1,5 @@
+using AimPark.API.Enums;
+
 namespace AimPark.API.Entities
 {
     public class ParkingLog
@@ -47,6 +49,18 @@ namespace AimPark.API.Entities
         /// mismatch never becomes a ParkingLog row; see GateAccessAttempt.
         /// </summary>
         public bool? AlprMatched { get; set; }
+
+        /// <summary>
+        /// What came in: the type of the plate the camera matched, or the
+        /// only type the holder has registered. Null when the holder has both
+        /// a car and a motorcycle and no plate was read to tell them apart.
+        /// </summary>
+        /// <remarks>
+        /// Stored rather than looked up later, because the holder's vehicles
+        /// can change while they are parked and the bay checks need to know
+        /// what is actually in the lot.
+        /// </remarks>
+        public VehicleType? VehicleType { get; set; }
 
         // Exactly one of these identifies who recorded the entry: a staff
         // account working the admin panel, or a gate device reporting a scan.

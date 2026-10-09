@@ -218,6 +218,7 @@ builder.Services.AddScoped<IDocumentExtractionService, DocumentExtractionService
 builder.Services.AddScoped<IPreScreeningService, PreScreeningService>();
 builder.Services.AddScoped<INotificationService, NotificationService>();
 builder.Services.AddScoped<IIncidentService, IncidentService>();
+builder.Services.AddScoped<IWrongBayService, WrongBayService>();
 builder.Services.AddScoped<IPaymentService, PaymentService>();
 
 // Which provider settles the money. "Simulated" until the school holds a

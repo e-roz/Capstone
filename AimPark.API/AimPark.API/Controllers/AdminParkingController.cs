@@ -15,12 +15,31 @@ namespace AimPark.API.Controllers
     {
         private readonly IParkingSlotService _parkingSlotService;
         private readonly IParkingHistoryService _parkingHistoryService;
+        private readonly IWrongBayService _wrongBayService;
 
-        public AdminParkingController(IParkingSlotService parkingSlotService, IParkingHistoryService parkingHistoryService)
+        public AdminParkingController(
+            IParkingSlotService parkingSlotService,
+            IParkingHistoryService parkingHistoryService,
+            IWrongBayService wrongBayService)
         {
             _parkingSlotService = parkingSlotService;
             _parkingHistoryService = parkingHistoryService;
+            _wrongBayService = wrongBayService;
         }
+
+        /// <summary>
+        /// Bays that may hold the wrong kind of vehicle, for the map. A guard
+        /// checks each one; see <see cref="Services.WrongBayService"/>.
+        /// </summary>
+        [Authorize(Roles = "Admin,Security")]
+        [HttpGet("wrong-bay")]
+        public Task<ActionResult<List<WrongBayFlagResponse>>> ListWrongBayFlags(CancellationToken ct)
+            => _wrongBayService.ListLiveAsync(ct);
+
+        [Authorize(Roles = "Admin,Security")]
+        [HttpPost("wrong-bay/{flagId:guid}/review")]
+        public Task<ActionResult<object>> ReviewWrongBayFlag(Guid flagId, [FromBody] ReviewWrongBayFlagDto dto, CancellationToken ct)
+            => _wrongBayService.ReviewAsync(flagId, dto, GetUserId()!.Value, ct);
 
         // "Current Occupancy" is a Security module. Reading the bays is what
         // the gate screen and the guard's overview are built on; creating and

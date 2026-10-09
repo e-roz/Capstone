@@ -11,9 +11,12 @@ import '../../core/utils/ph_time.dart';
 import '../../models/device_health.dart';
 import '../../models/parking_slot.dart';
 import '../../models/site_link.dart';
+import '../../providers/auth_provider.dart';
 import '../../providers/device_health_provider.dart';
 import '../../providers/parking_provider.dart';
 import '../../providers/site_link_provider.dart';
+import '../../router/destinations.dart';
+import '../../screens/violations_screen.dart';
 import '../../theme/theme.dart';
 import '../ui/ui.dart';
 import 'gate_status.dart';
@@ -114,11 +117,14 @@ class _LiveParkingMapCardState extends ConsumerState<LiveParkingMapCard> {
     if (ref.read(parkingSlotsProvider).isLoading) return;
     ref.invalidate(parkingSlotsProvider);
     ref.invalidate(activeParkingSessionsProvider);
+    ref.invalidate(wrongBayFlagsProvider);
   }
 
   @override
   Widget build(BuildContext context) {
     final slots = ref.watch(parkingSlotsProvider);
+    // A server too old to know about warnings answers 404: no warnings.
+    final wrongBays = ref.watch(wrongBayFlagsProvider).valueOrNull ?? const <WrongBayFlag>[];
     final link = ref.watch(siteLinkProvider).valueOrNull;
 
     // At the guard post its own server answers and the map is first-hand.
@@ -153,33 +159,40 @@ class _LiveParkingMapCardState extends ConsumerState<LiveParkingMapCard> {
         ),
         data: (availability) => _Coverage(
           coverage: coverage,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              if (stale) ...[
-                _StaleBanner(since: link.staleSince),
-                const SizedBox(height: AppSpacing.x3),
-              ] else if (coverage.count(availability.slots) case (0, > 0)) ...[
-                // Said once here, so the bays need not each repeat it.
-                const _NoSignalBanner(),
-                const SizedBox(height: AppSpacing.x3),
-              ],
-              // Dimmed, not hidden: the last known bays are still the best
-              // guess, but should not look as sure as live ones.
-              AnimatedOpacity(
-                duration: AppMotion.normal,
-                opacity: stale ? 0.55 : 1,
-                child: _MapWithSummary(
-                  slots: availability.slots,
-                  availability: availability,
-                  sessions: sessions,
-                  compact: widget.compact,
-                  onBayTap: widget.onBayTap,
-                  health: health,
-                  onGateTap: _showGate,
+          child: _WrongBays(
+            flags: {for (final f in wrongBays) f.slotId: f},
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                if (wrongBays.isNotEmpty) ...[
+                  _WrongBayAlerts(flags: wrongBays),
+                  const SizedBox(height: AppSpacing.x3),
+                ],
+                if (stale) ...[
+                  _StaleBanner(since: link.staleSince),
+                  const SizedBox(height: AppSpacing.x3),
+                ] else if (coverage.count(availability.slots) case (0, > 0)) ...[
+                  // Said once here, so the bays need not each repeat it.
+                  const _NoSignalBanner(),
+                  const SizedBox(height: AppSpacing.x3),
+                ],
+                // Dimmed, not hidden: the last known bays are still the best
+                // guess, but should not look as sure as live ones.
+                AnimatedOpacity(
+                  duration: AppMotion.normal,
+                  opacity: stale ? 0.55 : 1,
+                  child: _MapWithSummary(
+                    slots: availability.slots,
+                    availability: availability,
+                    sessions: sessions,
+                    compact: widget.compact,
+                    onBayTap: widget.onBayTap,
+                    health: health,
+                    onGateTap: _showGate,
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),
@@ -1302,6 +1315,8 @@ class _BayState extends State<_Bay> {
 
     final occupied = !silent && slot.status == 'Occupied';
     final free = !silent && slot.status == 'Available';
+    final wrongBay = _WrongBays.of(context)[slot.slotId];
+    final warn = t.status.warning;
     final outOfService = slot.status == 'OutOfService';
     final fg = occupied
         ? t.text.onBrand
@@ -1319,6 +1334,10 @@ class _BayState extends State<_Bay> {
       if (session != null) session.userName,
       if (session?.plateNumber != null) session!.plateNumber!,
       if (session != null) 'In since ${_clock.format(manila(session.entryTime))}',
+      if (wrongBay != null)
+        wrongBay.isConfirmed
+            ? 'Wrong kind of vehicle here (confirmed)'
+            : 'The wrong kind of vehicle may be here. Check it.',
       if (widget.onTap != null) 'Click to change status',
     ].join('\n');
 
@@ -1387,14 +1406,23 @@ class _BayState extends State<_Bay> {
                 : c.bg,
         borderRadius: AppRadii.smAll,
         border: Border.all(
-          color: _hovered ? c.solid : (occupied ? c.solid : c.border),
-          width: _hovered ? 2 : 1.25,
+          color: wrongBay != null
+              ? warn.solid
+              : _hovered ? c.solid : (occupied ? c.solid : c.border),
+          width: wrongBay != null ? 3 : _hovered ? 2 : 1.25,
         ),
         boxShadow: _hovered ? AppElevation.md : AppElevation.none,
       ),
       child: Stack(
         children: [
           if (outOfService) AppHatchPattern(color: c.border, spacing: 8),
+          if (wrongBay != null)
+            Positioned(
+              top: 2,
+              left: widget.stallOnRight ? null : 2,
+              right: widget.stallOnRight ? 2 : null,
+              child: Icon(Icons.warning_rounded, size: widget.compact ? 12 : 14, color: warn.solid),
+            ),
           Row(
             children: widget.stallOnRight
                 ? [icon, const SizedBox(width: AppSpacing.x2), Expanded(child: label)]
@@ -1747,6 +1775,14 @@ class _Legend extends StatelessWidget {
             Text('No sensor signal', style: text.labelSmall?.copyWith(color: t.text.secondary)),
           ],
         ),
+        Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.warning_rounded, size: 12, color: t.status.warning.solid),
+            const SizedBox(width: AppSpacing.x2 - 2),
+            Text('Check: wrong vehicle type?', style: text.labelSmall?.copyWith(color: t.text.secondary)),
+          ],
+        ),
       ],
     );
   }
@@ -1848,5 +1884,161 @@ class _Coverage extends InheritedWidget {
   bool updateShouldNotify(_Coverage old) {
     final (a, b) = (old.coverage.live, coverage.live);
     return a == null || b == null ? a != b : a.length != b.length || !a.containsAll(b);
+  }
+}
+
+// ── Wrong-bay warnings ───────────────────────────────────────────────────────
+
+/// The live warnings by bay id, for every bay on the map to read.
+class _WrongBays extends InheritedWidget {
+  const _WrongBays({required this.flags, required super.child});
+
+  final Map<String, WrongBayFlag> flags;
+
+  static Map<String, WrongBayFlag> of(BuildContext context) =>
+      context.dependOnInheritedWidgetOfExactType<_WrongBays>()?.flags ?? const {};
+
+  @override
+  bool updateShouldNotify(_WrongBays old) =>
+      old.flags.length != flags.length ||
+      old.flags.entries.any((e) => flags[e.key]?.status != e.value.status);
+}
+
+/// "Bay C3 may hold the wrong kind of vehicle", one row per bay, above the
+/// map. The sensor can't say who parked, so the row names the bay and asks
+/// a guard to go and look; what they find is recorded here. Once confirmed,
+/// an administrator can issue a violation from the same row.
+class _WrongBayAlerts extends ConsumerWidget {
+  const _WrongBayAlerts({required this.flags});
+
+  final List<WrongBayFlag> flags;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final isAdmin = ref.watch(staffRoleProvider) != StaffRole.security;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        for (var i = 0; i < flags.length; i++) ...[
+          if (i > 0) const SizedBox(height: AppSpacing.x2),
+          _WrongBayRow(flag: flags[i], isAdmin: isAdmin),
+        ],
+      ],
+    );
+  }
+}
+
+class _WrongBayRow extends ConsumerStatefulWidget {
+  const _WrongBayRow({required this.flag, required this.isAdmin});
+
+  final WrongBayFlag flag;
+  final bool isAdmin;
+
+  @override
+  ConsumerState<_WrongBayRow> createState() => _WrongBayRowState();
+}
+
+class _WrongBayRowState extends ConsumerState<_WrongBayRow> {
+  bool _busy = false;
+
+  Future<void> _review(String outcome) async {
+    setState(() => _busy = true);
+    final msg = await ref.read(parkingActionsProvider.notifier).reviewWrongBay(widget.flag.flagId, outcome);
+    if (!mounted) return;
+    setState(() => _busy = false);
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg ?? 'Saved.')));
+    ref.invalidate(wrongBayFlagsProvider);
+  }
+
+  Future<void> _issue() async {
+    final f = widget.flag;
+    await showIssueViolationDialog(
+      context,
+      ref,
+      description: 'Parked the wrong kind of vehicle in ${f.bayKind} bay ${_shortCode(f.slotCode)} '
+          '(Gate ${f.gate}) on ${DateFormat('MMM d, h:mm a').format(manila(f.detectedAt))}.',
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final t = context.tokens;
+    final text = Theme.of(context).textTheme;
+    final f = widget.flag;
+    final c = t.status.warning;
+
+    final detail = f.isConfirmed
+        ? 'Confirmed${f.reviewedByName == null ? '' : ' by ${f.reviewedByName}'}. '
+            'Issue a violation once you know whose vehicle it is.'
+        : 'This is a ${f.bayKind} bay, and the wrong kind of vehicle may be parked in it. '
+            'Go and check. Since ${_clock.format(manila(f.detectedAt))}.';
+
+    final actions = <Widget>[
+      if (!f.isConfirmed) ...[
+        TextButton(
+          onPressed: _busy ? null : () => _review('FalseAlarm'),
+          child: const Text('False alarm'),
+        ),
+        FilledButton.tonal(
+          onPressed: _busy ? null : () => _review('Confirmed'),
+          child: const Text('Confirm'),
+        ),
+      ] else if (widget.isAdmin)
+        FilledButton(
+          onPressed: _issue,
+          child: const Text('Issue violation'),
+        )
+      else
+        const StatusPill(label: 'Confirmed', intent: StatusIntent.warning, dense: true),
+    ];
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.x3, vertical: AppSpacing.x2),
+      decoration: BoxDecoration(
+        color: c.bg,
+        borderRadius: AppRadii.smAll,
+        border: Border.all(color: c.border),
+      ),
+      child: Wrap(
+        spacing: AppSpacing.x3,
+        runSpacing: AppSpacing.x2,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        alignment: WrapAlignment.spaceBetween,
+        children: [
+          ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 560),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Icon(Icons.warning_rounded, size: AppSizes.iconSm, color: c.solid),
+                const SizedBox(width: AppSpacing.x2),
+                Flexible(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Check bay ${_shortCode(f.slotCode)} · Gate ${f.gate}',
+                        style: text.titleSmall?.copyWith(color: c.fg, fontWeight: FontWeight.w700),
+                      ),
+                      Text(detail, style: text.bodySmall?.copyWith(color: c.fg)),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              for (var i = 0; i < actions.length; i++) ...[
+                if (i > 0) const SizedBox(width: AppSpacing.x2),
+                actions[i],
+              ],
+            ],
+          ),
+        ],
+      ),
+    );
   }
 }

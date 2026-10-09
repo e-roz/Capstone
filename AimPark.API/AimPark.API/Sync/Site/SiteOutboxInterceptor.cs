@@ -122,6 +122,10 @@ namespace AimPark.API.Sync.Site
                         Add(SyncKinds.GateTapEvent, t.Id);
                         break;
 
+                    case WrongBayFlag f:
+                        Add(SyncKinds.WrongBayFlag, f.Id);
+                        break;
+
                     case GateDevice d when entry.State == EntityState.Modified:
                         Add(SyncKinds.GateDevice, d.Id);
                         break;
