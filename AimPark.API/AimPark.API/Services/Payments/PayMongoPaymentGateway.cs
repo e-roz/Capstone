@@ -81,13 +81,18 @@ namespace AimPark.API.Services.Payments
                                 quantity = 1
                             }
                         },
-                        payment_method_types = new[] { "gcash", "paymaya", "card" },
+                        // E-wallets only. Cards were left out on purpose: a card
+                        // flow is the one place a student could be asked for
+                        // numbers on a page we are answerable for.
+                        payment_method_types = new[] { "gcash", "paymaya" },
                         description,
                         // Ours, not theirs: it comes back on the callback and is
                         // the second way to find the row if an id ever gets lost.
                         reference_number = payment.Id.ToString(),
-                        success_url = $"{baseUrl}/api/payments/return?status=paid",
-                        cancel_url = $"{baseUrl}/api/payments/return?status=cancelled"
+                        // The bill's id rides along so the page the payer lands
+                        // on can send them back to that exact bill in the app.
+                        success_url = $"{baseUrl}/api/payments/return?status=paid&payment={payment.Id}",
+                        cancel_url = $"{baseUrl}/api/payments/return?status=cancelled&payment={payment.Id}"
                     }
                 }
             };
@@ -147,7 +152,14 @@ namespace AimPark.API.Services.Payments
 
             // The only event that means money arrived. The rest — sessions
             // opened, payments failed, refunds — are not what this settles on.
-            if (type != "checkout_session.payment.paid") return false;
+            // They are still genuine, correctly signed messages, so they are
+            // reported as understood-but-not-paid rather than refused: a refusal
+            // is answered 400, and PayMongo retries a 400 for hours.
+            if (type != "checkout_session.payment.paid")
+            {
+                gatewayEvent = new GatewayEvent(string.Empty, false, null, null);
+                return true;
+            }
 
             var session = attributes.GetProperty("data");
             var checkoutId = session.GetProperty("id").GetString();
@@ -204,7 +216,11 @@ namespace AimPark.API.Services.Payments
 
             if (timestamp is null) return false;
 
-            var provided = live ?? test;
+            // PayMongo always sends both fields and leaves the one that does not
+            // apply empty (<c>te=abc,li=</c> in test mode). Taking "live if
+            // present" would pick the empty string and refuse every test-mode
+            // callback, so the one that actually has a value is the signature.
+            var provided = !string.IsNullOrWhiteSpace(live) ? live : test;
             if (string.IsNullOrWhiteSpace(provided)) return false;
 
             using var hmac = new HMACSHA256(Encoding.UTF8.GetBytes(secret));

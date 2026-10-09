@@ -35,6 +35,17 @@ Future<List<ActiveParkingSession>> activeParkingSessions(Ref ref) async {
       .toList();
 }
 
+/// Bays that may hold the wrong kind of vehicle. Read alongside the bays, on
+/// the map's own refresh.
+@riverpod
+Future<List<WrongBayFlag>> wrongBayFlags(Ref ref) async {
+  final dio = ref.watch(dioProvider);
+  final response = await dio.get(ApiEndpoints.wrongBayFlags);
+  return (response.data as List<dynamic>)
+      .map((f) => WrongBayFlag.fromJson(f as Map<String, dynamic>))
+      .toList();
+}
+
 @riverpod
 class ParkingActions extends _$ParkingActions {
   @override
@@ -109,6 +120,16 @@ class ParkingActions extends _$ParkingActions {
       final res = await dio
           .post(ApiEndpoints.logParkingExit, data: {'logId': logId});
       return _exitMessage(res.data as Map<String, dynamic>);
+    });
+  }
+
+  /// A guard's verdict after going to look: 'Confirmed' or 'FalseAlarm'.
+  Future<String?> reviewWrongBay(String flagId, String outcome) async {
+    return _run(() async {
+      final dio = ref.read(dioProvider);
+      final res = await dio.post(ApiEndpoints.reviewWrongBayFlag(flagId),
+          data: {'outcome': outcome});
+      return (res.data as Map<String, dynamic>)['message']?.toString();
     });
   }
 

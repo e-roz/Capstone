@@ -18,6 +18,7 @@ namespace AimPark.API.Sync
         public const string Incident = nameof(Entities.Incident);
         public const string IncidentEvidence = nameof(Entities.IncidentEvidence);
         public const string GateTapEvent = nameof(Entities.GateTapEvent);
+        public const string WrongBayFlag = nameof(Entities.WrongBayFlag);
         public const string Push = "Push";
     }
 
@@ -49,6 +50,12 @@ namespace AimPark.API.Sync
 
         /// <summary>Attachment records only. The files themselves stay in cloud storage.</summary>
         public List<IncidentEvidence> IncidentEvidence { get; set; } = [];
+
+        /// <summary>
+        /// Recent wrong-bay warnings, so a review made in the cloud reaches
+        /// the guard post's map.
+        /// </summary>
+        public List<WrongBayFlag> WrongBayFlags { get; set; } = [];
     }
 
     /// <summary>
@@ -118,6 +125,7 @@ namespace AimPark.API.Sync
         public List<Notification> Notifications { get; set; } = [];
         public List<DeviceSeenUpdate> DevicesSeen { get; set; } = [];
         public List<GateTapEvent> GateTapEvents { get; set; } = [];
+        public List<WrongBayFlag> WrongBayFlags { get; set; } = [];
         public List<PushRequest> Pushes { get; set; } = [];
 
         public bool IsEmpty =>
@@ -125,7 +133,8 @@ namespace AimPark.API.Sync
             AlprReadings.Count == 0 && ParkingLogs.Count == 0 &&
             SlotStatuses.Count == 0 && GateAccessAttempts.Count == 0 &&
             PaymentTransactions.Count == 0 && Notifications.Count == 0 &&
-            DevicesSeen.Count == 0 && GateTapEvents.Count == 0 && Pushes.Count == 0;
+            DevicesSeen.Count == 0 && GateTapEvents.Count == 0 && WrongBayFlags.Count == 0 &&
+            Pushes.Count == 0;
     }
 
     /// <summary>Occupancy only. What a bay is and where it sits belongs to the cloud.</summary>

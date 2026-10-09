@@ -1,11 +1,11 @@
 {
-  "version": "1.0.2",
-  "build": 3,
-  "apk_url": "https://github.com/e-roz/Capstone/releases/download/v1.0.2/app-release.apk",
-  "apk_sha256": "fcb59f9c2b512eea3ad122f5a1e42e13faf767e77ba9541c655da22a720cb20e",
-  "apk_size_bytes": 93539949,
+  "version": "1.0.5",
+  "build": 6,
+  "apk_url": "https://github.com/e-roz/Capstone/releases/download/v1.0.5/app-release.apk",
+  "apk_sha256": "b43ab61dd3beb66066f99d06d772fab38f0fd8dd542d29cc9e05886a8eb64d44",
+  "apk_size_bytes": 93690769,
   "mandatory": false,
   "release_notes": [
-    "See which of your vehicles is parked, and where, right on Home"
+    "New: pay a bill by scanning a QR code from another phone"
   ]
 }

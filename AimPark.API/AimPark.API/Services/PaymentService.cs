@@ -280,7 +280,11 @@ namespace AimPark.API.Services
             CancellationToken ct)
         {
             if (!_gateway.TryReadEvent(rawBody, headers, out var settlement)) return false;
-            if (!settlement.Paid) return false;
+
+            // A real message about something other than money arriving. Nothing
+            // to act on, and nothing wrong with it — answering "refused" would
+            // only make the provider send it again.
+            if (!settlement.Paid) return true;
 
             var payment = await _payments.FindAsync(
                 p => p.ProviderPaymentId == settlement.ProviderPaymentId, ct);

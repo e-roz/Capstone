@@ -39,6 +39,29 @@ namespace AimPark.API.Sync.Site
             await ApplyVisitorPassesAsync(snapshot.VisitorPasses, ct);
             await ApplyVisitorCardsAsync(snapshot.VisitorCards, ct);
             await ApplyIncidentsAsync(snapshot.Incidents, snapshot.IncidentEvidence, ct);
+            await ApplyWrongBayFlagsAsync(snapshot.WrongBayFlags, ct);
+        }
+
+        private async Task ApplyWrongBayFlagsAsync(List<WrongBayFlag> flags, CancellationToken ct)
+        {
+            var ids = flags.Select(f => f.Id).ToList();
+            var local = await _db.Set<WrongBayFlag>()
+                .Where(f => ids.Contains(f.Id))
+                .ToDictionaryAsync(f => f.Id, ct);
+            var bays = (await _db.Set<ParkingSlot>().Select(s => s.Id).ToListAsync(ct)).ToHashSet();
+
+            foreach (var source in flags.Where(f => bays.Contains(f.SlotId)))
+            {
+                if (!local.TryGetValue(source.Id, out var flag))
+                    _db.Set<WrongBayFlag>().Add(source);
+                // Raised and cleared here, reviewed here or in the cloud. Newer wins.
+                else if (source.UpdatedAt > flag.UpdatedAt)
+                    _db.Entry(flag).CurrentValues.SetValues(source);
+            }
+
+            // Nothing is deleted: one raised here while offline is not in the
+            // cloud's copy yet.
+            await _db.SaveChangesAsync(ct);
         }
 
         private async Task ApplyUsersAsync(List<SyncUser> users, CancellationToken ct)
