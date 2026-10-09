@@ -56,6 +56,9 @@ dependencies:
   # the address bar of a real browser is the only way they can tell they are
   # doing it on the provider's page and not on ours.
   url_launcher: ^6.3.1
+  # Draws a checkout address as a QR code, so a bill can be paid by scanning it
+  # from another phone. Pure Dart: no native setup.
+  qr_flutter: ^4.1.0
   firebase_core: ^4.12.1
   firebase_messaging: ^16.4.3
   flutter_local_notifications: ^22.2.0
