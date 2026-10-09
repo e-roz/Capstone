@@ -409,6 +409,35 @@ public class HubConversationTests
     }
 
     [Fact]
+    public async Task AnotherBoardsChatterIsNotTheHubAnswering()
+    {
+        // A different device on the port (a gate reader, an unflashed board) still
+        // prints. That must not keep it "connected and responding".
+        var hub = new FakeHub();
+        await hub.BootAsync();
+
+        hub.Wait(HubConversation.QuietAfter - TimeSpan.FromSeconds(1));
+        await hub.Say("ets Jun  8 2016 00:22:57");
+        await hub.Say("rst:0x1 (POWERON_RESET),boot:0x13 (SPI_FAST_FLASH_BOOT)");
+        hub.Wait(TimeSpan.FromSeconds(2));
+
+        Assert.True(hub.Server.IsQuiet());
+    }
+
+    [Fact]
+    public async Task TheHubsOwnCommentsStillCountAsAnswering()
+    {
+        var hub = new FakeHub();
+        await hub.BootAsync();
+
+        hub.Wait(HubConversation.QuietAfter - TimeSpan.FromSeconds(1));
+        await hub.Say("# Scanning for nodes");
+        hub.Wait(TimeSpan.FromSeconds(2));
+
+        Assert.False(hub.Server.IsQuiet());
+    }
+
+    [Fact]
     public async Task GoesQuietWhenTheHubStopsAnswering()
     {
         var hub = new FakeHub();

@@ -129,6 +129,7 @@ namespace AimPark.API.Controllers
                     port = h.Port,
                     connected = h.Connected,
                     responding = h.Responding,
+                    notTheHub = h.NotTheHub,
                     error = h.Error,
                     lastSeenAt = h.LastSeenAt,
                     simulated = h.Simulated,

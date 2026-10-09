@@ -12,13 +12,19 @@ namespace AimPark.API.Sync.Site.GateReaders
     /// A COM port with an ESP-NOW hub on it, and what each board behind the
     /// hub stands for: a gate node for a gate reader, a sensor for a slot.
     /// </summary>
-    public record HubBinding(string Port, Dictionary<string, Guid> Gates, Dictionary<string, Guid> Slots);
+    /// <param name="HubId">
+    /// The hub's own id (its MAC), learned the first time it answers PING. A device
+    /// on this port that answers with another id, or not at all, is not this hub.
+    /// </param>
+    public record HubBinding(
+        string Port, Dictionary<string, Guid> Gates, Dictionary<string, Guid> Slots, string? HubId = null);
 
     /// <param name="BoundTo">The gate reader a gate node logs as, or the slot a sensor watches.</param>
     public record HubNodeState(HubNodeView Node, Guid? BoundTo);
 
     /// <param name="Responding">Connected, and has answered within <see cref="HubConversation.QuietAfter"/>.</param>
     /// <param name="Simulated">Fed by hand from the Gate Readers screen in a development build.</param>
+    /// <param name="NotTheHub">The device on the port is a different board, or never said it is the hub.</param>
     /// <param name="Requests">Boards asking to join, by id (MAC), waiting to be accepted and named.</param>
     /// <param name="BoardIds">The id of each paired board, by the name the hub calls it.</param>
     /// <param name="Diagnoses">The last connection test of the hub ("HUB") and of each board.</param>
@@ -27,7 +33,8 @@ namespace AimPark.API.Sync.Site.GateReaders
         bool Simulated, IReadOnlyList<HubNodeState> Nodes,
         IReadOnlyList<(string Id, HubNodeKind Kind)> Requests,
         IReadOnlyDictionary<string, string> BoardIds,
-        IReadOnlyDictionary<string, HubDiagnosis> Diagnoses);
+        IReadOnlyDictionary<string, HubDiagnosis> Diagnoses,
+        bool NotTheHub = false);
 
     /// <summary>
     /// The ESP-NOW hubs plugged into this PC (firmware/aimpark_espnow_hub):
@@ -108,11 +115,14 @@ namespace AimPark.API.Sync.Site.GateReaders
                     lostSince = anyUp || linked.Count == 0 ? null : lostSince ?? DateTime.UtcNow;
                     var look = linked.Count == 0 || DateTime.UtcNow - lostSince > MovedAfter;
 
-                    if (look && await FindHubAsync(linked, stoppingToken) is { } found)
+                    string? expectedId;
+                    lock (_lock) expectedId = _bindings.Values.FirstOrDefault()?.HubId;
+
+                    if (look && await FindHubAsync(linked, expectedId, stoppingToken) is { } found)
                     {
-                        _logger.LogInformation("Found the ESP-NOW hub on {Port}", found);
-                        if (linked.Count == 0) Bind(found);
-                        else Move(linked[0], found);
+                        _logger.LogInformation("Found the ESP-NOW hub {Id} on {Port}", found.Id, found.Port);
+                        if (linked.Count == 0) Bind(found.Port, found.Id);
+                        else Move(linked[0], found.Port);
                         lostSince = null;
                     }
                     await Task.Delay(LookForHubEvery, stoppingToken);
@@ -145,7 +155,12 @@ namespace AimPark.API.Sync.Site.GateReaders
             {
                 var conversation = h.Session.Conversation;
                 var lastLine = conversation.LastLineAt;
-                var responding = h.Session.Simulated || (h.Session.Connected && !conversation.IsQuiet());
+                var notTheHub = !h.Session.Simulated && conversation.IdentityProblem is not null;
+
+                // A different device on the port may print all day. It is not the
+                // hub answering, so it is never "responding".
+                var responding = h.Session.Simulated
+                    || (h.Session.Connected && !notTheHub && !conversation.IsQuiet());
 
                 var nodes = conversation.Nodes()
                     .Select(n => new HubNodeState(n, BoundTo(h.Binding, n)))
@@ -159,8 +174,9 @@ namespace AimPark.API.Sync.Site.GateReaders
                     .ToDictionary(n => n.Node, n => n.Id!);
 
                 return new HubState(h.Binding.Port, h.Session.Connected, responding,
-                    conversation.HubError ?? h.Session.Error, lastLine, h.Session.Simulated, nodes,
-                    conversation.Requests(), ids, conversation.Diagnoses());
+                    conversation.IdentityProblem ?? conversation.HubError ?? h.Session.Error,
+                    lastLine, h.Session.Simulated, nodes,
+                    conversation.Requests(), ids, conversation.Diagnoses(), notTheHub);
             }).ToList();
         }
 
@@ -178,12 +194,12 @@ namespace AimPark.API.Sync.Site.GateReaders
         // ── What the panel changes ────────────────────────────────────────────
 
         /// <summary>Links a port as a hub. Keeps what its nodes stood for if it already was one.</summary>
-        public void Bind(string port)
+        public void Bind(string port, string? hubId = null)
         {
             lock (_lock)
             {
                 if (_bindings.ContainsKey(port)) return;
-                _bindings[port] = new HubBinding(port, [], []);
+                _bindings[port] = new HubBinding(port, [], [], hubId);
             }
 
             Start(port);
@@ -201,7 +217,7 @@ namespace AimPark.API.Sync.Site.GateReaders
             {
                 if (!_bindings.Remove(from, out var binding)) return;
                 _sessions.Remove(from, out old);
-                _bindings[to] = new HubBinding(to, binding.Gates, binding.Slots);
+                _bindings[to] = new HubBinding(to, binding.Gates, binding.Slots, binding.HubId);
             }
 
             old?.Stop();
@@ -514,7 +530,8 @@ namespace AimPark.API.Sync.Site.GateReaders
         /// Asks each free COM port PING; the one that answers HUB is the hub.
         /// Ports a USB gate reader is linked to are left alone.
         /// </summary>
-        private async Task<string?> FindHubAsync(IReadOnlyCollection<string> skip, CancellationToken ct)
+        private async Task<(string Port, string Id)?> FindHubAsync(
+            IReadOnlyCollection<string> skip, string? expectedId, CancellationToken ct)
         {
             var ports = SerialPort.GetPortNames()
                 .Distinct(StringComparer.OrdinalIgnoreCase)
@@ -539,8 +556,13 @@ namespace AimPark.API.Sync.Site.GateReaders
                         try { line = serial.ReadLine(); }
                         catch (TimeoutException) { continue; }
 
-                        if (HubProtocol.Parse(line) is HubHello)
-                            return port;
+                        // A hub that is not the one linked (another board with the same
+                        // sketch) is left alone: moving the link to it would hand this
+                        // hub's gates and sensors to a stranger.
+                        if (HubProtocol.Parse(line) is HubHello hello
+                            && (expectedId is null
+                                || string.Equals(hello.Id, expectedId, StringComparison.OrdinalIgnoreCase)))
+                            return (port, hello.Id);
                     }
                 }
                 catch (OperationCanceledException) when (ct.IsCancellationRequested)
@@ -565,8 +587,28 @@ namespace AimPark.API.Sync.Site.GateReaders
                 slotLost: (node, ct) => ApplySlotAsync(port, node, (current, _) => SlotSensorRule.Lost(current), false, ct),
                 log: message => _logger.LogInformation("Hub on {Port}: {Message}", port, message));
 
-            lock (_lock) _sessions[port] = session;
+            lock (_lock)
+            {
+                session.Conversation.ExpectedHubId = _bindings.TryGetValue(port, out var binding) ? binding.HubId : null;
+                _sessions[port] = session;
+            }
             session.Task = Task.Run(() => RunAsync(session));
+        }
+
+        /// <summary>
+        /// Keeps the hub's id once it has said it, so a different board on this
+        /// port later is told apart from it. Only learned, never overwritten: a
+        /// replaced hub is a deliberate unlink and relink.
+        /// </summary>
+        private void RememberHubId(string port, string id)
+        {
+            lock (_lock)
+            {
+                if (!_bindings.TryGetValue(port, out var binding) || binding.HubId is not null) return;
+                _bindings[port] = binding with { HubId = id };
+            }
+
+            SaveBindings();
         }
 
         private async Task RunAsync(HubSession session)
@@ -611,6 +653,27 @@ namespace AimPark.API.Sync.Site.GateReaders
                         }
 
                         session.Conversation.Tick();
+
+                        // Who is on this port? The hub answers PING with its id; any
+                        // other device stays silent or answers with another id.
+                        if (session.Conversation.PingDue())
+                            session.TrySend(HubProtocol.Ping);
+
+                        session.Conversation.CheckIdentity();
+
+                        if (session.Conversation.HubId is { } id)
+                            RememberHubId(port, id);
+
+                        if (session.Conversation.IdentityProblem is not null)
+                        {
+                            // Not the hub. Reopening it would only reboot somebody
+                            // else's board every half minute, so it is left running
+                            // and the screen says what it is. Unplugging it ends the
+                            // session here.
+                            if (!SerialPort.GetPortNames().Contains(port, StringComparer.OrdinalIgnoreCase))
+                                throw new IOException($"{port} is gone.");
+                            continue;
+                        }
 
                         // Asked every 10 s and silent for 25: a hung hub. Reopening
                         // the port reboots it, which is the cure.
@@ -746,7 +809,7 @@ namespace AimPark.API.Sync.Site.GateReaders
             _ => null
         };
 
-        private static HubBinding Copy(HubBinding b) => new(b.Port, new(b.Gates), new(b.Slots));
+        private static HubBinding Copy(HubBinding b) => new(b.Port, new(b.Gates), new(b.Slots), b.HubId);
 
         // ── The bindings file ─────────────────────────────────────────────────
 
@@ -760,7 +823,8 @@ namespace AimPark.API.Sync.Site.GateReaders
                 // Node names are matched as the hub prints them: upper case.
                 return bindings.Select(b => new HubBinding(b.Port,
                         (b.Gates ?? []).ToDictionary(g => g.Key.ToUpperInvariant(), g => g.Value),
-                        (b.Slots ?? []).ToDictionary(s => s.Key.ToUpperInvariant(), s => s.Value)))
+                        (b.Slots ?? []).ToDictionary(s => s.Key.ToUpperInvariant(), s => s.Value),
+                        b.HubId))
                     .ToList();
             }
             catch (Exception ex)
