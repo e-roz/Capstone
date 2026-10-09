@@ -135,6 +135,9 @@ class HubPort {
 
   /// Connected and answering STATUS.
   final bool responding;
+
+  /// The device on this port is another board, or never said it is the hub.
+  final bool notTheHub;
   final String? error;
   final DateTime? lastSeenAt;
 
@@ -158,6 +161,7 @@ class HubPort {
     required this.simulated,
     required this.nodes,
     required this.requests,
+    this.notTheHub = false,
     this.diagnoses = const {},
   });
 
@@ -165,6 +169,7 @@ class HubPort {
         port: json['port']?.toString() ?? '',
         connected: json['connected'] as bool? ?? false,
         responding: json['responding'] as bool? ?? false,
+        notTheHub: json['notTheHub'] as bool? ?? false,
         error: json['error']?.toString(),
         lastSeenAt: _date(json['lastSeenAt']),
         simulated: json['simulated'] as bool? ?? false,

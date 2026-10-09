@@ -58,6 +58,15 @@ namespace AimPark.API.Sync.Site.GateReaders
         /// <summary>A hub that hasn't printed its banner by now didn't reboot when the port opened.</summary>
         public static readonly TimeSpan ReadyWithin = TimeSpan.FromSeconds(4);
 
+        /// <summary>How often a device that hasn't said who it is gets asked PING.</summary>
+        public static readonly TimeSpan PingEvery = TimeSpan.FromSeconds(3);
+
+        /// <summary>
+        /// A device still silent about who it is this long after the port opened is
+        /// not a hub. Generous: the hub reboots on open and needs a few seconds.
+        /// </summary>
+        public static readonly TimeSpan IdentifyWithin = TimeSpan.FromSeconds(20);
+
         /// <summary>With STATUS every 10 s, a hub this quiet has stopped answering.</summary>
         public static readonly TimeSpan QuietAfter = TimeSpan.FromSeconds(25);
 
@@ -146,6 +155,20 @@ namespace AimPark.API.Sync.Site.GateReaders
 
         public DateTime? LastLineAt { get; private set; }
 
+        /// <summary>
+        /// The id (the hub's MAC) this PC linked, or null when none has been learned
+        /// yet. A hub answering with another id is a different board.
+        /// </summary>
+        public string? ExpectedHubId { get; set; }
+
+        /// <summary>The id the device on the port gave in answer to PING, or null.</summary>
+        public string? HubId { get; private set; }
+
+        /// <summary>Why the device on the port is not the linked hub, or null.</summary>
+        public string? IdentityProblem { get; private set; }
+
+        private DateTime _nextPing;
+
         /// <summary>The hub's own complaint, e.g. "This board is not the hub". Cleared when it boots again.</summary>
         public string? HubError { get; private set; }
 
@@ -160,6 +183,43 @@ namespace AimPark.API.Sync.Site.GateReaders
                 _ready = false;
                 _readyBy = _connectedAt + ReadyWithin;
                 HubError = null;
+                HubId = null;
+                IdentityProblem = null;
+                _nextPing = _connectedAt + ReadyWithin;
+            }
+        }
+
+        /// <summary>
+        /// True when this device should be asked PING now. A board that is not the
+        /// hub never answers, and a hub that was linked before its id was known
+        /// needs asking once. Call as often as Tick; it paces itself.
+        /// </summary>
+        public bool PingDue()
+        {
+            lock (_lock)
+            {
+                if (HubId is not null || IdentityProblem is not null) return false;
+
+                var now = _now();
+                if (now < _nextPing) return false;
+
+                _nextPing = now + PingEvery;
+                return true;
+            }
+        }
+
+        /// <summary>
+        /// Once the device has had long enough to say HUB and has not, it is not the
+        /// hub. Nothing is ever sent to it after this but the occasional PING.
+        /// </summary>
+        public void CheckIdentity()
+        {
+            lock (_lock)
+            {
+                if (HubId is not null || IdentityProblem is not null) return;
+                if (_now() - _connectedAt <= IdentifyWithin) return;
+
+                IdentityProblem = "This is not the ESP-NOW hub: the device on this port did not answer PING.";
             }
         }
 
@@ -214,8 +274,18 @@ namespace AimPark.API.Sync.Site.GateReaders
             if (line.Length == 0) return Task.CompletedTask;
 
             var now = _now();
-            LastLineAt = now;
             Note(now, false, line);
+
+            // Only the hub's own words count as hearing from it. A board on this
+            // port that is not the hub still prints — boot logs, debug output — and
+            // treating that as the hub answering showed a different device as
+            // connected and responding.
+            var parsed = HubProtocol.Parse(line);
+            var isHubLine = HubProtocol.IsBanner(line)
+                || HubProtocol.IsReady(line)
+                || parsed is not HubUnknown;
+            if (isHubLine)
+                LastLineAt = now;
 
             if (HubProtocol.IsBanner(line))
             {
@@ -240,7 +310,7 @@ namespace AimPark.API.Sync.Site.GateReaders
                 return Task.CompletedTask;
             }
 
-            switch (HubProtocol.Parse(line))
+            switch (parsed)
             {
                 case HubTap tap:
                     lock (_lock)
@@ -394,7 +464,16 @@ namespace AimPark.API.Sync.Site.GateReaders
                     _log?.Invoke($"{error.Id}: {error.Message}");
                     return Task.CompletedTask;
 
-                case HubHello:
+                case HubHello hello:
+                    lock (_lock)
+                    {
+                        HubId = hello.Id;
+                        IdentityProblem = ExpectedHubId is not null
+                            && !string.Equals(hello.Id, ExpectedHubId, StringComparison.OrdinalIgnoreCase)
+                            ? $"This is a different hub ({hello.Id}). This PC is linked to {ExpectedHubId}. "
+                              + "Unlink it to use this one."
+                            : null;
+                    }
                     return Task.CompletedTask;
 
                 case HubDiag diag:

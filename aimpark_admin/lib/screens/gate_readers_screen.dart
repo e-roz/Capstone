@@ -358,6 +358,8 @@ class _GateReadersScreenState extends ConsumerState<GateReadersScreen> {
 
     final (label, intent) = switch (p) {
       GateReaderPort(isLinked: false) => ('Not linked', StatusIntent.neutral),
+      GateReaderPort(isHub: true) when hub?.connected == true && hub?.notTheHub == true =>
+        ('Not the hub', StatusIntent.danger),
       GateReaderPort(isHub: true) when hub?.connected == true && hub?.responding == false =>
         ('Not answering', StatusIntent.warning),
       GateReaderPort(connected: true) => ('Connected', StatusIntent.success),
@@ -400,6 +402,8 @@ class _GateReadersScreenState extends ConsumerState<GateReadersScreen> {
     final online = boards.where((n) => n.online).length;
     final status = switch (hub) {
       HubPort(connected: false) => 'Not connected. Check the hub\'s USB cable.',
+      HubPort(notTheHub: true) =>
+        hub.error ?? 'The device on this port is not the ESP-NOW hub.',
       HubPort(responding: false) =>
         'Connected but not answering. It restarts itself; if it keeps happening, unplug it and plug it back in.',
       _ => '$online of ${boards.length} boards online · heard from ${lastSeenLabel(hub.lastSeenAt)}',
