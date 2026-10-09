@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:qr_flutter/qr_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../../../core/theme/theme.dart';
@@ -36,6 +37,19 @@ class _PaymentDetailScreenState extends ConsumerState<PaymentDetailScreen>
   /// already paid yesterday should not throw confetti.
   bool _sentToProvider = false;
 
+  /// The checkout being shown as a QR code, if the payer chose that route.
+  ///
+  /// Only the newest one is worth showing: opening another replaces it on the
+  /// server, and the old code stops working there too.
+  Checkout? _qr;
+
+  /// Quietly asks whether a QR checkout has been paid.
+  ///
+  /// The payer is scanning with another phone, so this one never leaves the
+  /// foreground — the "came back from the browser" check on resume never fires,
+  /// and without this the bill would sit on "waiting" after it was paid.
+  Timer? _qrPoll;
+
   @override
   void initState() {
     super.initState();
@@ -44,6 +58,7 @@ class _PaymentDetailScreenState extends ConsumerState<PaymentDetailScreen>
 
   @override
   void dispose() {
+    _qrPoll?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
@@ -67,21 +82,18 @@ class _PaymentDetailScreenState extends ConsumerState<PaymentDetailScreen>
     unawaited(_checkForSettlement());
   }
 
-  Future<void> _pay() async {
+  /// Opens a fresh checkout and hands it to [deliver] — the browser, or a QR
+  /// code — then makes the screen say the bill is Processing.
+  Future<void> _startCheckout(
+    Future<void> Function(Checkout checkout) deliver,
+  ) async {
     setState(() => _isStarting = true);
     try {
       final checkout = await ref
           .read(paymentsRepositoryProvider)
           .startCheckout(widget.paymentId);
 
-      final opened = await launchUrl(
-        Uri.parse(checkout.checkoutUrl),
-        mode: LaunchMode.externalApplication,
-      );
-
-      if (!opened) {
-        throw Exception('Could not open the payment page.');
-      }
+      await deliver(checkout);
 
       _sentToProvider = true;
 
@@ -94,6 +106,57 @@ class _PaymentDetailScreenState extends ConsumerState<PaymentDetailScreen>
     } finally {
       if (mounted) setState(() => _isStarting = false);
     }
+  }
+
+  Future<void> _pay() => _startCheckout((checkout) async {
+    // A browser checkout replaces any QR: the server only honours the newest
+    // one, so leaving the old code up would show a code that no longer works.
+    _stopQr();
+
+    final opened = await launchUrl(
+      Uri.parse(checkout.checkoutUrl),
+      mode: LaunchMode.externalApplication,
+    );
+
+    if (!opened) {
+      throw Exception('Could not open the payment page.');
+    }
+  });
+
+  Future<void> _showQr() => _startCheckout((checkout) async {
+    if (!mounted) return;
+    setState(() => _qr = checkout);
+    _startQrPolling();
+  });
+
+  void _stopQr() {
+    _qrPoll?.cancel();
+    _qrPoll = null;
+    if (_qr != null && mounted) setState(() => _qr = null);
+  }
+
+  void _startQrPolling() {
+    _qrPoll?.cancel();
+    _qrPoll = Timer.periodic(const Duration(seconds: 4), (_) async {
+      if (!mounted || _isChecking) return;
+
+      try {
+        // Straight to the repository rather than invalidating the provider:
+        // refreshing the screen every few seconds would flash it for nothing
+        // while nothing has changed.
+        final payment = await ref
+            .read(paymentsRepositoryProvider)
+            .getDetail(widget.paymentId);
+
+        if (!mounted || !payment.isPaid) return;
+
+        _stopQr();
+        ref.invalidate(paymentDetailProvider(widget.paymentId));
+        _onSettled(payment);
+      } catch (_) {
+        // A missed check costs nothing; the next one is four seconds away.
+      }
+    });
   }
 
   /// Asks the server whether the settlement has arrived yet.
@@ -148,6 +211,8 @@ class _PaymentDetailScreenState extends ConsumerState<PaymentDetailScreen>
 
   /// Everything a settled bill changes, and the one dialog that says so.
   void _onSettled(Payment payment) {
+    _stopQr();
+
     // Paying moves more than this one screen. Only the detail provider used to
     // be invalidated, so the payments list, the violation the fine belongs to
     // and the standing meter on Home all kept serving what they had cached
@@ -233,6 +298,10 @@ class _PaymentDetailScreenState extends ConsumerState<PaymentDetailScreen>
                           'settles as soon as they confirm it.',
                 intent: StatusIntent.info,
               ),
+              if (_qr != null) ...[
+                const SizedBox(height: AppSpacing.md),
+                _QrCard(checkout: _qr!),
+              ],
               const SizedBox(height: AppSpacing.md),
               AppButton(
                 label: 'Check payment status',
@@ -241,18 +310,94 @@ class _PaymentDetailScreenState extends ConsumerState<PaymentDetailScreen>
               ),
               const SizedBox(height: AppSpacing.sm),
               AppButton(
+                label: _qr == null ? 'Show QR code' : 'New QR code',
+                style: AppButtonStyle.ghost,
+                onPressed: _isStarting || _isChecking ? null : _showQr,
+              ),
+              const SizedBox(height: AppSpacing.sm),
+              AppButton(
                 label: 'Pay again',
                 style: AppButtonStyle.ghost,
                 onPressed: _isStarting || _isChecking ? null : _pay,
               ),
-            ] else if (!payment.isPaid)
+            ] else if (!payment.isPaid) ...[
               AppButton(
                 label: 'Pay ${Formatters.peso(payment.amountDue)}',
                 isLoading: _isStarting,
                 onPressed: _isStarting ? null : _pay,
               ),
+              const SizedBox(height: AppSpacing.sm),
+              AppButton(
+                label: 'Pay with QR code',
+                style: AppButtonStyle.ghost,
+                onPressed: _isStarting ? null : _showQr,
+              ),
+            ],
           ],
         ),
+      ),
+    );
+  }
+}
+
+/// A checkout address drawn as a QR code, to be scanned from another phone.
+class _QrCard extends StatelessWidget {
+  const _QrCard({required this.checkout});
+
+  final Checkout checkout;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = context.tokens;
+
+    return AppCard(
+      padding: const EdgeInsets.all(AppSpacing.x5),
+      child: Column(
+        children: [
+          Text('SCAN TO PAY', style: context.text.labelSmall),
+          const SizedBox(height: AppSpacing.md),
+          // Black on white with a margin, whatever the app theme is: a code
+          // drawn in brand colours or on a dark card is the kind a camera
+          // fails to read, and a payment is the wrong place to find out.
+          Container(
+            padding: const EdgeInsets.all(AppSpacing.md),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: QrImageView(
+              // Keyed on the address so a new checkout always redraws the code,
+              // and so a test can tell which checkout is on screen.
+              key: ValueKey(checkout.checkoutUrl),
+              data: checkout.checkoutUrl,
+              size: 220,
+              padding: EdgeInsets.zero,
+              backgroundColor: Colors.white,
+              eyeStyle: const QrEyeStyle(
+                eyeShape: QrEyeShape.square,
+                color: Colors.black,
+              ),
+              dataModuleStyle: const QrDataModuleStyle(
+                dataModuleShape: QrDataModuleShape.square,
+                color: Colors.black,
+              ),
+            ),
+          ),
+          const SizedBox(height: AppSpacing.md),
+          Text(
+            Formatters.peso(checkout.amountDue),
+            style: AppTypography.tabular(context.text.titleLarge!),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            checkout.isSimulated
+                ? 'Scan with another phone to open the test payment page. '
+                      'No real money moves.'
+                : 'Scan with GCash, Maya, or your phone camera.',
+            textAlign: TextAlign.center,
+            style: context.text.bodySmall?.copyWith(color: t.text.secondary),
+          ),
+        ],
       ),
     );
   }
