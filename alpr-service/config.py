@@ -14,8 +14,18 @@ from pathlib import Path
 # between PCs, "next to the code" stops meaning anything stable, and a
 # read-only or temp extraction folder couldn't be written to anyway. This is
 # the same place Windows apps normally keep per-user settings.
-_APP_DATA_DIR = Path(os.environ.get("LOCALAPPDATA", Path.home())) / "AimParkAlpr"
+_BASE_DIR = Path(os.environ.get("LOCALAPPDATA", Path.home())) / "AimParkAlpr"
+_APP_DATA_DIR = _BASE_DIR
 CONFIG_PATH = _APP_DATA_DIR / "config.json"
+
+
+def use_profile(name: str) -> None:
+    """Keep this run's identity in its own folder, so a second camera on the
+    same PC (`AimParkALPR.exe --profile gate2`) doesn't share, or overwrite,
+    the first one's device key. No profile = the original single-camera file."""
+    global _APP_DATA_DIR, CONFIG_PATH
+    _APP_DATA_DIR = _BASE_DIR / "profiles" / name
+    CONFIG_PATH = _APP_DATA_DIR / "config.json"
 
 # Every gate PC talks to the same server, so this is only something a guard
 # would ever need to change if a technical person is troubleshooting — the

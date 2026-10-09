@@ -6,6 +6,7 @@ capture.py/detect.py with something a guard can actually read.
 
 from __future__ import annotations
 
+import argparse
 import sys
 import threading
 import time
@@ -34,7 +35,7 @@ from PySide6.QtWidgets import (
 
 from api_client import ApiClient, FrameClient, SendResult, login
 from capture import Camera
-from config import Config, DEFAULT_API_BASE, load_config_or_none, save_config
+from config import Config, DEFAULT_API_BASE, load_config_or_none, save_config, use_profile
 from plate_reader import CONFIDENCE_THRESHOLD, PlateReader
 
 PH_TIMEZONE = ZoneInfo("Asia/Manila")
@@ -586,7 +587,13 @@ class LoginDialog(QDialog):
 
 
 def main() -> int:
-    app = QApplication(sys.argv)
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--profile", help="separate saved setup, for a second camera on this PC")
+    args, qt_args = parser.parse_known_args()
+    if args.profile:
+        use_profile(args.profile)
+
+    app = QApplication([sys.argv[0], *qt_args])
 
     config = load_config_or_none()
     if config is None:
