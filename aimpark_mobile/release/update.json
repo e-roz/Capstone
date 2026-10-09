@@ -1,11 +1,11 @@
 {
-  "version": "1.0.4",
-  "build": 5,
-  "apk_url": "https://github.com/e-roz/Capstone/releases/download/v1.0.4/app-release.apk",
-  "apk_sha256": "586e07547efd13ec26c0de0ed4e23140b192e30f1d46aab78f3076c42fcb6cca",
-  "apk_size_bytes": 93540049,
+  "version": "1.0.5",
+  "build": 6,
+  "apk_url": "https://github.com/e-roz/Capstone/releases/download/v1.0.5/app-release.apk",
+  "apk_sha256": "b43ab61dd3beb66066f99d06d772fab38f0fd8dd542d29cc9e05886a8eb64d44",
+  "apk_size_bytes": 93690769,
   "mandatory": false,
   "release_notes": [
-    "Pay parking fees and fines with GCash or Maya, then tap Back to AimPark to see your receipt"
+    "New: pay a bill by scanning a QR code from another phone"
   ]
 }
