@@ -161,6 +161,7 @@ its wording will change. The codes will not.
 | `UNKNOWN_TAG` | 404 | Card not registered | Stay shut, red, "Not registered" |
 | `RFID_SUSPENDED` | 400 | Access suspended by a violation | Stay shut, red, "Access suspended" |
 | `ALREADY_INSIDE` | 400 | Vehicle already has an open session | Stay shut, amber, "Already inside" |
+| `UNPAID_BALANCE` | 400 | Card holder owes money (entry only; exit is never refused) | Stay shut, red, "Unpaid balance" |
 | `LOT_FULL` | 400 | No compatible bay anywhere | Stay shut, red, "Lot full" |
 | `NO_VEHICLE_REGISTERED` | 400 | Account has no vehicle on file | Stay shut, red, "No vehicle" |
 | `SLOT_UNAVAILABLE` | 400/404 | Named slot was taken (not used by gates) | Stay shut, red |

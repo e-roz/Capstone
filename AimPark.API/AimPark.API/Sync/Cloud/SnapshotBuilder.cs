@@ -62,9 +62,33 @@ namespace AimPark.API.Sync.Cloud
                 })
                 .ToListAsync(ct);
 
+            var now = DateTime.UtcNow;
+            var dues = await _db.Set<PaymentTransaction>().AsNoTracking()
+                .Where(p => (p.Status == PaymentStatus.Pending || p.Status == PaymentStatus.Processing)
+                            && p.AmountDue > 0m)
+                .Select(p => new SyncDue
+                {
+                    Id = p.Id,
+                    UserId = p.UserId,
+                    Source = p.Source,
+                    Status = p.Status,
+                    AmountDue = p.AmountDue,
+                    DueAt = p.DueAt,
+                    CreatedAt = p.CreatedAt
+                })
+                .ToListAsync(ct);
+            var settledSince = now.AddDays(-7);
+            var settled = await _db.Set<PaymentTransaction>().AsNoTracking()
+                .Where(p => (p.Status == PaymentStatus.Paid || p.Status == PaymentStatus.Waived)
+                            && (p.PaidAt ?? p.CreatedAt) > settledSince)
+                .Select(p => p.Id)
+                .ToListAsync(ct);
+
             return new SiteSnapshot
             {
-                GeneratedAt = DateTime.UtcNow,
+                GeneratedAt = now,
+                Dues = dues,
+                SettledPaymentIds = settled,
                 Users = users,
                 Vehicles = vehicles,
                 VisitorPasses = await _db.Set<VisitorPass>().AsNoTracking().ToListAsync(ct),

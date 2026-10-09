@@ -30,10 +30,6 @@ namespace AimPark.API.Sync.Site
         public Task SendToUserAsync(Guid userId, string title, string body, IDictionary<string, string>? data, CancellationToken ct)
             => QueueAsync(new PushRequest { TargetUserId = userId, Title = title, Body = body, Data = Copy(data) }, ct);
 
-        // The watch list lives in the cloud, so the cloud resolves who is on it.
-        public Task SendToSlotWatchersAsync(string title, string body, IDictionary<string, string>? data, CancellationToken ct)
-            => QueueAsync(new PushRequest { ToSlotWatchers = true, Title = title, Body = body, Data = Copy(data) }, ct);
-
         private async Task QueueAsync(PushRequest push, CancellationToken ct)
         {
             // Same promise as FcmPushSender: never throws.

@@ -23,5 +23,15 @@ namespace AimPark.API.DTOs
 
         /// <summary>When a temporary suspension lifts. Null if permanent.</summary>
         public DateTime? SuspensionEndsAt { get; set; }
+
+        /// <summary>
+        /// Why the gate would refuse ENTRY right now for a reason other than the
+        /// card being suspended — currently only <c>"UNPAID_BALANCE"</c>. Null
+        /// when nothing blocks. Older app versions ignore it.
+        /// </summary>
+        public string? EntryBlockedReason { get; set; }
+
+        /// <summary>Total of unpaid bills, or null when the user owes nothing.</summary>
+        public decimal? OutstandingBalance { get; set; }
     }
 }
