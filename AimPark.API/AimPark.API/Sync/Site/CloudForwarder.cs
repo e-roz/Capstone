@@ -30,6 +30,8 @@ namespace AimPark.API.Sync.Site
             ("POST", "/api/admin/parking/log-exit", false),
             ("GET", "/api/admin/parking/active-sessions", false),
             ("GET", "/api/admin/parking/slots", false),
+            // Raised here by the slot sensors, and checked by the guard on duty.
+            ("*", "/api/admin/parking/wrong-bay", true),
             ("GET", "/api/admin/logs/rfid-access", false),
             // Security reports and follows up incidents from the guard post.
             // Kept in step with the cloud both ways — see SnapshotApplier and

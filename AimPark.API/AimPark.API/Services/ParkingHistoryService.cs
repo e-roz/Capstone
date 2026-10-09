@@ -228,16 +228,26 @@ namespace AimPark.API.Services
                     message = "This vehicle is already inside the lot."
                 });
 
-            var registeredPlates = await _db.Set<Vehicle>().AsNoTracking()
+            var registered = await _db.Set<Vehicle>().AsNoTracking()
                 .Where(v => v.UserId == user.Id)
-                .Select(v => v.PlateNumber)
+                .Select(v => new { v.PlateNumber, v.VehicleType })
                 .ToListAsync(ct);
 
             var alprCheck = await CheckAlprAsync(
-                dto.Gate, registeredPlates, dto.RfidTagId ?? string.Empty,
+                dto.Gate, registered.Select(v => v.PlateNumber).ToList(), dto.RfidTagId ?? string.Empty,
                 userId: user.Id, visitorPassId: null, loggedByDeviceId, nowUtc, ct);
 
             if (alprCheck.Denial is not null) return alprCheck.Denial;
+
+            // One card can cover a car and a motorcycle, so the card alone
+            // does not say which one is at the barrier. The plate the camera
+            // just matched does. Without a read, a holder with only one kind
+            // of vehicle is still certain; one with both is not.
+            var registeredTypes = registered.Select(v => v.VehicleType).Distinct().ToList();
+            VehicleType? vehicleType =
+                registered.FirstOrDefault(v => v.PlateNumber == alprCheck.Matched?.PlateNumber) is { } read
+                    ? read.VehicleType
+                    : registeredTypes.Count == 1 ? registeredTypes[0] : null;
 
             ParkingSlot? slot = null;
             if (dto.SlotId is not null)
@@ -259,13 +269,8 @@ namespace AimPark.API.Services
 
                 // Naming the slot by hand used to skip every rule the allocator
                 // applies, so the panel would put a car in a motorcycle bay.
-                var types = await _db.Set<Vehicle>().AsNoTracking()
-                    .Where(v => v.UserId == user.Id)
-                    .Select(v => v.VehicleType)
-                    .Distinct()
-                    .ToListAsync(ct);
-
-                var refusal = await CheckSlotFitsAsync(slot, types, ct);
+                var refusal = await CheckSlotFitsAsync(
+                    slot, vehicleType is VehicleType known ? [known] : registeredTypes, ct);
                 if (refusal is not null) return refusal;
             }
             else
@@ -273,7 +278,10 @@ namespace AimPark.API.Services
                 // No slot named — this is the automatic path the gate uses.
                 // ClaimForEntryAsync takes the slot as it picks it, so two
                 // vehicles scanning at once cannot be sent to the same bay.
-                var assignment = await _allocationService.ClaimForEntryAsync(user.Id, dto.Gate, ct);
+                // A full lot for this vehicle's type keeps the barrier shut.
+                var assignment = vehicleType is VehicleType known
+                    ? await _allocationService.ClaimForVehicleTypeAsync(known, user.Id, dto.Gate, ct)
+                    : await _allocationService.ClaimForEntryAsync(user.Id, dto.Gate, ct);
                 if (assignment.Result != AllocationResult.Assigned)
                     return new BadRequestObjectResult(new
                     {
@@ -296,6 +304,7 @@ namespace AimPark.API.Services
                 AlprReadingId = alprCheck.Matched?.Id,
                 AlprPlateNumber = alprCheck.Matched?.PlateNumber,
                 AlprMatched = alprCheck.Matched is not null ? true : null,
+                VehicleType = vehicleType,
                 CreatedAt = DateTime.UtcNow
             };
 
@@ -714,6 +723,7 @@ namespace AimPark.API.Services
                 AlprReadingId = alprCheck.Matched?.Id,
                 AlprPlateNumber = alprCheck.Matched?.PlateNumber,
                 AlprMatched = alprCheck.Matched is not null ? true : null,
+                VehicleType = pass.VehicleType,
                 CreatedAt = nowUtc
             };
 

@@ -67,6 +67,9 @@ class ApiEndpoints {
   static const logParkingEntry = '/api/admin/parking/log-entry';
   static const logParkingExit = '/api/admin/parking/log-exit';
   static const activeParkingSessions = '/api/admin/parking/active-sessions';
+  static const wrongBayFlags = '/api/admin/parking/wrong-bay';
+  static String reviewWrongBayFlag(String flagId) =>
+      '/api/admin/parking/wrong-bay/$flagId/review';
 
   // Security: the guard's own endpoints. Entry and exit deliberately stay on
   // the parking routes above - the gate hardware posts to those too, and two

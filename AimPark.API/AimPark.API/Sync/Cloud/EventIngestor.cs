@@ -65,6 +65,7 @@ namespace AimPark.API.Sync.Cloud
             steps.AddRange(batch.PaymentTransactions.Select(p => ($"payment {p.Id}", (Func<CancellationToken, Task>)(c => InsertOnceAsync(p, p.Id, c)))));
             steps.AddRange(batch.Notifications.Select(n => ($"notification {n.Id}", (Func<CancellationToken, Task>)(c => InsertOnceAsync(n, n.Id, c)))));
             steps.AddRange(batch.GateTapEvents.Select(t => ($"gate tap {t.Id}", (Func<CancellationToken, Task>)(c => InsertOnceAsync(t, t.Id, c)))));
+            steps.AddRange(batch.WrongBayFlags.Select(f => ($"wrong-bay warning {f.Id}", (Func<CancellationToken, Task>)(c => StageWrongBayFlagAsync(f, c)))));
             steps.AddRange(batch.DevicesSeen.Select(d => ($"device {d.Id}", (Func<CancellationToken, Task>)(c => StageDeviceSeenAsync(d, c)))));
 
             var failed = 0;
@@ -167,6 +168,19 @@ namespace AimPark.API.Sync.Cloud
 
             slot.Status = incoming.Status;
             slot.UpdatedAt = incoming.UpdatedAt;
+        }
+
+        /// <summary>
+        /// Raised at the guard post and reviewed there or here, so the newer
+        /// edit wins, as with incidents.
+        /// </summary>
+        private async Task StageWrongBayFlagAsync(WrongBayFlag incoming, CancellationToken ct)
+        {
+            var existing = await _db.Set<WrongBayFlag>().FindAsync([incoming.Id], ct);
+            if (existing is null)
+                _db.Set<WrongBayFlag>().Add(incoming);
+            else if (incoming.UpdatedAt >= existing.UpdatedAt)
+                _db.Entry(existing).CurrentValues.SetValues(incoming);
         }
 
         private async Task StageDeviceSeenAsync(DeviceSeenUpdate incoming, CancellationToken ct)

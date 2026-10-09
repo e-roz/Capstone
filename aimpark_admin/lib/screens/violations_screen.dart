@@ -25,7 +25,7 @@ class ViolationsScreen extends ConsumerWidget {
         FilledButton.icon(
           icon: const Icon(Icons.add, size: AppSizes.iconSm),
           label: const Text('Issue Violation'),
-          onPressed: () => _showIssueViolation(context, ref),
+          onPressed: () => showIssueViolationDialog(context, ref),
         ),
       ],
       // Appeals are also queued on Incidents & Appeals, but every decision —
@@ -33,117 +33,126 @@ class ViolationsScreen extends ConsumerWidget {
       body: const _ViolationsTab(),
     );
   }
+}
 
-  Future<void> _showIssueViolation(BuildContext context, WidgetRef ref) async {
-    final descriptionCtrl = TextEditingController();
-    PickedUser? picked;
-    String? userError;
-    String? ruleId;
-    final formKey = GlobalKey<FormState>();
-    final rules = await ref.read(policyRulesProvider.future);
-    final activeRules = rules.where((r) => r.isActive).toList();
+/// The Issue Violation form. [description] starts the "What happened" field
+/// off, for when another screen already knows, like a wrong-bay warning.
+///
+/// Returns whether a violation was issued.
+Future<bool> showIssueViolationDialog(
+  BuildContext context,
+  WidgetRef ref, {
+  String? description,
+}) async {
+  final descriptionCtrl = TextEditingController(text: description);
+  PickedUser? picked;
+  String? userError;
+  String? ruleId;
+  final formKey = GlobalKey<FormState>();
+  final rules = await ref.read(policyRulesProvider.future);
+  final activeRules = rules.where((r) => r.isActive).toList();
 
-    if (!context.mounted) return;
+  if (!context.mounted) return false;
 
-    if (activeRules.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text(
-              'No active policy rules. Create one under Policy Rules first.')));
-      return;
-    }
+  if (activeRules.isEmpty) {
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text(
+            'No active policy rules. Create one under Policy Rules first.')));
+    return false;
+  }
 
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setState) {
-          final rule = activeRules.where((r) => r.ruleId == ruleId).firstOrNull;
-          return AlertDialog(
-            title: const Text('Issue Violation'),
-            content: SizedBox(
-              width: context.dialogWidth(440),
-              child: Form(
-                key: formKey,
-                autovalidateMode: AutovalidateMode.onUserInteraction,
-                child: SingleChildScrollView(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const AppRequiredNote(),
-                      UserPickerField(
-                        selected: picked,
-                        isRequired: true,
-                        errorText: userError,
-                        onChanged: (u) => setState(() {
-                          picked = u;
-                          userError = null;
-                        }),
-                      ),
+  final confirmed = await showDialog<bool>(
+    context: context,
+    builder: (ctx) => StatefulBuilder(
+      builder: (ctx, setState) {
+        final rule = activeRules.where((r) => r.ruleId == ruleId).firstOrNull;
+        return AlertDialog(
+          title: const Text('Issue Violation'),
+          content: SizedBox(
+            width: context.dialogWidth(440),
+            child: Form(
+              key: formKey,
+              autovalidateMode: AutovalidateMode.onUserInteraction,
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const AppRequiredNote(),
+                    UserPickerField(
+                      selected: picked,
+                      isRequired: true,
+                      errorText: userError,
+                      onChanged: (u) => setState(() {
+                        picked = u;
+                        userError = null;
+                      }),
+                    ),
+                    const SizedBox(height: AppSpacing.x3),
+                    DropdownButtonFormField<String>(
+                      initialValue: ruleId,
+                      isExpanded: true,
+                      decoration: const InputDecoration(
+                          label:
+                              AppFieldLabel('Policy Rule', isRequired: true)),
+                      items: activeRules
+                          .map((r) => DropdownMenuItem(
+                              value: r.ruleId, child: Text(r.title)))
+                          .toList(),
+                      onChanged: (v) => setState(() => ruleId = v),
+                      validator: (v) => v == null ? 'Select a rule' : null,
+                    ),
+                    if (rule != null) ...[
                       const SizedBox(height: AppSpacing.x3),
-                      DropdownButtonFormField<String>(
-                        initialValue: ruleId,
-                        isExpanded: true,
-                        decoration: const InputDecoration(
-                            label:
-                                AppFieldLabel('Policy Rule', isRequired: true)),
-                        items: activeRules
-                            .map((r) => DropdownMenuItem(
-                                value: r.ruleId, child: Text(r.title)))
-                            .toList(),
-                        onChanged: (v) => setState(() => ruleId = v),
-                        validator: (v) => v == null ? 'Select a rule' : null,
-                      ),
-                      if (rule != null) ...[
-                        const SizedBox(height: AppSpacing.x3),
-                        _RuleSummary(rule: rule),
-                      ],
-                      const SizedBox(height: AppSpacing.x3),
-                      TextFormField(
-                        controller: descriptionCtrl,
-                        maxLines: 3,
-                        decoration: const InputDecoration(
-                            label: AppFieldLabel('What happened',
-                                isRequired: true)),
-                        validator: (v) => (v == null || v.isEmpty)
-                            ? 'Description is required'
-                            : null,
-                      ),
+                      _RuleSummary(rule: rule),
                     ],
-                  ),
+                    const SizedBox(height: AppSpacing.x3),
+                    TextFormField(
+                      controller: descriptionCtrl,
+                      maxLines: 3,
+                      decoration: const InputDecoration(
+                          label: AppFieldLabel('What happened',
+                              isRequired: true)),
+                      validator: (v) => (v == null || v.isEmpty)
+                          ? 'Description is required'
+                          : null,
+                    ),
+                  ],
                 ),
               ),
             ),
-            actions: [
-              TextButton(
-                  onPressed: () => Navigator.pop(ctx, false),
-                  child: const Text('Cancel')),
-              FilledButton(
-                onPressed: () {
-                  final formOk = formKey.currentState!.validate();
-                  if (picked == null) {
-                    setState(() => userError = 'Select a user');
-                    return;
-                  }
-                  if (formOk) Navigator.pop(ctx, true);
-                },
-                child: const Text('Issue'),
-              ),
-            ],
-          );
-        },
-      ),
-    );
-
-    if (confirmed != true || !context.mounted) return;
-    final msg = await ref.read(violationActionsProvider.notifier).issue(
-          userId: picked!.userId,
-          policyRuleId: ruleId!,
-          description: descriptionCtrl.text.trim(),
+          ),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: const Text('Cancel')),
+            FilledButton(
+              onPressed: () {
+                final formOk = formKey.currentState!.validate();
+                if (picked == null) {
+                  setState(() => userError = 'Select a user');
+                  return;
+                }
+                if (formOk) Navigator.pop(ctx, true);
+              },
+              child: const Text('Issue'),
+            ),
+          ],
         );
-    if (!context.mounted) return;
-    ScaffoldMessenger.of(context)
-        .showSnackBar(SnackBar(content: Text(msg ?? 'Violation issued.')));
-    ref.invalidate(violationListProvider);
-  }
+      },
+    ),
+  );
+
+  if (confirmed != true || !context.mounted) return false;
+  final msg = await ref.read(violationActionsProvider.notifier).issue(
+        userId: picked!.userId,
+        policyRuleId: ruleId!,
+        description: descriptionCtrl.text.trim(),
+      );
+  if (!context.mounted) return false;
+  ScaffoldMessenger.of(context)
+      .showSnackBar(SnackBar(content: Text(msg ?? 'Violation issued.')));
+  ref.invalidate(violationListProvider);
+  return true;
 }
 
 /// What the picked rule will do — read-only, because the rule is absolute.

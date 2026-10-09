@@ -92,6 +92,9 @@ namespace AimPark.API.Sync.Cloud
             // review both need to show there straight away.
             Incident or IncidentEvidence => true,
 
+            // A review made here has to reach the guard post's map.
+            WrongBayFlag => true,
+
             // Every authenticated device request moves LastSeenAt, the site's
             // own included. Counting that would have the site re-download on
             // a loop driven by its own requests.

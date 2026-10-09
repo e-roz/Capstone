@@ -24,6 +24,52 @@ class ParkingSlot {
       );
 }
 
+/// "The wrong kind of vehicle may be in this bay", raised when a bay's sensor
+/// fills. Names the bay only: the sensor can't say who parked there, so a
+/// guard goes and looks.
+class WrongBayFlag {
+  final String flagId;
+  final String slotId;
+  final String slotCode;
+  final int gate;
+
+  /// What the bay is for: 'Car' or 'Motorcycle'.
+  final String? bayType;
+
+  /// 'Open' (nobody has looked yet) or 'Confirmed'. False alarms aren't sent.
+  final String status;
+
+  final DateTime detectedAt;
+  final String? reviewedByName;
+
+  const WrongBayFlag({
+    required this.flagId,
+    required this.slotId,
+    required this.slotCode,
+    required this.gate,
+    required this.bayType,
+    required this.status,
+    required this.detectedAt,
+    required this.reviewedByName,
+  });
+
+  bool get isConfirmed => status == 'Confirmed';
+
+  /// "four-wheel" or "motorcycle", for sentences.
+  String get bayKind => bayType == 'Motorcycle' ? 'motorcycle' : 'four-wheel';
+
+  factory WrongBayFlag.fromJson(Map<String, dynamic> json) => WrongBayFlag(
+        flagId: json['flagId']?.toString() ?? '',
+        slotId: json['slotId']?.toString() ?? '',
+        slotCode: json['slotCode']?.toString() ?? '',
+        gate: (json['gate'] as num?)?.toInt() ?? 1,
+        bayType: json['bayType']?.toString(),
+        status: json['status']?.toString() ?? 'Open',
+        detectedAt: DateTime.parse(json['detectedAt'].toString()),
+        reviewedByName: json['reviewedByName']?.toString(),
+      );
+}
+
 /// A vehicle currently inside — an entry with no exit recorded yet.
 class ActiveParkingSession {
   final String logId;
