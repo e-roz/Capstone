@@ -25,13 +25,6 @@ namespace AimPark.API.Entities
         public string? StudentNumber { get; set; }
         public string? Section { get; set; }
 
-        /// <summary>
-        /// End of the enrolled semester, derived from the RAF rather than stored as
-        /// its printed text — "is this still current" is then one date comparison.
-        /// Null means no expiry, which is the correct answer for faculty and staff.
-        /// </summary>
-        public DateTime? EnrollmentValidUntil { get; set; }
-
         public RegistrationStep RegistrationStep { get; set; }
         public AccountStatus AccountStatus { get; set; }
 

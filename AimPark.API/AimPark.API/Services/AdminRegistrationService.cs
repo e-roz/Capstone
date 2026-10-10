@@ -163,7 +163,6 @@ namespace AimPark.API.Services
                 Affiliation = user.Affiliation.ToString(),
                 StudentNumber = user.StudentNumber,
                 Section = user.Section,
-                EnrollmentValidUntil = user.EnrollmentValidUntil,
                 RegistrationStep = user.RegistrationStep.ToString(),
                 AccountStatus = user.AccountStatus.ToString(),
                 VerificationStatus = user.VerificationStatus.ToString(),
@@ -190,13 +189,10 @@ namespace AimPark.API.Services
         /// <remarks>
         /// Two things this used to skip, both fixed here rather than left for later:
         ///
-        /// The enrolment end date, the student number and the section were shown to
-        /// the reviewer throughout the review screen but never actually written to
-        /// the account — <see cref="PreScreeningService"/> told the reviewer to "set
-        /// the enrolment end date when approving" and there was nothing here that
-        /// did. They are copied from the latest submission's confirmed values (the
-        /// same values already displayed), plus the date the reviewer supplies —
-        /// nothing on the RAF prints a usable end date, only a term as text.
+        /// The student number and the section were shown to the reviewer throughout
+        /// the review screen but never actually written to the account. They are
+        /// copied from the latest submission's confirmed values (the same values
+        /// already displayed).
         ///
         /// Approving over a checks verdict that still needs attention used to leave
         /// no more of a trace than an "Approve" row in the audit log. It now also
@@ -209,9 +205,6 @@ namespace AimPark.API.Services
             var user = await _users.FindAsync(u => u.Id == userId, ct);
             if (user is null)
                 return new NotFoundObjectResult(new { message = "User not found." });
-
-            if (user.Affiliation == Affiliation.Student && dto.EnrollmentValidUntil is null)
-                return new BadRequestObjectResult(new { message = "Enrolment end date is required for student accounts." });
 
             var vehicles = await _vehicles.GetAllAsync(v => v.UserId == userId, ct);
             var verifications = await _verifications.GetAllAsync(v => v.UserId == userId, ct);
@@ -253,7 +246,6 @@ namespace AimPark.API.Services
 
             if (latest is not null)
             {
-                user.EnrollmentValidUntil = dto.EnrollmentValidUntil;
                 user.StudentNumber = studentNumber;
                 user.Section = latest.ConfirmedSection ?? latest.ExtractedSection;
 

@@ -74,7 +74,6 @@ namespace AimPark.API.Sync
         public UserRole Role { get; set; }
         public Affiliation Affiliation { get; set; }
         public string? StudentNumber { get; set; }
-        public DateTime? EnrollmentValidUntil { get; set; }
         public RegistrationStep RegistrationStep { get; set; }
         public AccountStatus AccountStatus { get; set; }
         public VerificationStatus VerificationStatus { get; set; }

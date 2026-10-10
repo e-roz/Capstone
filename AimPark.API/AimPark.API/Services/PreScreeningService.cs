@@ -170,8 +170,7 @@ namespace AimPark.API.Services
         /// </summary>
         /// <remarks>
         /// The semester is recorded as printed but not turned into a date here — term
-        /// dates vary and the admin sets the enrolment end date during review. So this
-        /// only reports whether a semester was captured at all.
+        /// dates vary. So this only reports whether a semester was captured at all.
         /// </remarks>
         private static CheckResult CheckEnrollment(DocumentVerification v, User user, List<string> notes)
         {
@@ -186,7 +185,7 @@ namespace AimPark.API.Services
                 return CheckResult.NotChecked;
             }
 
-            notes.Add($"School document covers {semester} — set the enrolment end date when approving.");
+            notes.Add($"School document covers {semester}.");
             return CheckResult.NotChecked;
         }
 

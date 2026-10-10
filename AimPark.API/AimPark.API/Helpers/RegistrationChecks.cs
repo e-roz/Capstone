@@ -177,11 +177,11 @@ namespace AimPark.API.Helpers
                 else
                 {
                     // The stored result is always NotChecked here, because the API
-                    // never turns a printed semester into a date — the admin sets
-                    // the enrolment end date during review. For the reviewer's
-                    // purposes the check did everything it can: a term was read.
+                    // never turns a printed semester into a date. For the
+                    // reviewer's purposes the check did everything it can: a term
+                    // was read.
                     enrolment.State = Passed;
-                    enrolment.Detail = $"School document covers {semester} — set the enrolment end date when approving.";
+                    enrolment.Detail = $"School document covers {semester}.";
                     AddValue(enrolment, "Semester", semester);
                 }
 

@@ -231,8 +231,6 @@ class _UserDetailView extends ConsumerWidget {
                 AppField(label: 'Student Number', value: number),
               if (detail.section case final section?)
                 AppField(label: 'Section', value: section),
-              if (detail.enrollmentValidUntil case final until?)
-                AppField(label: 'Enrolled Until', value: _date(until)),
             ],
           ),
         ),
