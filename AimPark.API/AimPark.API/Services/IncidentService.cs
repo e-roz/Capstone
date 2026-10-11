@@ -271,18 +271,28 @@ namespace AimPark.API.Services
                 .OrderByDescending(i => i.CreatedAt)
                 .Skip((page - 1) * pageSize)
                 .Take(pageSize)
-                .Select(i => new IncidentSummaryResponse
+                .Select(i => new
                 {
-                    IncidentId = i.Id,
-                    Category = i.Category.ToString(),
-                    Status = i.Status.ToString(),
-                    CreatedAt = i.CreatedAt
+                    i.Id,
+                    i.Category,
+                    i.Status,
+                    i.CreatedAt,
+                    i.Description,
+                    i.Location
                 })
                 .ToListAsync(ct);
 
             return new OkObjectResult(new IncidentListResponse
             {
-                Incidents = incidents,
+                Incidents = incidents.Select(i => new IncidentSummaryResponse
+                {
+                    IncidentId = i.Id,
+                    Category = i.Category.ToString(),
+                    Status = i.Status.ToString(),
+                    CreatedAt = i.CreatedAt,
+                    DescriptionPreview = IncidentSummaryResponse.Preview(i.Description),
+                    Location = i.Location
+                }).ToList(),
                 TotalCount = totalCount,
                 Page = page,
                 PageSize = pageSize
