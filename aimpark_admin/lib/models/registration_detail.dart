@@ -7,7 +7,6 @@ class RegistrationDetail {
   final String affiliation;
   final String? studentNumber;
   final String? section;
-  final DateTime? enrollmentValidUntil;
   final String registrationStep;
   final String accountStatus;
   final String verificationStatus;
@@ -35,7 +34,6 @@ class RegistrationDetail {
     required this.affiliation,
     this.studentNumber,
     this.section,
-    this.enrollmentValidUntil,
     required this.registrationStep,
     required this.accountStatus,
     required this.verificationStatus,
@@ -61,9 +59,6 @@ class RegistrationDetail {
         affiliation: json['affiliation']?.toString() ?? 'Student',
         studentNumber: json['studentNumber']?.toString(),
         section: json['section']?.toString(),
-        enrollmentValidUntil: json['enrollmentValidUntil'] != null
-            ? DateTime.tryParse(json['enrollmentValidUntil'].toString())
-            : null,
         registrationStep: json['registrationStep']?.toString() ?? '',
         accountStatus: json['accountStatus']?.toString() ?? '',
         verificationStatus: json['verificationStatus']?.toString() ?? '',

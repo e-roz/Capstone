@@ -32,7 +32,6 @@ namespace AimPark.API.Sync.Cloud
                     Role = u.Role,
                     Affiliation = u.Affiliation,
                     StudentNumber = u.StudentNumber,
-                    EnrollmentValidUntil = u.EnrollmentValidUntil,
                     RegistrationStep = u.RegistrationStep,
                     AccountStatus = u.AccountStatus,
                     VerificationStatus = u.VerificationStatus,

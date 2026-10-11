@@ -37,7 +37,6 @@ namespace AimPark.API.Services
                 Affiliation = user.Affiliation.ToString(),
                 StudentNumber = user.StudentNumber,
                 Section = user.Section,
-                EnrollmentValidUntil = user.EnrollmentValidUntil,
                 AccountStatus = user.AccountStatus.ToString(),
                 CreatedAt = user.CreatedAt
             });

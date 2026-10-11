@@ -12,7 +12,6 @@ namespace AimPark.API.DTOs
         // that readable rather than ambiguous.
         public string? StudentNumber { get; set; }
         public string? Section { get; set; }
-        public DateTime? EnrollmentValidUntil { get; set; }
 
         public string AccountStatus { get; set; } = string.Empty;
         public DateTime CreatedAt { get; set; }

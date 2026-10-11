@@ -17,11 +17,15 @@ namespace AimPark.API.Helpers
     ///
     /// A share of clean applications is still routed to a reviewer at random, so
     /// that nobody can rely on a clean-looking set going unseen.
+    ///
+    /// The share is currently 100: every application is read by an admin, and
+    /// nothing is approved automatically. Lower <see cref="SpotCheckPercent"/> to
+    /// let clean applications through again.
     /// </remarks>
     public static class AutoApprovalPolicy
     {
         /// <summary>Per hundred clean applications, how many still get a human look.</summary>
-        public const int SpotCheckPercent = 20;
+        public const int SpotCheckPercent = 100;
 
         public static bool IsClean(RegistrationChecksResponse? checks) =>
             checks is { Verdict: RegistrationChecks.ClearVerdict }

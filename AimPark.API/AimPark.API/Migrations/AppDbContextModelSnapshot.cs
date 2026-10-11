@@ -1337,9 +1337,6 @@ namespace AimPark.API.Migrations
                         .IsRequired()
                         .HasColumnType("text");
 
-                    b.Property<DateTime?>("EnrollmentValidUntil")
-                        .HasColumnType("timestamp with time zone");
-
                     b.Property<string>("ExternalProviderId")
                         .HasColumnType("text");
 
