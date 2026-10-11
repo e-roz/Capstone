@@ -267,5 +267,31 @@ namespace AimPark.API.Services
 
             return new OkObjectResult(new { message = "Marked as read." });
         }
+
+        // POST /api/notifications/read-all
+        public async Task<ActionResult<object>> MarkAllReadAsync(Guid userId, UserRole role, CancellationToken ct)
+        {
+            // The same set the list shows: addressed to this user personally, or a
+            // broadcast for their role — and never someone else's.
+            var unread = await _db.Set<Notification>().AsNoTracking()
+                .Where(n => (n.TargetUserId == userId
+                             || (n.TargetUserId == null
+                                 && (n.TargetRole == null || n.TargetRole == role)))
+                         && !_db.Set<NotificationRead>().Any(r => r.NotificationId == n.Id && r.UserId == userId))
+                .Select(n => n.Id)
+                .ToListAsync(ct);
+
+            var now = DateTime.UtcNow;
+            await _reads.AddRangeAsync(unread.Select(id => new NotificationRead
+            {
+                Id = Guid.NewGuid(),
+                NotificationId = id,
+                UserId = userId,
+                ReadAt = now
+            }), ct);
+            await _reads.SaveAsync(ct);
+
+            return new OkObjectResult(new { message = "Marked as read.", count = unread.Count });
+        }
     }
 }

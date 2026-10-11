@@ -48,5 +48,8 @@ namespace AimPark.API.Interfaces
         Task<ActionResult<NotificationListResponse>> ListAllAsync(int page, int pageSize, CancellationToken ct);
         Task<ActionResult<NotificationListResponse>> ListForUserAsync(Guid userId, UserRole role, int page, int pageSize, CancellationToken ct);
         Task<ActionResult<object>> MarkReadAsync(Guid userId, Guid notificationId, CancellationToken ct);
+
+        /// <summary>Marks everything addressed to this user, personally or by role, as read.</summary>
+        Task<ActionResult<object>> MarkAllReadAsync(Guid userId, UserRole role, CancellationToken ct);
     }
 }

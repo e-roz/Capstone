@@ -35,6 +35,14 @@ namespace AimPark.API.Controllers
             => _notificationService.MarkReadAsync(GetUserId(), notificationId, ct);
 
         /// <summary>
+        /// Marks every notification this user can see as read, in one call. The
+        /// list can run to dozens, and one request per row is not a way to clear it.
+        /// </summary>
+        [HttpPost("read-all")]
+        public Task<ActionResult<object>> MarkAllRead(CancellationToken ct)
+            => _notificationService.MarkAllReadAsync(GetUserId(), GetRole(), ct);
+
+        /// <summary>
         /// Registers this device's FCM token so the user can receive push notifications.
         /// Called by the mobile app after login and whenever FCM rotates the token.
         /// </summary>
