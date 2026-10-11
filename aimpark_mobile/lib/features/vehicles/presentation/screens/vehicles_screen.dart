@@ -71,48 +71,91 @@ class _VehicleCard extends StatelessWidget {
 
   final Vehicle vehicle;
 
+  /// Registration this close to running out gets a warning before it becomes an
+  /// error, so there is time to renew rather than a surprise.
+  static const _expiringWithinDays = 30;
+
   @override
   Widget build(BuildContext context) {
     final t = context.tokens;
     final expired = vehicle.isRegistrationExpired;
     final validThrough = vehicle.registrationValidThrough;
 
+    final daysLeft = validThrough?.difference(DateTime.now()).inDays;
+    final expiringSoon =
+        !expired && daysLeft != null && daysLeft <= _expiringWithinDays;
+
+    final (label, intent) = expired
+        ? ('Expired', StatusIntent.danger)
+        : expiringSoon
+            ? ('Expires soon', StatusIntent.warning)
+            : ('Active', StatusIntent.success);
+
     return AppCard(
-      child: Column(
+      child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              Expanded(
+          // What kind of vehicle it is, at a glance, in the parking colour used
+          // on Account and the bill screens.
+          Container(
+            width: AppSizes.rowIcon,
+            height: AppSizes.rowIcon,
+            decoration: BoxDecoration(
+              color: t.accent.subtle,
+              borderRadius: BorderRadius.circular(AppRadius.sm),
+            ),
+            child: Icon(
+              vehicle.isMotorcycle
+                  ? Icons.two_wheeler_rounded
+                  : Icons.directions_car_rounded,
+              size: AppSizes.iconMd,
+              color: t.accent.subtleText,
+            ),
+          ),
+          const SizedBox(width: AppSpacing.md),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
                 // The plate is the headline. It is what the gate matches on and
-                // what the owner recognises the row by — the vehicle type was
-                // taking the badge slot to say "Car" next to a picture of a car.
-                child: Text(
+                // what the owner recognises the row by.
+                Text(
                   vehicle.plateNumber,
                   style: AppTypography.tabular(context.text.headlineMedium!),
                 ),
-              ),
-              const SizedBox(width: AppSpacing.sm),
-              AppStatusBadge(
-                label: expired ? 'Expired' : 'Active',
-                intent: expired ? StatusIntent.danger : StatusIntent.success,
-              ),
-            ],
-          ),
-          const SizedBox(height: AppSpacing.labelGap),
-          Text(
-            '${vehicle.color} · ${vehicle.vehicleType}',
-            style: context.text.bodyMedium?.copyWith(color: t.text.secondary),
-          ),
-          if (validThrough != null) ...[
-            const SizedBox(height: 2),
-            Text(
-              expired
-                  ? 'Registration expired ${Formatters.date(validThrough)}'
-                  : 'Registration valid to ${Formatters.date(validThrough)}',
-              style: context.text.bodySmall,
+                const SizedBox(height: AppSpacing.labelGap),
+                Text(
+                  '${vehicle.color} · ${vehicle.vehicleType}',
+                  style: context.text.bodyMedium?.copyWith(
+                    color: t.text.secondary,
+                  ),
+                ),
+                if (validThrough != null) ...[
+                  const SizedBox(height: AppSpacing.xs),
+                  Text(
+                    expired
+                        ? 'Registration expired ${Formatters.date(validThrough)}'
+                        : expiringSoon
+                            ? 'Registration expires in $daysLeft '
+                                '${daysLeft == 1 ? 'day' : 'days'} '
+                                '(${Formatters.date(validThrough)})'
+                            : 'Registration valid to '
+                                '${Formatters.date(validThrough)}',
+                    style: context.text.bodySmall?.copyWith(
+                      color: expired
+                          ? t.status.danger.fg
+                          : expiringSoon
+                              ? t.status.warning.fg
+                              : null,
+                      fontWeight: expired || expiringSoon ? FontWeight.w600 : null,
+                    ),
+                  ),
+                ],
+                const SizedBox(height: AppSpacing.sm),
+                AppStatusBadge(label: label, intent: intent),
+              ],
             ),
-          ],
+          ),
         ],
       ),
     );

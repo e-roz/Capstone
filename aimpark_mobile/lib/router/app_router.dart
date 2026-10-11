@@ -14,7 +14,6 @@ import '../features/auth/presentation/screens/register_email_screen.dart';
 import '../features/auth/presentation/screens/register_otp_screen.dart';
 import '../features/auth/presentation/screens/register_profile_screen.dart';
 import '../features/auth/presentation/screens/reset_password_screen.dart';
-import '../features/account/presentation/screens/change_password_screen.dart';
 import '../features/account/presentation/screens/edit_profile_screen.dart';
 import '../features/auth/presentation/screens/security_placeholder_screen.dart';
 import '../features/auth/presentation/screens/welcome_screen.dart';
@@ -24,10 +23,9 @@ import '../features/incidents/presentation/screens/incident_detail_screen.dart';
 import '../features/incidents/presentation/screens/incidents_list_screen.dart';
 import '../features/incidents/presentation/screens/report_incident_screen.dart';
 import '../features/auth/presentation/screens/registration_submitted_screen.dart';
-import '../features/dashboard/presentation/screens/standing_screen.dart';
 import '../features/notifications/presentation/screens/notifications_screen.dart';
 import '../features/parking/presentation/screens/parking_history_screen.dart';
-import '../features/parking/presentation/screens/parking_slots_screen.dart';
+import '../features/parking/presentation/screens/parking_screen.dart';
 import '../features/support/presentation/screens/support_screen.dart';
 import '../features/violations/presentation/screens/appeal_screen.dart';
 import '../features/violations/presentation/screens/appeal_sent_screen.dart';
@@ -210,15 +208,20 @@ GoRouter appRouter(Ref ref) {
       ),
       GoRoute(
         path: '/home/user',
-        builder: (context, state) => const UserShell(),
+        builder: (context, state) => UserShell(
+          initialTab: UserShell.tabFromName(state.uri.queryParameters['tab']),
+        ),
       ),
       GoRoute(
         path: '/home/user/profile/edit',
         builder: (context, state) => const EditProfileScreen(),
       ),
+      // Changing a password lives on the profile screen now. The old address
+      // still resolves, so a bookmark or a notification that points at it lands
+      // somewhere real instead of on a missing page.
       GoRoute(
         path: '/home/user/profile/change-password',
-        builder: (context, state) => const ChangePasswordScreen(),
+        redirect: (context, state) => '/home/user/profile/edit',
       ),
       GoRoute(
         path: '/home/user/vehicles',
@@ -244,10 +247,13 @@ GoRouter appRouter(Ref ref) {
         path: '/home/user/payments',
         builder: (context, state) => const PaymentsListScreen(),
       ),
+      // Every "Pay now" lands here and stops: the bill is shown first and the
+      // payer taps Pay on it. Nothing opens the payment page on arrival.
       GoRoute(
         path: '/home/user/payments/:paymentId',
-        builder: (context, state) =>
-            PaymentDetailScreen(paymentId: state.pathParameters['paymentId']!),
+        builder: (context, state) => PaymentDetailScreen(
+          paymentId: state.pathParameters['paymentId']!,
+        ),
       ),
       // Both of these were tabs until the nav dropped to Home / Parking /
       // Payments / Account. They are reached from Account now, so they need
@@ -283,16 +289,15 @@ GoRouter appRouter(Ref ref) {
             PolicyScreen(ruleTitle: state.uri.queryParameters['rule']),
       ),
       GoRoute(
-        path: '/home/user/standing',
-        builder: (context, state) => const StandingScreen(),
-      ),
-      GoRoute(
         path: '/home/user/support',
         builder: (context, state) => const SupportScreen(),
       ),
+      // The slot map is part of the Parking tab now. The route stays, because a
+      // push notification about the lot still names it, and it opens the same
+      // screen with a way back.
       GoRoute(
         path: '/home/user/parking-slots',
-        builder: (context, state) => const ParkingSlotsScreen(),
+        builder: (context, state) => const ParkingScreen.pushed(),
       ),
       GoRoute(
         path: '/home/user/incidents',

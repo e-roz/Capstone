@@ -38,6 +38,8 @@ class AccessStatus {
     this.isSuspendedNow = false,
     this.suspensionStartsAt,
     this.suspensionEndsAt,
+    this.entryBlockedReason,
+    this.outstandingBalance,
   });
 
   final String? rfidTagId;
@@ -62,6 +64,18 @@ class AccessStatus {
   /// True while the card still works but a suspension is already on the books.
   bool get hasPendingSuspension => suspensionStartsAt != null;
 
+  /// Why the gate would refuse *entry* for a reason other than the card's own
+  /// status — today only `UNPAID_BALANCE`. Null when nothing blocks, and null
+  /// from a server that does not send it yet, so this is always safe to read.
+  final String? entryBlockedReason;
+
+  /// What the account owes, when the server says. Null when nothing is owed or
+  /// the server predates the field.
+  final double? outstandingBalance;
+
+  /// Entry is refused until a bill is paid. Exit never is.
+  bool get isEntryBlockedByBalance => entryBlockedReason == 'UNPAID_BALANCE';
+
   factory AccessStatus.fromJson(Map<String, dynamic> json) {
     DateTime? date(String key) {
       final raw = json[key];
@@ -78,6 +92,8 @@ class AccessStatus {
           (json['rfidStatus'] as String).toLowerCase() == 'suspended',
       suspensionStartsAt: date('suspensionStartsAt'),
       suspensionEndsAt: date('suspensionEndsAt'),
+      entryBlockedReason: json['entryBlockedReason'] as String?,
+      outstandingBalance: (json['outstandingBalance'] as num?)?.toDouble(),
     );
   }
 }

@@ -16,6 +16,12 @@ class NotificationsRepository {
     return NotificationListResult.fromJson(response.data as Map<String, dynamic>);
   }
 
+  /// Marks everything as read in one call. One request per row is no way to
+  /// clear a list that can run to dozens.
+  Future<void> markAllRead() {
+    return _dio.post(ApiEndpoints.notificationsReadAll);
+  }
+
   Future<void> markRead(String notificationId) {
     return _dio.post(ApiEndpoints.notificationRead(notificationId));
   }
@@ -30,14 +36,4 @@ class NotificationsRepository {
   Future<void> unregisterDeviceToken(String token) {
     return _dio.delete(ApiEndpoints.deviceToken, data: {'token': token});
   }
-
-  /// Whether this user asked to hear when a bay frees up in a full lot.
-  Future<bool> isWatchingSlots() async {
-    final response = await _dio.get(ApiEndpoints.slotWatch);
-    return (response.data as Map<String, dynamic>)['watching'] as bool? ?? false;
-  }
-
-  Future<void> watchSlots() => _dio.post(ApiEndpoints.slotWatch);
-
-  Future<void> unwatchSlots() => _dio.delete(ApiEndpoints.slotWatch);
 }
