@@ -11,9 +11,12 @@ namespace AimPark.API.Helpers
     /// access-status all ask the same question, so they share this rather than
     /// each carrying their own copy of the rule.
     ///
-    /// The rule: a parking fee that is still <see cref="PaymentStatus.Pending"/>
-    /// blocks entry straight away; a violation fine blocks only once its due date
-    /// has passed, so a driver can still appeal and pay inside the window.
+    /// The rule: any bill that is still <see cref="PaymentStatus.Pending"/> blocks
+    /// entry straight away — a parking fee, and a violation fine alike. A fine only
+    /// exists once the violation is final (the appeal is over), so there is no
+    /// window left to protect, and it is paid the same way as anything else owed.
+    /// A suspension is a separate block that paying does not lift; this one is
+    /// lifted by paying.
     /// <see cref="PaymentStatus.Processing"/> (checkout started, not yet confirmed),
     /// Paid, Waived and ₱0 bills never block. Exit is never blocked — this is
     /// consulted on the entry path only.
@@ -30,11 +33,13 @@ namespace AimPark.API.Helpers
             bill.Status == PaymentStatus.Pending && bill.AmountDue > 0m;
 
         /// <summary>Does this one bill stop the holder from entering right now?</summary>
-        public static bool BlocksEntry(PaymentTransaction bill, DateTime now) =>
-            IsOwed(bill)
-            && (bill.Source == PaymentSource.ParkingFee
-                || (bill.DueAt is DateTime due && due <= now));
+        public static bool BlocksEntry(PaymentTransaction bill) => IsOwed(bill);
 
+        /// <param name="now">
+        /// Not used by the rule any more: whether a bill blocks no longer depends
+        /// on a date. Kept so the callers and the guard post's snapshots need no
+        /// change.
+        /// </param>
         public static Result Evaluate(IEnumerable<PaymentTransaction> bills, DateTime now)
         {
             var blocked = false;
@@ -44,7 +49,7 @@ namespace AimPark.API.Helpers
             {
                 if (!IsOwed(bill)) continue;
                 outstanding += bill.AmountDue;
-                if (BlocksEntry(bill, now)) blocked = true;
+                if (BlocksEntry(bill)) blocked = true;
             }
 
             return new Result(blocked, outstanding);

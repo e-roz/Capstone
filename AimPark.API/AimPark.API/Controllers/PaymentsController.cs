@@ -43,6 +43,14 @@ namespace AimPark.API.Controllers
             => _paymentService.StartCheckoutAsync(GetUserId(), paymentId, ct);
 
         /// <summary>
+        /// One checkout for every bill the caller can pay right now. The server picks
+        /// the bills and the total; the request carries neither.
+        /// </summary>
+        [HttpPost("checkout-all")]
+        public Task<ActionResult<CheckoutResponse>> CheckoutAll(CancellationToken ct)
+            => _paymentService.StartCheckoutAllAsync(GetUserId(), ct);
+
+        /// <summary>
         /// Where the payment provider reports that money arrived.
         /// </summary>
         /// <remarks>

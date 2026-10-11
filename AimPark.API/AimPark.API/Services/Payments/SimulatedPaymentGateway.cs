@@ -55,6 +55,13 @@ namespace AimPark.API.Services.Payments
             return Task.FromResult(new GatewayCheckout(id, url));
         }
 
+        // The simulator has no line items to show; one id and one page for the
+        // lot is all it needs to exercise the same settle-everything path.
+        public Task<GatewayCheckout> CreateBundleCheckoutAsync(
+            IReadOnlyList<PaymentTransaction> payments,
+            CancellationToken ct = default)
+            => CreateCheckoutAsync(payments[0], "AimPark bills", ct);
+
         public bool TryReadEvent(
             string rawBody,
             IDictionary<string, string> headers,

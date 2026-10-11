@@ -56,22 +56,31 @@ namespace AimPark.API.Controllers
         {
             if (!IsEnabled) return NotFound();
 
-            var payment = await _db.Set<PaymentTransaction>()
+            // One checkout can cover several bills ("Pay all"), so the page is
+            // about all of them. Reading only the first showed one bill's amount
+            // on a page that would settle the lot — a figure that did not match
+            // what the payer was about to pay.
+            var bills = await _db.Set<PaymentTransaction>()
                 .AsNoTracking()
-                .FirstOrDefaultAsync(p => p.ProviderPaymentId == checkoutId, ct);
+                .Where(p => p.ProviderPaymentId == checkoutId)
+                .OrderBy(p => p.CreatedAt)
+                .ToListAsync(ct);
 
-            if (payment is null) return NotFound();
+            if (bills.Count == 0) return NotFound();
 
-            if (payment.Status == PaymentStatus.Paid)
+            var open = bills.Where(p => p.Status != PaymentStatus.Paid).ToList();
+            if (open.Count == 0)
             {
-                return Redirect($"/api/payments/return?status=paid&payment={payment.Id}");
+                return Redirect($"/api/payments/return?status=paid&payment={bills[0].Id}");
             }
 
-            var what = payment.Source == PaymentSource.ParkingFee
-                ? "AimPark parking fee"
-                : "AimPark violation penalty";
+            var what = open.Count > 1
+                ? $"{open.Count} AimPark bills (parking fees and fines)"
+                : open[0].Source == PaymentSource.ParkingFee
+                    ? "AimPark parking fee"
+                    : "AimPark violation penalty";
 
-            return Content(CheckoutPage(checkoutId, what, payment.AmountDue), "text/html");
+            return Content(CheckoutPage(checkoutId, what, open.Sum(p => p.AmountDue)), "text/html");
         }
 
         /// <summary>

@@ -44,14 +44,16 @@ public class UnpaidBalanceTests
     }
 
     [Fact]
-    public void AFineBlocksOnlyOncePastItsDueDate()
+    public void AnUnpaidFineBlocksEntryAtOnceToo()
     {
-        var before = Bill(PaymentSource.ViolationPenalty, dueAt: Now.AddDays(1));
-        var after = Bill(PaymentSource.ViolationPenalty, dueAt: Now.AddMinutes(-1));
+        // A fine only exists once the violation is final, so there is no appeal
+        // window left to wait out; it blocks like any other unpaid bill.
+        var fine = Bill(PaymentSource.ViolationPenalty, dueAt: null);
 
-        Assert.False(UnpaidBalance.Evaluate([before], Now).Blocked);
-        Assert.Equal(50m, UnpaidBalance.Evaluate([before], Now).Outstanding);
-        Assert.True(UnpaidBalance.Evaluate([after], Now).Blocked);
+        var result = UnpaidBalance.Evaluate([fine], Now);
+
+        Assert.True(result.Blocked);
+        Assert.Equal(50m, result.Outstanding);
     }
 
     [Theory]
@@ -304,6 +306,10 @@ public class UnpaidBalanceTests
             PaymentTransaction payment, string description, CancellationToken ct = default) =>
             throw new NotImplementedException();
 
+        public Task<GatewayCheckout> CreateBundleCheckoutAsync(
+            IReadOnlyList<PaymentTransaction> payments, CancellationToken ct = default) =>
+            throw new NotImplementedException();
+
         public bool TryReadEvent(string rawBody, IDictionary<string, string> headers, out GatewayEvent gatewayEvent)
         {
             gatewayEvent = null!;
@@ -321,5 +327,6 @@ public class UnpaidBalanceTests
         public Task<ActionResult<NotificationListResponse>> ListAllAsync(int page, int pageSize, CancellationToken ct) => throw new NotImplementedException();
         public Task<ActionResult<NotificationListResponse>> ListForUserAsync(Guid userId, UserRole role, int page, int pageSize, CancellationToken ct) => throw new NotImplementedException();
         public Task<ActionResult<object>> MarkReadAsync(Guid userId, Guid notificationId, CancellationToken ct) => throw new NotImplementedException();
+        public Task<ActionResult<object>> MarkAllReadAsync(Guid userId, UserRole role, CancellationToken ct) => throw new NotImplementedException();
     }
 }
