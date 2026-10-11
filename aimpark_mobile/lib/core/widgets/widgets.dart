@@ -11,8 +11,17 @@
 /// no longer agreed on the gap between the icon and the text.
 library;
 
+export 'app_access_card.dart';
+export 'app_action_tile.dart';
+export 'app_alert_card.dart';
 export 'app_avatar.dart';
+export 'app_bell_button.dart';
 export 'app_bottom_nav.dart';
+export 'app_choice_tiles.dart';
+export 'app_form_section.dart';
+export 'field_requirement.dart';
+export 'app_count_badge.dart';
+export 'app_text_link.dart';
 export 'app_brand_mark.dart';
 export 'app_button.dart';
 export 'app_card.dart';
@@ -21,6 +30,10 @@ export 'password_strength_meter.dart';
 export 'app_list_row.dart';
 export 'app_loading_bar.dart';
 export 'app_notice.dart';
+export 'app_pdf_attachments.dart';
+export 'app_photo_strip.dart';
+export 'app_photo_thumb.dart';
+export 'photo_viewer_screen.dart';
 export 'app_screen.dart';
 export 'app_skeleton.dart';
 export 'app_state_views.dart';

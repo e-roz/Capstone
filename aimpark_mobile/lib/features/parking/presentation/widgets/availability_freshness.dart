@@ -59,4 +59,15 @@ extension AvailabilityBreakdown on ParkingAvailability {
       availableCars ?? slots.where((s) => _isFree(s) && !_isMotorcycle(s)).length;
 
   bool get isLotFull => availableSlots <= 0;
+
+  /// Every bay's sensor is silent — which is what the lot looks like when the
+  /// guard post that feeds the cloud has gone offline.
+  ///
+  /// In that state the count of free bays is 0, but it is not "full": nobody knows.
+  /// Reporting it as full would turn up a driver's hopes of parking for no
+  /// reason, so the screens say the live feed is paused instead.
+  bool get isPaused =>
+      feedPaused ||
+      (slots.isNotEmpty &&
+          slots.every((s) => s.status.toLowerCase() == 'nosignal'));
 }

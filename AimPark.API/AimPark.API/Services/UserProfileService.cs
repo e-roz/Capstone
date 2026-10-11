@@ -1,9 +1,11 @@
+using AimPark.API.Data;
 using AimPark.API.DTOs;
 using AimPark.API.Entities;
 using AimPark.API.Enums;
 using AimPark.API.Helpers;
 using AimPark.API.Interfaces;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 
 namespace AimPark.API.Services
 {
@@ -11,9 +13,12 @@ namespace AimPark.API.Services
     {
         private readonly IRepository<User> _users;
 
-        public UserProfileService(IRepository<User> users)
+        private readonly AppDbContext _db;
+
+        public UserProfileService(IRepository<User> users, AppDbContext db)
         {
             _users = users;
+            _db = db;
         }
 
         // GET /api/account/profile
@@ -100,6 +105,11 @@ namespace AimPark.API.Services
                 await _users.SaveAsync(ct);
             }
 
+            var owed = await _db.Set<PaymentTransaction>().AsNoTracking()
+                .Where(p => p.UserId == userId && p.Status == PaymentStatus.Pending && p.AmountDue > 0m)
+                .ToListAsync(ct);
+            var balance = UnpaidBalance.Evaluate(owed, nowUtc);
+
             return new OkObjectResult(new AccessStatusResponse
             {
                 RfidTagId = user.RfidTagId,
@@ -112,7 +122,9 @@ namespace AimPark.API.Services
                 SuspensionStartsAt = RfidAccess.IsSuspensionPending(user, nowUtc)
                     ? user.RfidSuspendedFrom
                     : null,
-                SuspensionEndsAt = user.RfidSuspendedUntil
+                SuspensionEndsAt = user.RfidSuspendedUntil,
+                EntryBlockedReason = balance.Blocked ? AllocationResult.UnpaidBalance : null,
+                OutstandingBalance = balance.Outstanding > 0m ? balance.Outstanding : null
             });
         }
     }

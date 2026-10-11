@@ -40,39 +40,6 @@ namespace AimPark.API.Services
         public Task SendToUserAsync(Guid userId, string title, string body, IDictionary<string, string>? data, CancellationToken ct)
             => SendAsync(_db.Set<DeviceToken>().AsNoTracking().Where(t => t.UserId == userId), title, body, data, ct);
 
-        /// <summary>How long "Notify me" stays armed without a bay opening.</summary>
-        /// <remarks>
-        /// Long enough to cover a morning; short enough that a watch set before
-        /// class yesterday does not buzz someone who has gone home.
-        /// </remarks>
-        private static readonly TimeSpan SlotWatchLifetime = TimeSpan.FromHours(6);
-
-        public async Task SendToSlotWatchersAsync(string title, string body, IDictionary<string, string>? data, CancellationToken ct)
-        {
-            try
-            {
-                var since = DateTime.UtcNow - SlotWatchLifetime;
-
-                // Someone who drove in while waiting no longer needs a bay.
-                var watchers = _db.Set<SlotWatch>().AsNoTracking()
-                    .Where(w => w.CreatedAt >= since)
-                    .Where(w => !_db.Set<ParkingLog>().Any(l => l.UserId == w.UserId && l.ExitTime == null))
-                    .Select(w => w.UserId);
-
-                await SendAsync(
-                    _db.Set<DeviceToken>().AsNoTracking().Where(t => watchers.Contains(t.UserId)),
-                    title, body, data, ct);
-
-                // Every watch is spent by the first opening, including the ones
-                // skipped above: they were either stale or already parked.
-                await _db.Set<SlotWatch>().ExecuteDeleteAsync(ct);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Failed to notify slot watchers.");
-            }
-        }
-
         private async Task SendAsync(IQueryable<DeviceToken> query, string title, string body, IDictionary<string, string>? data, CancellationToken ct)
         {
             try

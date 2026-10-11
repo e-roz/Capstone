@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -6,7 +8,6 @@ import '../../../../core/theme/theme.dart';
 import '../../../../core/utils/app_flushbar.dart';
 import '../../../../core/utils/formatters.dart';
 import '../../../../core/widgets/widgets.dart';
-import '../../../auth/presentation/widgets/image_picker_box.dart';
 import '../../data/models/violation.dart';
 import '../providers/violations_provider.dart';
 
@@ -17,6 +18,10 @@ import '../providers/violations_provider.dart';
 /// something into a panel half the screen tall with the keyboard over it. An
 /// appeal is the user's only route back from a charge they think is wrong; it
 /// deserves the whole screen.
+///
+/// Built the same way as the incident report form — numbered steps, a Required
+/// tag, a live counter, and a photo strip that takes up to five — so the two
+/// forms the app asks people to write in behave alike.
 class AppealScreen extends ConsumerStatefulWidget {
   const AppealScreen({super.key, required this.violationId});
 
@@ -33,16 +38,24 @@ class _AppealScreenState extends ConsumerState<AppealScreen> {
   static const int _minLength = 20;
   static const int _maxLength = 600;
 
+  /// The most the photos may weigh together. The server refuses any request over
+  /// 10 MB in total, so this stops a little short of it.
+  static const int _maxPhotoBytes = 9 * 1024 * 1024;
+
+  /// The server takes five evidence files in all, photos and PDFs together, and
+  /// refuses any one over 5 MB.
+  static const int _maxFiles = 5;
+
   final _reason = TextEditingController();
-  String? _photo1;
-  String? _photo2;
-  bool _wantsEvidence = false;
+  List<String> _photos = const [];
+  List<String> _pdfs = const [];
+  String? _photosError;
   bool _isSubmitting = false;
 
   @override
   void initState() {
     super.initState();
-    // Drives the live counter and the submit button's enabled state.
+    // Drives the submit button's enabled state.
     _reason.addListener(() => setState(() {}));
   }
 
@@ -56,12 +69,28 @@ class _AppealScreenState extends ConsumerState<AppealScreen> {
   bool get _isValid => _length >= _minLength;
 
   Future<void> _submit() async {
+    // Checked here, with the numbers, rather than letting the server refuse the
+    // whole upload with an error that does not say which photo to drop.
+    final files = [..._photos, ..._pdfs];
+    final sizes = await Future.wait(files.map((p) => File(p).length()));
+    final totalBytes = sizes.fold<int>(0, (sum, b) => sum + b);
+    if (totalBytes > _maxPhotoBytes) {
+      final mb = (totalBytes / (1024 * 1024)).toStringAsFixed(1);
+      if (mounted) {
+        setState(() {
+          _photosError = 'Your files add up to $mb MB, and the limit is 9 MB '
+              'together. Remove one or two.';
+        });
+      }
+      return;
+    }
+
     setState(() => _isSubmitting = true);
     try {
       await ref.read(violationsRepositoryProvider).submitAppeal(
             widget.violationId,
             _reason.text.trim(),
-            evidencePaths: _wantsEvidence ? [?_photo1, ?_photo2] : const [],
+            evidencePaths: files,
           );
       ref.invalidate(violationDetailProvider(widget.violationId));
       ref.read(violationsNotifierProvider.notifier).refresh();
@@ -85,60 +114,72 @@ class _AppealScreenState extends ConsumerState<AppealScreen> {
     final t = context.tokens;
 
     return AppScreen(
+      title: 'File an appeal',
       body: AsyncView(
         value: ref.watch(violationDetailProvider(widget.violationId)),
         errorTitle: "Couldn't load this violation",
         data: (violation) => ListView(
           padding: kScreenListPadding,
           children: [
-            const AppScreenTitle(title: 'File an appeal'),
             _AppealingCard(violation: violation),
+            const SizedBox(height: AppSpacing.lg),
+
+            // ── 1 · The explanation ────────────────────────────────────────
+            const AppFormSectionHeader(
+              number: 1,
+              title: 'Your explanation',
+              requirement: FieldRequirement.required,
+            ),
             const SizedBox(height: AppSpacing.md),
             AppTextField(
-              label: 'Explain your case',
+              label: 'What should the office know?',
               controller: _reason,
+              hintText: 'Tell the office what happened. For example: the gate '
+                  'misread my plate, or I was in a permitted bay.',
               maxLines: 5,
               maxLength: _maxLength,
+              showCounter: true,
               enabled: !_isSubmitting,
               textCapitalization: TextCapitalization.sentences,
               // The reason it cannot be sent, shown while it cannot be sent —
               // rather than a disabled button with no explanation, or an error
               // that only appears after a failed tap.
               helperText: _isValid
-                  ? 'Ready to submit. $_length/$_maxLength'
-                  : 'Add at least a sentence explaining what happened. '
-                      '$_length/$_maxLength',
-            ),
-            const SizedBox(height: AppSpacing.md),
-            _EvidenceToggle(
-              value: _wantsEvidence,
-              onChanged: _isSubmitting
                   ? null
-                  : (v) => setState(() => _wantsEvidence = v),
+                  : 'At least $_minLength characters, so the office has '
+                      'something to decide on.',
             ),
-            if (_wantsEvidence) ...[
-              const SizedBox(height: AppSpacing.sm),
-              Row(
-                children: [
-                  Expanded(
-                    child: ImagePickerBox(
-                      label: 'Photo 1',
-                      imagePath: _photo1,
-                      onImageSelected: (p) => setState(() => _photo1 = p),
-                    ),
-                  ),
-                  const SizedBox(width: AppSpacing.sm),
-                  Expanded(
-                    child: ImagePickerBox(
-                      label: 'Photo 2',
-                      imagePath: _photo2,
-                      onImageSelected: (p) => setState(() => _photo2 = p),
-                    ),
-                  ),
-                ],
-              ),
-            ],
+            const SizedBox(height: AppSpacing.xl),
+
+            // ── 2 · Evidence ───────────────────────────────────────────────
+            const AppFormSectionHeader(
+              number: 2,
+              title: 'Evidence',
+              requirement: FieldRequirement.optional,
+            ),
             const SizedBox(height: AppSpacing.md),
+            AppPhotoStrip(
+              paths: _photos,
+              // Photos and PDFs share the server's five-file limit.
+              max: _maxFiles - _pdfs.length,
+              enabled: !_isSubmitting,
+              errorText: _photosError,
+              onChanged: (paths) => setState(() {
+                _photos = paths;
+                _photosError = null;
+              }),
+            ),
+            const SizedBox(height: AppSpacing.md),
+            AppPdfAttachments(
+              paths: _pdfs,
+              max: _maxFiles - _photos.length,
+              enabled: !_isSubmitting,
+              onChanged: (paths) => setState(() {
+                _pdfs = paths;
+                _photosError = null;
+              }),
+            ),
+            const SizedBox(height: AppSpacing.lg),
             AppCard(
               color: t.surface.muted,
               borderColor: t.border.subtle,
@@ -168,7 +209,7 @@ class _AppealScreenState extends ConsumerState<AppealScreen> {
               isLoading: _isSubmitting,
               onPressed: _isValid && !_isSubmitting ? _submit : null,
             ),
-            const SizedBox(height: AppSpacing.xs),
+            const SizedBox(height: AppSpacing.sm),
             AppButton(
               label: 'Cancel',
               style: AppButtonStyle.ghost,
@@ -181,8 +222,9 @@ class _AppealScreenState extends ConsumerState<AppealScreen> {
   }
 }
 
-/// What is being appealed, restated at the top so the user is not writing
-/// about a violation they can no longer see.
+/// What is being appealed, restated at the top so the user is not writing about a
+/// violation they can no longer see — with the deadline, because it is the one
+/// thing here that is running out.
 class _AppealingCard extends StatelessWidget {
   const _AppealingCard({required this.violation});
 
@@ -190,7 +232,14 @@ class _AppealingCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final t = context.tokens;
+    final deadline = violation.appealDeadline;
+    final urgency = deadline == null ? null : appealUrgency(deadline);
+    final c = urgency == null ? null : t.status.of(urgency);
+
     return AppCard(
+      borderColor: c?.border,
+      edgeColor: c?.solid,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -206,68 +255,25 @@ class _AppealingCard extends StatelessWidget {
             Formatters.date(violation.createdAt),
             style: context.text.bodySmall,
           ),
-        ],
-      ),
-    );
-  }
-}
-
-/// An explicit opt-in, so the form is short for the common case.
-///
-/// Two empty photo boxes sitting open on every appeal implied evidence was
-/// expected, and an appeal without a photo looked incomplete. Most appeals are
-/// a sentence about a gate reading and nothing else.
-class _EvidenceToggle extends StatelessWidget {
-  const _EvidenceToggle({required this.value, required this.onChanged});
-
-  final bool value;
-  final ValueChanged<bool>? onChanged;
-
-  @override
-  Widget build(BuildContext context) {
-    final t = context.tokens;
-    final enabled = onChanged != null;
-
-    return AppCard(
-      onTap: enabled ? () => onChanged!(!value) : null,
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          AnimatedContainer(
-            duration: AppMotion.fast,
-            curve: AppMotion.standard,
-            width: 22,
-            height: 22,
-            decoration: BoxDecoration(
-              color: value ? t.brand.primary : t.surface.card,
-              borderRadius: BorderRadius.circular(6),
-              border: Border.all(
-                color: value ? t.brand.primary : t.border.strong,
-                width: 1.5,
-              ),
-            ),
-            child: value
-                ? Icon(Icons.check_rounded, size: 16, color: t.brand.onSolid)
-                : null,
-          ),
-          const SizedBox(width: AppSpacing.sm),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+          if (deadline != null) ...[
+            const SizedBox(height: AppSpacing.sm + 2),
+            Row(
               children: [
-                Text(
-                  'I have supporting evidence',
-                  style: context.text.bodyMedium
-                      ?.copyWith(fontWeight: FontWeight.w600),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  'Optional. Attach it only if it helps explain your case.',
-                  style: context.text.bodySmall,
+                Icon(Icons.timer_outlined, size: AppSizes.iconMd, color: c!.fg),
+                const SizedBox(width: AppSpacing.sm),
+                Expanded(
+                  child: Text(
+                    '${appealCountdown(deadline)} · by '
+                    '${Formatters.date(deadline)}',
+                    style: context.text.labelLarge?.copyWith(
+                      color: c.fg,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
                 ),
               ],
             ),
-          ),
+          ],
         ],
       ),
     );

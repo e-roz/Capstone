@@ -56,6 +56,38 @@ namespace AimPark.API.Sync
         /// the guard post's map.
         /// </summary>
         public List<WrongBayFlag> WrongBayFlags { get; set; } = [];
+
+        /// <summary>
+        /// Bills still unpaid in the cloud (Pending or Processing), so the site
+        /// can refuse entry to someone who owes money. Null means the sender is
+        /// an older cloud that does not know about bills: the site must then
+        /// block nobody rather than guess.
+        /// </summary>
+        /// <remarks>
+        /// Not copied into the site's PaymentTransactions: settlement and fines
+        /// are decided in the cloud, and a fine points at a violation the site
+        /// does not hold.
+        /// </remarks>
+        public List<SyncDue>? Dues { get; set; }
+
+        /// <summary>
+        /// Bills settled (Paid or Waived) in the last week. A bill the site
+        /// created itself stays Pending in its own table for good; this is how
+        /// the site learns that one has since been paid.
+        /// </summary>
+        public List<Guid>? SettledPaymentIds { get; set; }
+    }
+
+    /// <summary>The part of an unpaid <see cref="PaymentTransaction"/> an entry check reads.</summary>
+    public class SyncDue
+    {
+        public Guid Id { get; set; }
+        public Guid UserId { get; set; }
+        public PaymentSource Source { get; set; }
+        public PaymentStatus Status { get; set; }
+        public decimal AmountDue { get; set; }
+        public DateTime? DueAt { get; set; }
+        public DateTime CreatedAt { get; set; }
     }
 
     /// <summary>
@@ -166,10 +198,12 @@ namespace AimPark.API.Sync
         public UserRole? TargetRole { get; set; }
 
         /// <summary>
-        /// For whoever pressed "Notify me" in a full lot. Overrides both targets
-        /// above. Older cloud builds ignore the field and would read the push as
-        /// a broadcast — deploy the cloud first.
+        /// Obsolete: the slot-watch feature is gone and nothing sets this any more.
+        /// Kept only so a site that has not updated yet can still deserialize and
+        /// be told to drop its queued pushes (see EventIngestor). Remove once every
+        /// site is updated.
         /// </summary>
+        [Obsolete("Slot watch was removed; the cloud drops pushes that set this.")]
         public bool ToSlotWatchers { get; set; }
 
         public string Title { get; set; } = string.Empty;

@@ -63,6 +63,15 @@ namespace AimPark.API.Sync
         /// </summary>
         public string GuardPanelUrl { get; set; } = string.Empty;
 
+        /// <summary>
+        /// Cloud mode, for development and testing: count a guard post this
+        /// process has never heard from as silent, so parking reads "paused"
+        /// instead of the last known bays. Off by default — while the cloud still
+        /// runs the gates itself there may be no guard post at all, and a local
+        /// API sharing the cloud's database never receives its heartbeat.
+        /// </summary>
+        public bool TreatUnheardGuardPostAsSilent { get; set; }
+
         /// <summary>Site mode: how the guard PC updates itself. See <see cref="Site.Updates.SiteUpdater"/>.</summary>
         public SiteUpdateOptions Updates { get; set; } = new();
 

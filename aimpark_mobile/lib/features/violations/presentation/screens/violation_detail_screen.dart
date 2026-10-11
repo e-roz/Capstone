@@ -13,12 +13,29 @@ class ViolationDetailScreen extends ConsumerWidget {
 
   final String violationId;
 
+  void _openPhoto(BuildContext context, List<String> urls, int index) {
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        fullscreenDialog: true,
+        builder: (_) => PhotoViewerScreen(urls: urls, initialIndex: index),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final async = ref.watch(violationDetailProvider(violationId));
+    final violation = async.valueOrNull;
+
     return AppScreen(
       title: 'Violation Detail',
+      // The one thing to do about a violation, pinned where a thumb already is.
+      // It was an outline button floating in the middle of the page, the quietest
+      // thing on a screen that otherwise shouted — for the only action with a
+      // deadline attached.
+      bottomBar: violation == null ? null : _actionBar(context, violation),
       body: AsyncView(
-        value: ref.watch(violationDetailProvider(violationId)),
+        value: async,
         onRefresh: () {
           ref.invalidate(violationDetailProvider(violationId));
           return ref.read(violationDetailProvider(violationId).future);
@@ -36,9 +53,8 @@ class ViolationDetailScreen extends ConsumerWidget {
                 if (violation.canAppeal && violation.appealDeadline != null)
                   AppFact(
                     'Appeal until',
-                    '${Formatters.date(violation.appealDeadline!)} · '
-                        '${appealTimeLeft(violation.appealDeadline!)}',
-                    intent: StatusIntent.warning,
+                    Formatters.date(violation.appealDeadline!),
+                    intent: appealUrgency(violation.appealDeadline!),
                   ),
                 AppFact(
                   'Suspension',
@@ -57,20 +73,14 @@ class ViolationDetailScreen extends ConsumerWidget {
                   )
                 else if (violation.isWaived)
                   const AppFact('Payment', 'Waived', intent: StatusIntent.info)
-                else if (violation.isPayable && violation.paymentDueAt != null)
-                  AppFact(
-                    'Due by',
-                    Formatters.date(violation.paymentDueAt!),
+                else if (violation.isPayable)
+                  const AppFact(
+                    'Payment',
+                    'Due now',
                     intent: StatusIntent.warning,
                   ),
               ],
-              // Only red while it is still owed. Colouring a settled fine as a
-              // problem is how a paid violation kept reading like an unpaid one.
-              total: AppFact(
-                'Penalty',
-                Formatters.peso(violation.penaltyAmount),
-                intent: violation.isPayable ? StatusIntent.danger : null,
-              ),
+              total: _penalty(violation),
             ),
             const SizedBox(height: AppSpacing.gutter),
             AppRowGroup(
@@ -84,20 +94,89 @@ class ViolationDetailScreen extends ConsumerWidget {
                 ),
               ],
             ),
-            const SizedBox(height: AppSpacing.lg),
-            if (violation.appealStatus != null)
-              _AppealCard(violation: violation)
-            else if (violation.canAppeal)
-              AppButton(
-                label: 'Appeal this violation',
-                style: AppButtonStyle.ghost,
-                onPressed: () =>
-                    context.push('/home/user/violations/$violationId/appeal'),
+            if (violation.appealStatus != null) ...[
+              const SizedBox(height: AppSpacing.lg),
+              _AppealSection(
+                violation: violation,
+                onPhoto: (i) =>
+                    _openPhoto(context, violation.appealEvidenceUrls, i),
               ),
+            ],
           ],
         ),
       ),
     );
+  }
+
+  /// The penalty line. A penalty that does not apply — the appeal was accepted,
+  /// the violation dismissed, the charge waived — is shown struck through with
+  /// "Not charged". Printing it at full size and in bold, directly under a green
+  /// banner saying "No penalty applies", made the screen contradict itself.
+  AppFact _penalty(ViolationDetail v) {
+    final status = v.status.toLowerCase();
+    final notCharged =
+        v.isWaived || status == 'appealed' || status == 'dismissed';
+
+    if (notCharged) {
+      return AppFact(
+        'Penalty',
+        Formatters.peso(v.penaltyAmount),
+        struck: true,
+        note: 'Not charged',
+        intent: StatusIntent.success,
+      );
+    }
+    return AppFact(
+      'Penalty',
+      Formatters.peso(v.penaltyAmount),
+      intent: v.isPayable ? StatusIntent.danger : null,
+    );
+  }
+
+  Widget? _actionBar(BuildContext context, ViolationDetail v) {
+    if (v.canAppeal) {
+      final deadline = v.appealDeadline;
+      final urgency = deadline == null ? null : appealUrgency(deadline);
+      final fg = urgency == null
+          ? null
+          : context.tokens.status.of(urgency).fg;
+
+      return AppBottomBar(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (deadline != null) ...[
+              Text(
+                '${appealCountdown(deadline)} · by ${Formatters.date(deadline)}',
+                textAlign: TextAlign.center,
+                style: context.text.bodySmall?.copyWith(
+                  color: fg,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(height: AppSpacing.sm),
+            ],
+            AppButton(
+              label: 'Appeal this violation',
+              onPressed: () =>
+                  context.push('/home/user/violations/$violationId/appeal'),
+            ),
+          ],
+        ),
+      );
+    }
+
+    // Final and unpaid: the way to settle it is one tap away, to the bill, where
+    // the payer sees what they owe before choosing to pay.
+    if (v.isPayable && v.paymentId != null) {
+      return AppBottomBar(
+        child: AppButton(
+          label: 'Pay ${Formatters.peso(v.amountDue ?? v.penaltyAmount)}',
+          onPressed: () => context.push('/home/user/payments/${v.paymentId}'),
+        ),
+      );
+    }
+    return null;
   }
 }
 
@@ -107,10 +186,24 @@ class ViolationDetailScreen extends ConsumerWidget {
 /// first thing anyone opening this screen wants, and it decides whether the
 /// buttons below say "appeal" or "nothing to do" — a pill in the corner was
 /// carrying more weight than its size suggested.
+///
+/// Open and still appealable, it is amber and turns red in the last day, with the
+/// time left in bold. It used to be calm blue: information, for a charge with a
+/// deadline.
 class _StatusCard extends StatelessWidget {
   const _StatusCard({required this.violation});
 
   final ViolationDetail violation;
+
+  StatusIntent get _intent {
+    if (violation.isWaived) return StatusIntent.info;
+    if (violation.isPaid) return StatusIntent.success;
+    final deadline = violation.appealDeadline;
+    if (violation.status.toLowerCase() == 'issued') {
+      return deadline == null ? StatusIntent.warning : appealUrgency(deadline);
+    }
+    return StatusIntents.violation(violation.displayStatus);
+  }
 
   /// Says what the state means, not just what it is called. "Appealed" tells a
   /// user nothing about whether they still owe the money; this does.
@@ -140,17 +233,15 @@ class _StatusCard extends StatelessWidget {
       return 'The appeal period has ended. This violation will become final '
           'shortly.';
     }
-    return deadline == null
-        ? 'This violation is open. You can appeal it.'
-        : 'This violation is open. Appeal by ${Formatters.date(deadline)}, or '
-            'it becomes final and the penalty is charged.';
+    return 'This violation is open. Appeal before the deadline, or it becomes '
+        'final and the penalty is charged.';
   }
 
   @override
   Widget build(BuildContext context) {
-    final c = context.tokens.status.of(
-      StatusIntents.violation(violation.displayStatus),
-    );
+    final intent = _intent;
+    final c = context.tokens.status.of(intent);
+    final deadline = violation.canAppeal ? violation.appealDeadline : null;
 
     return AppCard(
       color: c.bg,
@@ -178,6 +269,26 @@ class _StatusCard extends StatelessWidget {
           Text(violation.policyRuleTitle, style: context.text.headlineSmall),
           const SizedBox(height: 2),
           Text(violation.description, style: context.text.bodyMedium),
+          // The time left, as the loudest line in the card: it is the one fact
+          // here that is running out.
+          if (deadline != null) ...[
+            const SizedBox(height: AppSpacing.md),
+            Row(
+              children: [
+                Icon(Icons.timer_outlined, size: AppSizes.iconMd, color: c.fg),
+                const SizedBox(width: AppSpacing.sm),
+                Expanded(
+                  child: Text(
+                    appealCountdown(deadline),
+                    style: context.text.titleMedium?.copyWith(
+                      color: c.fg,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
           const SizedBox(height: AppSpacing.sm),
           Text(_line, style: context.text.bodySmall),
         ],
@@ -187,77 +298,73 @@ class _StatusCard extends StatelessWidget {
 }
 
 /// The appeal the user already submitted, and where it got to.
-class _AppealCard extends StatelessWidget {
-  const _AppealCard({required this.violation});
+class _AppealSection extends StatelessWidget {
+  const _AppealSection({required this.violation, required this.onPhoto});
 
   final ViolationDetail violation;
+  final ValueChanged<int> onPhoto;
 
   @override
   Widget build(BuildContext context) {
-    final t = context.tokens;
+    final decided = violation.appealDecidedAt;
+    final notes = violation.appealAdminNotes?.trim();
 
     return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        const AppSectionHeader(title: 'Appeal'),
+        const AppSectionHeader(title: 'Your appeal'),
+        // Full width, like every other card here. It was sized to its content, so
+        // a short appeal left a card half as wide as the rest of the screen.
         AppCard(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              AppStatusBadge(
-                label: violation.appealStatus!,
-                intent: StatusIntents.violation(violation.appealStatus!),
+              Row(
+                children: [
+                  AppStatusBadge(
+                    label: violation.appealStatus!,
+                    intent: StatusIntents.violation(violation.appealStatus!),
+                    showDot: true,
+                  ),
+                  if (decided != null) ...[
+                    const SizedBox(width: AppSpacing.sm),
+                    Flexible(
+                      child: Text(
+                        'Decided ${Formatters.date(decided.toLocal())}',
+                        style: context.text.bodySmall,
+                      ),
+                    ),
+                  ],
+                ],
               ),
               if (violation.appealReasonText != null) ...[
-                const SizedBox(height: AppSpacing.sm),
-                Text(
-                  violation.appealReasonText!,
-                  style: context.text.bodyMedium,
+                const SizedBox(height: AppSpacing.md),
+                AppInfoRow(
+                  label: 'What you wrote',
+                  value: violation.appealReasonText!,
                 ),
               ],
               if (violation.appealEvidenceUrls.isNotEmpty) ...[
+                const SizedBox(height: AppSpacing.md),
+                Text('Evidence you sent', style: context.text.labelSmall),
                 const SizedBox(height: AppSpacing.sm),
-                Text('Evidence you submitted', style: context.text.labelSmall),
-                const SizedBox(height: AppSpacing.xs),
-                SizedBox(
-                  height: 90,
-                  child: ListView.separated(
-                    scrollDirection: Axis.horizontal,
-                    itemCount: violation.appealEvidenceUrls.length,
-                    separatorBuilder: (_, _) =>
-                        const SizedBox(width: AppSpacing.sm),
-                    itemBuilder: (context, index) => ClipRRect(
-                      borderRadius: AppRadius.smAll,
-                      child: Image.network(
-                        violation.appealEvidenceUrls[index],
-                        width: 90,
-                        height: 90,
-                        fit: BoxFit.cover,
-                        errorBuilder: (_, _, _) => Container(
-                          width: 90,
-                          height: 90,
-                          color: t.surface.muted,
-                          child: Icon(
-                            Icons.broken_image_rounded,
-                            color: t.text.secondary,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-              if (violation.appealAdminNotes != null) ...[
-                const SizedBox(height: AppSpacing.sm),
-                Text('Admin notes', style: context.text.labelSmall),
-                Text(
-                  violation.appealAdminNotes!,
-                  style: context.text.bodySmall,
+                AppPhotoThumb.grid(
+                  urls: violation.appealEvidenceUrls,
+                  onTap: onPhoto,
                 ),
               ],
             ],
           ),
         ),
+        if (notes != null && notes.isNotEmpty) ...[
+          const SizedBox(height: AppSpacing.md),
+          AppAlertCard(
+            intent: StatusIntent.brand,
+            icon: Icons.support_agent_rounded,
+            eyebrow: 'Note from the parking office',
+            message: notes,
+          ),
+        ],
       ],
     );
   }

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 
 import '../theme/theme.dart';
 
@@ -33,6 +34,7 @@ class AppScreen extends StatelessWidget {
     this.bottomBar,
     this.showBack = true,
     this.onBack,
+    this.fallbackBackRoute,
     this.background,
   }) : _inline = false;
 
@@ -47,6 +49,7 @@ class AppScreen extends StatelessWidget {
         actions = const [],
         showBack = false,
         onBack = null,
+        fallbackBackRoute = null,
         _inline = true;
 
   final Widget body;
@@ -72,6 +75,19 @@ class AppScreen extends StatelessWidget {
   /// the welcome screen and has to `go` back.
   final VoidCallback? onBack;
 
+  /// Where "back" goes when there is *nothing to go back to*.
+  ///
+  /// A screen opened by a link from outside the app — the payment page sending
+  /// the user back to their bill — starts a fresh stack with only that screen in
+  /// it. Flutter then draws no back arrow, and the phone's Back button does what
+  /// Back does on the last screen of anything: it leaves the app, here into the
+  /// browser the payment was made in. Setting this gives that screen an arrow, and
+  /// points both the arrow and the system Back button at this route instead.
+  ///
+  /// Ignored when there *is* something underneath, so the same screen behaves
+  /// normally when it is pushed from a list.
+  final String? fallbackBackRoute;
+
   /// Overrides the canvas. Only for screens that are deliberately a different
   /// surface, such as the welcome screen sitting on card white.
   final Color? background;
@@ -82,20 +98,49 @@ class AppScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final t = context.tokens;
 
-    return Scaffold(
+    final canPop = Navigator.of(context).canPop();
+    final fallback = fallbackBackRoute;
+    // Nothing underneath, and a place to go instead.
+    final useFallback = !_inline && fallback != null && onBack == null && !canPop;
+
+    final scaffold = Scaffold(
       backgroundColor: background ?? t.surface.canvas,
       appBar: _inline
           ? null
           : AppBar(
-              automaticallyImplyLeading: showBack && onBack == null,
-              leading: onBack == null
-                  ? null
-                  : IconButton(
+              automaticallyImplyLeading:
+                  showBack && onBack == null && !useFallback,
+              leading: onBack != null
+                  ? IconButton(
                       icon: const Icon(Icons.arrow_back),
                       onPressed: onBack,
                       tooltip: 'Back',
-                    ),
+                    )
+                  : useFallback
+                      ? IconButton(
+                          icon: const Icon(Icons.arrow_back),
+                          onPressed: () => context.go(fallback),
+                          tooltip: 'Back',
+                        )
+                      : null,
               backgroundColor: background ?? t.surface.canvas,
+              // The back arrow's left edge already sits at the 16dp the content
+              // below starts at; what was off was the gap after it. Material's
+              // default 16 of title spacing came on top of the arrow's own 56dp
+              // box, so every title started 72dp in — 32dp from the arrow it
+              // belongs to. 0 pulls it to 56. Kept at the screen padding when
+              // there is no arrow at all, so the title still lines up with the
+              // content.
+              //
+              // "Has an arrow" is not the same as "asked for one": a screen
+              // reached with `go` has nothing underneath it, Flutter draws no
+              // arrow, and a title spaced as though there were one sits flush
+              // against the edge of the screen. So it asks the navigator.
+              titleSpacing: (onBack != null ||
+                      useFallback ||
+                      (showBack && canPop))
+                  ? 0
+                  : AppSpacing.screenPadding,
               title: title == null ? null : Text(title!),
               actions: actions,
             ),
@@ -123,6 +168,18 @@ class AppScreen extends StatelessWidget {
           ),
         ),
       ),
+    );
+
+    if (!useFallback) return scaffold;
+
+    // The phone's own Back button, which would otherwise close the app on this
+    // screen and drop the user back into the browser.
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) context.go(fallback);
+      },
+      child: scaffold,
     );
   }
 }
@@ -267,7 +324,10 @@ class AppSectionHeader extends StatelessWidget {
       child: action == null
           ? titleBlock
           : Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
+              // Centred: an action here is an AppTextLink, 48dp tall for its
+              // touch target, so top-aligning it left the label floating well
+              // below the title it belongs beside.
+              crossAxisAlignment: CrossAxisAlignment.center,
               children: [
                 Expanded(child: titleBlock),
                 const SizedBox(width: AppSpacing.sm),

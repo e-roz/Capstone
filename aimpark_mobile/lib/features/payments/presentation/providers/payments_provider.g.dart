@@ -166,7 +166,7 @@ class _PaymentDetailProviderElement
   String get paymentId => (origin as PaymentDetailProvider).paymentId;
 }
 
-String _$paymentsNotifierHash() => r'c1941e7773728642bae5c35f6b49486403b7222c';
+String _$paymentsNotifierHash() => r'fd18707839f5fe302820c7599b5cbf997272babf';
 
 /// See also [PaymentsNotifier].
 @ProviderFor(PaymentsNotifier)

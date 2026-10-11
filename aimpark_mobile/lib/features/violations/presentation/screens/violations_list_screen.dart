@@ -60,15 +60,15 @@ class ViolationsListScreen extends ConsumerWidget {
           return ListView(
             padding: kScreenListPadding,
             children: [
-              if (open.isNotEmpty)
+              if (open.isNotEmpty) ...[
+                AppSectionHeader(title: 'Open · ${open.length}'),
                 AppRowGroup(
                   children: [for (final v in open) _ViolationRow(violation: v)],
                 ),
-              // Only announced when there is both something settled to head and
-              // something open above it to separate it from.
+              ],
               if (settled.isNotEmpty) ...[
                 if (open.isNotEmpty) const SizedBox(height: AppSpacing.lg),
-                const AppSectionHeader(title: 'Settled'),
+                AppSectionHeader(title: 'Settled · ${settled.length}'),
                 AppRowGroup(
                   children: [
                     for (final v in settled) _ViolationRow(violation: v),
@@ -90,17 +90,45 @@ class _ViolationRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final t = context.tokens;
+    final intent = StatusIntents.violation(violation.displayStatus);
+    final c = t.status.of(intent);
+
+    // The deadline is the one thing on an open violation that is time-limited,
+    // so it gets its own line, coloured by how close it is.
+    final deadline = violation.canAppeal ? violation.appealDeadline : null;
+    final urgency = deadline == null ? null : appealUrgency(deadline);
+
     return AppListRow(
-      icon: Icons.gavel_rounded,
+      leading: Container(
+        width: AppSizes.rowIcon,
+        height: AppSizes.rowIcon,
+        decoration: BoxDecoration(color: c.bg, shape: BoxShape.circle),
+        child: Icon(Icons.gavel_rounded, size: AppSizes.iconMd, color: c.fg),
+      ),
       title: violation.policyRuleTitle,
-      subtitle: violation.canAppeal && violation.appealDeadline != null
-          ? '${Formatters.peso(violation.penaltyAmount)} · Appeal: '
-              '${appealTimeLeft(violation.appealDeadline!)}'
-          : '${Formatters.peso(violation.penaltyAmount)} · '
-              '${Formatters.date(violation.createdAt)}',
-      trailing: AppStatusBadge(
-        label: violation.displayStatus,
-        intent: StatusIntents.violation(violation.displayStatus),
+      subtitle:
+          '${Formatters.peso(violation.penaltyAmount)} · '
+          '${Formatters.date(violation.createdAt)}',
+      // The status sits under the name, beside the deadline, instead of pinned to
+      // the far end of the row. A badge there cannot shrink, so a long one such as
+      // "Appeal accepted" squeezed the rule's name or ran off the screen at a
+      // large text size.
+      note: Wrap(
+        spacing: AppSpacing.sm,
+        runSpacing: AppSpacing.xs,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        children: [
+          AppStatusBadge(label: violation.displayStatus, intent: intent),
+          if (deadline != null)
+            Text(
+              appealCountdown(deadline),
+              style: context.text.bodySmall?.copyWith(
+                color: t.status.of(urgency!).fg,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+        ],
       ),
       onTap: () =>
           context.push('/home/user/violations/${violation.violationId}'),

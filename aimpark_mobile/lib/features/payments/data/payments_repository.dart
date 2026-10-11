@@ -31,4 +31,16 @@ class PaymentsRepository {
     final response = await _dio.post(ApiEndpoints.paymentCheckout(paymentId));
     return Checkout.fromJson(response.data as Map<String, dynamic>);
   }
+
+  /// Opens ONE checkout covering every bill the caller can pay right now, and
+  /// returns where to send the payer. The server decides which bills those are
+  /// and what they total — the phone never sends a list or an amount.
+  ///
+  /// Only called when `kPayAllAvailable` is true. The server endpoint is a
+  /// separate piece of work, and its contract is written down in
+  /// `payments_capabilities.dart`.
+  Future<Checkout> startCheckoutAll() async {
+    final response = await _dio.post(ApiEndpoints.paymentsCheckoutAll);
+    return Checkout.fromJson(response.data as Map<String, dynamic>);
+  }
 }

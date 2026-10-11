@@ -117,51 +117,6 @@ namespace AimPark.API.Services
             }
         }
 
-        public Task NotifySlotWatchersAsync(string title, string message, CancellationToken ct)
-            => _pushSender.SendToSlotWatchersAsync(
-                title,
-                message,
-                new Dictionary<string, string>
-                {
-                    ["type"] = "notification",
-                    ["screen"] = "parking-slots"
-                },
-                ct);
-
-        // GET /api/notifications/slot-watch
-        public async Task<ActionResult<object>> GetSlotWatchAsync(Guid userId, CancellationToken ct)
-        {
-            var watching = await _db.Set<SlotWatch>().AnyAsync(w => w.UserId == userId, ct);
-            return new OkObjectResult(new { watching });
-        }
-
-        // POST /api/notifications/slot-watch
-        public async Task<ActionResult<object>> WatchSlotsAsync(Guid userId, CancellationToken ct)
-        {
-            var existing = await _db.Set<SlotWatch>().FirstOrDefaultAsync(w => w.UserId == userId, ct);
-
-            if (existing is null)
-            {
-                _db.Set<SlotWatch>().Add(new SlotWatch { UserId = userId });
-            }
-            else
-            {
-                // Pressed again later in the day: the clock restarts, since the
-                // wish to be told is as fresh as the last press.
-                existing.CreatedAt = DateTime.UtcNow;
-            }
-
-            await _db.SaveChangesAsync(ct);
-            return new OkObjectResult(new { watching = true, message = "We'll let you know when a slot opens." });
-        }
-
-        // DELETE /api/notifications/slot-watch
-        public async Task<ActionResult<object>> UnwatchSlotsAsync(Guid userId, CancellationToken ct)
-        {
-            await _db.Set<SlotWatch>().Where(w => w.UserId == userId).ExecuteDeleteAsync(ct);
-            return new OkObjectResult(new { watching = false });
-        }
-
         // POST /api/admin/notifications
         public async Task<ActionResult<object>> BroadcastAsync(BroadcastNotificationDto dto, Guid adminUserId, CancellationToken ct)
         {
@@ -311,6 +266,32 @@ namespace AimPark.API.Services
             await _reads.SaveAsync(ct);
 
             return new OkObjectResult(new { message = "Marked as read." });
+        }
+
+        // POST /api/notifications/read-all
+        public async Task<ActionResult<object>> MarkAllReadAsync(Guid userId, UserRole role, CancellationToken ct)
+        {
+            // The same set the list shows: addressed to this user personally, or a
+            // broadcast for their role — and never someone else's.
+            var unread = await _db.Set<Notification>().AsNoTracking()
+                .Where(n => (n.TargetUserId == userId
+                             || (n.TargetUserId == null
+                                 && (n.TargetRole == null || n.TargetRole == role)))
+                         && !_db.Set<NotificationRead>().Any(r => r.NotificationId == n.Id && r.UserId == userId))
+                .Select(n => n.Id)
+                .ToListAsync(ct);
+
+            var now = DateTime.UtcNow;
+            await _reads.AddRangeAsync(unread.Select(id => new NotificationRead
+            {
+                Id = Guid.NewGuid(),
+                NotificationId = id,
+                UserId = userId,
+                ReadAt = now
+            }), ct);
+            await _reads.SaveAsync(ct);
+
+            return new OkObjectResult(new { message = "Marked as read.", count = unread.Count });
         }
     }
 }

@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
 
 import '../../../../core/theme/theme.dart';
 import '../../../../core/update/update_dialog.dart';
@@ -55,11 +54,6 @@ class _SupportScreenState extends ConsumerState<SupportScreen> {
           const AppScreenTitle(title: 'Help & support'),
           AppRowGroup(
             children: [
-              AppListRow(
-                title: 'How standing works',
-                subtitle: 'Tiers, points and streaks explained',
-                onTap: () => context.push('/home/user/standing'),
-              ),
               AppListRow(
                 title: 'Terms and conditions',
                 subtitle: 'The parking terms you accepted at registration',

@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -113,9 +114,14 @@ class _PaymentDetailScreenState extends ConsumerState<PaymentDetailScreen>
     // one, so leaving the old code up would show a code that no longer works.
     _stopQr();
 
+    // In-app tab, not the phone's browser. A browser runs in its own Android
+    // task: the "Back to AimPark" link brought the app forward but left the old
+    // checkout tab behind, and Back from that tab went to the home screen. This
+    // tab sits on top of the app's own task, so Back returns here and the return
+    // link closes it.
     final opened = await launchUrl(
       Uri.parse(checkout.checkoutUrl),
-      mode: LaunchMode.externalApplication,
+      mode: LaunchMode.inAppBrowserView,
     );
 
     if (!opened) {
@@ -236,10 +242,36 @@ class _PaymentDetailScreenState extends ConsumerState<PaymentDetailScreen>
     );
   }
 
+  /// Back, decided at the moment it is pressed.
+  ///
+  /// After paying, the payment page sends the user back to their bill with a
+  /// link, and the app can arrive here with nothing underneath it. A back arrow
+  /// chosen when the screen was *built* guessed wrong there — no arrow, and the
+  /// phone's Back button left the app for the home screen. Asking now is always
+  /// right: go back if there is somewhere to go back to, otherwise to Payments.
+  void _goBack() {
+    if (context.canPop()) {
+      context.pop();
+    } else {
+      context.go('/home/user?tab=payments');
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) _goBack();
+      },
+      child: _screen(context),
+    );
+  }
+
+  Widget _screen(BuildContext context) {
     return AppScreen(
       title: 'Payment Detail',
+      onBack: _goBack,
       body: AsyncView(
         value: ref.watch(paymentDetailProvider(widget.paymentId)),
         onRefresh: () {
@@ -250,34 +282,83 @@ class _PaymentDetailScreenState extends ConsumerState<PaymentDetailScreen>
         data: (payment) => ListView(
           padding: kScreenListPadding,
           children: [
-            _AmountCard(payment: payment),
+            _StatusHero(
+              payment: payment,
+              isStarting: _isStarting,
+              isChecking: _isChecking,
+              onPay: _pay,
+              onCheck: _checkForSettlement,
+            ),
+            if (payment.isProcessing && _qr != null) ...[
+              const SizedBox(height: AppSpacing.md),
+              _QrCard(checkout: _qr!),
+            ],
+            // The other ways to act sit under the card as quiet links, so the one
+            // filled button on the screen is always the next step. Offered only
+            // when there is something to do: a paid or waived bill has nothing to
+            // pay, and used to show Pay buttons all the same.
+            if (payment.isPayable)
+              Align(
+                child: AppTextLink(
+                  label: 'Pay with QR code',
+                  icon: Icons.qr_code_2_rounded,
+                  onTap: _isStarting ? () {} : _showQr,
+                ),
+              )
+            else if (payment.isProcessing) ...[
+              Wrap(
+                alignment: WrapAlignment.center,
+                children: [
+                  AppTextLink(
+                    label: _qr == null ? 'Show QR code' : 'New QR code',
+                    icon: Icons.qr_code_2_rounded,
+                    onTap: _isStarting || _isChecking ? () {} : _showQr,
+                  ),
+                  AppTextLink(
+                    label: 'Pay again',
+                    onTap: _isStarting || _isChecking ? () {} : _pay,
+                  ),
+                ],
+              ),
+              Text(
+                'Pay again replaces the payment that is open, and the old link '
+                'stops working.',
+                textAlign: TextAlign.center,
+                style: context.text.bodySmall,
+              ),
+            ],
             const SizedBox(height: AppSpacing.md),
             AppFactsCard(
-              title: 'How this was calculated',
+              // A fine has no stay behind it, so there is nothing to calculate:
+              // the server records no duration or rate for it.
+              title: payment.isPaid
+                  ? 'Receipt'
+                  : payment.isViolation
+                      ? 'About this fine'
+                      : 'How this was calculated',
               facts: [
-                if (payment.slotCode != null)
-                  AppFact('Slot', payment.slotCode!),
-                AppFact(
-                  'Duration',
-                  Formatters.duration(
-                    Duration(minutes: payment.durationMinutes),
-                  ),
-                ),
-                AppFact(
-                  'Rate',
-                  '${Formatters.peso(payment.ratePerHourApplied)}/hr',
-                ),
-                AppFact('Created', Formatters.date(payment.createdAt)),
-                if (payment.dueAt != null)
+                if (!payment.isViolation) ...[
+                  if (payment.slotCode != null)
+                    AppFact('Slot', payment.slotCode!),
                   AppFact(
-                    'Due by',
-                    Formatters.date(payment.dueAt!),
-                    intent: payment.isOverdue ? StatusIntent.danger : null,
+                    'Duration',
+                    Formatters.duration(
+                      Duration(minutes: payment.durationMinutes),
+                    ),
                   ),
+                  AppFact(
+                    'Rate',
+                    '${Formatters.peso(payment.ratePerHourApplied)}/hr',
+                  ),
+                ],
+                AppFact(
+                  payment.isViolation ? 'Issued' : 'Created',
+                  Formatters.date(payment.createdAt.toLocal()),
+                ),
                 if (payment.paidAt != null)
                   AppFact(
                     'Paid',
-                    Formatters.date(payment.paidAt!),
+                    Formatters.date(payment.paidAt!.toLocal()),
                     intent: StatusIntent.success,
                   ),
                 if (payment.method != null) AppFact('Method', payment.method!),
@@ -286,51 +367,31 @@ class _PaymentDetailScreenState extends ConsumerState<PaymentDetailScreen>
                 if (payment.referenceNumber != null)
                   AppFact('Reference', payment.referenceNumber!),
               ],
+              total: AppFact(
+                payment.isPaid ? 'Total paid' : 'Total due',
+                Formatters.peso(payment.amountDue),
+              ),
             ),
-            const SizedBox(height: AppSpacing.lg),
-            if (payment.isProcessing) ...[
-              AppNotice(
-                title: 'Waiting for confirmation',
-                message: payment.provider?.toLowerCase() == 'simulated'
-                    ? 'This is a test payment — no real money moves. Finish it '
-                          'on the payment page, then check again.'
-                    : 'Finish the payment on the provider page. This bill '
-                          'settles as soon as they confirm it.',
-                intent: StatusIntent.info,
+            if (payment.isViolation && payment.violationId != null)
+              Align(
+                child: AppTextLink(
+                  label: 'View violation',
+                  icon: Icons.chevron_right_rounded,
+                  onTap: () => context.push(
+                    '/home/user/violations/${payment.violationId}',
+                  ),
+                ),
               ),
-              if (_qr != null) ...[
-                const SizedBox(height: AppSpacing.md),
-                _QrCard(checkout: _qr!),
-              ],
-              const SizedBox(height: AppSpacing.md),
-              AppButton(
-                label: 'Check payment status',
-                isLoading: _isChecking,
-                onPressed: _isChecking ? null : _checkForSettlement,
-              ),
+            // Said where the money is, because it is where the wrong idea starts:
+            // paying a fine settles the money and nothing else. A suspension is a
+            // time-out that runs its days whatever has been paid.
+            if (payment.isViolation && !payment.isPaid && !payment.isWaived) ...[
               const SizedBox(height: AppSpacing.sm),
-              AppButton(
-                label: _qr == null ? 'Show QR code' : 'New QR code',
-                style: AppButtonStyle.ghost,
-                onPressed: _isStarting || _isChecking ? null : _showQr,
-              ),
-              const SizedBox(height: AppSpacing.sm),
-              AppButton(
-                label: 'Pay again',
-                style: AppButtonStyle.ghost,
-                onPressed: _isStarting || _isChecking ? null : _pay,
-              ),
-            ] else if (!payment.isPaid) ...[
-              AppButton(
-                label: 'Pay ${Formatters.peso(payment.amountDue)}',
-                isLoading: _isStarting,
-                onPressed: _isStarting ? null : _pay,
-              ),
-              const SizedBox(height: AppSpacing.sm),
-              AppButton(
-                label: 'Pay with QR code',
-                style: AppButtonStyle.ghost,
-                onPressed: _isStarting ? null : _showQr,
+              Text(
+                'Paying this fine does not end a suspension. Any suspension '
+                'runs its full days.',
+                textAlign: TextAlign.center,
+                style: context.text.bodySmall,
               ),
             ],
           ],
@@ -403,76 +464,122 @@ class _QrCard extends StatelessWidget {
   }
 }
 
-/// The one number this screen exists to show, on a full-bleed brand card.
-class _AmountCard extends StatelessWidget {
-  const _AmountCard({required this.payment});
+/// "Violation fine" in the danger colour with a gavel, or "Parking fee" with the
+/// parking icon and the bay it was for.
+class _TypeMarker extends StatelessWidget {
+  const _TypeMarker({required this.payment});
 
   final Payment payment;
 
   @override
   Widget build(BuildContext context) {
     final t = context.tokens;
+    final violation = payment.isViolation;
+    final c = violation ? t.status.danger : t.status.info;
 
-    return AppCard(
-      padding: const EdgeInsets.all(AppSpacing.x5),
+    return Row(
+      children: [
+        Container(
+          width: AppSizes.rowIcon,
+          height: AppSizes.rowIcon,
+          decoration: BoxDecoration(color: c.bg, shape: BoxShape.circle),
+          child: Icon(
+            violation ? Icons.gavel_rounded : Icons.local_parking_rounded,
+            size: AppSizes.iconMd,
+            color: c.fg,
+          ),
+        ),
+        const SizedBox(width: AppSpacing.sm),
+        Expanded(
+          child: Text(
+            !violation && payment.slotCode != null
+                ? '${payment.sourceLabel} · Slot ${payment.slotCode}'
+                : payment.sourceLabel,
+            style: context.text.titleMedium?.copyWith(color: c.fg),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// The state of the bill and the one thing to do about it.
+///
+/// Replaces a plain amount card followed by a stack of equal-weight buttons. The
+/// card's colour says where the bill stands — paid, in progress, owed, written
+/// off — and its single filled button is always the next step. A bill that is
+/// paid or waived has no button at all.
+class _StatusHero extends StatelessWidget {
+  const _StatusHero({
+    required this.payment,
+    required this.isStarting,
+    required this.isChecking,
+    required this.onPay,
+    required this.onCheck,
+  });
+
+  final Payment payment;
+  final bool isStarting;
+  final bool isChecking;
+  final VoidCallback onPay;
+  final VoidCallback onCheck;
+
+  @override
+  Widget build(BuildContext context) {
+    final (intent, eyebrow) = payment.isPaid
+        ? (StatusIntent.success, 'Paid')
+        : payment.isWaived
+            ? (StatusIntent.neutral, 'Waived')
+            : payment.isProcessing
+                ? (StatusIntent.info, 'Payment in progress')
+                : (StatusIntent.warning, 'Amount due');
+
+    final message = payment.isProcessing
+        ? (payment.provider?.toLowerCase() == 'simulated'
+            ? 'This is a test payment — no real money moves. Finish it on the '
+                'payment page, then check again.'
+            : 'Finish the payment on the provider page. This bill settles as '
+                'soon as they confirm it.')
+        : payment.isWaived
+            ? 'Nothing is owed on this bill.'
+            : null;
+
+    return AppAlertCard(
+      intent: intent,
+      eyebrow: eyebrow,
+      message: message,
+      action: payment.isPayable
+          ? AppButton(
+              label: 'Pay ${Formatters.peso(payment.amountDue)}',
+              isLoading: isStarting,
+              onPressed: isStarting ? null : onPay,
+            )
+          : payment.isProcessing
+              ? AppButton(
+                  label: 'Check payment status',
+                  isLoading: isChecking,
+                  onPressed: isChecking ? null : onCheck,
+                )
+              : null,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  payment.isPaid ? 'AMOUNT PAID' : 'AMOUNT DUE',
-                  style: context.text.labelSmall,
-                ),
-              ),
-              AppStatusBadge(
-                label: payment.status,
-                intent: StatusIntents.payment(payment.status),
-              ),
-            ],
-          ),
-          const SizedBox(height: 6),
-          // White card, black figure. This was a solid indigo panel with the
-          // amount reversed out of it, which made the one number on the screen
-          // the user might dispute the hardest thing on it to read — and put a
-          // brand colour behind a charge, which reads as a promotion.
+          _TypeMarker(payment: payment),
+          const SizedBox(height: AppSpacing.sm),
           Text(
             Formatters.peso(payment.amountDue),
             style: AppTypography.tabular(context.text.displayLarge!),
           ),
-          const SizedBox(height: 2),
-          Text(payment.source, style: context.text.bodySmall),
-          if (payment.dueLabel != null) ...[
-            const SizedBox(height: 6),
-            Row(
-              children: [
-                Icon(
-                  payment.isOverdue
-                      ? Icons.warning_amber_rounded
-                      : Icons.schedule_rounded,
-                  size: AppSizes.iconSm,
-                  color: payment.isOverdue
-                      ? t.status.danger.fg
-                      : t.text.secondary,
-                ),
-                const SizedBox(width: 6),
-                Flexible(
-                  child: Text(
-                    payment.dueLabel!,
-                    style: context.text.bodySmall?.copyWith(
-                      // Overdue reads at full strength; a deadline still ahead
-                      // sits quieter than the amount above it.
-                      color: payment.isOverdue
-                          ? t.status.danger.fg
-                          : t.text.secondary,
-                      fontWeight: payment.isOverdue ? FontWeight.w700 : null,
-                    ),
-                  ),
-                ),
-              ],
+          if (payment.dueLabel != null)
+            Text(payment.dueLabel!, style: context.text.bodySmall),
+          if (payment.isPaid && payment.paidAt != null)
+            Text(
+              payment.method == null
+                  ? 'Paid on ${Formatters.date(payment.paidAt!.toLocal())}'
+                  : 'Paid on ${Formatters.date(payment.paidAt!.toLocal())} · '
+                      '${payment.method}',
+              style: context.text.bodySmall,
             ),
-          ],
         ],
       ),
     );

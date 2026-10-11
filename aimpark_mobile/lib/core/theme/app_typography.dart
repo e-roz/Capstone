@@ -163,11 +163,15 @@ abstract class AppTypography {
       // section ("STEP 2 OF 3", "LOT C · NORTH GATE") that the reference
       // reaches for constantly — the wider tracking is what reads as a label
       // rather than as undersized body copy.
+      //
+      // 12, not 11: this is also the field label, the field error and the
+      // helper line, which are the words a person must read to get a form
+      // right. 12 is the smallest size this app sets text in; nothing below it.
       labelSmall: _body(TextStyle(
-        fontSize: 11,
-        height: 14 / 11,
+        fontSize: 12,
+        height: 16 / 12,
         fontWeight: FontWeight.w700,
-        letterSpacing: 0.6,
+        letterSpacing: 0.5,
         color: secondary,
       )),
     );

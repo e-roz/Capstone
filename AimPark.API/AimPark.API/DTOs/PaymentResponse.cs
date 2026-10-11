@@ -77,6 +77,13 @@ namespace AimPark.API.DTOs
 
         public string Provider { get; set; } = string.Empty;
         public decimal AmountDue { get; set; }
+
+        /// <summary>
+        /// Every bill this checkout covers. Only set for "Pay all", where
+        /// <see cref="PaymentId"/> is the first of them and <see cref="AmountDue"/>
+        /// is the total.
+        /// </summary>
+        public List<Guid>? PaymentIds { get; set; }
     }
 
     /// <summary>An admin recording money taken by hand.</summary>

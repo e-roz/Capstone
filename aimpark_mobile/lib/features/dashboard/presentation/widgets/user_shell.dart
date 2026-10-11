@@ -18,14 +18,27 @@ import '../screens/user_dashboard_screen.dart';
 /// every tab's state alive via IndexedStack, rather than rebuilding screens
 /// on every switch.
 class UserShell extends ConsumerStatefulWidget {
-  const UserShell({super.key});
+  const UserShell({super.key, this.initialTab = 0});
+
+  /// Which tab to open on: 0 Home, 1 Parking, 2 Payments, 3 Account. The app
+  /// bar's "back" from a payment lands on Payments rather than always on Home.
+  final int initialTab;
+
+  /// Reads the tab out of `?tab=payments` and the like. Anything unrecognised is
+  /// Home.
+  static int tabFromName(String? name) => switch (name) {
+        'parking' => 1,
+        'payments' => 2,
+        'account' => 3,
+        _ => 0,
+      };
 
   @override
   ConsumerState<UserShell> createState() => _UserShellState();
 }
 
 class _UserShellState extends ConsumerState<UserShell> with WidgetsBindingObserver {
-  int _navIndex = 0;
+  late int _navIndex = widget.initialTab;
   StreamSubscription<Map<String, String>>? _tapSub;
 
   @override
@@ -87,14 +100,6 @@ class _UserShellState extends ConsumerState<UserShell> with WidgetsBindingObserv
 
   @override
   Widget build(BuildContext context) {
-    // Drives the Account badge. Watched here rather than inside the tab so the
-    // count is visible from any tab — a violation is no use sitting unseen
-    // behind a screen the user has no reason to open.
-    final unreadCount = ref.watch(notificationsNotifierProvider)
-            .valueOrNull
-            ?.unreadCount ??
-        0;
-
     final tabs = [
       UserDashboardScreen(
         onNavigateToParking: () => _goToTab(1),
@@ -115,15 +120,10 @@ class _UserShellState extends ConsumerState<UserShell> with WidgetsBindingObserv
           const AppNavItem(icon: Icons.home_rounded, label: 'Home'),
           const AppNavItem(icon: Icons.local_parking_rounded, label: 'Parking'),
           const AppNavItem(icon: Icons.credit_card_rounded, label: 'Payments'),
-          // Alerts lost its tab, so the unread count rides here instead. It has
-          // to live on a *tab* rather than only inside Account: the whole point
-          // of watching it at shell level is that an unseen violation is no use
-          // sitting behind a screen the user has no reason to open.
-          AppNavItem(
-            icon: Icons.person_rounded,
-            label: 'Account',
-            badgeCount: unreadCount,
-          ),
+          // No unread badge here any more. It moved to the bell in Home's header,
+          // beside the avatar, where a notification is looked for; a count on
+          // Account read as something wrong with the account.
+          const AppNavItem(icon: Icons.person_rounded, label: 'Account'),
         ],
       ),
     );

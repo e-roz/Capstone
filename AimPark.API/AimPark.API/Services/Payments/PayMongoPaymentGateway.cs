@@ -54,10 +54,39 @@ namespace AimPark.API.Services.Payments
 
         public string Name => ProviderName;
 
-        public async Task<GatewayCheckout> CreateCheckoutAsync(
+        public Task<GatewayCheckout> CreateCheckoutAsync(
             PaymentTransaction payment,
             string description,
             CancellationToken ct = default)
+            => OpenSessionAsync(
+                [new SessionLine(ToCentavos(payment.AmountDue), description)],
+                description,
+                payment.Id,
+                ct);
+
+        // One session, one line item per bill, so the payer's statement shows what
+        // the total is made of. The first bill's id stands in for the lot on the
+        // return page, which opens that bill in the app.
+        public Task<GatewayCheckout> CreateBundleCheckoutAsync(
+            IReadOnlyList<PaymentTransaction> payments,
+            CancellationToken ct = default)
+            => OpenSessionAsync(
+                [.. payments.Select(p => new SessionLine(
+                    ToCentavos(p.AmountDue),
+                    p.Source == PaymentSource.ParkingFee
+                        ? "AimPark parking fee"
+                        : "AimPark violation penalty"))],
+                "AimPark parking fees and fines",
+                payments[0].Id,
+                ct);
+
+        private sealed record SessionLine(int Amount, string Name);
+
+        private async Task<GatewayCheckout> OpenSessionAsync(
+            IReadOnlyList<SessionLine> lines,
+            string description,
+            Guid referenceId,
+            CancellationToken ct)
         {
             var secretKey = _config["Payments:PayMongo:SecretKey"]
                 ?? throw new InvalidOperationException(
@@ -71,16 +100,13 @@ namespace AimPark.API.Services.Payments
                 {
                     attributes = new
                     {
-                        line_items = new[]
+                        line_items = lines.Select(l => new
                         {
-                            new
-                            {
-                                currency = "PHP",
-                                amount = ToCentavos(payment.AmountDue),
-                                name = description,
-                                quantity = 1
-                            }
-                        },
+                            currency = "PHP",
+                            amount = l.Amount,
+                            name = l.Name,
+                            quantity = 1
+                        }).ToArray(),
                         // E-wallets only. Cards were left out on purpose: a card
                         // flow is the one place a student could be asked for
                         // numbers on a page we are answerable for.
@@ -88,11 +114,11 @@ namespace AimPark.API.Services.Payments
                         description,
                         // Ours, not theirs: it comes back on the callback and is
                         // the second way to find the row if an id ever gets lost.
-                        reference_number = payment.Id.ToString(),
+                        reference_number = referenceId.ToString(),
                         // The bill's id rides along so the page the payer lands
                         // on can send them back to that exact bill in the app.
-                        success_url = $"{baseUrl}/api/payments/return?status=paid&payment={payment.Id}",
-                        cancel_url = $"{baseUrl}/api/payments/return?status=cancelled&payment={payment.Id}"
+                        success_url = $"{baseUrl}/api/payments/return?status=paid&payment={referenceId}",
+                        cancel_url = $"{baseUrl}/api/payments/return?status=cancelled&payment={referenceId}"
                     }
                 }
             };
