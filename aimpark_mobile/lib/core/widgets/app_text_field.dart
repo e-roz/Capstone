@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../theme/theme.dart';
+import 'field_requirement.dart';
 
 /// The chrome shared by every input in the app: the label above, the rounded
 /// bordered container, and the error or helper line below.
@@ -19,12 +20,27 @@ class AppFieldShell extends StatelessWidget {
     this.enabled = true,
     this.errorText,
     this.helperText,
+    this.counterText,
+    this.counterWarning = false,
+    this.requirement = FieldRequirement.none,
   });
 
   final String label;
 
+  /// Marks the field Required or Optional beside its label, and sets the label
+  /// in bold primary type so it can be found. [FieldRequirement.none] keeps the
+  /// small plain label every other form in the app uses.
+  final FieldRequirement requirement;
+
+  /// Draws [counterText] in the warning colour — the field is nearly full.
+  final bool counterWarning;
+
   /// The control itself, rendered inside the bordered container.
   final Widget child;
+
+  /// A running count shown at the trailing end of the line under the field —
+  /// "120 / 500". Sits beside the helper or error text rather than replacing it.
+  final String? counterText;
 
   /// Drives the focus ring. A field with no focus concept passes false.
   final bool focused;
@@ -48,14 +64,30 @@ class AppFieldShell extends StatelessWidget {
         ? t.border.subtle
         : _hasError
             ? t.status.danger.solid
-            : (focused ? t.border.focus : t.border.normal);
+            : (focused ? t.border.focus : t.border.control);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
       children: [
-        Text(label, style: context.text.labelSmall),
-        const SizedBox(height: 6),
+        if (requirement == FieldRequirement.none)
+          Text(label, style: context.text.labelSmall)
+        else
+          Row(
+            children: [
+              Flexible(
+                child: Text(
+                  label,
+                  style: context.text.labelLarge?.copyWith(
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+              const SizedBox(width: AppSpacing.sm),
+              RequirementTag(requirement: requirement),
+            ],
+          ),
+        SizedBox(height: requirement == FieldRequirement.none ? 6 : 8),
         AnimatedContainer(
           duration: AppMotion.fast,
           curve: AppMotion.standard,
@@ -78,15 +110,53 @@ class AppFieldShell extends StatelessWidget {
           ),
           child: child,
         ),
-        if (_hasError) ...[
+        if (_hasError || helperText != null || counterText != null) ...[
           const SizedBox(height: AppSpacing.xs),
-          Text(
-            errorText!,
-            style: context.text.labelSmall?.copyWith(color: t.status.danger.fg),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: _hasError
+                    // An icon beside the words, so an error is not carried by
+                    // red alone.
+                    ? Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Padding(
+                            padding: const EdgeInsets.only(top: 1),
+                            child: Icon(
+                              Icons.error_outline_rounded,
+                              size: AppSizes.iconSm,
+                              color: t.status.danger.fg,
+                            ),
+                          ),
+                          const SizedBox(width: 4),
+                          Expanded(
+                            child: Text(
+                              errorText!,
+                              style: context.text.labelSmall
+                                  ?.copyWith(color: t.status.danger.fg),
+                            ),
+                          ),
+                        ],
+                      )
+                    : helperText != null
+                        ? Text(helperText!, style: context.text.labelSmall)
+                        : const SizedBox.shrink(),
+              ),
+              if (counterText != null) ...[
+                const SizedBox(width: AppSpacing.sm),
+                Text(
+                  counterText!,
+                  style: AppTypography.tabular(context.text.labelSmall!)
+                      .copyWith(
+                    color: counterWarning ? t.status.warning.fg : null,
+                    fontWeight: counterWarning ? FontWeight.w800 : null,
+                  ),
+                ),
+              ],
+            ],
           ),
-        ] else if (helperText != null) ...[
-          const SizedBox(height: AppSpacing.xs),
-          Text(helperText!, style: context.text.labelSmall),
         ],
       ],
     );
@@ -116,10 +186,25 @@ class AppTextField extends StatefulWidget {
     this.enabled = true,
     this.maxLines = 1,
     this.maxLength,
+    this.hintText,
+    this.showCounter = false,
+    this.requirement = FieldRequirement.none,
   });
 
   final String label;
+
+  /// Required / Optional marker beside the label; see [AppFieldShell].
+  final FieldRequirement requirement;
   final TextEditingController? controller;
+
+  /// Faint guidance inside an empty field — what to write, and an example. It is
+  /// not a label: the label above stays, because a hint vanishes the moment
+  /// someone starts typing.
+  final String? hintText;
+
+  /// Shows "typed / [maxLength]" under the field. Needs both a [controller] to
+  /// read from and a [maxLength] to count against, and does nothing without them.
+  final bool showCounter;
   final bool obscureText;
   final TextInputType? keyboardType;
   final TextInputAction? textInputAction;
@@ -159,14 +244,38 @@ class _AppTextFieldState extends State<AppTextField> {
 
   @override
   Widget build(BuildContext context) {
+    final controller = widget.controller;
+    if (widget.showCounter && controller != null && widget.maxLength != null) {
+      return ValueListenableBuilder<TextEditingValue>(
+        valueListenable: controller,
+        builder: (context, value, _) {
+          final used = value.text.runes.length;
+          return _field(
+            context,
+            '$used / ${widget.maxLength}',
+            // Turns amber in the last tenth, so running out of room is noticed
+            // before the field silently stops accepting letters.
+            warning: used >= widget.maxLength! * 0.9,
+          );
+        },
+      );
+    }
+    return _field(context, null);
+  }
+
+  Widget _field(BuildContext context, String? counterText,
+      {bool warning = false}) {
     final t = context.tokens;
 
     return AppFieldShell(
       label: widget.label,
+      requirement: widget.requirement,
       focused: _isFocused,
       enabled: widget.enabled,
       errorText: widget.errorText,
       helperText: widget.helperText,
+      counterText: counterText,
+      counterWarning: warning,
       child: TextField(
         controller: widget.controller,
         focusNode: _focusNode,
@@ -190,8 +299,13 @@ class _AppTextFieldState extends State<AppTextField> {
           focusedBorder: InputBorder.none,
           disabledBorder: InputBorder.none,
           filled: false,
-          // The counter would otherwise reserve a line under every field that
-          // sets maxLength, breaking alignment with the fields beside it.
+          hintText: widget.hintText,
+          // Full secondary colour, not a faded one: a hint is still text, and a
+          // faint hint is the one nobody can read in daylight.
+          hintStyle: context.text.bodyLarge?.copyWith(color: t.text.secondary),
+          // Flutter's own counter would otherwise reserve a line under every
+          // field that sets maxLength, breaking alignment with the fields beside
+          // it. The one this app wants is drawn by the shell, under the field.
           counterText: '',
           isDense: true,
           contentPadding: const EdgeInsets.symmetric(

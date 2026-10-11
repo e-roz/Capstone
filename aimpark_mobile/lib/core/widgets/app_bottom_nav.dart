@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../theme/theme.dart';
+import 'app_count_badge.dart';
 
 class AppNavItem {
   const AppNavItem({
@@ -75,9 +76,18 @@ class AppBottomNav extends StatelessWidget {
                 child: Semantics(
                   button: true,
                   selected: selected,
+                  // The label replaces the icon and caption underneath it. Left
+                  // to merge, a screen reader said the tab's name twice.
+                  excludeSemantics: true,
                   label: item.badgeCount > 0
                       ? '${item.label}, ${item.badgeCount} unread'
                       : item.label,
+                  onTap: selected
+                      ? null
+                      : () {
+                          HapticFeedback.selectionClick();
+                          onTap(i);
+                        },
                   child: InkWell(
                     borderRadius: AppRadius.smAll,
                     onTap: () {
@@ -88,9 +98,12 @@ class AppBottomNav extends StatelessWidget {
                       HapticFeedback.selectionClick();
                       onTap(i);
                     },
-                    child: SizedBox(
-                      height: _itemHeight,
+                    // A minimum, not a fixed height: the caption grows with the
+                    // system text size, and a fixed box clipped it.
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(minHeight: _itemHeight),
                       child: Column(
+                        mainAxisSize: MainAxisSize.min,
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
                           Stack(
@@ -118,7 +131,7 @@ class AppBottomNav extends StatelessWidget {
                                 PositionedDirectional(
                                   top: -4,
                                   end: 4,
-                                  child: _Badge(count: item.badgeCount),
+                                  child: AppCountBadge(count: item.badgeCount),
                                 ),
                             ],
                           ),
@@ -140,40 +153,6 @@ class AppBottomNav extends StatelessWidget {
               );
             }),
           ),
-        ),
-      ),
-    );
-  }
-}
-
-class _Badge extends StatelessWidget {
-  const _Badge({required this.count});
-
-  final int count;
-
-  @override
-  Widget build(BuildContext context) {
-    final t = context.tokens;
-
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
-      constraints: const BoxConstraints(minWidth: 14),
-      decoration: BoxDecoration(
-        color: t.status.danger.solid,
-        borderRadius: AppRadius.fullAll,
-        // Keeps the badge legible where it overlaps the pill beneath it. Reads
-        // the bar's own surface rather than a fixed white so the ring stays
-        // invisible against whatever the bar is filled with.
-        border: Border.all(color: t.surface.card, width: 1.5),
-      ),
-      child: Text(
-        count > 99 ? '99+' : '$count',
-        textAlign: TextAlign.center,
-        style: context.text.labelSmall?.copyWith(
-          color: t.text.onDark,
-          fontSize: 8,
-          height: 1.2,
-          fontWeight: FontWeight.w700,
         ),
       ),
     );

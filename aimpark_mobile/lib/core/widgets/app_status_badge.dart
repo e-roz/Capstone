@@ -71,10 +71,15 @@ class AppStatusBadge extends StatelessWidget {
             ),
             const SizedBox(width: AppSpacing.xs + 2),
           ],
-          Text(
-            label,
-            style: (marked ? context.text.labelMedium : context.text.labelSmall)
-                ?.copyWith(color: c.fg),
+          // Flexible, so a long label wraps inside the pill at a large text size
+          // instead of running out of it.
+          Flexible(
+            child: Text(
+              label,
+              style:
+                  (marked ? context.text.labelMedium : context.text.labelSmall)
+                      ?.copyWith(color: c.fg),
+            ),
           ),
         ],
       ),
@@ -126,12 +131,24 @@ abstract class StatusIntents {
         // state in place of its appeal state. Without it the badge fell through
         // to the default and a fine the user had just paid stayed red.
         //
-        // `Appealed` is the appeal *won*; `Pending Appeal` is still waiting.
-        'resolved' || 'dismissed' || 'appealed' || 'approved' || 'paid' =>
+        // `Appealed` is the appeal *won*, and reads "Appeal accepted" on screen;
+        // `Pending Appeal` is still waiting. Both the API's names and the words
+        // shown are listed, because badges are built from either.
+        'resolved' ||
+        'dismissed' ||
+        'appealed' ||
+        'appeal accepted' ||
+        'approved' ||
+        'paid' =>
           StatusIntent.success,
-        'pendingappeal' || 'pending appeal' => StatusIntent.warning,
-        'accountable' || 'denied' => StatusIntent.danger,
-        'pending' || 'issued' => StatusIntent.info,
+        // Waiting on the office: nothing for the user to do, so information.
+        'pendingappeal' || 'pending appeal' || 'pending' => StatusIntent.info,
+        // Closed against the user.
+        'accountable' || 'final' || 'denied' || 'rejected' =>
+          StatusIntent.danger,
+        // Open, with a penalty and a deadline: it wants action, so amber — not
+        // the calm blue it used to be.
+        'issued' => StatusIntent.warning,
         _ => StatusIntent.danger,
       };
 
@@ -146,11 +163,19 @@ abstract class StatusIntents {
         _ => StatusIntent.warning,
       };
 
-  /// Incident triage state. `Dismissed` is *not* a good outcome here.
-  static StatusIntent incident(String status) => switch (status.toLowerCase()) {
+  /// Incident triage state. Dismissed and withdrawn are both grey: neither is an
+  /// error or a penalty, and withdrawn used to fall through to the default blue,
+  /// which made a report the user had taken back look the same as one still
+  /// waiting. The incident screens get the same colours from
+  /// `IncidentStage.intent`, which sits with their wording; this copy exists for
+  /// a badge built straight from a status string, and the two must be kept in
+  /// step — core widgets cannot import a feature, so they cannot share one.
+  static StatusIntent incident(String status) => switch (status
+      .toLowerCase()
+      .replaceAll(' ', '')) {
         'resolved' => StatusIntent.success,
-        'dismissed' => StatusIntent.danger,
-        'underreview' || 'under review' => StatusIntent.warning,
+        'underreview' => StatusIntent.warning,
+        'dismissed' || 'withdrawn' => StatusIntent.neutral,
         _ => StatusIntent.info,
       };
 
