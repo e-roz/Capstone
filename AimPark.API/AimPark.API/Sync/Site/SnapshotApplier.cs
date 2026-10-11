@@ -18,11 +18,13 @@ namespace AimPark.API.Sync.Site
     {
         private readonly AppDbContext _db;
         private readonly SyncSuppression _suppression;
+        private readonly SiteDues _dues;
 
-        public SnapshotApplier(AppDbContext db, SyncSuppression suppression)
+        public SnapshotApplier(AppDbContext db, SyncSuppression suppression, SiteDues dues)
         {
             _db = db;
             _suppression = suppression;
+            _dues = dues;
         }
 
         public async Task ApplyAsync(SiteSnapshot snapshot, CancellationToken ct)
@@ -40,6 +42,9 @@ namespace AimPark.API.Sync.Site
             await ApplyVisitorCardsAsync(snapshot.VisitorCards, ct);
             await ApplyIncidentsAsync(snapshot.Incidents, snapshot.IncidentEvidence, ct);
             await ApplyWrongBayFlagsAsync(snapshot.WrongBayFlags, ct);
+
+            // Last, so a snapshot that fails half way leaves the old list in force.
+            _dues.Set(snapshot);
         }
 
         private async Task ApplyWrongBayFlagsAsync(List<WrongBayFlag> flags, CancellationToken ct)

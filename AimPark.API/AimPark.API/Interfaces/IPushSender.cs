@@ -15,11 +15,5 @@ namespace AimPark.API.Interfaces
         /// Sends a push to one specific user's devices. Never throws.
         /// </summary>
         Task SendToUserAsync(Guid userId, string title, string body, IDictionary<string, string>? data, CancellationToken ct);
-
-        /// <summary>
-        /// Sends a push to everyone who asked to hear when a bay frees up, except
-        /// anyone who has since parked, and uses their watch up. Never throws.
-        /// </summary>
-        Task SendToSlotWatchersAsync(string title, string body, IDictionary<string, string>? data, CancellationToken ct);
     }
 }

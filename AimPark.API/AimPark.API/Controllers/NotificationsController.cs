@@ -52,19 +52,18 @@ namespace AimPark.API.Controllers
             [FromBody] RegisterDeviceTokenDto dto, CancellationToken ct)
             => _deviceTokenService.UnregisterAsync(GetUserId(), dto, ct);
 
-        /// <summary>Whether this user is waiting to hear about a free bay.</summary>
+        // "Notify me when a bay frees up" was removed. Installed v1.0.5 apps still
+        // call these, so they stay as harmless no-ops with the same status codes
+        // the app expects. Delete them (and the SlotWatches table, in a separate
+        // migration) once the updated app is out.
         [HttpGet("slot-watch")]
-        public Task<ActionResult<object>> GetSlotWatch(CancellationToken ct)
-            => _notificationService.GetSlotWatchAsync(GetUserId(), ct);
+        public ActionResult<object> GetSlotWatch() => new OkObjectResult(new { watching = false });
 
-        /// <summary>"Notify me when a slot opens" — pressed while the lot is full.</summary>
         [HttpPost("slot-watch")]
-        public Task<ActionResult<object>> WatchSlots(CancellationToken ct)
-            => _notificationService.WatchSlotsAsync(GetUserId(), ct);
+        public IActionResult WatchSlots() => NoContent();
 
         [HttpDelete("slot-watch")]
-        public Task<ActionResult<object>> UnwatchSlots(CancellationToken ct)
-            => _notificationService.UnwatchSlotsAsync(GetUserId(), ct);
+        public IActionResult UnwatchSlots() => NoContent();
 
         private Guid GetUserId()
             => Guid.Parse(User.FindFirst(ClaimTypes.NameIdentifier)!.Value);
