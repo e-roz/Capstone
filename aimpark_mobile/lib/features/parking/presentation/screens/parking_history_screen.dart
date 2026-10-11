@@ -1,11 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'package:go_router/go_router.dart';
+
 import '../../../../core/theme/theme.dart';
-import '../../../../core/utils/formatters.dart';
 import '../../../../core/widgets/widgets.dart';
+import '../../../payments/data/models/payment.dart';
+import '../../../payments/presentation/providers/payments_provider.dart';
+import '../../../vehicles/data/models/vehicle.dart';
 import '../../../vehicles/presentation/providers/vehicles_provider.dart';
 import '../providers/parking_history_provider.dart';
+import '../widgets/parking_session_row.dart';
 
 class ParkingHistoryScreen extends ConsumerWidget {
   const ParkingHistoryScreen({super.key, this.vehicleId});
@@ -25,9 +30,18 @@ class ParkingHistoryScreen extends ConsumerWidget {
         ? ref.refresh(vehicleHistoryProvider(vehicleId!).future)
         : ref.read(parkingHistoryNotifierProvider.notifier).refresh();
 
+    final allVehicles = ref.watch(myVehiclesProvider).valueOrNull ?? const <Vehicle>[];
+
+    // The bills already on hand, so each visit can show what it cost.
+    final billsById = {
+      for (final p in ref.watch(paymentsNotifierProvider).valueOrNull?.payments ??
+          const <Payment>[])
+        p.paymentId: p,
+    };
+
     String? plate;
     if (filtered) {
-      final vehicles = ref.watch(myVehiclesProvider).valueOrNull ?? const [];
+      final vehicles = allVehicles;
       for (final vehicle in vehicles) {
         if (vehicle.id == vehicleId) {
           plate = vehicle.plateNumber;
@@ -64,23 +78,15 @@ class ParkingHistoryScreen extends ConsumerWidget {
             AppRowGroup(
               children: [
                 for (final log in result.logs)
-                  AppListRow(
-                    icon: log.isOpen
-                        ? Icons.login_rounded
-                        : Icons.logout_rounded,
-                    intent: log.isOpen ? StatusIntent.success : null,
-                    title: log.slotCode ?? 'Unassigned slot',
-                    subtitle: Formatters.sessionRange(
-                      log.entryTime,
-                      log.exitTime,
-                      log.duration,
-                    ),
-                    trailing: log.isOpen
-                        ? const AppStatusBadge(
-                            label: 'Parked now',
-                            intent: StatusIntent.success,
-                          )
-                        : null,
+                  ParkingSessionRow(
+                    entry: log,
+                    payment: billsById[log.paymentId],
+                    plate: ParkingSessionRow.plateFor(log, allVehicles),
+                    onTap: log.paymentId == null
+                        ? null
+                        : () => context.push(
+                              '/home/user/payments/${log.paymentId}',
+                            ),
                   ),
               ],
             ),

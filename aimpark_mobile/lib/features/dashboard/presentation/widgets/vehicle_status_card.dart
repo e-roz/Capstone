@@ -15,6 +15,19 @@ import '../../domain/vehicle_status.dart';
 
 part 'vehicle_status_card.g.dart';
 
+/// "Red car", or just "Car" when no colour was recorded.
+///
+/// The colour is optional in what the server sends — a vehicle registered from a
+/// document scan often has none — and joining it blindly put a leading space in
+/// front of the word and left the line looking misaligned under the plate.
+String _describe(Vehicle vehicle) {
+  final color = vehicle.color.trim();
+  final type = vehicle.vehicleType.trim();
+  if (type.isEmpty) return color;
+  if (color.isEmpty) return type[0].toUpperCase() + type.substring(1);
+  return '$color ${type.toLowerCase()}';
+}
+
 /// Which vehicle the card shows. There's no "primary vehicle" concept on the
 /// account (see vehicle_status.dart), so this is a local, session-scoped
 /// convenience — it resets on logout along with everything else Home reads,
@@ -61,7 +74,10 @@ class VehicleStatusCard extends ConsumerWidget {
         AppSectionHeader(
           title: 'Your vehicle',
           action: vehicles.length > 1
-              ? _SwitchAction(
+              ? AppTextLink(
+                  label: 'Switch',
+                  semanticLabel: 'Switch vehicle',
+                  icon: Icons.unfold_more_rounded,
                   onTap: () => _showSwitcher(context, ref, vehicles, vehicle.id),
                 )
               : null,
@@ -94,7 +110,7 @@ class VehicleStatusCard extends ConsumerWidget {
                       ? Icons.two_wheeler_rounded
                       : Icons.directions_car_rounded,
                   title: vehicle.plateNumber,
-                  subtitle: '${vehicle.color} ${vehicle.vehicleType.toLowerCase()}',
+                  subtitle: _describe(vehicle),
                   showChevron: false,
                   trailing: vehicle.id == currentlyParkedVehicleId
                       ? const AppStatusBadge(
@@ -121,35 +137,6 @@ class VehicleStatusCard extends ConsumerWidget {
   }
 }
 
-class _SwitchAction extends StatelessWidget {
-  const _SwitchAction({required this.onTap});
-
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final t = context.tokens;
-
-    return GestureDetector(
-      onTap: onTap,
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Text(
-            'Switch',
-            style: context.text.bodySmall?.copyWith(
-              color: t.brand.primary,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-          const SizedBox(width: 2),
-          Icon(Icons.unfold_more_rounded, size: AppSizes.iconSm, color: t.brand.primary),
-        ],
-      ),
-    );
-  }
-}
-
 class _NoVehicleRow extends StatelessWidget {
   const _NoVehicleRow({required this.onTap});
 
@@ -163,6 +150,7 @@ class _NoVehicleRow extends StatelessWidget {
         const AppSectionHeader(title: 'Your vehicle'),
         AppListRow(
           icon: Icons.directions_car_rounded,
+          intent: StatusIntent.brand,
           title: 'Add your vehicle',
           subtitle: 'Register a vehicle to see its parking status here.',
           onTap: onTap,
@@ -189,7 +177,7 @@ class _VehicleRow extends ConsumerWidget {
     final icon = vehicle.vehicleType == 'Motorcycle'
         ? Icons.two_wheeler_rounded
         : Icons.directions_car_rounded;
-    final note = '${vehicle.color} ${vehicle.vehicleType.toLowerCase()}';
+    final note = _describe(vehicle);
 
     if (latestAsync.isLoading && !latestAsync.hasValue) {
       return AppListRow(
@@ -221,6 +209,7 @@ class _VehicleRow extends ConsumerWidget {
     return switch (status) {
       VehicleParked(entry: final entry) => AppListRow(
           icon: icon,
+          intent: StatusIntent.success,
           title: vehicle.plateNumber,
           subtitle: '${entry.slotCode ?? 'No slot'} · '
               '${Formatters.sessionRange(entry.entryTime, null, entry.duration)}',
@@ -233,6 +222,7 @@ class _VehicleRow extends ConsumerWidget {
         ),
       VehicleUnconfirmed(entry: final entry) => AppListRow(
           icon: icon,
+          intent: StatusIntent.info,
           title: vehicle.plateNumber,
           subtitle: 'Card inside · '
               '${Formatters.sessionRange(entry.entryTime, null, entry.duration)}',
@@ -248,6 +238,7 @@ class _VehicleRow extends ConsumerWidget {
         ),
       VehicleAway(lastSeen: final lastSeen) => AppListRow(
           icon: icon,
+          intent: StatusIntent.brand,
           title: vehicle.plateNumber,
           subtitle: 'Last seen ${Formatters.relativeTime(lastSeen)}',
           note: Text(note, style: context.text.bodySmall),
@@ -259,6 +250,7 @@ class _VehicleRow extends ConsumerWidget {
         ),
       VehicleNeverSeen() => AppListRow(
           icon: icon,
+          intent: StatusIntent.brand,
           title: vehicle.plateNumber,
           subtitle: 'No visits yet',
           note: Text(note, style: context.text.bodySmall),

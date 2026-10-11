@@ -7,9 +7,20 @@ import '../../../../core/utils/app_flushbar.dart';
 import '../../../../core/utils/formatters.dart';
 import '../../../../core/widgets/widgets.dart';
 import '../../data/models/incident.dart';
+import '../../domain/incident_stage.dart';
+import '../incident_categories.dart';
 import '../providers/incidents_provider.dart';
+import '../widgets/incident_category_disc.dart';
+import '../widgets/incident_progress.dart';
 import 'edit_incident_screen.dart';
 
+/// One report: what it is, where it stands, what the parking office said, and the
+/// photos.
+///
+/// Reached from the list, and from the push notification that says a report's
+/// status has changed — so the first thing it answers is "what's happening with
+/// my report?", which is why the status and what it means sit right under the
+/// heading and not in a corner badge.
 class IncidentDetailScreen extends ConsumerWidget {
   const IncidentDetailScreen({super.key, required this.incidentId});
 
@@ -58,12 +69,49 @@ class IncidentDetailScreen extends ConsumerWidget {
     }
   }
 
+  void _openPhoto(BuildContext context, List<String> urls, int index) {
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        fullscreenDialog: true,
+        builder: (_) => PhotoViewerScreen(
+          urls: urls.map(_resolveUrl).toList(),
+          initialIndex: index,
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final async = ref.watch(incidentDetailProvider(incidentId));
+    final incident = async.valueOrNull;
+
     return AppScreen(
       title: 'Incident Report',
+      // Pinned, and only while the report can still be changed. After that these
+      // buttons would have nothing to do, and the explanation above says why.
+      bottomBar: incident != null && incident.canModify
+          ? AppBottomBar(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  AppButton(
+                    label: 'Edit report',
+                    icon: const Icon(Icons.edit_rounded),
+                    onPressed: () => _edit(context, ref, incident),
+                  ),
+                  const SizedBox(height: AppSpacing.sm),
+                  AppButton(
+                    label: 'Withdraw report',
+                    style: AppButtonStyle.dangerGhost,
+                    onPressed: () => _withdraw(context, ref),
+                  ),
+                ],
+              ),
+            )
+          : null,
       body: AsyncView(
-        value: ref.watch(incidentDetailProvider(incidentId)),
+        value: async,
         // Invalidate *and* await the rebuilt future. Without the await the
         // pull-to-refresh spinner snaps back the instant it is released,
         // which reads as the gesture having been ignored.
@@ -72,138 +120,168 @@ class IncidentDetailScreen extends ConsumerWidget {
           return ref.read(incidentDetailProvider(incidentId).future);
         },
         errorTitle: "Couldn't load this report",
-        data: (incident) => ListView(
-          padding: kScreenListPadding,
-          children: [
-            AppCard(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Expanded(
-                        child: Text(
-                          incident.category,
-                          style: context.text.headlineSmall,
-                        ),
-                      ),
-                      const SizedBox(width: AppSpacing.sm),
-                      AppStatusBadge(
-                        label: incident.status,
-                        intent: StatusIntents.incident(incident.status),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: AppSpacing.sm),
-                  Text(incident.description, style: context.text.bodyMedium),
-                  if (incident.location != null) ...[
-                    const SizedBox(height: AppSpacing.sm),
-                    Row(
-                      children: [
-                        Icon(
-                          Icons.location_on_rounded,
-                          size: AppSizes.iconSm,
-                          color: context.tokens.text.secondary,
-                        ),
-                        const SizedBox(width: 4),
-                        Text(
-                          incident.location!,
-                          style: context.text.bodySmall,
-                        ),
-                      ],
-                    ),
-                  ],
-                  const SizedBox(height: 4),
-                  Text(
-                    'Reported ${Formatters.date(incident.createdAt)}',
-                    style: context.text.labelSmall,
-                  ),
-                ],
-              ),
-            ),
-            if (incident.evidenceUrls.isNotEmpty) ...[
-              const SizedBox(height: AppSpacing.lg),
-              const AppSectionHeader(title: 'Evidence'),
-              GridView.builder(
-                shrinkWrap: true,
-                physics: const NeverScrollableScrollPhysics(),
-                itemCount: incident.evidenceUrls.length,
-                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                  crossAxisCount: 2,
-                  crossAxisSpacing: AppSpacing.sm,
-                  mainAxisSpacing: AppSpacing.sm,
-                ),
-                itemBuilder: (context, index) => _EvidenceThumb(
-                  url: _resolveUrl(incident.evidenceUrls[index]),
-                ),
-              ),
-            ],
-            if (incident.adminNotes != null) ...[
-              const SizedBox(height: AppSpacing.lg),
-              const AppSectionHeader(title: 'Admin Notes'),
-              AppCard(
-                child: Text(
-                  incident.adminNotes!,
-                  style: context.text.bodyMedium,
-                ),
-              ),
-            ],
-            const SizedBox(height: AppSpacing.lg),
-            if (incident.canModify) ...[
-              AppButton(
-                label: 'Edit Report',
-                style: AppButtonStyle.secondary,
-                onPressed: () => _edit(context, ref, incident),
-              ),
-              const SizedBox(height: AppSpacing.sm),
-              AppButton(
-                label: 'Withdraw Report',
-                style: AppButtonStyle.ghost,
-                onPressed: () => _withdraw(context, ref),
-              ),
-            ] else
-              Text(
-                'This report is being reviewed and can no longer be changed.',
-                textAlign: TextAlign.center,
-                style: context.text.bodySmall,
-              ),
-          ],
+        data: (incident) => _Report(
+          incident: incident,
+          onPhoto: (index) => _openPhoto(context, incident.evidenceUrls, index),
+          resolveUrl: _resolveUrl,
         ),
       ),
     );
   }
 }
 
-/// One evidence photo.
-///
-/// The grid used to hand the URL straight to [Image.network] with no error
-/// branch, so a deleted or unreachable file rendered as Flutter's grey
-/// exception box inside the card.
-class _EvidenceThumb extends StatelessWidget {
-  const _EvidenceThumb({required this.url});
+class _Report extends StatelessWidget {
+  const _Report({
+    required this.incident,
+    required this.onPhoto,
+    required this.resolveUrl,
+  });
 
-  final String url;
+  final IncidentDetail incident;
+  final void Function(int index) onPhoto;
+  final String Function(String url) resolveUrl;
+
+  static String _when(DateTime d) => '${Formatters.date(d)} · ${Formatters.time(d)}';
 
   @override
   Widget build(BuildContext context) {
     final t = context.tokens;
+    final stage = incident.stage;
+    final intent = stage.intent;
+    final c = t.status.of(intent);
 
-    return ClipRRect(
-      borderRadius: AppRadius.smAll,
-      child: Image.network(
-        url,
-        fit: BoxFit.cover,
-        loadingBuilder: (context, child, progress) =>
-            progress == null ? child : const AppSkeleton.block(height: 120),
-        errorBuilder: (_, _, _) => ColoredBox(
-          color: t.surface.muted,
-          child: Icon(
-            Icons.broken_image_rounded,
-            color: t.text.secondary,
+    return ListView(
+      padding: kScreenListPadding,
+      children: [
+        // ── Heading: what it is ──────────────────────────────────────────
+        Row(
+          children: [
+            IncidentCategoryDisc(category: incident.category, size: 52),
+            const SizedBox(width: AppSpacing.md),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    incidentCategoryLabel(incident.category),
+                    style: context.text.headlineMedium,
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    'Reported ${_when(incident.createdAt)}',
+                    style: context.text.bodySmall,
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: AppSpacing.lg),
+
+        // ── Where it stands ──────────────────────────────────────────────
+        AppCard(
+          borderColor: c.border,
+          edgeColor: c.solid,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // A Wrap, not a Row: at a large text size the badge no longer fits
+              // beside the word and drops underneath it instead of running off
+              // the card.
+              Wrap(
+                alignment: WrapAlignment.spaceBetween,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                spacing: AppSpacing.sm,
+                runSpacing: AppSpacing.sm,
+                children: [
+                  Text(
+                    'STATUS',
+                    style: context.text.labelMedium?.copyWith(color: c.fg),
+                  ),
+                  AppStatusBadge(
+                    label: stage.label,
+                    intent: intent,
+                    showDot: true,
+                  ),
+                ],
+              ),
+              const SizedBox(height: AppSpacing.md),
+              // A withdrawn report stepped off the path altogether, so it has no
+              // tracker to show — only what happened.
+              if (stage != IncidentStage.withdrawn) ...[
+                IncidentProgress(stage: stage),
+                const SizedBox(height: AppSpacing.md),
+              ],
+              Text(stage.explanation, style: context.text.bodyMedium),
+              if (incident.wasUpdated) ...[
+                const SizedBox(height: AppSpacing.sm),
+                Text(
+                  'Last updated ${_when(incident.updatedAt)}',
+                  style: context.text.bodySmall,
+                ),
+              ],
+            ],
           ),
         ),
-      ),
+
+        // ── What the office said ─────────────────────────────────────────
+        if (incident.adminNotes != null &&
+            incident.adminNotes!.trim().isNotEmpty) ...[
+          const SizedBox(height: AppSpacing.md),
+          AppAlertCard(
+            intent: StatusIntent.brand,
+            icon: Icons.support_agent_rounded,
+            eyebrow: 'Note from the parking office',
+            message: incident.adminNotes!,
+          ),
+        ],
+
+        // ── What you reported ────────────────────────────────────────────
+        const SizedBox(height: AppSpacing.lg),
+        const AppSectionHeader(title: 'What you reported'),
+        AppCard(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              AppInfoRow(label: 'Description', value: incident.description),
+              if (incident.location != null &&
+                  incident.location!.trim().isNotEmpty) ...[
+                const SizedBox(height: AppSpacing.md),
+                AppInfoRow(label: 'Location', value: incident.location!),
+              ],
+            ],
+          ),
+        ),
+
+        // ── Photos ───────────────────────────────────────────────────────
+        if (incident.evidenceUrls.isNotEmpty ||
+            incident.evidenceUnavailable > 0) ...[
+          const SizedBox(height: AppSpacing.lg),
+          AppSectionHeader(
+            title: 'Photos',
+            subtitle: incident.evidenceUrls.isEmpty
+                ? null
+                : 'Tap a photo to see it full size.',
+          ),
+          if (incident.evidenceUrls.isNotEmpty)
+            AppPhotoThumb.grid(
+              urls: [for (final u in incident.evidenceUrls) resolveUrl(u)],
+              onTap: onPhoto,
+            ),
+          if (incident.evidenceUnavailable > 0) ...[
+            const SizedBox(height: AppSpacing.sm),
+            AppNotice(
+              intent: StatusIntent.warning,
+              message: incident.evidenceUnavailable == 1
+                  ? "1 photo can't be opened right now. It will show again when "
+                      'the connection is back.'
+                  : "${incident.evidenceUnavailable} photos can't be opened "
+                      'right now. They will show again when the connection is '
+                      'back.',
+            ),
+          ],
+        ],
+      ],
     );
   }
 }

@@ -87,6 +87,8 @@ class ParkingAvailability {
     required this.availableSlots,
     this.availableCars,
     this.availableMotorcycles,
+    this.lastHeardAt,
+    this.feedPaused = false,
     DateTime? fetchedAt,
   }) : fetchedAt = fetchedAt ?? DateTime.now();
 
@@ -97,7 +99,22 @@ class ParkingAvailability {
   /// The server's per-type free counts. Null from a server older than them.
   final int? availableCars;
   final int? availableMotorcycles;
+
+  /// When the lot's guard post last reported, by the server's clock. This is the
+  /// age of the count. [fetchedAt] is only when the phone last asked, and says
+  /// nothing about whether the sensors have been heard from. Null from an older
+  /// server, or one that has not heard from the guard post since it started.
+  final DateTime? lastHeardAt;
+
+  /// The server says the guard post has gone quiet: every bay is reported as No
+  /// signal and nothing is counted free.
+  final bool feedPaused;
+
   final DateTime fetchedAt;
+
+  /// How old the count is: by the server's word when it gave one, otherwise by
+  /// the phone's.
+  DateTime get asOf => lastHeardAt ?? fetchedAt;
 
   factory ParkingAvailability.fromJson(Map<String, dynamic> json) {
     return ParkingAvailability(
@@ -108,6 +125,10 @@ class ParkingAvailability {
       availableSlots: json['availableSlots'] as int,
       availableCars: (json['availableCars'] as num?)?.toInt(),
       availableMotorcycles: (json['availableMotorcycles'] as num?)?.toInt(),
+      lastHeardAt: json['lastHeardAt'] == null
+          ? null
+          : DateTime.parse(json['lastHeardAt'] as String),
+      feedPaused: json['feedPaused'] as bool? ?? false,
       fetchedAt: DateTime.now(),
     );
   }
