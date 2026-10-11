@@ -1,11 +1,15 @@
 {
-  "version": "1.0.5",
-  "build": 6,
-  "apk_url": "https://github.com/e-roz/Capstone/releases/download/v1.0.5/app-release.apk",
-  "apk_sha256": "b43ab61dd3beb66066f99d06d772fab38f0fd8dd542d29cc9e05886a8eb64d44",
-  "apk_size_bytes": 93690769,
+  "version": "1.0.6",
+  "build": 7,
+  "apk_url": "https://github.com/e-roz/Capstone/releases/download/v1.0.6/app-release.apk",
+  "apk_sha256": "da1778d58a424f1174297a495b3e752a3ab28bb6c37fb90fc34fadf28e1cbc6f",
+  "apk_size_bytes": 94185677,
   "mandatory": false,
   "release_notes": [
-    "New: pay a bill by scanning a QR code from another phone"
+    "New: pay all your unpaid bills in one payment",
+    "New: redesigned Account, Payments, Vehicles and Notifications screens",
+    "New: attach PDFs to appeals and incident reports",
+    "Fixed: after paying, Back now returns to the app",
+    "Fixed: fines and parking fees are clearly told apart, and an unpaid fine now blocks entry until it is paid"
   ]
 }
