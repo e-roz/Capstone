@@ -4,9 +4,8 @@ namespace AimPark.API.DTOs
     {
         public string Title { get; set; } = string.Empty;
         public string Message { get; set; } = string.Empty;
-        public string Type { get; set; } = string.Empty;
 
-        // null/omitted = all roles
-        public string? TargetRole { get; set; }
+        // Announcement or PolicyUpdate. A broadcast always reaches everyone.
+        public string Type { get; set; } = string.Empty;
     }
 }
