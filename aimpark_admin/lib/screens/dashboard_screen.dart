@@ -1140,7 +1140,7 @@ class _AttentionCard extends ConsumerWidget {
       _AttentionRow(
         icon: Icons.report_outlined,
         label: 'Incidents still open',
-        description: 'Review reported incidents and decide violation appeals.',
+        description: 'Review reported incidents and decide each one.',
         count: summary.openIncidents,
         intent: summary.openIncidents > 0 ? StatusIntent.danger : null,
         route: '/incidents',

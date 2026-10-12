@@ -20,6 +20,10 @@ namespace AimPark.API.Entities
         // Admin who reviewed this — no FK, audit-style reference
         public Guid? ReviewedByUserId { get; set; }
 
+        // When the admin resolved or dismissed it. Null until decided, and
+        // for reports decided before this column existed.
+        public DateTime? ReviewedAt { get; set; }
+
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
         public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
     }
