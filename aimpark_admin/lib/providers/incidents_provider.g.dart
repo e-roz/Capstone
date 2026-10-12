@@ -6,7 +6,7 @@ part of 'incidents_provider.dart';
 // RiverpodGenerator
 // **************************************************************************
 
-String _$incidentListHash() => r'66a62acd8ef7326129bc1e1ea42bb4706c3d3c8e';
+String _$incidentListHash() => r'1bde1f8962f4cef365a6326ccf639957117f5bbd';
 
 /// See also [incidentList].
 @ProviderFor(incidentList)
@@ -24,11 +24,15 @@ final incidentListProvider =
 @Deprecated('Will be removed in 3.0. Use Ref instead')
 // ignore: unused_element
 typedef IncidentListRef = AutoDisposeFutureProviderRef<IncidentListPage>;
-String _$openIncidentCountHash() => r'14283fa6f342521698379da3335d9874a0b50230';
+String _$openIncidentCountHash() => r'7fc3d955ce8d59dc83396123a87c6a77fd06067c';
 
-/// How many reports nobody has picked up yet.
+/// How many reports are still waiting on a decision - Submitted and Under
+/// review together.
 ///
-/// Its own request rather than a count off [incidentList], because that list is
+/// Opening a report moves it to Under review, so counting only Submitted would
+/// make the badge drop to zero while the report is still undecided.
+///
+/// Its own requests rather than a count off [incidentList], because that list is
 /// filtered and paged by whatever the admin last chose — a page showing only
 /// resolved reports would report zero waiting, which is the opposite of the
 /// truth. `pageSize: 1` because only `totalCount` is read.
@@ -190,7 +194,7 @@ class _IncidentDetailProviderElement
 }
 
 String _$incidentsQueryNotifierHash() =>
-    r'485cb8a72a251a62df1db983deccce565639fdb3';
+    r'ae9e14aace25392ec49e09fddd04f8b786e19cbf';
 
 /// See also [IncidentsQueryNotifier].
 @ProviderFor(IncidentsQueryNotifier)
@@ -209,7 +213,7 @@ final incidentsQueryNotifierProvider =
     );
 
 typedef _$IncidentsQueryNotifier = AutoDisposeNotifier<IncidentsQuery>;
-String _$incidentActionsHash() => r'1d145cca6f49426ce19a5023ef4f002c93a253e3';
+String _$incidentActionsHash() => r'3668fcde2a1e8a4280fda8bb577ae4fc0179607c';
 
 /// See also [IncidentActions].
 @ProviderFor(IncidentActions)
