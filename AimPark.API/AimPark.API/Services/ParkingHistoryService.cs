@@ -101,6 +101,29 @@ namespace AimPark.API.Services
         }
 
         /// <summary>
+        /// Why this account may not enter, or null when it may. The first text
+        /// is for the gate display, the second finishes "Your …" in the
+        /// driver's notification. Neither carries the admin's reason.
+        /// </summary>
+        public static (string Gate, string Notice)? AccountRefusal(User user)
+        {
+            if (user.IsDeleted)
+                return ("Account archived. See a guard.",
+                        "account is archived. Contact the parking admin.");
+
+            return user.AccountStatus switch
+            {
+                AccountStatus.Active => null,
+                AccountStatus.Suspended => ("Account suspended. See a guard.",
+                                            "account is suspended. Contact the parking admin."),
+                AccountStatus.Revoked => ("RFID access revoked. See a guard.",
+                                          "RFID access is revoked. Open the app to see why."),
+                _ => ("Account not approved. See a guard.",
+                      "account is not approved yet. Contact the parking admin."),
+            };
+        }
+
+        /// <summary>
         /// Works out which of the user's own vehicles a session belongs to.
         /// There's no VehicleId column on ParkingLog (see the type's remarks
         /// for why), so this is recomputed from the ALPR-confirmed plate every
@@ -185,6 +208,31 @@ namespace AimPark.API.Services
                     result = AllocationResult.UnknownTag,
                     message = "User not found. Provide a valid userId or rfidTagId."
                 });
+
+            // The account itself, before anything about the card. Suspending or
+            // archiving a user leaves RfidStatus alone on purpose — that field
+            // belongs to violation suspensions, and lifting one must never lift
+            // the other — so the gate has to read the account directly.
+            // Entry only: a driver already inside can always leave.
+            if (AccountRefusal(user) is var (gateMessage, notice))
+            {
+                if (loggedByDeviceId is not null)
+                {
+                    await _notificationService.NotifyUserAsync(
+                        user.Id,
+                        NotificationType.Parking,
+                        "Your card was refused",
+                        $"{(dto.Gate is int g ? $"Gate {g}: y" : "Y")}our {notice}",
+                        null,
+                        ct);
+                }
+
+                return new BadRequestObjectResult(new
+                {
+                    result = AllocationResult.RfidSuspended,
+                    message = gateMessage
+                });
+            }
 
             var nowUtc = DateTime.UtcNow;
 

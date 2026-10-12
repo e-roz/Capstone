@@ -23,7 +23,27 @@ final userListProvider = AutoDisposeFutureProvider<UserListPage>.internal(
 @Deprecated('Will be removed in 3.0. Use Ref instead')
 // ignore: unused_element
 typedef UserListRef = AutoDisposeFutureProviderRef<UserListPage>;
-String _$rfidCardsHash() => r'd228237a52c916b640aa2eae797473c83c3cec4a';
+String _$rfidCardsHash() => r'c120c907171a13d58060d8074e5248230d597999';
+
+/// Every card at once — the screen filters and counts on the client, so the
+/// chip counts always add up to what the table can show.
+///
+/// Copied from [rfidCards].
+@ProviderFor(rfidCards)
+final rfidCardsProvider = AutoDisposeFutureProvider<List<RfidCard>>.internal(
+  rfidCards,
+  name: r'rfidCardsProvider',
+  debugGetCreateSourceHash: const bool.fromEnvironment('dart.vm.product')
+      ? null
+      : _$rfidCardsHash,
+  dependencies: null,
+  allTransitiveDependencies: null,
+);
+
+@Deprecated('Will be removed in 3.0. Use Ref instead')
+// ignore: unused_element
+typedef RfidCardsRef = AutoDisposeFutureProviderRef<List<RfidCard>>;
+String _$rfidCardHistoryHash() => r'cd030c773d887641714f7a019d8796bc83d91bac';
 
 /// Copied from Dart SDK
 class _SystemHash {
@@ -46,23 +66,26 @@ class _SystemHash {
   }
 }
 
-/// See also [rfidCards].
-@ProviderFor(rfidCards)
-const rfidCardsProvider = RfidCardsFamily();
+/// See also [rfidCardHistory].
+@ProviderFor(rfidCardHistory)
+const rfidCardHistoryProvider = RfidCardHistoryFamily();
 
-/// See also [rfidCards].
-class RfidCardsFamily extends Family<AsyncValue<List<RfidCard>>> {
-  /// See also [rfidCards].
-  const RfidCardsFamily();
+/// See also [rfidCardHistory].
+class RfidCardHistoryFamily
+    extends Family<AsyncValue<List<RfidCardHistoryEntry>>> {
+  /// See also [rfidCardHistory].
+  const RfidCardHistoryFamily();
 
-  /// See also [rfidCards].
-  RfidCardsProvider call({String? cardState}) {
-    return RfidCardsProvider(cardState: cardState);
+  /// See also [rfidCardHistory].
+  RfidCardHistoryProvider call(String rfidTagId) {
+    return RfidCardHistoryProvider(rfidTagId);
   }
 
   @override
-  RfidCardsProvider getProviderOverride(covariant RfidCardsProvider provider) {
-    return call(cardState: provider.cardState);
+  RfidCardHistoryProvider getProviderOverride(
+    covariant RfidCardHistoryProvider provider,
+  ) {
+    return call(provider.rfidTagId);
   }
 
   static const Iterable<ProviderOrFamily>? _dependencies = null;
@@ -77,69 +100,72 @@ class RfidCardsFamily extends Family<AsyncValue<List<RfidCard>>> {
       _allTransitiveDependencies;
 
   @override
-  String? get name => r'rfidCardsProvider';
+  String? get name => r'rfidCardHistoryProvider';
 }
 
-/// See also [rfidCards].
-class RfidCardsProvider extends AutoDisposeFutureProvider<List<RfidCard>> {
-  /// See also [rfidCards].
-  RfidCardsProvider({String? cardState})
+/// See also [rfidCardHistory].
+class RfidCardHistoryProvider
+    extends AutoDisposeFutureProvider<List<RfidCardHistoryEntry>> {
+  /// See also [rfidCardHistory].
+  RfidCardHistoryProvider(String rfidTagId)
     : this._internal(
-        (ref) => rfidCards(ref as RfidCardsRef, cardState: cardState),
-        from: rfidCardsProvider,
-        name: r'rfidCardsProvider',
+        (ref) => rfidCardHistory(ref as RfidCardHistoryRef, rfidTagId),
+        from: rfidCardHistoryProvider,
+        name: r'rfidCardHistoryProvider',
         debugGetCreateSourceHash: const bool.fromEnvironment('dart.vm.product')
             ? null
-            : _$rfidCardsHash,
-        dependencies: RfidCardsFamily._dependencies,
-        allTransitiveDependencies: RfidCardsFamily._allTransitiveDependencies,
-        cardState: cardState,
+            : _$rfidCardHistoryHash,
+        dependencies: RfidCardHistoryFamily._dependencies,
+        allTransitiveDependencies:
+            RfidCardHistoryFamily._allTransitiveDependencies,
+        rfidTagId: rfidTagId,
       );
 
-  RfidCardsProvider._internal(
+  RfidCardHistoryProvider._internal(
     super._createNotifier, {
     required super.name,
     required super.dependencies,
     required super.allTransitiveDependencies,
     required super.debugGetCreateSourceHash,
     required super.from,
-    required this.cardState,
+    required this.rfidTagId,
   }) : super.internal();
 
-  final String? cardState;
+  final String rfidTagId;
 
   @override
   Override overrideWith(
-    FutureOr<List<RfidCard>> Function(RfidCardsRef provider) create,
+    FutureOr<List<RfidCardHistoryEntry>> Function(RfidCardHistoryRef provider)
+    create,
   ) {
     return ProviderOverride(
       origin: this,
-      override: RfidCardsProvider._internal(
-        (ref) => create(ref as RfidCardsRef),
+      override: RfidCardHistoryProvider._internal(
+        (ref) => create(ref as RfidCardHistoryRef),
         from: from,
         name: null,
         dependencies: null,
         allTransitiveDependencies: null,
         debugGetCreateSourceHash: null,
-        cardState: cardState,
+        rfidTagId: rfidTagId,
       ),
     );
   }
 
   @override
-  AutoDisposeFutureProviderElement<List<RfidCard>> createElement() {
-    return _RfidCardsProviderElement(this);
+  AutoDisposeFutureProviderElement<List<RfidCardHistoryEntry>> createElement() {
+    return _RfidCardHistoryProviderElement(this);
   }
 
   @override
   bool operator ==(Object other) {
-    return other is RfidCardsProvider && other.cardState == cardState;
+    return other is RfidCardHistoryProvider && other.rfidTagId == rfidTagId;
   }
 
   @override
   int get hashCode {
     var hash = _SystemHash.combine(0, runtimeType.hashCode);
-    hash = _SystemHash.combine(hash, cardState.hashCode);
+    hash = _SystemHash.combine(hash, rfidTagId.hashCode);
 
     return _SystemHash.finish(hash);
   }
@@ -147,18 +173,19 @@ class RfidCardsProvider extends AutoDisposeFutureProvider<List<RfidCard>> {
 
 @Deprecated('Will be removed in 3.0. Use Ref instead')
 // ignore: unused_element
-mixin RfidCardsRef on AutoDisposeFutureProviderRef<List<RfidCard>> {
-  /// The parameter `cardState` of this provider.
-  String? get cardState;
+mixin RfidCardHistoryRef
+    on AutoDisposeFutureProviderRef<List<RfidCardHistoryEntry>> {
+  /// The parameter `rfidTagId` of this provider.
+  String get rfidTagId;
 }
 
-class _RfidCardsProviderElement
-    extends AutoDisposeFutureProviderElement<List<RfidCard>>
-    with RfidCardsRef {
-  _RfidCardsProviderElement(super.provider);
+class _RfidCardHistoryProviderElement
+    extends AutoDisposeFutureProviderElement<List<RfidCardHistoryEntry>>
+    with RfidCardHistoryRef {
+  _RfidCardHistoryProviderElement(super.provider);
 
   @override
-  String? get cardState => (origin as RfidCardsProvider).cardState;
+  String get rfidTagId => (origin as RfidCardHistoryProvider).rfidTagId;
 }
 
 String _$usersQueryNotifierHash() =>

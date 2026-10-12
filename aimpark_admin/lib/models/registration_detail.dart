@@ -16,6 +16,9 @@ class RegistrationDetail {
   final DateTime? canReapplyAt;
   final bool isDeleted;
   final DateTime createdAt;
+
+  /// Whole days since the last change, worked out as the queue does.
+  final int waitingDays;
   final String? rfidTagId;
   final String rfidStatus;
   final DateTime? rfidSuspendedUntil;
@@ -43,6 +46,7 @@ class RegistrationDetail {
     this.canReapplyAt,
     required this.isDeleted,
     required this.createdAt,
+    this.waitingDays = 0,
     this.rfidTagId,
     required this.rfidStatus,
     this.rfidSuspendedUntil,
@@ -72,6 +76,7 @@ class RegistrationDetail {
             : null,
         isDeleted: (json['isDeleted'] as bool?) ?? false,
         createdAt: DateTime.parse(json['createdAt'].toString()),
+        waitingDays: (json['waitingDays'] as num?)?.toInt() ?? 0,
         rfidTagId: json['rfidTagId']?.toString(),
         rfidStatus: json['rfidStatus']?.toString() ?? 'Unassigned',
         rfidSuspendedUntil: json['rfidSuspendedUntil'] != null

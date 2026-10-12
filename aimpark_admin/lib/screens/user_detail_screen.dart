@@ -9,9 +9,8 @@ import '../providers/registrations_provider.dart';
 import '../providers/users_provider.dart';
 import '../theme/theme.dart';
 import '../widgets/document_viewer.dart';
-import '../widgets/rfid_revoke_dialog.dart';
-import '../widgets/rfid_scan_field.dart';
 import '../widgets/ui/ui.dart';
+import '../widgets/user_actions.dart';
 
 String _date(DateTime dt) => DateFormat('MMM d, yyyy').format(dt.toLocal());
 String _stamp(DateTime dt) =>
@@ -301,105 +300,21 @@ class _UserActions {
   final RegistrationDetail detail;
   final WidgetRef ref;
 
-  Future<void> assignRfid(BuildContext context) async {
-    final tagCtrl = TextEditingController(text: detail.rfidTagId ?? '');
-    final formKey = GlobalKey<FormState>();
+  /// Suspend, archive, restore and the card actions are shared with the
+  /// Users list's row menu, so both ask the same questions.
+  UserAccountActions get _shared => UserAccountActions(
+        ref: ref,
+        userId: userId,
+        fullName: detail.fullName,
+        rfidTagId: detail.rfidTagId,
+      );
 
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text('Assign RFID to ${detail.fullName}'),
-        content: SizedBox(
-          width: ctx.dialogWidth(420),
-          child: Form(
-            key: formKey,
-            autovalidateMode: AutovalidateMode.onUserInteraction,
-            child: RfidScanField(controller: tagCtrl, userId: userId),
-          ),
-        ),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('Cancel')),
-          FilledButton(
-            onPressed: () {
-              if (formKey.currentState!.validate()) Navigator.pop(ctx, true);
-            },
-            child: const Text('Assign'),
-          ),
-        ],
-      ),
-    );
-    if (confirmed != true || !context.mounted) return;
-
-    final msg = await ref
-        .read(userActionsProvider.notifier)
-        .assignRfid(userId, tagCtrl.text.trim());
-    if (!context.mounted) return;
-    _done(context, msg ?? 'RFID tag assigned.');
-  }
-
-  Future<void> revokeRfid(BuildContext context) async {
-    final result = await showRevokeRfidDialog(context, holderName: detail.fullName);
-    if (result == null || !context.mounted) return;
-
-    final msg = await ref
-        .read(userActionsProvider.notifier)
-        .revokeRfid(userId, result.reason, result.note);
-    if (!context.mounted) return;
-    _done(context, msg ?? 'RFID tag revoked.');
-  }
-
-  Future<void> suspend(BuildContext context) async {
-    final reasonCtrl = TextEditingController();
-    final reason = await showDialog<String?>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text('Suspend ${detail.fullName}'),
-        content: SizedBox(
-          width: ctx.dialogWidth(400),
-          child: TextField(
-            controller: reasonCtrl,
-            autofocus: true,
-            maxLines: 2,
-            decoration: const InputDecoration(
-              labelText: 'Reason (optional)',
-              helperText: 'Recorded in the audit log alongside this action.',
-            ),
-          ),
-        ),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
-          FilledButton(
-            style: FilledButton.styleFrom(
-                backgroundColor: ctx.tokens.status.warning.solid),
-            onPressed: () => Navigator.pop(ctx, reasonCtrl.text.trim()),
-            child: const Text('Suspend'),
-          ),
-        ],
-      ),
-    );
-    if (reason == null || !context.mounted) return;
-
-    final msg = await ref
-        .read(userActionsProvider.notifier)
-        .suspend(userId, reason: reason.isEmpty ? null : reason);
-    if (!context.mounted) return;
-    _done(context, msg ?? 'User suspended.');
-  }
-
-  Future<void> unsuspend(BuildContext context) async {
-    final msg = await ref.read(userActionsProvider.notifier).unsuspend(userId);
-    if (!context.mounted) return;
-    _done(context, msg ?? 'User unsuspended.');
-  }
-
-  Future<void> restore(BuildContext context) async {
-    final msg = await ref.read(userActionsProvider.notifier).restore(userId);
-    if (!context.mounted) return;
-    _done(context, msg ?? 'User restored.');
-  }
+  Future<void> assignRfid(BuildContext context) => _shared.assignRfid(context);
+  Future<void> revokeRfid(BuildContext context) => _shared.revokeRfid(context);
+  Future<void> suspend(BuildContext context) => _shared.suspend(context);
+  Future<void> unsuspend(BuildContext context) => _shared.unsuspend(context);
+  Future<void> restore(BuildContext context) => _shared.restore(context);
+  Future<void> archive(BuildContext context) => _shared.archive(context);
 
   /// Deletes the identity photographs and nothing else.
   ///
@@ -480,62 +395,6 @@ class _UserActions {
         );
     if (!context.mounted) return;
     _done(context, msg ?? 'Documents deleted.');
-  }
-
-  Future<void> archive(BuildContext context) async {
-    final passwordCtrl = TextEditingController();
-    final formKey = GlobalKey<FormState>();
-
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Archive User'),
-        content: SizedBox(
-          width: ctx.dialogWidth(420),
-          child: Form(
-            key: formKey,
-            autovalidateMode: AutovalidateMode.onUserInteraction,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                    'Archive ${detail.fullName}? The account data will be retained '
-                    'and can be restored later. The user will not be able to log in.'),
-                const SizedBox(height: AppSpacing.x4),
-                TextFormField(
-                  controller: passwordCtrl,
-                  obscureText: true,
-                  decoration: const InputDecoration(
-                      labelText: 'Confirm your admin password'),
-                  validator: (v) =>
-                      (v == null || v.isEmpty) ? 'Password is required' : null,
-                ),
-              ],
-            ),
-          ),
-        ),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('Cancel')),
-          FilledButton(
-            style: FilledButton.styleFrom(
-                backgroundColor: ctx.tokens.status.danger.solid),
-            onPressed: () {
-              if (formKey.currentState!.validate()) Navigator.pop(ctx, true);
-            },
-            child: const Text('Archive'),
-          ),
-        ],
-      ),
-    );
-    if (confirmed != true || !context.mounted) return;
-
-    final msg = await ref
-        .read(userActionsProvider.notifier)
-        .archive(userId, passwordCtrl.text);
-    if (!context.mounted) return;
-    _done(context, msg ?? 'User archived.');
   }
 
   void _done(BuildContext context, String msg) {

@@ -23,16 +23,19 @@ Future<RevokeRfidResult?> showRevokeRfidDialog(
   required String holderName,
 }) {
   final noteCtrl = TextEditingController();
-  var reason = RfidRevokeReasons.graduated;
+  // No default on purpose: the reason decides whether the card can ever be
+  // used again, so it has to be a choice, not something left as it was.
+  String? reason;
 
   return showDialog<RevokeRfidResult>(
     context: context,
     builder: (ctx) => StatefulBuilder(
       builder: (ctx, setState) {
-        final blocks = RfidRevokeReasons.blocks(reason);
+        final chosen = reason;
+        final blocks = chosen != null && RfidRevokeReasons.blocks(chosen);
 
         return AlertDialog(
-          title: Text('Revoke RFID tag from $holderName'),
+          title: Text('Revoke card from $holderName'),
           content: SizedBox(
             width: ctx.dialogWidth(440),
             child: Column(
@@ -41,13 +44,18 @@ Future<RevokeRfidResult?> showRevokeRfidDialog(
               children: [
                 DropdownButtonFormField<String>(
                   initialValue: reason,
-                  decoration: const InputDecoration(labelText: 'Reason'),
+                  decoration: const InputDecoration(
+                    labelText: 'Reason',
+                    hintText: 'Choose a reason',
+                  ),
                   items: [
-                    for (final r in RfidRevokeReasons.all)
+                    for (final r in RfidRevokeReasons.selectable)
                       DropdownMenuItem(
-                          value: r, child: Text(RfidRevokeReasons.label(r))),
+                        value: r,
+                        child: Text(RfidRevokeReasons.label(r)),
+                      ),
                   ],
-                  onChanged: (v) => setState(() => reason = v ?? reason),
+                  onChanged: (v) => setState(() => reason = v),
                 ),
                 const SizedBox(height: AppSpacing.x4),
                 TextField(
@@ -55,31 +63,33 @@ Future<RevokeRfidResult?> showRevokeRfidDialog(
                   maxLines: 2,
                   decoration: const InputDecoration(
                     labelText: 'Note (optional)',
-                    helperText: 'Recorded in the audit log alongside this action.',
+                    helperText: 'Saved in the audit log with this action.',
                   ),
                 ),
-                const SizedBox(height: AppSpacing.x4),
-                Container(
-                  padding: const EdgeInsets.all(AppSpacing.x3),
-                  decoration: BoxDecoration(
-                    color: blocks
-                        ? ctx.tokens.status.danger.bg
-                        : ctx.tokens.status.success.bg,
-                    borderRadius: AppRadii.mdAll,
+                if (chosen != null) ...[
+                  const SizedBox(height: AppSpacing.x4),
+                  Container(
+                    padding: const EdgeInsets.all(AppSpacing.x3),
+                    decoration: BoxDecoration(
+                      color: blocks
+                          ? ctx.tokens.status.danger.bg
+                          : ctx.tokens.status.success.bg,
+                      borderRadius: AppRadii.mdAll,
+                    ),
+                    child: Text(
+                      blocks
+                          ? 'This card will be blocked. It can never be given to '
+                                'anyone again.'
+                          : 'This card goes back to the free pool. You can give '
+                                'it to another user.',
+                      style: Theme.of(ctx).textTheme.bodySmall?.copyWith(
+                        color: blocks
+                            ? ctx.tokens.status.danger.fg
+                            : ctx.tokens.status.success.fg,
+                      ),
+                    ),
                   ),
-                  child: Text(
-                    blocks
-                        ? 'This card will be blocked — it can never be reissued to '
-                            'anyone, even after this revoke.'
-                        : 'This card goes back into the free pool and can be '
-                            'reissued to a different user.',
-                    style: Theme.of(ctx).textTheme.bodySmall?.copyWith(
-                          color: blocks
-                              ? ctx.tokens.status.danger.fg
-                              : ctx.tokens.status.success.fg,
-                        ),
-                  ),
-                ),
+                ],
               ],
             ),
           ),
@@ -90,14 +100,19 @@ Future<RevokeRfidResult?> showRevokeRfidDialog(
             ),
             FilledButton(
               style: FilledButton.styleFrom(
-                  backgroundColor: ctx.tokens.status.danger.solid),
-              onPressed: () => Navigator.pop(
-                ctx,
-                RevokeRfidResult(
-                  reason,
-                  noteCtrl.text.trim().isEmpty ? null : noteCtrl.text.trim(),
-                ),
+                backgroundColor: ctx.tokens.status.danger.solid,
               ),
+              onPressed: chosen == null
+                  ? null
+                  : () => Navigator.pop(
+                      ctx,
+                      RevokeRfidResult(
+                        chosen,
+                        noteCtrl.text.trim().isEmpty
+                            ? null
+                            : noteCtrl.text.trim(),
+                      ),
+                    ),
               child: const Text('Revoke'),
             ),
           ],

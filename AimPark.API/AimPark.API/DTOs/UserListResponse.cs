@@ -16,6 +16,9 @@ namespace AimPark.API.DTOs
         public string Role { get; set; } = string.Empty;
         public string AccountStatus { get; set; } = string.Empty;
         public string RfidStatus { get; set; } = string.Empty;
+
+        // Added for the Users list's Card column. Additive: older clients ignore it.
+        public string? RfidTagId { get; set; }
         public bool IsDeleted { get; set; }
         public DateTime CreatedAt { get; set; }
     }

@@ -48,6 +48,15 @@ class JwtUtils {
   static StaffRole? staffRole(String token) =>
       StaffRole.fromClaim(getRole(token));
 
+  /// The signed-in account's user ID (the NameIdentifier claim), or null.
+  static String? getUserId(String token) {
+    final payload = _decodePayload(token);
+    if (payload == null) return null;
+    const idKey =
+        'http://schemas.xmlsoap.org/ws/2005/05/identity/claims/nameidentifier';
+    return (payload[idKey] ?? payload['nameid'] ?? payload['sub'])?.toString();
+  }
+
   /// Returns the email claim, or null if not present. The sidebar's user chip
   /// shows this: the token carries no display name, and an email is at least
   /// true, where an invented "Administrator" would not be.

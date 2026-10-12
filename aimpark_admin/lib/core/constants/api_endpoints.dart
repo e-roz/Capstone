@@ -40,9 +40,14 @@ class ApiEndpoints {
       '/api/admin/users/$userId/revoke-rfid';
   static const bulkRevokeRfid = '/api/admin/users/bulk-revoke-rfid';
 
-  /// The pool of physical cards revoked from a user and not yet reissued —
-  /// Free ones ready to hand to someone else, Blocked ones that must not be.
+  /// Physical cards revoked from a user and not yet reissued — Free ones
+  /// ready to hand to someone else, Blocked ones that must not be. Add
+  /// `includeAssigned=true` to also get the cards users hold right now.
   static const rfidCards = '/api/admin/rfid-cards';
+
+  /// Assign, revoke and reinstate events for one card, from the audit log.
+  static String rfidCardHistory(String rfidTagId) =>
+      '/api/admin/rfid-cards/${Uri.encodeComponent(rfidTagId)}/history';
 
   /// The last card tapped on the enrollment desk reader. Polled while the
   /// Assign RFID dialog is open so nobody has to type a UID. Returns null when
@@ -179,13 +184,13 @@ class ApiEndpoints {
   static const incidents = '/api/admin/incidents';
   static String incidentDetail(String incidentId) =>
       '/api/admin/incidents/$incidentId';
+  static String startIncidentReview(String incidentId) =>
+      '/api/admin/incidents/$incidentId/start-review';
   static String reviewIncident(String incidentId) =>
       '/api/admin/incidents/$incidentId/review';
 
   // Admin – Notifications
   static const notifications = '/api/admin/notifications';
-  static String startIncidentReview(String incidentId) =>
-      '/api/admin/incidents/$incidentId/start-review';
 
   // The staff member's own inbox, not the broadcast log above. Same endpoint
   // the mobile app reads, because a notification addressed to a Security
