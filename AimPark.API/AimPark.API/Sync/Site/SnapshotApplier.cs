@@ -126,7 +126,6 @@ namespace AimPark.API.Sync.Site
                 user.Role = source.Role;
                 user.Affiliation = source.Affiliation;
                 user.StudentNumber = source.StudentNumber;
-                user.EnrollmentValidUntil = source.EnrollmentValidUntil;
                 user.RegistrationStep = source.RegistrationStep;
                 user.AccountStatus = source.AccountStatus;
                 user.VerificationStatus = source.VerificationStatus;

@@ -8,7 +8,6 @@ namespace AimPark.API.DTOs
         public string Affiliation { get; set; } = string.Empty;
         public string? StudentNumber { get; set; }
         public string? Section { get; set; }
-        public DateTime? EnrollmentValidUntil { get; set; }
 
         public string RegistrationStep { get; set; } = string.Empty;
         public string AccountStatus { get; set; } = string.Empty;

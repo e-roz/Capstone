@@ -39,7 +39,6 @@ class RegistrationActions extends _$RegistrationActions {
 
   Future<String?> approve(
     String userId, {
-    DateTime? enrollmentValidUntil,
     String? overrideNote,
   }) async {
     state = const AsyncLoading();
@@ -48,8 +47,6 @@ class RegistrationActions extends _$RegistrationActions {
       final res = await dio.post(
         ApiEndpoints.approveRegistration(userId),
         data: {
-          if (enrollmentValidUntil != null)
-            'enrollmentValidUntil': enrollmentValidUntil.toIso8601String(),
           'overrideNote': ?overrideNote,
         },
       );

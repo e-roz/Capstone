@@ -7,6 +7,9 @@ class NotificationItem {
   final DateTime createdAt;
   final bool isRead;
 
+  /// The administrator who sent it; null for what the system raised itself.
+  final String? sentByName;
+
   const NotificationItem({
     required this.notificationId,
     required this.title,
@@ -15,6 +18,7 @@ class NotificationItem {
     required this.targetRole,
     required this.createdAt,
     required this.isRead,
+    this.sentByName,
   });
 
   factory NotificationItem.fromJson(Map<String, dynamic> json) =>
@@ -26,6 +30,7 @@ class NotificationItem {
         targetRole: json['targetRole']?.toString(),
         createdAt: DateTime.parse(json['createdAt'].toString()),
         isRead: (json['isRead'] as bool?) ?? false,
+        sentByName: json['sentByName']?.toString(),
       );
 }
 

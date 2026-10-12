@@ -91,16 +91,13 @@ class RegistrationDetailScreen extends ConsumerWidget {
   /// they matter most.
   Future<void> _approve(
       BuildContext context, WidgetRef ref, RegistrationDetail detail) async {
-    final isStudent = detail.affiliation == 'Student';
     final needsOverride =
         detail.checks != null && detail.checks!.verdict != 'Clear';
 
     final noteCtrl = TextEditingController();
     final formKey = GlobalKey<FormState>();
-    DateTime? enrollmentValidUntil;
 
-    final result = await showDialog<
-        ({DateTime? enrollmentValidUntil, String? overrideNote})>(
+    final result = await showDialog<({String? overrideNote})>(
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setState) => AlertDialog(
@@ -148,44 +145,6 @@ class RegistrationDetailScreen extends ConsumerWidget {
                           : null,
                     ),
                   ],
-                  if (isStudent) ...[
-                    const SizedBox(height: AppSpacing.x3),
-                    FormField<DateTime>(
-                      validator: (_) => enrollmentValidUntil == null
-                          ? 'Required for student accounts'
-                          : null,
-                      builder: (state) => InkWell(
-                        onTap: () async {
-                          final now = DateTime.now();
-                          final picked = await showDatePicker(
-                            context: ctx,
-                            initialDate: enrollmentValidUntil ?? now,
-                            firstDate: now.subtract(const Duration(days: 30)),
-                            lastDate: now.add(const Duration(days: 730)),
-                          );
-                          if (picked == null) return;
-                          setState(() => enrollmentValidUntil = picked);
-                          state.didChange(picked);
-                        },
-                        child: InputDecorator(
-                          decoration: InputDecoration(
-                            labelText: 'Enrolment valid until',
-                            errorText: state.errorText,
-                            suffixIcon: const Icon(
-                              Icons.calendar_today_outlined,
-                              size: 18,
-                            ),
-                          ),
-                          child: Text(
-                            enrollmentValidUntil == null
-                                ? 'Select a date'
-                                : DateFormat('MMM d, yyyy')
-                                    .format(enrollmentValidUntil!),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
                 ],
               ),
             ),
@@ -197,7 +156,6 @@ class RegistrationDetailScreen extends ConsumerWidget {
               onPressed: () {
                 if (!formKey.currentState!.validate()) return;
                 Navigator.pop(ctx, (
-                  enrollmentValidUntil: enrollmentValidUntil,
                   overrideNote: needsOverride ? noteCtrl.text.trim() : null,
                 ));
               },
@@ -212,7 +170,6 @@ class RegistrationDetailScreen extends ConsumerWidget {
 
     final msg = await ref.read(registrationActionsProvider.notifier).approve(
           userId,
-          enrollmentValidUntil: result.enrollmentValidUntil,
           overrideNote: result.overrideNote,
         );
 
@@ -618,8 +575,6 @@ class _DetailView extends StatelessWidget {
                 AppField(label: 'Student Number', value: number),
               if (detail.section case final section?)
                 AppField(label: 'Section', value: section),
-              if (detail.enrollmentValidUntil case final until?)
-                AppField(label: 'Enrolled Until', value: _fmt(until)),
             ],
           ),
         ),

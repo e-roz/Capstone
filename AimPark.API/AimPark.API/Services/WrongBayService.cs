@@ -21,13 +21,13 @@ namespace AimPark.API.Services
     public class WrongBayService : IWrongBayService
     {
         private readonly AppDbContext _db;
-        private readonly INotificationService _notifications;
+        private readonly IPushSender _push;
         private readonly ILogger<WrongBayService> _logger;
 
-        public WrongBayService(AppDbContext db, INotificationService notifications, ILogger<WrongBayService> logger)
+        public WrongBayService(AppDbContext db, IPushSender push, ILogger<WrongBayService> logger)
         {
             _db = db;
-            _notifications = notifications;
+            _push = push;
             _logger = logger;
         }
 
@@ -69,13 +69,22 @@ namespace AimPark.API.Services
                 });
                 await _db.SaveChangesAsync(ct);
 
-                var bayKind = filled.VehicleType == VehicleType.Motorcycle ? "motorcycle" : "four-wheel";
-                await _notifications.NotifyRoleAsync(
-                    UserRole.Security,
-                    NotificationType.System,
-                    $"Check bay {filled.SlotCode}",
-                    $"Bay {filled.SlotCode} is a {bayKind} bay, and the wrong kind of vehicle may be parked in it. Please go and check.",
-                    ct);
+                // An alert, not a notification: nothing is saved to anyone's
+                // inbox. The warning itself lives on the parking map until the
+                // bay empties; this is only the nudge to go and look.
+                var (bayName, intruder) = filled.VehicleType == VehicleType.Motorcycle
+                    ? ("motorcycle", "car")
+                    : ("car", "motorcycle");
+                var title = $"Possible {intruder} in {bayName} bay {filled.SlotCode}";
+                var message = $"A {intruder} may be parked in {bayName} bay {filled.SlotCode}. Please go and check.";
+                var data = new Dictionary<string, string>
+                {
+                    ["type"] = "wrong_bay",
+                    ["slotId"] = slotId.ToString()
+                };
+
+                foreach (var role in new[] { UserRole.Security, UserRole.Admin })
+                    await _push.SendToRoleAsync(role, title, message, data, ct);
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {

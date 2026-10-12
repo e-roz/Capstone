@@ -10,6 +10,10 @@ namespace AimPark.API.Services
 {
     public class NotificationService : INotificationService
     {
+        /// <summary>The only types an administrator may broadcast by hand.</summary>
+        private static readonly NotificationType[] BroadcastTypes =
+            { NotificationType.Announcement, NotificationType.PolicyUpdate };
+
         private readonly IRepository<Notification> _notifications;
         private readonly IRepository<NotificationRead> _reads;
         private readonly IPushSender _pushSender;
@@ -73,66 +77,18 @@ namespace AimPark.API.Services
             }
         }
 
-        public async Task NotifyRoleAsync(
-            UserRole role,
-            NotificationType type,
-            string title,
-            string message,
-            CancellationToken ct)
-        {
-            try
-            {
-                var notification = new Notification
-                {
-                    Id = Guid.NewGuid(),
-                    Title = title,
-                    Message = message,
-                    Type = type,
-                    TargetUserId = null,
-                    TargetRole = role,
-                    // Guid.Empty means "the system", matching NotifyUserAsync.
-                    // Attributing it to an administrator would put their name on
-                    // something they did not send.
-                    CreatedByUserId = Guid.Empty,
-                    CreatedAt = DateTime.UtcNow
-                };
-
-                await _notifications.AddAsync(notification, ct);
-                await _notifications.SaveAsync(ct);
-
-                await _pushSender.SendToRoleAsync(
-                    role,
-                    title,
-                    message,
-                    new Dictionary<string, string>
-                    {
-                        ["type"] = "notification",
-                        ["notificationId"] = notification.Id.ToString()
-                    },
-                    ct);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Failed to notify role {Role}.", role);
-            }
-        }
-
         // POST /api/admin/notifications
         public async Task<ActionResult<object>> BroadcastAsync(BroadcastNotificationDto dto, Guid adminUserId, CancellationToken ct)
         {
             if (string.IsNullOrWhiteSpace(dto.Title) || string.IsNullOrWhiteSpace(dto.Message))
                 return new BadRequestObjectResult(new { message = "Title and message are required." });
 
-            if (!Enum.TryParse<NotificationType>(dto.Type, true, out var type))
-                return new BadRequestObjectResult(new { message = "Invalid notification type." });
-
-            UserRole? targetRole = null;
-            if (!string.IsNullOrWhiteSpace(dto.TargetRole))
-            {
-                if (!Enum.TryParse<UserRole>(dto.TargetRole, true, out var parsedRole))
-                    return new BadRequestObjectResult(new { message = "Invalid target role." });
-                targetRole = parsedRole;
-            }
+            // An administrator writes announcements. Everything else
+            // (violations, payments...) is raised by the system, so refuse it
+            // here even if something other than the admin panel asks for it.
+            if (!Enum.TryParse<NotificationType>(dto.Type, true, out var type)
+                || !BroadcastTypes.Contains(type))
+                return new BadRequestObjectResult(new { message = "Type must be Announcement or PolicyUpdate." });
 
             var notification = new Notification
             {
@@ -140,7 +96,7 @@ namespace AimPark.API.Services
                 Title = dto.Title.Trim(),
                 Message = dto.Message.Trim(),
                 Type = type,
-                TargetRole = targetRole,
+                TargetRole = null, // a broadcast always reaches everyone
                 TargetUserId = null, // broadcast — see NotifyUserAsync for addressed ones
                 CreatedByUserId = adminUserId,
                 CreatedAt = DateTime.UtcNow
@@ -152,7 +108,7 @@ namespace AimPark.API.Services
             // Best-effort push — the in-app notification is already persisted above,
             // so a push failure never costs the user the notification itself.
             await _pushSender.SendToRoleAsync(
-                targetRole,
+                null,
                 notification.Title,
                 notification.Message,
                 new Dictionary<string, string>
@@ -171,7 +127,11 @@ namespace AimPark.API.Services
             page = Math.Max(1, page);
             pageSize = Math.Clamp(pageSize, 1, 100);
 
-            var query = _db.Set<Notification>().AsNoTracking();
+            // Only what an administrator sent. The system's own notifications
+            // (CreatedByUserId is Guid.Empty) are not broadcasts and have no
+            // place in the sender's log.
+            var query = _db.Set<Notification>().AsNoTracking()
+                .Where(n => n.CreatedByUserId != Guid.Empty);
             var totalCount = await query.CountAsync(ct);
 
             var notifications = await query
@@ -186,7 +146,11 @@ namespace AimPark.API.Services
                     Type = n.Type.ToString(),
                     TargetRole = n.TargetRole == null ? null : n.TargetRole.ToString(),
                     CreatedAt = n.CreatedAt,
-                    IsRead = false
+                    IsRead = false,
+                    SentByName = _db.Set<User>()
+                        .Where(u => u.Id == n.CreatedByUserId)
+                        .Select(u => u.FullName)
+                        .FirstOrDefault()
                 })
                 .ToListAsync(ct);
 

@@ -31,7 +31,7 @@ final inboxProvider = AutoDisposeFutureProvider<NotificationListPage>.internal(
 @Deprecated('Will be removed in 3.0. Use Ref instead')
 // ignore: unused_element
 typedef InboxRef = AutoDisposeFutureProviderRef<NotificationListPage>;
-String _$unreadInboxCountHash() => r'd1e6b90b8bc789d0538233e1ca53ea610dc4bad1';
+String _$unreadInboxCountHash() => r'4a3ef4f4fa74e24c364972401b85a13439bb511d';
 
 /// Unread count for the sidebar badge.
 ///
@@ -106,7 +106,7 @@ final inboxActionsProvider =
 
 typedef _$InboxActions = AutoDisposeNotifier<AsyncValue<void>>;
 String _$notificationActionsHash() =>
-    r'23978d15c18a70173dfcbabd268b8044359d7338';
+    r'95ef8ff91f01c3a7b556118ec281304dfc57d037';
 
 /// See also [NotificationActions].
 @ProviderFor(NotificationActions)

@@ -327,6 +327,8 @@ namespace AimPark.API.Services
                     i.Category,
                     i.Status,
                     i.CreatedAt,
+                    i.Description,
+                    i.Location,
                     i.ReviewedAt,
                     ReporterName = i.ReportedByUser.FullName,
                     ReporterRole = i.ReportedByUser.Role
@@ -339,6 +341,8 @@ namespace AimPark.API.Services
                 Category = r.Category.ToString(),
                 Status = r.Status.ToString(),
                 CreatedAt = r.CreatedAt,
+                DescriptionPreview = IncidentSummaryResponse.Preview(r.Description),
+                Location = r.Location,
                 ReviewedAt = r.ReviewedAt,
                 ReportedByName = r.ReporterName,
                 ReportedByRole = r.ReporterRole.ToString()

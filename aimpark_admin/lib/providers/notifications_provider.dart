@@ -5,6 +5,8 @@ import 'package:riverpod_annotation/riverpod_annotation.dart';
 import '../core/constants/api_endpoints.dart';
 import '../core/network/dio_client.dart';
 import '../models/notification.dart';
+import '../router/destinations.dart';
+import 'auth_provider.dart';
 
 part 'notifications_provider.g.dart';
 
@@ -48,6 +50,10 @@ Future<NotificationListPage> inbox(Ref ref) async {
 /// Unread count for the sidebar badge.
 @riverpod
 Future<int> unreadInboxCount(Ref ref) async {
+  // An administrator has no inbox: nothing automatic is addressed to them, so
+  // there is nothing to count, and the badge must not advertise a list that is
+  // not on their screen.
+  if (ref.watch(staffRoleProvider) != StaffRole.security) return 0;
   final page = await ref.watch(inboxProvider.future);
   return page.unreadCount;
 }
@@ -95,7 +101,6 @@ class NotificationActions extends _$NotificationActions {
     required String title,
     required String message,
     required String type,
-    String? targetRole,
   }) async {
     state = const AsyncLoading();
     try {
@@ -104,7 +109,6 @@ class NotificationActions extends _$NotificationActions {
         'title': title,
         'message': message,
         'type': type,
-        'targetRole': targetRole,
       });
       state = const AsyncData(null);
       return (res.data as Map<String, dynamic>)['message']?.toString();
