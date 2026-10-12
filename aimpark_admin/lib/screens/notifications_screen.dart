@@ -289,8 +289,29 @@ class _BroadcastDialogState extends State<_BroadcastDialog> {
     final t = context.tokens;
     final text = Theme.of(context).textTheme;
 
+    final typeColors =
+        t.status.of(StatusIntents.notificationType(_type));
+
     return AlertDialog(
-      title: const Text('New broadcast'),
+      // The tile takes the colour of the chosen type, so the dialog already
+      // reads as "announcement" or "policy update" before anything is typed.
+      title: Row(
+        children: [
+          AnimatedContainer(
+            duration: AppMotion.fast,
+            width: 32,
+            height: 32,
+            decoration: BoxDecoration(
+              color: typeColors.bg,
+              borderRadius: AppRadii.mdAll,
+              border: Border.all(color: typeColors.border),
+            ),
+            child: Icon(_typeIcon(_type), size: 18, color: typeColors.fg),
+          ),
+          const SizedBox(width: AppSpacing.x3),
+          const Text('New broadcast'),
+        ],
+      ),
       content: SizedBox(
         width: context.dialogWidth(480),
         child: SingleChildScrollView(
@@ -345,37 +366,13 @@ class _BroadcastDialogState extends State<_BroadcastDialog> {
                   ],
                 ),
                 const SizedBox(height: AppSpacing.x4),
-                Container(
-                  padding: const EdgeInsets.all(AppSpacing.x3),
-                  decoration: BoxDecoration(
-                    color: t.surface.muted,
-                    borderRadius: AppRadii.mdAll,
-                  ),
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Icon(Icons.groups_outlined,
-                          size: 18, color: t.text.secondary),
-                      const SizedBox(width: AppSpacing.x2),
-                      Expanded(
-                        child: Text(
-                          'Goes to everyone: students, staff, guards and '
-                          'admins. It shows in their inbox and as a phone '
-                          'alert.',
-                          style: text.bodySmall
-                              ?.copyWith(color: t.text.secondary),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: AppSpacing.x4),
                 Text(
                   'How it looks on a phone',
                   style: text.labelSmall?.copyWith(color: t.text.tertiary),
                 ),
                 const SizedBox(height: AppSpacing.x2),
                 _PhonePreview(
+                  type: _type,
                   title: _titleCtrl.text.trim(),
                   message: _messageCtrl.text.trim(),
                 ),
@@ -414,6 +411,7 @@ class _TypeOption extends StatelessWidget {
   Widget build(BuildContext context) {
     final t = context.tokens;
     final text = Theme.of(context).textTheme;
+    final c = t.status.of(StatusIntents.notificationType(type));
 
     return InkWell(
       onTap: onTap,
@@ -422,32 +420,42 @@ class _TypeOption extends StatelessWidget {
         duration: AppMotion.fast,
         padding: const EdgeInsets.all(AppSpacing.x3),
         decoration: BoxDecoration(
-          color: selected ? t.brand.subtle : t.surface.card,
+          color: selected ? c.bg : t.surface.card,
           borderRadius: AppRadii.mdAll,
           border: Border.all(
-            color: selected ? t.brand.primary : t.border.normal,
+            color: selected ? c.solid : t.border.normal,
             width: selected ? 1.5 : 1,
           ),
         ),
-        child: Column(
+        child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Row(
-              children: [
-                Icon(_typeIcon(type),
-                    size: 18,
-                    color: selected ? t.brand.primary : t.text.secondary),
-                const SizedBox(width: AppSpacing.x2),
-                Flexible(
-                  child: Text(_typeLabels[type] ?? type,
-                      style: text.titleSmall),
-                ),
-              ],
+            // Each option keeps its own colour while unselected, so the two
+            // can be told apart at a glance and the choice reads as picking a
+            // colour as much as a word.
+            Container(
+              width: 32,
+              height: 32,
+              decoration: BoxDecoration(
+                color: c.bg,
+                borderRadius: AppRadii.smAll,
+                border: Border.all(color: c.border),
+              ),
+              child: Icon(_typeIcon(type), size: 18, color: c.fg),
             ),
-            const SizedBox(height: 2),
-            Text(
-              _typeHints[type] ?? '',
-              style: text.bodySmall?.copyWith(color: t.text.secondary),
+            const SizedBox(width: AppSpacing.x3),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(_typeLabels[type] ?? type, style: text.titleSmall),
+                  const SizedBox(height: 2),
+                  Text(
+                    _typeHints[type] ?? '',
+                    style: text.bodySmall?.copyWith(color: t.text.secondary),
+                  ),
+                ],
+              ),
             ),
           ],
         ),
@@ -459,8 +467,13 @@ class _TypeOption extends StatelessWidget {
 /// A stand-in for the push the phone will show, so the sender sees the title
 /// cut where the phone will cut it before it cannot be taken back.
 class _PhonePreview extends StatelessWidget {
-  const _PhonePreview({required this.title, required this.message});
+  const _PhonePreview({
+    required this.type,
+    required this.title,
+    required this.message,
+  });
 
+  final String type;
   final String title;
   final String message;
 
@@ -468,12 +481,15 @@ class _PhonePreview extends StatelessWidget {
   Widget build(BuildContext context) {
     final t = context.tokens;
     final text = Theme.of(context).textTheme;
+    final c = t.status.of(StatusIntents.notificationType(type));
 
-    return Container(
+    return AnimatedContainer(
+      duration: AppMotion.fast,
       padding: const EdgeInsets.all(AppSpacing.x3),
       decoration: BoxDecoration(
-        color: t.surface.muted,
+        color: c.bg,
         borderRadius: AppRadii.lgAll,
+        border: Border.all(color: c.border),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
