@@ -21,8 +21,19 @@ namespace AimPark.API.Interfaces
         /// audit trail still shows it was filed.
         /// </summary>
         Task<ActionResult<object>> WithdrawMyIncidentAsync(Guid userId, Guid incidentId, CancellationToken ct);
-        Task<ActionResult<IncidentListResponse>> ListAllAsync(string? status, int page, int pageSize, CancellationToken ct);
+        Task<ActionResult<IncidentListResponse>> ListAllAsync(string? status, string? search, int page, int pageSize, CancellationToken ct);
         Task<ActionResult<IncidentDetailResponse>> GetDetailForAdminAsync(Guid incidentId, CancellationToken ct);
+
+        /// <summary>
+        /// The admin opened the report: Submitted becomes UnderReview and the
+        /// reporter is told. Does nothing to a report that is already past that.
+        /// </summary>
+        Task<ActionResult<object>> StartReviewAsync(Guid incidentId, Guid adminUserId, CancellationToken ct);
+
+        /// <summary>
+        /// The final decision: Resolved or Dismissed, with a note. Cannot be
+        /// changed afterwards.
+        /// </summary>
         Task<ActionResult<object>> ReviewAsync(Guid incidentId, Guid adminUserId, ReviewIncidentDto dto, CancellationToken ct);
     }
 }

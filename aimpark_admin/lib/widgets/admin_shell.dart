@@ -215,18 +215,12 @@ bool _matches(String location, String route) =>
 /// One lookup for the sidebar, the rail and the drawer, so a count can never
 /// show in one of them and not the others.
 int? _navBadge(String route, WidgetRef ref) => switch (route) {
-      // Appeals are only counted for somebody who may open them. Watching that
-      // provider as Security fired a request the API answers with 403, on every
-      // screen, because the sidebar is always mounted.
-      '/incidents' when ref.watch(staffRoleProvider) == StaffRole.security =>
-        ref.watch(openIncidentCountProvider).valueOrNull,
-      '/incidents' => switch ((
-          ref.watch(openIncidentCountProvider).valueOrNull,
-          ref.watch(pendingAppealCountProvider).valueOrNull,
-        )) {
-          (null, null) => null,
-          (final a, final b) => (a ?? 0) + (b ?? 0),
-        },
+      '/incidents' => ref.watch(openIncidentCountProvider).valueOrNull,
+      // Appeals sit under Violations. The Violations item is admin-only, so
+      // this is only watched for somebody the API will answer; as Security it
+      // would fire a request that comes back 403, on every screen, because the
+      // sidebar is always mounted.
+      '/violations' => ref.watch(pendingAppealCountProvider).valueOrNull,
       '/pending' => ref.watch(pendingRegistrationsProvider).valueOrNull?.length,
       '/visitors' => ref.watch(visitorsOnSiteCountProvider).valueOrNull,
       '/notifications' => ref.watch(unreadInboxCountProvider).valueOrNull,

@@ -184,6 +184,8 @@ class ApiEndpoints {
 
   // Admin – Notifications
   static const notifications = '/api/admin/notifications';
+  static String startIncidentReview(String incidentId) =>
+      '/api/admin/incidents/$incidentId/start-review';
 
   // The staff member's own inbox, not the broadcast log above. Same endpoint
   // the mobile app reads, because a notification addressed to a Security

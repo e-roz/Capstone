@@ -143,6 +143,8 @@ class StatusIntents {
         'Resolved' => StatusIntent.success,
         'Dismissed' => StatusIntent.danger,
         'UnderReview' => StatusIntent.warning,
+        // The reporter took it back; nobody has anything left to do.
+        'Withdrawn' => StatusIntent.neutral,
         _ => StatusIntent.info,
       };
 
