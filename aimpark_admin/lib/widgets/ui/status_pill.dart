@@ -152,6 +152,8 @@ class StatusIntents {
         'Waived' => StatusIntent.info,
         'Overdue' || 'Failed' => StatusIntent.danger,
         _ => StatusIntent.warning,
+        // The reporter took it back; nobody has anything left to do.
+        'Withdrawn' => StatusIntent.neutral,
       };
 
   /// Parking slot occupancy. Occupied is deliberately *not* a warning — a full

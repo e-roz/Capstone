@@ -544,6 +544,9 @@ namespace AimPark.API.Migrations
                     b.Property<Guid>("ReportedByUserId")
                         .HasColumnType("uuid");
 
+                    b.Property<DateTime?>("ReviewedAt")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<Guid?>("ReviewedByUserId")
                         .HasColumnType("uuid");
 

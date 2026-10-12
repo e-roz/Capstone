@@ -4,6 +4,7 @@ import 'package:riverpod_annotation/riverpod_annotation.dart';
 
 import '../core/constants/api_endpoints.dart';
 import '../core/network/dio_client.dart';
+import '../core/utils/browser_files.dart';
 import '../models/incident.dart';
 
 part 'incidents_provider.g.dart';
@@ -13,14 +14,28 @@ class IncidentsQuery {
   final int pageSize;
   final String? status;
 
-  const IncidentsQuery({this.page = 1, this.pageSize = 20, this.status});
+  /// Part of the reporter's name.
+  final String search;
 
-  IncidentsQuery copyWith(
-          {int? page, int? pageSize, String? status, bool clearStatus = false}) =>
+  const IncidentsQuery({
+    this.page = 1,
+    this.pageSize = 20,
+    this.status,
+    this.search = '',
+  });
+
+  IncidentsQuery copyWith({
+    int? page,
+    int? pageSize,
+    String? status,
+    bool clearStatus = false,
+    String? search,
+  }) =>
       IncidentsQuery(
         page: page ?? this.page,
         pageSize: pageSize ?? this.pageSize,
         status: clearStatus ? null : (status ?? this.status),
+        search: search ?? this.search,
       );
 }
 
@@ -32,6 +47,8 @@ class IncidentsQueryNotifier extends _$IncidentsQueryNotifier {
   void setPage(int page) => state = state.copyWith(page: page);
   void setStatus(String? status) => state = state.copyWith(
       status: status, clearStatus: status == null, page: 1);
+  void setSearch(String search) =>
+      state = state.copyWith(search: search.trim(), page: 1);
 }
 
 @riverpod
@@ -43,6 +60,7 @@ Future<IncidentListPage> incidentList(Ref ref) async {
     'page': query.page,
     'pageSize': query.pageSize,
     if (query.status != null) 'status': query.status,
+    if (query.search.isNotEmpty) 'search': query.search,
   };
 
   final response =
@@ -50,21 +68,31 @@ Future<IncidentListPage> incidentList(Ref ref) async {
   return IncidentListPage.fromJson(response.data as Map<String, dynamic>);
 }
 
-/// How many reports nobody has picked up yet.
+/// How many reports are still waiting on a decision - Submitted and Under
+/// review together.
 ///
-/// Its own request rather than a count off [incidentList], because that list is
+/// Opening a report moves it to Under review, so counting only Submitted would
+/// make the badge drop to zero while the report is still undecided.
+///
+/// Its own requests rather than a count off [incidentList], because that list is
 /// filtered and paged by whatever the admin last chose — a page showing only
 /// resolved reports would report zero waiting, which is the opposite of the
 /// truth. `pageSize: 1` because only `totalCount` is read.
 @riverpod
 Future<int> openIncidentCount(Ref ref) async {
   final dio = ref.watch(dioProvider);
-  final response = await dio.get(
-    ApiEndpoints.incidents,
-    queryParameters: {'page': 1, 'pageSize': 1, 'status': 'Submitted'},
-  );
-  return IncidentListPage.fromJson(response.data as Map<String, dynamic>)
-      .totalCount;
+
+  Future<int> countOf(String status) async {
+    final response = await dio.get(
+      ApiEndpoints.incidents,
+      queryParameters: {'page': 1, 'pageSize': 1, 'status': status},
+    );
+    return IncidentListPage.fromJson(response.data as Map<String, dynamic>)
+        .totalCount;
+  }
+
+  final counts = await Future.wait([countOf('Submitted'), countOf('UnderReview')]);
+  return counts[0] + counts[1];
 }
 
 @riverpod
@@ -84,24 +112,29 @@ class IncidentActions extends _$IncidentActions {
   /// Posts to the user-facing route rather than the admin one: an incident a
   /// guard witnesses is the same kind of record as one reported from a phone,
   /// and it should land in the same queue for the same review. `FormData`
-  /// because the endpoint reads a multipart form - it accepts photo evidence
-  /// from the app, and sends none from here.
+  /// because the endpoint reads a multipart form, with one `Evidence` part per
+  /// attached photo or PDF.
   Future<String?> report({
     required String category,
     required String description,
     String? location,
+    List<PickedFile> evidence = const [],
   }) async {
     state = const AsyncLoading();
     try {
       final dio = ref.read(dioProvider);
-      final res = await dio.post(
-        ApiEndpoints.reportIncident,
-        data: FormData.fromMap({
-          'Category': category,
-          'Description': description,
-          if (location != null && location.isNotEmpty) 'Location': location,
-        }),
-      );
+      final form = FormData.fromMap({
+        'Category': category,
+        'Description': description,
+        if (location != null && location.isNotEmpty) 'Location': location,
+      });
+      for (final file in evidence) {
+        form.files.add(MapEntry(
+          'Evidence',
+          MultipartFile.fromBytes(file.bytes, filename: file.name),
+        ));
+      }
+      final res = await dio.post(ApiEndpoints.reportIncident, data: form);
       state = const AsyncData(null);
       return (res.data as Map<String, dynamic>)['message']?.toString() ??
           'Report filed.';
@@ -113,7 +146,22 @@ class IncidentActions extends _$IncidentActions {
     }
   }
 
-  Future<String?> review(String incidentId, String status, String? adminNotes) async {
+  /// The administrator opened the report: Submitted becomes Under review.
+  /// Returns null on success, or what went wrong.
+  Future<String?> startReview(String incidentId) async {
+    try {
+      final dio = ref.read(dioProvider);
+      await dio.post(ApiEndpoints.startIncidentReview(incidentId));
+      return null;
+    } on DioException catch (e) {
+      final data = e.response?.data;
+      if (data is Map) return data['message']?.toString() ?? e.message ?? 'Error';
+      return e.message ?? 'Unknown error';
+    }
+  }
+
+  /// The final decision: [status] is `Resolved` or `Dismissed`.
+  Future<String?> review(String incidentId, String status, String adminNotes) async {
     state = const AsyncLoading();
     try {
       final dio = ref.read(dioProvider);

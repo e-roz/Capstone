@@ -185,11 +185,26 @@ namespace AimPark.API.Services
         }
 
         // GET /api/admin/incidents
-        public Task<ActionResult<IncidentListResponse>> ListAllAsync(string? status, int page, int pageSize, CancellationToken ct)
+        public Task<ActionResult<IncidentListResponse>> ListAllAsync(string? status, string? search, int page, int pageSize, CancellationToken ct)
         {
             var query = _db.Set<Incident>().AsNoTracking();
-            if (!string.IsNullOrWhiteSpace(status) && Enum.TryParse<IncidentStatus>(status, true, out var parsedStatus))
+
+            if (!string.IsNullOrWhiteSpace(status))
+            {
+                // A typo'd status used to fall through and list everything,
+                // which looks like a filter that does nothing.
+                if (!Enum.TryParse<IncidentStatus>(status, true, out var parsedStatus))
+                    return Task.FromResult<ActionResult<IncidentListResponse>>(
+                        new BadRequestObjectResult(new { message = "Invalid incident status." }));
+
                 query = query.Where(i => i.Status == parsedStatus);
+            }
+
+            if (!string.IsNullOrWhiteSpace(search))
+            {
+                var term = search.Trim().ToLower();
+                query = query.Where(i => i.ReportedByUser.FullName.ToLower().Contains(term));
+            }
 
             return ListAsync(query, page, pageSize, ct);
         }
@@ -198,65 +213,100 @@ namespace AimPark.API.Services
         public Task<ActionResult<IncidentDetailResponse>> GetDetailForAdminAsync(Guid incidentId, CancellationToken ct)
             => GetDetailAsync(i => i.Id == incidentId, ct);
 
-        // PUT /api/admin/incidents/{id}/review
-        public async Task<ActionResult<object>> ReviewAsync(Guid incidentId, Guid adminUserId, ReviewIncidentDto dto, CancellationToken ct)
+        // POST /api/admin/incidents/{id}/start-review
+        public async Task<ActionResult<object>> StartReviewAsync(Guid incidentId, Guid adminUserId, CancellationToken ct)
         {
-            if (!Enum.TryParse<IncidentStatus>(dto.Status, true, out var status))
-                return new BadRequestObjectResult(new { message = "Invalid incident status." });
-
             var incident = await _incidents.FindAsync(i => i.Id == incidentId, ct);
             if (incident is null)
                 return new NotFoundObjectResult(new { message = "Incident not found." });
 
-            var previousStatus = incident.Status;
+            // Only a fresh report moves. Opening one that is already under
+            // review, decided or withdrawn changes nothing.
+            if (incident.Status != IncidentStatus.Submitted)
+                return new OkObjectResult(new { message = "Already past submission.", status = incident.Status.ToString() });
 
-            incident.Status = status;
-            incident.AdminNotes = dto.AdminNotes;
+            incident.Status = IncidentStatus.UnderReview;
             incident.ReviewedByUserId = adminUserId;
             incident.UpdatedAt = DateTime.UtcNow;
 
             _incidents.Update(incident);
             await _incidents.SaveAsync(ct);
 
-            // Somebody took the trouble to report something and then heard
-            // nothing back — the reporter had to keep opening the list to find
-            // out whether anyone had looked. Violations and appeals both notify;
-            // this was the one decision in the system that stayed silent.
-            //
-            // Only on a real change of state. Re-saving notes on an already
-            // resolved report is housekeeping, not news.
-            if (status != previousStatus)
-            {
-                var notes = string.IsNullOrWhiteSpace(dto.AdminNotes)
-                    ? string.Empty
-                    : $" Note: {dto.AdminNotes}";
+            await NotifyReporterAsync(incident, IncidentStatus.UnderReview, null, ct);
 
-                var (title, message) = status switch
+            return new OkObjectResult(new { message = "Review started.", status = incident.Status.ToString() });
+        }
+
+        // PUT /api/admin/incidents/{id}/review
+        public async Task<ActionResult<object>> ReviewAsync(Guid incidentId, Guid adminUserId, ReviewIncidentDto dto, CancellationToken ct)
+        {
+            if (!Enum.TryParse<IncidentStatus>(dto.Status, true, out var status)
+                || (status != IncidentStatus.Resolved && status != IncidentStatus.Dismissed))
+                return new BadRequestObjectResult(new { message = "A report can only be resolved or dismissed." });
+
+            if (string.IsNullOrWhiteSpace(dto.AdminNotes))
+                return new BadRequestObjectResult(new { message = "Write a note explaining the decision." });
+
+            var incident = await _incidents.FindAsync(i => i.Id == incidentId, ct);
+            if (incident is null)
+                return new NotFoundObjectResult(new { message = "Incident not found." });
+
+            // A decision is final. Withdrawn is the reporter's own call, so it
+            // is not the admin's to overwrite either.
+            if (incident.Status != IncidentStatus.Submitted && incident.Status != IncidentStatus.UnderReview)
+                return new BadRequestObjectResult(new
                 {
-                    IncidentStatus.UnderReview => (
-                        "Your report is being reviewed",
-                        $"Someone is looking into the {incident.Category} you reported.{notes}"),
-                    IncidentStatus.Resolved => (
-                        "Your report was resolved",
-                        $"The {incident.Category} you reported has been dealt with. Thank you for flagging it.{notes}"),
-                    IncidentStatus.Dismissed => (
-                        "Your report was closed",
-                        $"The {incident.Category} you reported was reviewed and closed without further action.{notes}"),
-                    _ => (
-                        "Your report was updated",
-                        $"The status of your report is now {status}.{notes}")
-                };
+                    message = $"This report is already {incident.Status.ToString().ToLowerInvariant()} and can no longer be changed."
+                });
 
-                await _notificationService.NotifyUserAsync(
-                    incident.ReportedByUserId,
-                    NotificationType.Incident,
-                    title,
-                    message,
-                    new Dictionary<string, string> { ["incidentId"] = incident.Id.ToString() },
-                    ct);
-            }
+            var now = DateTime.UtcNow;
+            incident.Status = status;
+            incident.AdminNotes = dto.AdminNotes.Trim();
+            incident.ReviewedByUserId = adminUserId;
+            incident.ReviewedAt = now;
+            // UpdatedAt is also the key the site-server sync uses to decide
+            // which copy of a report is newer, so it moves with every change.
+            incident.UpdatedAt = now;
+
+            _incidents.Update(incident);
+            await _incidents.SaveAsync(ct);
+
+            await NotifyReporterAsync(incident, status, incident.AdminNotes, ct);
 
             return new OkObjectResult(new { message = "Incident reviewed." });
+        }
+
+        // Somebody took the trouble to report something; they hear back each
+        // time it moves, instead of opening the list to find out.
+        private Task NotifyReporterAsync(Incident incident, IncidentStatus status, string? adminNotes, CancellationToken ct)
+        {
+            var notes = string.IsNullOrWhiteSpace(adminNotes)
+                ? string.Empty
+                : $" Note: {adminNotes}";
+
+            var (title, message) = status switch
+            {
+                IncidentStatus.UnderReview => (
+                    "Your report is being reviewed",
+                    $"Someone is looking into the {incident.Category} you reported."),
+                IncidentStatus.Resolved => (
+                    "Your report was resolved",
+                    $"The {incident.Category} you reported has been dealt with. Thank you for flagging it.{notes}"),
+                IncidentStatus.Dismissed => (
+                    "Your report was closed",
+                    $"The {incident.Category} you reported was reviewed and closed without further action.{notes}"),
+                _ => (
+                    "Your report was updated",
+                    $"The status of your report is now {status}.{notes}")
+            };
+
+            return _notificationService.NotifyUserAsync(
+                incident.ReportedByUserId,
+                NotificationType.Incident,
+                title,
+                message,
+                new Dictionary<string, string> { ["incidentId"] = incident.Id.ToString() },
+                ct);
         }
 
         private static async Task<ActionResult<IncidentListResponse>> ListAsync(
@@ -267,18 +317,32 @@ namespace AimPark.API.Services
 
             var totalCount = await query.CountAsync(ct);
 
-            var incidents = await query
+            var rows = await query
                 .OrderByDescending(i => i.CreatedAt)
                 .Skip((page - 1) * pageSize)
                 .Take(pageSize)
-                .Select(i => new IncidentSummaryResponse
+                .Select(i => new
                 {
-                    IncidentId = i.Id,
-                    Category = i.Category.ToString(),
-                    Status = i.Status.ToString(),
-                    CreatedAt = i.CreatedAt
+                    i.Id,
+                    i.Category,
+                    i.Status,
+                    i.CreatedAt,
+                    i.ReviewedAt,
+                    ReporterName = i.ReportedByUser.FullName,
+                    ReporterRole = i.ReportedByUser.Role
                 })
                 .ToListAsync(ct);
+
+            var incidents = rows.Select(r => new IncidentSummaryResponse
+            {
+                IncidentId = r.Id,
+                Category = r.Category.ToString(),
+                Status = r.Status.ToString(),
+                CreatedAt = r.CreatedAt,
+                ReviewedAt = r.ReviewedAt,
+                ReportedByName = r.ReporterName,
+                ReportedByRole = r.ReporterRole.ToString()
+            }).ToList();
 
             return new OkObjectResult(new IncidentListResponse
             {
@@ -303,12 +367,15 @@ namespace AimPark.API.Services
             // One attachment out of reach — the guard post with no internet —
             // should cost that attachment, not the whole report.
             var evidenceUrls = new List<string>();
+            var evidenceItems = new List<IncidentEvidenceItem>();
             var unavailable = 0;
             foreach (var e in evidence)
             {
                 try
                 {
-                    evidenceUrls.Add(await _fileStorage.GetFileUrlAsync(e.StoragePath, ct));
+                    var url = await _fileStorage.GetFileUrlAsync(e.StoragePath, ct);
+                    evidenceUrls.Add(url);
+                    evidenceItems.Add(new IncidentEvidenceItem { Url = url, FileName = e.FileName });
                 }
                 catch (Exception ex) when (!ct.IsCancellationRequested)
                 {
@@ -316,6 +383,11 @@ namespace AimPark.API.Services
                     _logger.LogWarning(ex, "Could not open incident attachment {Path}.", e.StoragePath);
                 }
             }
+
+            var reporter = await _db.Set<User>().AsNoTracking()
+                .Where(u => u.Id == incident.ReportedByUserId)
+                .Select(u => new { u.FullName, u.Role })
+                .FirstOrDefaultAsync(ct);
 
             return new OkObjectResult(new IncidentDetailResponse
             {
@@ -328,7 +400,11 @@ namespace AimPark.API.Services
                 CreatedAt = incident.CreatedAt,
                 UpdatedAt = incident.UpdatedAt,
                 EvidenceUrls = evidenceUrls,
-                EvidenceUnavailable = unavailable
+                Evidence = evidenceItems,
+                EvidenceUnavailable = unavailable,
+                ReportedByName = reporter?.FullName,
+                ReportedByRole = reporter?.Role.ToString(),
+                ReviewedAt = incident.ReviewedAt
             });
         }
     }

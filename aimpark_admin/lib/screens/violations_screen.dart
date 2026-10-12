@@ -6,6 +6,8 @@ import '../core/utils/responsive.dart';
 import '../models/violation.dart';
 import '../providers/violations_provider.dart';
 import '../theme/theme.dart';
+import '../widgets/appeals_panel.dart';
+import '../widgets/counted_tab.dart';
 import '../widgets/ui/ui.dart';
 import '../widgets/user_picker.dart';
 import '../widgets/violation_detail_dialog.dart';
@@ -17,20 +19,44 @@ class ViolationsScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    return AppPage(
-      title: 'Violations',
-      subtitle: 'Offences on record, who they belong to, and where each case '
-          'stands. Open one to decide it.',
-      actions: [
-        FilledButton.icon(
-          icon: const Icon(Icons.add, size: AppSizes.iconSm),
-          label: const Text('Issue Violation'),
-          onPressed: () => showIssueViolationDialog(context, ref),
+    // A count on the Appeals tab, because a queue with untouched appeals in it
+    // looked exactly like an empty one until you clicked.
+    final pendingAppeals = ref.watch(pendingAppealCountProvider).valueOrNull;
+
+    // An appeal is a step in a violation's life - somebody disputing it - so it
+    // is queued here beside the violations rather than with incident reports.
+    // Every decision is made in the same View dialog either way.
+    return DefaultTabController(
+      length: 2,
+      child: AppPage(
+        title: 'Violations',
+        subtitle: 'Offences on record, who they belong to, and where each case '
+            'stands. Open one to decide it.',
+        actions: [
+          FilledButton.icon(
+            icon: const Icon(Icons.add, size: AppSizes.iconSm),
+            label: const Text('Issue Violation'),
+            onPressed: () => showIssueViolationDialog(context, ref),
+          ),
+        ],
+        toolbar: Align(
+          alignment: Alignment.centerLeft,
+          child: TabBar(
+            isScrollable: true,
+            tabAlignment: TabAlignment.start,
+            tabs: [
+              const CountedTab(label: 'All', count: null),
+              CountedTab(label: 'Appeals', count: pendingAppeals),
+            ],
+          ),
         ),
-      ],
-      // Appeals are also queued on Incidents & Appeals, but every decision —
-      // here or there — is made in the same View dialog.
-      body: const _ViolationsTab(),
+        body: const TabBarView(
+          children: [
+            _ViolationsTab(),
+            AppealsPanel(),
+          ],
+        ),
+      ),
     );
   }
 }
