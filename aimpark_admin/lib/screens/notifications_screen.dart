@@ -10,28 +10,17 @@ import '../router/destinations.dart';
 import '../theme/theme.dart';
 import '../widgets/ui/ui.dart';
 
-/// What an administrator may *send*. The rest of NotificationType is raised by
-/// the system itself and cannot be broadcast by hand.
-const _types = ['Announcement', 'PolicyUpdate', 'ParkingAvailability', 'System'];
-const _roles = ['Admin', 'Security', 'User'];
+/// What an administrator may *send*. Everything else is raised by the system
+/// itself and cannot be broadcast by hand. A broadcast always reaches everyone.
+const _types = ['Announcement', 'PolicyUpdate'];
 
-/// Every type that can land in an inbox, in the order the filter offers them:
-/// the four an admin can send, then the six the system raises on its own.
-const _inboxTypes = [
-  'Announcement',
-  'PolicyUpdate',
-  'ParkingAvailability',
-  'System',
-  'Violation',
-  'Payment',
-  'Incident',
-  'Account',
-  'Parking',
-  'Reminder',
-];
+const _titleMax = 60;
+const _messageMax = 200;
 
-/// Human wording for the API's enum names — `ParkingAvailability` is a value,
-/// not a phrase, and it should not be what an administrator reads.
+/// Human wording for the API's enum names — `PolicyUpdate` is a value, not a
+/// phrase, and it should not be what an administrator reads. Every name the API
+/// can still return stays here, because rows written before the broadcast form
+/// was narrowed to two types are still in the log.
 const _typeLabels = <String, String>{
   'Announcement': 'Announcement',
   'PolicyUpdate': 'Policy update',
@@ -45,60 +34,42 @@ const _typeLabels = <String, String>{
   'Reminder': 'Reminder',
 };
 
-/// Two directions, two tabs.
+const _typeHints = <String, String>{
+  'Announcement': 'News, events, reminders',
+  'PolicyUpdate': 'Rules, fees, schedules',
+};
+
+IconData _typeIcon(String type) => switch (type) {
+      'Announcement' => Icons.campaign_outlined,
+      'PolicyUpdate' => Icons.description_outlined,
+      _ => Icons.notifications_outlined,
+    };
+
+/// One screen, two jobs, split by who is looking.
 ///
-/// The screen used to be the outbox alone, which is why a Security account had
-/// nowhere to read what the system had sent *them* - a violation decision, an
-/// approval, a broadcast addressed to their role all arrived and were only
-/// visible on a phone none of them were carrying. Sending stays administrator
-/// work, so a guard sees the inbox half only.
+/// An administrator writes announcements, so they get the log of what they
+/// sent and the Broadcast button. Nothing automatic is addressed to an
+/// administrator, so there is no inbox for them. A guard is the reverse: they
+/// cannot send, and the inbox is the only place on the desktop panel they can
+/// read what the system and the administrators have told them.
 class NotificationsScreen extends ConsumerWidget {
   const NotificationsScreen({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final canBroadcast = ref.watch(staffRoleProvider) != StaffRole.security;
-
-    return DefaultTabController(
-      length: canBroadcast ? 2 : 1,
-      child: _NotificationsPage(canBroadcast: canBroadcast),
-    );
-  }
-}
-
-class _NotificationsPage extends ConsumerWidget {
-  const _NotificationsPage({required this.canBroadcast});
-
-  final bool canBroadcast;
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final unread = ref.watch(unreadInboxCountProvider).valueOrNull ?? 0;
+    final isSecurity = ref.watch(staffRoleProvider) == StaffRole.security;
 
     return AppPage(
       title: 'Notifications',
-      subtitle: canBroadcast
-          ? 'What the system has sent you, and what you have sent out.'
-          : 'What the system has sent you.',
-      toolbar: canBroadcast
-          ? Align(
-              alignment: Alignment.centerLeft,
-              child: TabBar(
-                isScrollable: true,
-                tabAlignment: TabAlignment.start,
-                tabs: [
-                  Tab(text: unread == 0 ? 'Inbox' : 'Inbox ($unread)'),
-                  const Tab(text: 'Sent'),
-                ],
-              ),
-            )
-          : null,
+      subtitle: isSecurity
+          ? 'What the system and your administrators have sent you.'
+          : 'Announcements you’ve sent to everyone.',
       actions: [
-        if (canBroadcast)
+        if (!isSecurity)
           FilledButton.icon(
             icon: const Icon(Icons.campaign_outlined, size: AppSizes.iconSm),
             label: const Text('Broadcast'),
-            onPressed: () => _showBroadcast(context, ref),
+            onPressed: () => showBroadcastDialog(context, ref),
           ),
         IconButton(
           icon: const Icon(Icons.refresh),
@@ -109,107 +80,49 @@ class _NotificationsPage extends ConsumerWidget {
           },
         ),
       ],
-      body: canBroadcast
-          ? TabBarView(
-              children: [
-                const _InboxTab(),
-                _SentTab(onBroadcast: () => _showBroadcast(context, ref)),
-              ],
-            )
-          : const _InboxTab(),
+      body: isSecurity
+          ? const _InboxList()
+          : _SentList(onBroadcast: () => showBroadcastDialog(context, ref)),
     );
   }
-
-  Future<void> _showBroadcast(BuildContext context, WidgetRef ref) =>
-      showBroadcastDialog(context, ref);
 }
 
-/// Everything addressed to this account, newest first.
-///
-/// The inbox mixes four kinds of post — broadcasts, violation decisions,
-/// payment receipts and incident outcomes — and with a busy account that meant
-/// scrolling past everything else to find the one you wanted. Hence the filter.
-///
-/// It narrows the list already fetched rather than asking the API for a subset:
-/// the inbox is a single 50-row request with no paging, so there is nothing
-/// offscreen for a server-side filter to reach that this one misses.
-class _InboxTab extends ConsumerStatefulWidget {
-  const _InboxTab();
+/// Everything addressed to a guard, newest first. No category filter: with a
+/// handful of kinds and a single 50-row request there is nothing to narrow.
+class _InboxList extends ConsumerWidget {
+  const _InboxList();
 
   @override
-  ConsumerState<_InboxTab> createState() => _InboxTabState();
-}
-
-class _InboxTabState extends ConsumerState<_InboxTab> {
-  String? _type;
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        AppToolbar(
-          filters: [
-            AppFilterDropdown<String>(
-              label: 'Category',
-              value: _type,
-              allLabel: 'All',
-              options: [
-                for (final type in _inboxTypes)
-                  AppFilterOption(type, _typeLabels[type] ?? type),
-              ],
-              onChanged: (value) => setState(() => _type = value),
-            ),
-          ],
+  Widget build(BuildContext context, WidgetRef ref) {
+    return AsyncView(
+      value: ref.watch(inboxProvider),
+      onRetry: () => ref.invalidate(inboxProvider),
+      loading: const SkeletonList(),
+      isEmpty: (page) => page.notifications.isEmpty,
+      empty: const AppEmptyState(
+        icon: Icons.inbox_outlined,
+        title: 'Nothing for you yet',
+        message: 'Announcements from your administrators, and anything the '
+            'system raises about your account, will appear here.',
+      ),
+      data: (page) => _GroupedList(
+        items: page.notifications,
+        cardFor: (item) => _NotificationCard(
+          item: item,
+          onMarkRead: item.isRead
+              ? null
+              : () => ref
+                  .read(inboxActionsProvider.notifier)
+                  .markRead(item.notificationId),
         ),
-        const SizedBox(height: AppSpacing.gutter),
-        Expanded(
-          child: AsyncView(
-            value: ref.watch(inboxProvider),
-            onRetry: () => ref.invalidate(inboxProvider),
-            loading: const SkeletonList(),
-            isEmpty: (page) => _visible(page.notifications).isEmpty,
-            empty: AppEmptyState(
-              icon: Icons.inbox_outlined,
-              title: _type == null
-                  ? 'Nothing for you yet'
-                  : 'Nothing in this category',
-              message: _type == null
-                  ? 'Announcements sent to your role, and anything the system '
-                      'raises about your account, will appear here.'
-                  : 'Clear the filter to see everything in your inbox.',
-            ),
-            data: (page) {
-              final items = _visible(page.notifications);
-              return ListView.separated(
-                itemCount: items.length,
-                separatorBuilder: (_, _) =>
-                    const SizedBox(height: AppSpacing.gutter),
-                itemBuilder: (context, i) => _NotificationCard(
-                  item: items[i],
-                  // Only in the inbox. In the Sent log "read" is a fact about
-                  // somebody else, and there is nothing for the sender to mark.
-                  onMarkRead: items[i].isRead
-                      ? null
-                      : () => ref
-                          .read(inboxActionsProvider.notifier)
-                          .markRead(items[i].notificationId),
-                ),
-              );
-            },
-          ),
-        ),
-      ],
+      ),
     );
   }
-
-  List<NotificationItem> _visible(List<NotificationItem> all) =>
-      _type == null ? all : all.where((n) => n.type == _type).toList();
 }
 
-/// The broadcast log - what this panel has sent out.
-class _SentTab extends ConsumerWidget {
-  const _SentTab({required this.onBroadcast});
+/// The broadcast log: what this panel has sent out.
+class _SentList extends ConsumerWidget {
+  const _SentList({required this.onBroadcast});
 
   final VoidCallback onBroadcast;
 
@@ -223,9 +136,8 @@ class _SentTab extends ConsumerWidget {
       empty: AppEmptyState(
         icon: Icons.campaign_outlined,
         title: 'Nothing sent yet',
-        message:
-            'Broadcasts you send to students and security staff are listed '
-            'here, most recent first.',
+        message: 'Announcements and policy updates you send reach everyone, '
+            'and are listed here, most recent first.',
         action: FilledButton.icon(
           icon: const Icon(Icons.campaign_outlined, size: AppSizes.iconSm),
           label: const Text('Broadcast'),
@@ -235,12 +147,9 @@ class _SentTab extends ConsumerWidget {
       data: (page) => Column(
         children: [
           Expanded(
-            child: ListView.separated(
-              itemCount: page.notifications.length,
-              separatorBuilder: (_, _) =>
-                  const SizedBox(height: AppSpacing.gutter),
-              itemBuilder: (context, i) =>
-                  _NotificationCard(item: page.notifications[i]),
+            child: _GroupedList(
+              items: page.notifications,
+              cardFor: (item) => _NotificationCard(item: item, sent: true),
             ),
           ),
           const SizedBox(height: AppSpacing.gutter),
@@ -258,176 +167,464 @@ class _SentTab extends ConsumerWidget {
   }
 }
 
-Future<void> showBroadcastDialog(BuildContext context, WidgetRef ref) async {
-    final titleCtrl = TextEditingController();
-    final messageCtrl = TextEditingController();
-    String type = _types.first;
-    String? targetRole;
-    final formKey = GlobalKey<FormState>();
+/// Newest first, under "Today", "This week" and "Earlier" headings, so a log
+/// that grows past a screen can still be scanned by when rather than read top
+/// to bottom.
+class _GroupedList extends StatelessWidget {
+  const _GroupedList({required this.items, required this.cardFor});
 
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setState) => AlertDialog(
-          title: const Text('Broadcast Notification'),
-          content: SizedBox(
-            width: context.dialogWidth(400),
-            child: Form(
-              key: formKey,
-              autovalidateMode: AutovalidateMode.onUserInteraction,
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const AppRequiredNote(),
-                  TextFormField(
-                    controller: titleCtrl,
-                    decoration: const InputDecoration(
-                        label: AppFieldLabel('Title', isRequired: true)),
-                    validator: (v) =>
-                        (v == null || v.isEmpty) ? 'Title is required' : null,
-                  ),
-                  const SizedBox(height: AppSpacing.x3),
-                  TextFormField(
-                    controller: messageCtrl,
-                    maxLines: 3,
-                    decoration: const InputDecoration(
-                        label: AppFieldLabel('Message', isRequired: true)),
-                    validator: (v) =>
-                        (v == null || v.isEmpty) ? 'Message is required' : null,
-                  ),
-                  const SizedBox(height: AppSpacing.x3),
-                  DropdownButtonFormField<String>(
-                    initialValue: type,
-                    decoration: const InputDecoration(labelText: 'Type'),
-                    items: _types
-                        .map((t) => DropdownMenuItem(
-                            value: t, child: Text(_typeLabels[t] ?? t)))
-                        .toList(),
-                    onChanged: (v) => setState(() => type = v!),
-                  ),
-                  const SizedBox(height: AppSpacing.x3),
-                  DropdownButtonFormField<String?>(
-                    initialValue: targetRole,
-                    decoration: const InputDecoration(labelText: 'Target Role'),
-                    items: [
-                      const DropdownMenuItem(
-                          value: null, child: Text('All Roles')),
-                      ..._roles.map(
-                          (r) => DropdownMenuItem(value: r, child: Text(r))),
-                    ],
-                    onChanged: (v) => setState(() => targetRole = v),
-                  ),
-                ],
-              ),
-            ),
-          ),
-          actions: [
-            TextButton(
-                onPressed: () => Navigator.pop(ctx, false),
-                child: const Text('Cancel')),
-            FilledButton(
-              onPressed: () {
-                if (formKey.currentState!.validate()) Navigator.pop(ctx, true);
-              },
-              child: const Text('Broadcast'),
-            ),
-          ],
-        ),
-      ),
-    );
+  final List<NotificationItem> items;
+  final Widget Function(NotificationItem item) cardFor;
 
-    if (confirmed != true || !context.mounted) return;
-    final msg = await ref.read(notificationActionsProvider.notifier).broadcast(
-          title: titleCtrl.text.trim(),
-          message: messageCtrl.text.trim(),
-          type: type,
-          targetRole: targetRole,
-        );
-    if (!context.mounted) return;
-    ScaffoldMessenger.of(context)
-        .showSnackBar(SnackBar(content: Text(msg ?? 'Notification broadcast.')));
-    ref.invalidate(notificationListProvider);
-}
-
-class _NotificationCard extends StatelessWidget {
-  const _NotificationCard({required this.item, this.onMarkRead});
-
-  final NotificationItem item;
-
-  /// Null in the Sent log, and on anything already read. Present, it renders
-  /// the unread marker and the control that clears it.
-  final VoidCallback? onMarkRead;
+  static String _bucket(DateTime when) {
+    final now = DateTime.now();
+    final day = DateTime(when.year, when.month, when.day);
+    final today = DateTime(now.year, now.month, now.day);
+    final age = today.difference(day).inDays;
+    if (age <= 0) return 'Today';
+    if (age < 7) return 'This week';
+    return 'Earlier';
+  }
 
   @override
   Widget build(BuildContext context) {
     final t = context.tokens;
     final text = Theme.of(context).textTheme;
 
+    final rows = <Widget>[];
+    String? current;
+    for (final item in items) {
+      final bucket = _bucket(item.createdAt.toLocal());
+      if (bucket != current) {
+        current = bucket;
+        rows.add(Padding(
+          padding: EdgeInsets.only(
+            top: rows.isEmpty ? 0 : AppSpacing.x4,
+            bottom: AppSpacing.x2,
+          ),
+          child: Text(
+            bucket,
+            style: text.labelMedium?.copyWith(color: t.text.tertiary),
+          ),
+        ));
+      }
+      rows.add(Padding(
+        padding: const EdgeInsets.only(bottom: AppSpacing.gutter),
+        child: cardFor(item),
+      ));
+    }
+
+    return ListView(children: rows);
+  }
+}
+
+Future<void> showBroadcastDialog(BuildContext context, WidgetRef ref) async {
+  final draft = await showDialog<_BroadcastDraft>(
+    context: context,
+    builder: (_) => const _BroadcastDialog(),
+  );
+
+  if (draft == null || !context.mounted) return;
+  final msg = await ref.read(notificationActionsProvider.notifier).broadcast(
+        title: draft.title,
+        message: draft.message,
+        type: draft.type,
+      );
+  if (!context.mounted) return;
+  ScaffoldMessenger.of(context)
+      .showSnackBar(SnackBar(content: Text(msg ?? 'Notification broadcast.')));
+  ref.invalidate(notificationListProvider);
+}
+
+class _BroadcastDraft {
+  const _BroadcastDraft(this.title, this.message, this.type);
+
+  final String title;
+  final String message;
+  final String type;
+}
+
+class _BroadcastDialog extends StatefulWidget {
+  const _BroadcastDialog();
+
+  @override
+  State<_BroadcastDialog> createState() => _BroadcastDialogState();
+}
+
+class _BroadcastDialogState extends State<_BroadcastDialog> {
+  final _titleCtrl = TextEditingController();
+  final _messageCtrl = TextEditingController();
+  final _formKey = GlobalKey<FormState>();
+  String _type = _types.first;
+
+  @override
+  void initState() {
+    super.initState();
+    // The phone preview mirrors what is typed, so it has to repaint per key.
+    _titleCtrl.addListener(() => setState(() {}));
+    _messageCtrl.addListener(() => setState(() {}));
+  }
+
+  @override
+  void dispose() {
+    _titleCtrl.dispose();
+    _messageCtrl.dispose();
+    super.dispose();
+  }
+
+  void _submit() {
+    if (!_formKey.currentState!.validate()) return;
+    Navigator.pop(
+      context,
+      _BroadcastDraft(
+        _titleCtrl.text.trim(),
+        _messageCtrl.text.trim(),
+        _type,
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final t = context.tokens;
+    final text = Theme.of(context).textTheme;
+
+    return AlertDialog(
+      title: const Text('New broadcast'),
+      content: SizedBox(
+        width: context.dialogWidth(480),
+        child: SingleChildScrollView(
+          child: Form(
+            key: _formKey,
+            autovalidateMode: AutovalidateMode.onUserInteraction,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                const AppRequiredNote(),
+                TextFormField(
+                  controller: _titleCtrl,
+                  maxLength: _titleMax,
+                  decoration: const InputDecoration(
+                    label: AppFieldLabel('Title', isRequired: true),
+                    hintText: 'Gate 2 closed this Saturday',
+                  ),
+                  validator: (v) => (v == null || v.trim().isEmpty)
+                      ? 'Enter a title'
+                      : null,
+                ),
+                const SizedBox(height: AppSpacing.x2),
+                TextFormField(
+                  controller: _messageCtrl,
+                  maxLength: _messageMax,
+                  maxLines: 3,
+                  decoration: const InputDecoration(
+                    label: AppFieldLabel('Message', isRequired: true),
+                    hintText: 'Use Gate 1 on Saturday, Oct 11.',
+                  ),
+                  validator: (v) => (v == null || v.trim().isEmpty)
+                      ? 'Enter a message'
+                      : null,
+                ),
+                const SizedBox(height: AppSpacing.x3),
+                Text('Type', style: text.labelMedium),
+                const SizedBox(height: AppSpacing.x2),
+                Row(
+                  children: [
+                    for (final type in _types) ...[
+                      Expanded(
+                        child: _TypeOption(
+                          type: type,
+                          selected: _type == type,
+                          onTap: () => setState(() => _type = type),
+                        ),
+                      ),
+                      if (type != _types.last)
+                        const SizedBox(width: AppSpacing.x3),
+                    ],
+                  ],
+                ),
+                const SizedBox(height: AppSpacing.x4),
+                Container(
+                  padding: const EdgeInsets.all(AppSpacing.x3),
+                  decoration: BoxDecoration(
+                    color: t.surface.muted,
+                    borderRadius: AppRadii.mdAll,
+                  ),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Icon(Icons.groups_outlined,
+                          size: 18, color: t.text.secondary),
+                      const SizedBox(width: AppSpacing.x2),
+                      Expanded(
+                        child: Text(
+                          'Goes to everyone: students, staff, guards and '
+                          'admins. It shows in their inbox and as a phone '
+                          'alert.',
+                          style: text.bodySmall
+                              ?.copyWith(color: t.text.secondary),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: AppSpacing.x4),
+                Text(
+                  'How it looks on a phone',
+                  style: text.labelSmall?.copyWith(color: t.text.tertiary),
+                ),
+                const SizedBox(height: AppSpacing.x2),
+                _PhonePreview(
+                  title: _titleCtrl.text.trim(),
+                  message: _messageCtrl.text.trim(),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Cancel'),
+        ),
+        FilledButton.icon(
+          icon: const Icon(Icons.send_outlined, size: AppSizes.iconSm),
+          label: const Text('Send to everyone'),
+          onPressed: _submit,
+        ),
+      ],
+    );
+  }
+}
+
+class _TypeOption extends StatelessWidget {
+  const _TypeOption({
+    required this.type,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final String type;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = context.tokens;
+    final text = Theme.of(context).textTheme;
+
+    return InkWell(
+      onTap: onTap,
+      borderRadius: AppRadii.mdAll,
+      child: AnimatedContainer(
+        duration: AppMotion.fast,
+        padding: const EdgeInsets.all(AppSpacing.x3),
+        decoration: BoxDecoration(
+          color: selected ? t.brand.subtle : t.surface.card,
+          borderRadius: AppRadii.mdAll,
+          border: Border.all(
+            color: selected ? t.brand.primary : t.border.normal,
+            width: selected ? 1.5 : 1,
+          ),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(_typeIcon(type),
+                    size: 18,
+                    color: selected ? t.brand.primary : t.text.secondary),
+                const SizedBox(width: AppSpacing.x2),
+                Flexible(
+                  child: Text(_typeLabels[type] ?? type,
+                      style: text.titleSmall),
+                ),
+              ],
+            ),
+            const SizedBox(height: 2),
+            Text(
+              _typeHints[type] ?? '',
+              style: text.bodySmall?.copyWith(color: t.text.secondary),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// A stand-in for the push the phone will show, so the sender sees the title
+/// cut where the phone will cut it before it cannot be taken back.
+class _PhonePreview extends StatelessWidget {
+  const _PhonePreview({required this.title, required this.message});
+
+  final String title;
+  final String message;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = context.tokens;
+    final text = Theme.of(context).textTheme;
+
+    return Container(
+      padding: const EdgeInsets.all(AppSpacing.x3),
+      decoration: BoxDecoration(
+        color: t.surface.muted,
+        borderRadius: AppRadii.lgAll,
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 28,
+            height: 28,
+            decoration: BoxDecoration(
+              color: t.brand.primary,
+              borderRadius: AppRadii.smAll,
+            ),
+            child: Icon(Icons.local_parking, size: 16, color: t.text.onBrand),
+          ),
+          const SizedBox(width: AppSpacing.x3),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'AimPark · now',
+                  style: text.labelSmall?.copyWith(color: t.text.tertiary),
+                ),
+                Text(
+                  title.isEmpty ? 'Your title appears here' : title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: text.titleSmall?.copyWith(
+                    color: title.isEmpty ? t.text.tertiary : null,
+                  ),
+                ),
+                Text(
+                  message.isEmpty ? 'Your message appears here.' : message,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: text.bodySmall?.copyWith(
+                    color: message.isEmpty
+                        ? t.text.tertiary
+                        : t.text.secondary,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _NotificationCard extends StatelessWidget {
+  const _NotificationCard({
+    required this.item,
+    this.onMarkRead,
+    this.sent = false,
+  });
+
+  final NotificationItem item;
+
+  /// Null on anything already read, and in the sent log where "read" is a fact
+  /// about somebody else. Present, it renders the unread dot and the control
+  /// that clears it.
+  final VoidCallback? onMarkRead;
+
+  /// True in the sent log, where the line under the message names the sender
+  /// and the audience. In an inbox neither is news to the reader.
+  final bool sent;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = context.tokens;
+    final text = Theme.of(context).textTheme;
+    final intent = StatusIntents.notificationType(item.type);
+    final c = t.status.of(intent);
+    final when = DateFormat('MMM d, HH:mm').format(item.createdAt.toLocal());
+
+    final meta = sent
+        ? [
+            'Sent by ${item.sentByName ?? 'an administrator'}',
+            item.targetRole ?? 'Everyone',
+            when,
+          ].join(' · ')
+        : when;
+
     return AppCard(
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          StatusPill.of(
-            _typeLabels[item.type] ?? item.type,
-            intent: StatusIntents.notificationType(item.type),
-            dense: true,
+          Container(
+            width: 36,
+            height: 36,
+            decoration: BoxDecoration(
+              color: c.bg,
+              borderRadius: AppRadii.mdAll,
+              border: Border.all(color: c.border),
+            ),
+            child: Icon(_typeIcon(item.type), size: 20, color: c.fg),
           ),
           const SizedBox(width: AppSpacing.x4),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Row(
+                Wrap(
+                  spacing: AppSpacing.x2,
+                  runSpacing: AppSpacing.x1,
+                  crossAxisAlignment: WrapCrossAlignment.center,
                   children: [
                     // A filled dot rather than bold text: the title is already
                     // the heaviest thing in the row, so weight cannot also
                     // carry "unread" without the two fighting.
-                    if (onMarkRead != null) ...[
+                    if (onMarkRead != null)
                       Container(
                         width: 7,
                         height: 7,
-                        margin: const EdgeInsets.only(right: AppSpacing.x2),
                         decoration: BoxDecoration(
                           color: t.brand.primary,
                           shape: BoxShape.circle,
                         ),
                       ),
-                    ],
-                    Flexible(child: Text(item.title, style: text.titleSmall)),
+                    Text(item.title, style: text.titleSmall),
+                    StatusPill.of(
+                      _typeLabels[item.type] ?? item.type,
+                      intent: intent,
+                      dense: true,
+                      showDot: false,
+                    ),
                   ],
                 ),
                 Padding(
                   padding: const EdgeInsets.only(top: AppSpacing.labelGap),
-                  child: Text(item.message, style: text.bodySmall),
+                  child: Text(
+                    item.message,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: text.bodySmall?.copyWith(color: t.text.secondary),
+                  ),
                 ),
                 Padding(
                   padding: const EdgeInsets.only(top: AppSpacing.x2),
                   child: Text(
-                    'Sent to ${item.targetRole ?? 'all roles'}',
+                    meta,
                     style: text.labelSmall?.copyWith(color: t.text.tertiary),
                   ),
                 ),
               ],
             ),
           ),
-          const SizedBox(width: AppSpacing.x3),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              Text(
-                DateFormat('MMM d, yyyy HH:mm').format(item.createdAt.toLocal()),
-                style: text.bodySmall?.copyWith(color: t.text.secondary),
-              ),
-              if (onMarkRead != null)
-                Padding(
-                  padding: const EdgeInsets.only(top: AppSpacing.x1),
-                  child: TextButton(
-                    onPressed: onMarkRead,
-                    child: const Text('Mark read'),
-                  ),
-                ),
-            ],
-          ),
+          if (onMarkRead != null) ...[
+            const SizedBox(width: AppSpacing.x3),
+            TextButton(onPressed: onMarkRead, child: const Text('Mark read')),
+          ],
         ],
       ),
     );
