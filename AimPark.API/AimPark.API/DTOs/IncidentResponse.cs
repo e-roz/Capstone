@@ -15,11 +15,6 @@ namespace AimPark.API.DTOs
         public string Status { get; set; } = string.Empty;
         public DateTime CreatedAt { get; set; }
 
-        // Filled for the staff queue; the reporter's own list does not need them.
-        public string? ReportedByName { get; set; }
-        public string? ReportedByRole { get; set; }
-        public DateTime? ReviewedAt { get; set; }
-
         /// <summary>Longest preview before the ellipsis is added.</summary>
         public const int PreviewLength = 80;
 
@@ -38,6 +33,11 @@ namespace AimPark.API.DTOs
             if (string.IsNullOrEmpty(text)) return null;
             return text.Length <= PreviewLength ? text : text[..PreviewLength].TrimEnd() + "…";
         }
+
+        // Filled for the staff queue; the reporter's own list does not need them.
+        public string? ReportedByName { get; set; }
+        public string? ReportedByRole { get; set; }
+        public DateTime? ReviewedAt { get; set; }
     }
 
     public class IncidentEvidenceItem
