@@ -321,7 +321,6 @@ class _LookupResult extends StatelessWidget {
           result.isInside
               ? 'Inside since '
                   '${DateFormat('HH:mm').format(result.entryTime!.toLocal())}'
-                  '${result.slotCode == null ? '' : ' at ${result.slotCode}'}'
               : 'Not inside the lot.',
           style: text.bodyMedium?.copyWith(color: t.text.secondary),
         ),

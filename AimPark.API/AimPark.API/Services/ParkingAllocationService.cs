@@ -103,16 +103,12 @@ namespace AimPark.API.Services
         }
 
         /// <summary>
-        /// Which slot types this vehicle may use, best first. A motorcycle may
-        /// fall back to a four-wheel bay, but only once every motorcycle bay is
-        /// gone — otherwise the four scarce car slots get eaten while motorcycle
-        /// slots sit empty. A car never fits a motorcycle bay, so it has no
-        /// fallback at all.
+        /// Which slot types this vehicle may use. Only its own kind: when the
+        /// motorcycle bays are full no more motorcycles come in, and when the
+        /// car bays are full no more cars do.
         /// </summary>
         private static IEnumerable<VehicleType[]> TiersFor(VehicleType vehicleType) =>
-            vehicleType == VehicleType.Motorcycle
-                ? [[VehicleType.Motorcycle], [VehicleType.Car]]
-                : [[VehicleType.Car]];
+            [[vehicleType]];
 
         private Task<VehicleType?> GetVehicleTypeAsync(Guid userId, CancellationToken ct) =>
             _db.Set<Vehicle>().AsNoTracking()
@@ -236,28 +232,20 @@ namespace AimPark.API.Services
             Result = AllocationResult.LotFull,
             Reason = vehicleType == VehicleType.Car
                 ? "All four-wheel slots are taken."
-                : "All slots are taken."
+                : "All motorcycle slots are taken."
         };
 
         private static string BuildReason(
             ParkingSlot chosen, List<ParkingSlot> ranked, VehicleType vehicleType,
             VehicleType[] tier, int? atGate)
         {
-            var overflow = vehicleType == VehicleType.Motorcycle && tier[0] == VehicleType.Car;
             var here = ranked.Count(s => s.Gate == chosen.Gate);
             var elsewhere = ranked.Count - here;
 
             // Diverted: the driver is at one barrier and is being sent to the
             // other. This is the one case they must not miss, so it leads.
             if (atGate is not null && chosen.Gate != atGate)
-            {
-                return overflow
-                    ? $"Gate {atGate} is full and all motorcycle slots are taken — use the four-wheel bay {chosen.SlotCode} at Gate {chosen.Gate}."
-                    : $"Gate {atGate} is full for your vehicle — proceed to Gate {chosen.Gate}.";
-            }
-
-            if (overflow)
-                return $"All motorcycle slots are taken, so you have a four-wheel bay at Gate {chosen.Gate}.";
+                return $"Gate {atGate} is full for your vehicle — proceed to Gate {chosen.Gate}.";
 
             if (atGate is not null)
                 return $"Gate {chosen.Gate} has {here} free slot(s) for your vehicle.";

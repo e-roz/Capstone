@@ -211,8 +211,8 @@ class _VehicleRow extends ConsumerWidget {
           icon: icon,
           intent: StatusIntent.success,
           title: vehicle.plateNumber,
-          subtitle: '${entry.slotCode ?? 'No slot'} · '
-              '${Formatters.sessionRange(entry.entryTime, null, entry.duration)}',
+          subtitle:
+              Formatters.sessionRange(entry.entryTime, null, entry.duration),
           note: Text(note, style: context.text.bodySmall),
           trailing: const AppStatusBadge(
             label: 'Parked now',

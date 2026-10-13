@@ -10,8 +10,8 @@ import '../../data/models/parking_history_entry.dart';
 /// One parking session, drawn the same way on Home and on the History screen.
 ///
 /// Answers the questions someone asks of a past visit, in the order they ask
-/// them: *when* (the day), *where* (the slot, on the left), *how long* (the
-/// bold figure on the right), *which vehicle* (the plate), and *what did it
+/// them: *when* (the day), *how long* (the bold figure on the right), *which
+/// vehicle* (the plate), and *what did it
 /// cost* (the amount under the duration). Entry and exit are both spelled out
 /// rather than squeezed into a dash.
 ///
@@ -102,17 +102,11 @@ class ParkingSessionRow extends StatelessWidget {
           color: c?.bg ?? t.surface.muted,
           shape: BoxShape.circle,
         ),
-        // Scaled down rather than clipped: a code such as "B-114" is longer than
-        // the circle was drawn for.
-        child: FittedBox(
-          fit: BoxFit.scaleDown,
-          child: Text(
-            entry.slotCode ?? '—',
-            style: context.text.bodySmall?.copyWith(
-              color: c?.fg ?? t.text.secondary,
-              fontWeight: FontWeight.w700,
-            ),
-          ),
+        // A car, not a bay code: the lot cannot say which bay a visit used.
+        child: Icon(
+          Icons.directions_car_rounded,
+          size: 18,
+          color: c?.fg ?? t.text.secondary,
         ),
       ),
       title: Formatters.relativeDay(entry.entryTime),

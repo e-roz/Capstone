@@ -1089,7 +1089,6 @@ class _ActiveSessionsCard extends ConsumerWidget {
                 return AppDataTable(
                   columns: const [
                     DataColumn(label: Text('Plate')),
-                    DataColumn(label: Text('Slot')),
                     DataColumn(label: Text('Entered')),
                     DataColumn(label: Text('Type')),
                   ],
@@ -1100,7 +1099,6 @@ class _ActiveSessionsCard extends ConsumerWidget {
                           title: s.plateNumber ?? '—',
                           subtitle: s.userName,
                         )),
-                        DataCell(Text(s.slotCode ?? '—')),
                         DataCell(Text(_timeLabel.format(s.entryTime.toLocal()))),
                         DataCell(StatusPill.of(
                           s.isVisitor ? 'Visitor' : 'Resident',

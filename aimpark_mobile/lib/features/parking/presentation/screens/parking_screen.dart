@@ -120,7 +120,7 @@ class _ParkingScreenState extends ConsumerState<ParkingScreen> {
             // repeating it only pushed the map further down.
             if (current != null) ...[
               const SizedBox(height: AppSpacing.md),
-              _CurrentSessionCard(entry: current, availability: availability),
+              _CurrentSessionCard(entry: current),
             ],
             if (canFind) ...[
               const SizedBox(height: AppSpacing.md),
@@ -144,7 +144,6 @@ class _ParkingScreenState extends ConsumerState<ParkingScreen> {
             ),
             ParkingMap(
               availability: availability,
-              myCode: current?.slotCode,
               suggestedCode: suggested,
               userHasCar: userHasCar,
               userHasMotorcycle: userHasMotorcycle,
@@ -171,31 +170,15 @@ class _ParkingScreenState extends ConsumerState<ParkingScreen> {
 }
 
 class _CurrentSessionCard extends StatelessWidget {
-  const _CurrentSessionCard({required this.entry, required this.availability});
+  const _CurrentSessionCard({required this.entry});
 
   final ParkingHistoryEntry entry;
-  final ParkingAvailability availability;
 
-  /// The gate lives on the *slot*, not on the history entry, so a session's
-  /// gate has to be looked up by slot code. Null when the code matches nothing
-  /// currently returned — the line then drops the gate rather than guessing.
-  int? get _gate {
-    final code = entry.slotCode;
-    if (code == null) return null;
-    for (final slot in availability.slots) {
-      if (slot.slotCode == code) return slot.gate;
-    }
-    return null;
-  }
-
+  /// No bay on this card, on purpose. The lot knows which bays have a car in
+  /// them, not whose car, so it cannot say where this driver parked.
   @override
   Widget build(BuildContext context) {
     final t = context.tokens;
-    final gate = _gate;
-    final title = [
-      entry.slotCode ?? 'Unassigned slot',
-      if (gate != null) 'Gate $gate',
-    ].join(' · ');
 
     return AppCard(
       borderColor: t.tertiary.primary,
@@ -224,13 +207,9 @@ class _CurrentSessionCard extends StatelessWidget {
             ],
           ),
           const SizedBox(height: AppSpacing.sm),
-          Text(title, style: context.text.headlineMedium),
-          const SizedBox(height: 2),
           Text(
             Formatters.sessionRange(entry.entryTime, null, entry.duration),
-            style: AppTypography.tabular(
-              context.text.bodyMedium!,
-            ).copyWith(color: t.text.secondary),
+            style: AppTypography.tabular(context.text.headlineMedium!),
           ),
           const SizedBox(height: AppSpacing.sm),
           // No running fee estimate here, on purpose. Nothing in the app knows

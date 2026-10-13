@@ -161,9 +161,7 @@ class _BillDetails extends StatelessWidget {
 
     final title = bill.isViolation
         ? (violation?.policyRuleTitle ?? 'Violation fine')
-        : bill.slotCode != null
-            ? 'Parking fee · Slot ${bill.slotCode}'
-            : 'Parking fee';
+        : 'Parking fee';
 
     final lines = <String>[
       if (bill.isViolation)

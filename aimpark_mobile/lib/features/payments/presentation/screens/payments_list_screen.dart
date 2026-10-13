@@ -484,9 +484,7 @@ class _PaymentRow extends StatelessWidget {
       ),
       title: isViolation
           ? 'Violation fine'
-          : payment.slotCode == null
-          ? 'Parking fee'
-          : 'Parking fee · Slot ${payment.slotCode}',
+          : 'Parking fee',
       subtitle: _when,
       // The status sits under the name beside the deadline, not pinned to the far
       // end of the row: a badge there cannot shrink, and at a large text size it

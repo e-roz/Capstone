@@ -301,7 +301,6 @@ class ParkingScreen extends ConsumerWidget {
                     final s = sessions[i];
                     final detail = [
                       if (s.plateNumber != null) s.plateNumber!,
-                      if (s.slotCode != null) 'Slot ${s.slotCode}',
                       'In since ${DateFormat('MMM d, HH:mm').format(s.entryTime.toLocal())}',
                     ].join(' • ');
 

@@ -338,8 +338,6 @@ class _PaymentDetailScreenState extends ConsumerState<PaymentDetailScreen>
                       : 'How this was calculated',
               facts: [
                 if (!payment.isViolation) ...[
-                  if (payment.slotCode != null)
-                    AppFact('Slot', payment.slotCode!),
                   AppFact(
                     'Duration',
                     Formatters.duration(
@@ -492,9 +490,7 @@ class _TypeMarker extends StatelessWidget {
         const SizedBox(width: AppSpacing.sm),
         Expanded(
           child: Text(
-            !violation && payment.slotCode != null
-                ? '${payment.sourceLabel} · Slot ${payment.slotCode}'
-                : payment.sourceLabel,
+            payment.sourceLabel,
             style: context.text.titleMedium?.copyWith(color: c.fg),
           ),
         ),
