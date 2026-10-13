@@ -44,24 +44,52 @@ namespace AimPark.API.Services
             _notificationService = notificationService;
         }
 
-        public async Task<ActionResult<List<PendingRegistrationResponse>>> GetPendingAsync(CancellationToken ct)
+        // GET /api/admin/registrations?status=Pending|Approved|Rejected
+        //
+        // Pending is the queue waiting on a decision. Approved and Rejected are
+        // the history of that queue: Approved are the applicants who became
+        // users, Rejected the ones turned down. Only Pending carries the check
+        // summary, since a decision has already been made on the others.
+        public async Task<ActionResult<List<PendingRegistrationResponse>>> GetPendingAsync(string? status, CancellationToken ct)
         {
-            // Fetch users who have completed registration but are pending review. 
-            var users = await _users.GetAllAsync(
-                u => u.RegistrationStep == RegistrationStep.Completed &&
-                     u.AccountStatus == AccountStatus.PendingReview,
-                ct);
+            var queue = status?.Trim().ToLowerInvariant() switch
+            {
+                "approved" => "Approved",
+                "rejected" => "Rejected",
+                _ => "Pending"
+            };
+
+            var users = queue switch
+            {
+                "Approved" => await _users.GetAllAsync(
+                    u => u.RegistrationStep == RegistrationStep.Completed
+                         && u.Role == UserRole.User
+                         && (u.AccountStatus == AccountStatus.Active
+                             || u.AccountStatus == AccountStatus.Revoked),
+                    ct),
+                "Rejected" => await _users.GetAllAsync(
+                    u => u.RegistrationStep == RegistrationStep.Completed
+                         && u.AccountStatus == AccountStatus.Rejected,
+                    ct),
+                // Fetch users who have completed registration but are pending review.
+                _ => await _users.GetAllAsync(
+                    u => u.RegistrationStep == RegistrationStep.Completed &&
+                         u.AccountStatus == AccountStatus.PendingReview,
+                    ct)
+            };
 
             var userIds = users.Select(u => u.Id).ToList();
 
             // Fetched in two queries rather than per row: the queue is worked from
             // the top and a check summary on every line would otherwise cost one
             // round trip each.
-            var verifications = userIds.Count == 0
+            var withChecks = queue == "Pending" && userIds.Count > 0;
+
+            var verifications = !withChecks
                 ? []
                 : await _verifications.GetAllAsync(v => userIds.Contains(v.UserId), ct);
 
-            var vehicles = userIds.Count == 0
+            var vehicles = !withChecks
                 ? []
                 : await _vehicles.GetAllAsync(v => userIds.Contains(v.UserId), ct);
 
@@ -70,10 +98,30 @@ namespace AimPark.API.Services
             var vehiclesByUser = vehicles.GroupBy(v => v.UserId)
                 .ToDictionary(g => g.Key, g => g.ToList());
 
+            // Who decided, and when, comes from the audit log. An applicant who
+            // was approved automatically has no Approve row; their last update
+            // stands in for the date.
+            var decisions = new Dictionary<Guid, List<AdminAuditLog>>();
+            var adminNames = new Dictionary<Guid, string>();
+            if (queue != "Pending" && userIds.Count > 0)
+            {
+                var action = queue == "Approved" ? "Approve" : "Reject";
+                var logs = await _auditLogs.GetAllAsync(
+                    l => userIds.Contains(l.TargetUserId) && l.Action == action, ct);
+                decisions = logs.GroupBy(l => l.TargetUserId)
+                    .ToDictionary(g => g.Key, g => g.OrderByDescending(l => l.CreatedAt).ToList());
+
+                var adminIds = logs.Select(l => l.AdminUserId).Distinct().ToList();
+                if (adminIds.Count > 0)
+                    adminNames = (await _users.GetAllAsync(u => adminIds.Contains(u.Id), ct))
+                        .ToDictionary(u => u.Id, u => u.FullName);
+            }
+
             var now = DateTime.UtcNow;
 
-            var response = users
-                .OrderBy(u => u.UpdatedAt)
+            var response = (queue == "Pending"
+                    ? users.OrderBy(u => u.UpdatedAt)
+                    : users.OrderByDescending(u => u.UpdatedAt))
                 .Select(u =>
                 {
                     var row = new PendingRegistrationResponse
@@ -86,6 +134,25 @@ namespace AimPark.API.Services
                         UpdatedAt = u.UpdatedAt,
                         WaitingDays = Math.Max(0, (now.Date - u.UpdatedAt.Date).Days)
                     };
+
+                    if (queue != "Pending")
+                    {
+                        decisions.TryGetValue(u.Id, out var made);
+                        var last = made?.FirstOrDefault();
+                        row.DecidedAt = queue == "Rejected"
+                            ? u.RejectedAt ?? last?.CreatedAt ?? u.UpdatedAt
+                            : last?.CreatedAt ?? u.UpdatedAt;
+                        row.DecidedByName = last is not null && adminNames.TryGetValue(last.AdminUserId, out var by)
+                            ? by
+                            : null;
+                        if (queue == "Rejected")
+                        {
+                            row.RejectionReason = u.RejectionReason;
+                            row.TimesRejected = Math.Max(1, made?.Count ?? 1);
+                        }
+                        row.ChecksSummary = string.Empty;
+                        return row;
+                    }
 
                     var checks = RegistrationChecks.Build(
                         u,
@@ -389,10 +456,10 @@ namespace AimPark.API.Services
             if (user.IsDeleted)
                 return new BadRequestObjectResult(new { message = "This account has been deleted." });
 
-            if (user.AccountStatus is AccountStatus.Suspended)
+            if (user.AccountStatus is AccountStatus.Revoked)
                 return new BadRequestObjectResult(new
                 {
-                    message = "Lift the suspension before asking for documents."
+                    message = "This account has been revoked, so documents cannot be requested."
                 });
 
             var oldStep = user.RegistrationStep.ToString();

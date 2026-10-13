@@ -41,5 +41,19 @@ namespace AimPark.API.DTOs
 
         /// <summary>Whole days since the applicant submitted. Nothing else says this.</summary>
         public int WaitingDays { get; set; }
+
+        // ── Only on the Approved and Rejected lists ────────────────────────────
+
+        /// <summary>When the applicant was approved or rejected.</summary>
+        public DateTime? DecidedAt { get; set; }
+
+        /// <summary>The admin who decided, or null for an automatic approval.</summary>
+        public string? DecidedByName { get; set; }
+
+        /// <summary>Why the applicant was rejected. Rejected list only.</summary>
+        public string? RejectionReason { get; set; }
+
+        /// <summary>How many times this applicant has been rejected. Rejected list only.</summary>
+        public int TimesRejected { get; set; }
     }
 }

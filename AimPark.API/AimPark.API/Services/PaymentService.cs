@@ -185,6 +185,26 @@ namespace AimPark.API.Services
             await _payments.SaveAsync(ct);
         }
 
+        // Called when a user's account is revoked. Losing the account is the
+        // penalty, so any violation fine still open is dropped rather than left
+        // as a debt nobody can pay. Paid and Waived stay as they are.
+        public async Task WaiveOpenPenaltiesForUserAsync(Guid userId, CancellationToken ct)
+        {
+            var open = await _db.Set<PaymentTransaction>()
+                .Where(p => p.UserId == userId
+                    && p.Source == PaymentSource.ViolationPenalty
+                    && (p.Status == PaymentStatus.Pending || p.Status == PaymentStatus.Processing))
+                .ToListAsync(ct);
+
+            if (open.Count == 0)
+                return;
+
+            foreach (var payment in open)
+                payment.Status = PaymentStatus.Waived;
+
+            await _db.SaveChangesAsync(ct);
+        }
+
         // GET /api/payments
         public Task<ActionResult<PaymentListResponse>> GetMyPaymentsAsync(Guid userId, int page, int pageSize, CancellationToken ct)
             => ListAsync(_db.Set<PaymentTransaction>().AsNoTracking().Where(p => p.UserId == userId), page, pageSize, ct);

@@ -6,7 +6,7 @@ part of 'users_provider.dart';
 // RiverpodGenerator
 // **************************************************************************
 
-String _$userListHash() => r'96838f950f07582a928f8a9136bdc57c08972bc0';
+String _$userListHash() => r'3ec3e656f4af265aba4c3951203e5565e6192e1f';
 
 /// See also [userList].
 @ProviderFor(userList)
@@ -189,7 +189,7 @@ class _RfidCardHistoryProviderElement
 }
 
 String _$usersQueryNotifierHash() =>
-    r'2a892c8f99320676eb5c4194e568b3a1be263e66';
+    r'a8e5fc712b6d040dd84933c6604d3d7af8b1b9a3';
 
 /// See also [UsersQueryNotifier].
 @ProviderFor(UsersQueryNotifier)
@@ -205,7 +205,7 @@ final usersQueryNotifierProvider =
     );
 
 typedef _$UsersQueryNotifier = AutoDisposeNotifier<UsersQuery>;
-String _$userActionsHash() => r'd7bde79faa704ebca1e02e1f865f605a23cdb36b';
+String _$userActionsHash() => r'302ff27d8279c194e195c8914be0952b94f1dae2';
 
 /// See also [UserActions].
 @ProviderFor(UserActions)

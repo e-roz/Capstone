@@ -27,6 +27,8 @@ namespace AimPark.API.Interfaces
         // associated payment is already Paid (out of scope: real-world refund handling).
         Task WaiveForViolationAsync(Guid violationId, CancellationToken ct);
 
+        // Internal — called when a user's account is revoked: drops every violation fine still open.
+        Task WaiveOpenPenaltiesForUserAsync(Guid userId, CancellationToken ct);
 
         Task<ActionResult<PaymentListResponse>> GetMyPaymentsAsync(Guid userId, int page, int pageSize, CancellationToken ct);
         Task<ActionResult<PaymentResponse>> GetMyPaymentDetailAsync(Guid userId, Guid paymentId, CancellationToken ct);

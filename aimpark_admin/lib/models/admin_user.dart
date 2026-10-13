@@ -47,7 +47,6 @@ class AdminUser {
 /// filter value the list endpoint accepts.
 abstract final class UserStatuses {
   static const active = 'Active';
-  static const suspended = 'Suspended';
   static const revoked = 'Revoked';
   static const archived = 'Archived';
   static const pendingReview = 'PendingReview';

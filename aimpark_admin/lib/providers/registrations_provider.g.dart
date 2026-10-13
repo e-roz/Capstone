@@ -26,8 +26,8 @@ final pendingRegistrationsProvider =
 // ignore: unused_element
 typedef PendingRegistrationsRef =
     AutoDisposeFutureProviderRef<List<PendingRegistration>>;
-String _$registrationDetailHash() =>
-    r'ca146bd91a5aef1feaae20b275bce438bca67984';
+String _$decidedRegistrationsHash() =>
+    r'f0c5bf351265517499bebe65be2018dc372597fd';
 
 /// Copied from Dart SDK
 class _SystemHash {
@@ -49,6 +49,151 @@ class _SystemHash {
     return 0x1fffffff & (hash + ((0x00003fff & hash) << 15));
   }
 }
+
+/// Applicants who have been decided on: `Approved` (they became users) or
+/// `Rejected`. The queue itself is [pendingRegistrations].
+///
+/// Copied from [decidedRegistrations].
+@ProviderFor(decidedRegistrations)
+const decidedRegistrationsProvider = DecidedRegistrationsFamily();
+
+/// Applicants who have been decided on: `Approved` (they became users) or
+/// `Rejected`. The queue itself is [pendingRegistrations].
+///
+/// Copied from [decidedRegistrations].
+class DecidedRegistrationsFamily
+    extends Family<AsyncValue<List<PendingRegistration>>> {
+  /// Applicants who have been decided on: `Approved` (they became users) or
+  /// `Rejected`. The queue itself is [pendingRegistrations].
+  ///
+  /// Copied from [decidedRegistrations].
+  const DecidedRegistrationsFamily();
+
+  /// Applicants who have been decided on: `Approved` (they became users) or
+  /// `Rejected`. The queue itself is [pendingRegistrations].
+  ///
+  /// Copied from [decidedRegistrations].
+  DecidedRegistrationsProvider call(String status) {
+    return DecidedRegistrationsProvider(status);
+  }
+
+  @override
+  DecidedRegistrationsProvider getProviderOverride(
+    covariant DecidedRegistrationsProvider provider,
+  ) {
+    return call(provider.status);
+  }
+
+  static const Iterable<ProviderOrFamily>? _dependencies = null;
+
+  @override
+  Iterable<ProviderOrFamily>? get dependencies => _dependencies;
+
+  static const Iterable<ProviderOrFamily>? _allTransitiveDependencies = null;
+
+  @override
+  Iterable<ProviderOrFamily>? get allTransitiveDependencies =>
+      _allTransitiveDependencies;
+
+  @override
+  String? get name => r'decidedRegistrationsProvider';
+}
+
+/// Applicants who have been decided on: `Approved` (they became users) or
+/// `Rejected`. The queue itself is [pendingRegistrations].
+///
+/// Copied from [decidedRegistrations].
+class DecidedRegistrationsProvider
+    extends AutoDisposeFutureProvider<List<PendingRegistration>> {
+  /// Applicants who have been decided on: `Approved` (they became users) or
+  /// `Rejected`. The queue itself is [pendingRegistrations].
+  ///
+  /// Copied from [decidedRegistrations].
+  DecidedRegistrationsProvider(String status)
+    : this._internal(
+        (ref) => decidedRegistrations(ref as DecidedRegistrationsRef, status),
+        from: decidedRegistrationsProvider,
+        name: r'decidedRegistrationsProvider',
+        debugGetCreateSourceHash: const bool.fromEnvironment('dart.vm.product')
+            ? null
+            : _$decidedRegistrationsHash,
+        dependencies: DecidedRegistrationsFamily._dependencies,
+        allTransitiveDependencies:
+            DecidedRegistrationsFamily._allTransitiveDependencies,
+        status: status,
+      );
+
+  DecidedRegistrationsProvider._internal(
+    super._createNotifier, {
+    required super.name,
+    required super.dependencies,
+    required super.allTransitiveDependencies,
+    required super.debugGetCreateSourceHash,
+    required super.from,
+    required this.status,
+  }) : super.internal();
+
+  final String status;
+
+  @override
+  Override overrideWith(
+    FutureOr<List<PendingRegistration>> Function(
+      DecidedRegistrationsRef provider,
+    )
+    create,
+  ) {
+    return ProviderOverride(
+      origin: this,
+      override: DecidedRegistrationsProvider._internal(
+        (ref) => create(ref as DecidedRegistrationsRef),
+        from: from,
+        name: null,
+        dependencies: null,
+        allTransitiveDependencies: null,
+        debugGetCreateSourceHash: null,
+        status: status,
+      ),
+    );
+  }
+
+  @override
+  AutoDisposeFutureProviderElement<List<PendingRegistration>> createElement() {
+    return _DecidedRegistrationsProviderElement(this);
+  }
+
+  @override
+  bool operator ==(Object other) {
+    return other is DecidedRegistrationsProvider && other.status == status;
+  }
+
+  @override
+  int get hashCode {
+    var hash = _SystemHash.combine(0, runtimeType.hashCode);
+    hash = _SystemHash.combine(hash, status.hashCode);
+
+    return _SystemHash.finish(hash);
+  }
+}
+
+@Deprecated('Will be removed in 3.0. Use Ref instead')
+// ignore: unused_element
+mixin DecidedRegistrationsRef
+    on AutoDisposeFutureProviderRef<List<PendingRegistration>> {
+  /// The parameter `status` of this provider.
+  String get status;
+}
+
+class _DecidedRegistrationsProviderElement
+    extends AutoDisposeFutureProviderElement<List<PendingRegistration>>
+    with DecidedRegistrationsRef {
+  _DecidedRegistrationsProviderElement(super.provider);
+
+  @override
+  String get status => (origin as DecidedRegistrationsProvider).status;
+}
+
+String _$registrationDetailHash() =>
+    r'ca146bd91a5aef1feaae20b275bce438bca67984';
 
 /// See also [registrationDetail].
 @ProviderFor(registrationDetail)

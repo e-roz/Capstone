@@ -21,6 +21,22 @@ Future<List<PendingRegistration>> pendingRegistrations(Ref ref) async {
       .toList();
 }
 
+/// Applicants who have been decided on: `Approved` (they became users) or
+/// `Rejected`. The queue itself is [pendingRegistrations].
+@riverpod
+Future<List<PendingRegistration>> decidedRegistrations(
+    Ref ref, String status) async {
+  final dio = ref.watch(dioProvider);
+  final response = await dio.get(
+    ApiEndpoints.pendingRegistrations,
+    queryParameters: {'status': status},
+  );
+  final data = response.data as List<dynamic>;
+  return data
+      .map((e) => PendingRegistration.fromJson(e as Map<String, dynamic>))
+      .toList();
+}
+
 // ── Registration detail ─────────────────────────────────────────────────────
 
 @riverpod

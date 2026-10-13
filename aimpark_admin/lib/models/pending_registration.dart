@@ -36,6 +36,18 @@ class PendingRegistration {
   /// Flagged findings, [topFinding] included.
   final int flaggedCount;
 
+  /// Approved and Rejected lists only. When the applicant was decided on.
+  final DateTime? decidedAt;
+
+  /// The admin who decided. Null for an automatic approval.
+  final String? decidedByName;
+
+  /// Rejected list only.
+  final String? rejectionReason;
+
+  /// Rejected list only: how many times this applicant has been rejected.
+  final int timesRejected;
+
   const PendingRegistration({
     required this.userId,
     required this.fullName,
@@ -51,6 +63,10 @@ class PendingRegistration {
     this.topFinding,
     this.topFindingSeverity,
     this.flaggedCount = 0,
+    this.decidedAt,
+    this.decidedByName,
+    this.rejectionReason,
+    this.timesRejected = 0,
   });
 
   /// Nothing to review yet. Sorted to the bottom whichever way the column runs.
@@ -88,5 +104,11 @@ class PendingRegistration {
             ? null
             : findingSeverity(json['topFindingSeverity'].toString()),
         flaggedCount: (json['flaggedCount'] as num?)?.toInt() ?? 0,
+        decidedAt: json['decidedAt'] == null
+            ? null
+            : DateTime.tryParse(json['decidedAt'].toString()),
+        decidedByName: json['decidedByName']?.toString(),
+        rejectionReason: json['rejectionReason']?.toString(),
+        timesRejected: (json['timesRejected'] as num?)?.toInt() ?? 0,
       );
 }

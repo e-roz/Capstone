@@ -116,10 +116,10 @@ namespace AimPark.API.Controllers
                         RegistrationStatus = MapStatus(user)
                     });
 
-                case AccountStatus.Suspended:
+                case AccountStatus.Revoked:
                     return StatusCode(StatusCodes.Status403Forbidden, new LoginResponse
                     {
-                        Message = "Your account has been suspended. Please contact admin.",
+                        Message = "Your account has been revoked after three accountable violations.",
                         RegistrationStatus = MapStatus(user)
                     });
             }
@@ -225,10 +225,10 @@ namespace AimPark.API.Controllers
                             RegistrationStatus = MapStatus(user)
                         });
 
-                    case AccountStatus.Suspended:
+                    case AccountStatus.Revoked:
                         return StatusCode(StatusCodes.Status403Forbidden, new LoginResponse
                         {
-                            Message = "Your account has been suspended. Please contact admin.",
+                            Message = "Your account has been revoked after three accountable violations.",
                             RegistrationStatus = MapStatus(user)
                         });
                 }
