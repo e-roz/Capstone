@@ -38,6 +38,11 @@ namespace AimPark.API.DTOs
         public string? ReportedByName { get; set; }
         public string? ReportedByRole { get; set; }
         public DateTime? ReviewedAt { get; set; }
+
+        // Staff queue only. The reporter's own list leaves these at zero/false:
+        // Security's notes are between Security and the administrator.
+        public int FollowUpCount { get; set; }
+        public bool HasNewFollowUp { get; set; }
     }
 
     public class IncidentEvidenceItem
@@ -73,5 +78,11 @@ namespace AimPark.API.DTOs
         /// everywhere else.
         /// </summary>
         public int EvidenceUnavailable { get; set; }
+
+        /// <summary>
+        /// What Security found out, oldest first. Filled for staff only; empty
+        /// on the reporter's own copy of the report.
+        /// </summary>
+        public List<IncidentFollowUpItem> FollowUps { get; set; } = [];
     }
 }

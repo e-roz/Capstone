@@ -90,6 +90,7 @@ namespace AimPark.API.Services
             Table<PaymentTransaction>("PaymentTransactions"),
             Table<Incident>("Incidents"),
             Table<IncidentEvidence>("IncidentEvidence"),
+            Table<IncidentFollowUp>("IncidentFollowUps"),
             Table<Notification>("Notifications"),
             Table<NotificationRead>("NotificationReads"),
             Table<DeviceToken>("DeviceTokens"),

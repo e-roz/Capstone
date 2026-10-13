@@ -97,6 +97,7 @@ namespace AimPark.API.Sync.Cloud
                 ParkingRates = await _db.Set<ParkingRate>().AsNoTracking().ToListAsync(ct),
                 Incidents = await _db.Set<Incident>().AsNoTracking().ToListAsync(ct),
                 IncidentEvidence = await _db.Set<IncidentEvidence>().AsNoTracking().ToListAsync(ct),
+                IncidentFollowUps = await _db.Set<IncidentFollowUp>().AsNoTracking().ToListAsync(ct),
                 // Only recent ones: an old warning has nothing left to show.
                 WrongBayFlags = await _db.Set<WrongBayFlag>().AsNoTracking()
                     .Where(f => f.BayClearedAt == null || f.UpdatedAt > DateTime.UtcNow.AddDays(-7))

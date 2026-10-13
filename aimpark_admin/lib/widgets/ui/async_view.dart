@@ -33,6 +33,7 @@ class AsyncView<T> extends StatelessWidget {
     this.isEmpty,
     this.empty,
     this.loading,
+    this.keepStaleData = false,
   });
 
   final AsyncValue<T> value;
@@ -48,8 +49,21 @@ class AsyncView<T> extends StatelessWidget {
   final Widget? empty;
   final Widget? loading;
 
+  /// When a refresh fails but the list from before is still there, keep showing
+  /// it instead of replacing it with the error. For a screen that refreshes
+  /// itself and says on its own that it has lost the connection.
+  final bool keepStaleData;
+
   @override
   Widget build(BuildContext context) {
+    final stale = value.valueOrNull;
+    if (keepStaleData && value.hasError && stale != null) {
+      if (isEmpty != null && isEmpty!(stale)) {
+        return empty ?? const AppEmptyState(title: 'Nothing here yet');
+      }
+      return data(stale);
+    }
+
     return value.when(
       loading: () => loading ?? const AppLoadingState(),
       error: (e, _) => AppErrorState(error: e, onRetry: onRetry),

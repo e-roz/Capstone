@@ -58,6 +58,7 @@ namespace AimPark.API.Sync.Cloud
             steps.AddRange(batch.VisitorPasses.Select(p => ($"visitor pass {p.Id}", (Func<CancellationToken, Task>)(c => StageVisitorPassAsync(p, c)))));
             steps.AddRange(batch.Incidents.Select(i => ($"incident {i.Id}", (Func<CancellationToken, Task>)(c => StageIncidentAsync(i, c)))));
             steps.AddRange(batch.IncidentEvidence.Select(e => ($"incident attachment {e.Id}", (Func<CancellationToken, Task>)(c => InsertOnceAsync(e, e.Id, c)))));
+            steps.AddRange(batch.IncidentFollowUps.Select(u => ($"incident follow-up {u.Id}", (Func<CancellationToken, Task>)(c => InsertOnceAsync(u, u.Id, c)))));
             steps.AddRange(batch.AlprReadings.Select(r => ($"plate read {r.Id}", (Func<CancellationToken, Task>)(c => UpsertAsync(r, r.Id, c)))));
             steps.AddRange(batch.ParkingLogs.Select(l => ($"parking log {l.Id}", (Func<CancellationToken, Task>)(c => UpsertAsync(l, l.Id, c)))));
             steps.AddRange(batch.SlotStatuses.Select(s => ($"slot {s.Id}", (Func<CancellationToken, Task>)(c => StageSlotStatusAsync(s, c)))));

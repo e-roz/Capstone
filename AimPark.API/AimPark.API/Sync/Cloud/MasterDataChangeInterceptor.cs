@@ -90,7 +90,7 @@ namespace AimPark.API.Sync.Cloud
             // Not read by a gate decision, but Security works the incident
             // queue at the guard post: a driver's report and an admin's
             // review both need to show there straight away.
-            Incident or IncidentEvidence => true,
+            Incident or IncidentEvidence or IncidentFollowUp => true,
 
             // A review made here has to reach the guard post's map.
             WrongBayFlag => true,

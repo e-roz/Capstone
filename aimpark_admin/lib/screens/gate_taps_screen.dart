@@ -4,9 +4,12 @@ import 'package:intl/intl.dart';
 
 import '../core/utils/csv_export.dart';
 import '../models/gate_tap_event.dart';
+import '../providers/auth_provider.dart';
 import '../providers/gate_taps_provider.dart';
+import '../router/destinations.dart';
 import '../theme/theme.dart';
 import '../widgets/live_gate_log.dart';
+import '../widgets/live_refresh.dart';
 import '../widgets/ui/ui.dart';
 
 final _day = DateFormat('MMM d, yyyy');
@@ -20,10 +23,7 @@ const _results = [
   AppFilterOption('manual', 'Opened by guard'),
 ];
 
-const _gates = [
-  AppFilterOption(1, 'Gate 1'),
-  AppFilterOption(2, 'Gate 2'),
-];
+const _gates = [AppFilterOption(1, 'Gate 1'), AppFilterOption(2, 'Gate 2')];
 
 const _plateChecks = [
   AppFilterOption('match', 'Match'),
@@ -41,116 +41,158 @@ const _plateChecks = [
 /// routine one (no camera reading, a full lot, a double tap), grey for a guard.
 /// Only the red ones get the bar down the left edge, so they stand out in a long
 /// list.
-class GateTapsScreen extends ConsumerWidget {
+///
+/// For Security it is live, the same way Parking Logs is: today refreshes
+/// itself and a new tap is lit for a moment; an earlier day does not.
+class GateTapsScreen extends ConsumerStatefulWidget {
   const GateTapsScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<GateTapsScreen> createState() => _GateTapsScreenState();
+}
+
+class _GateTapsScreenState extends ConsumerState<GateTapsScreen>
+    with FreshRows {
+  @override
+  Widget build(BuildContext context) {
     final query = ref.watch(gateTapsQueryNotifierProvider);
     final notifier = ref.read(gateTapsQueryNotifierProvider.notifier);
     final async = ref.watch(gateTapsProvider);
+    final isSecurity = ref.watch(staffRoleProvider) == StaffRole.security;
 
-    return AppPage(
-      title: 'Gate Taps',
-      subtitle:
-          'Every card tapped at a gate, including the ones turned away.',
-      actions: [
-        OutlinedButton.icon(
-          icon: const Icon(Icons.download_outlined, size: AppSizes.iconSm),
-          label: const Text('Export CSV'),
-          onPressed: async.hasValue
-              ? () => _export(context, async.requireValue.taps)
-              : null,
-        ),
-        IconButton(
-          icon: const Icon(Icons.refresh),
-          tooltip: 'Refresh',
-          onPressed: () => ref.invalidate(gateTapsProvider),
-        ),
-      ],
-      toolbar: AppToolbar(
-        search: AppSearchField(
-          hint: 'Search name, card or plate',
-          initialValue: query.search,
-          onChanged: notifier.setSearch,
-        ),
-        filters: [
-          AppFilterDropdown<String>(
-            label: 'Result',
-            value: query.result,
-            options: _results,
-            allLabel: 'All results',
-            onChanged: notifier.setResult,
+    final live =
+        isSecurity &&
+        query.from != null &&
+        DateUtils.isSameDay(query.from, DateTime.now());
+
+    ref.listen(gateTapsQueryNotifierProvider, (_, _) => forgetRows());
+    ref.listen(gateTapsProvider, (_, next) {
+      final page = next.valueOrNull;
+      if (page != null && live) trackRows({for (final t in page.taps) t.id});
+    });
+
+    final liveState = !live
+        ? LiveState.paused
+        : async.hasError
+        ? LiveState.reconnecting
+        : LiveState.live;
+
+    return LiveRefresh(
+      enabled: live,
+      onTick: () => ref.invalidate(gateTapsProvider),
+      child: AppPage(
+        badge: isSecurity ? LiveBadge(state: liveState) : null,
+        title: 'Gate Taps',
+        subtitle:
+            'Every card tapped at a gate, including the ones turned away.',
+        actions: [
+          OutlinedButton.icon(
+            icon: const Icon(Icons.download_outlined, size: AppSizes.iconSm),
+            label: const Text('Export CSV'),
+            onPressed: async.hasValue
+                ? () => _export(context, async.requireValue.taps)
+                : null,
           ),
-          AppFilterDropdown<int>(
-            label: 'Gate',
-            value: query.gate,
-            options: _gates,
-            allLabel: 'All gates',
-            onChanged: notifier.setGate,
-          ),
-          AppFilterDropdown<String>(
-            label: 'Plate',
-            value: query.plate,
-            options: _plateChecks,
-            allLabel: 'All',
-            onChanged: notifier.setPlate,
-          ),
-          AppDateRangeFilter(
-            from: query.from,
-            to: query.to,
-            onChanged: notifier.setDateRange,
+          IconButton(
+            icon: const Icon(Icons.refresh),
+            tooltip: 'Refresh',
+            onPressed: () => ref.invalidate(gateTapsProvider),
           ),
         ],
-      ),
-      body: AsyncView(
-        value: async,
-        onRetry: () => ref.invalidate(gateTapsProvider),
-        loading: const SkeletonTable(
-          columns: 6,
-          columnWidths: [120, 70, 140, 180, 200, 240],
+        toolbar: AppToolbar(
+          search: AppSearchField(
+            hint: 'Search name, card or plate',
+            initialValue: query.search,
+            onChanged: notifier.setSearch,
+          ),
+          filters: [
+            AppFilterDropdown<String>(
+              label: 'Result',
+              value: query.result,
+              options: _results,
+              allLabel: 'All results',
+              onChanged: notifier.setResult,
+            ),
+            AppFilterDropdown<int>(
+              label: 'Gate',
+              value: query.gate,
+              options: _gates,
+              allLabel: 'All gates',
+              onChanged: notifier.setGate,
+            ),
+            AppFilterDropdown<String>(
+              label: 'Plate',
+              value: query.plate,
+              options: _plateChecks,
+              allLabel: 'All',
+              onChanged: notifier.setPlate,
+            ),
+            if (isSecurity)
+              AppDayFilter(
+                day: query.from ?? DateTime.now(),
+                onChanged: notifier.setDay,
+              )
+            else
+              AppDateRangeFilter(
+                from: query.from,
+                to: query.to,
+                onChanged: notifier.setDateRange,
+              ),
+          ],
         ),
-        isEmpty: (page) => page.taps.isEmpty,
-        empty: const AppEmptyState(
-          icon: Icons.contactless_outlined,
-          title: 'No taps found',
-          message:
-              'Nothing matches the current filters. Every card tap at a gate '
-              '— let in, turned away, or opened by a guard — is listed here.',
-        ),
-        data: (page) => Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            _Summary(summary: page.summary),
-            const SizedBox(height: AppSpacing.headingGap),
-            Expanded(
-              child: AppDataTable(
-                minWidth: 1100,
-                columns: const [
-                  DataColumn(label: Text('Time')),
-                  DataColumn(label: Text('Gate')),
-                  DataColumn(label: Text('Result')),
-                  DataColumn(label: Text('Who')),
-                  DataColumn(label: Text('Plate check')),
-                  DataColumn(label: Text('Why')),
-                ],
-                rows: [for (final t in page.taps) _row(context, t)],
-                footer: AppPagination(
-                  page: page.page,
-                  pageSize: page.pageSize,
-                  total: page.totalCount,
-                  itemLabel: 'gate taps',
-                  onPage: notifier.setPage,
+        body: AsyncView(
+          keepStaleData: true,
+          value: async,
+          onRetry: () => ref.invalidate(gateTapsProvider),
+          loading: const SkeletonTable(
+            columns: 6,
+            columnWidths: [120, 70, 140, 180, 200, 240],
+          ),
+          isEmpty: (page) => page.taps.isEmpty,
+          empty: const AppEmptyState(
+            icon: Icons.contactless_outlined,
+            title: 'No taps found',
+            message:
+                'Nothing matches the current filters. Every card tap at a gate '
+                '— let in, turned away, or opened by a guard — is listed here.',
+          ),
+          data: (page) => Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              _Summary(summary: page.summary),
+              const SizedBox(height: AppSpacing.headingGap),
+              Expanded(
+                child: AppDataTable(
+                  minWidth: 1100,
+                  columns: const [
+                    DataColumn(label: Text('Time')),
+                    DataColumn(label: Text('Gate')),
+                    DataColumn(label: Text('Result')),
+                    DataColumn(label: Text('Who')),
+                    DataColumn(label: Text('Plate check')),
+                    DataColumn(label: Text('Why')),
+                  ],
+                  rows: [
+                    for (final t in page.taps)
+                      _row(context, t, fresh: freshIds.contains(t.id)),
+                  ],
+                  footer: AppPagination(
+                    page: page.page,
+                    pageSize: page.pageSize,
+                    total: page.totalCount,
+                    itemLabel: 'gate taps',
+                    onPage: notifier.setPage,
+                  ),
                 ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
   }
 
-  DataRow _row(BuildContext context, GateTapEvent tap) {
+  DataRow _row(BuildContext context, GateTapEvent tap, {bool fresh = false}) {
     final text = Theme.of(context).textTheme;
     final t = context.tokens;
     void open() => showDialog<void>(
@@ -161,6 +203,9 @@ class GateTapsScreen extends ConsumerWidget {
     final local = tap.at.toLocal();
 
     return DataRow(
+      color: fresh
+          ? WidgetStatePropertyAll(t.status.of(StatusIntent.accent).bg)
+          : null,
       cells: [
         DataCell(
           Row(
@@ -260,7 +305,10 @@ class GateTapsScreen extends ConsumerWidget {
     final t = context.tokens;
 
     if (tap.isManual) {
-      return Text('—', style: text.bodyMedium?.copyWith(color: t.text.tertiary));
+      return Text(
+        '—',
+        style: text.bodyMedium?.copyWith(color: t.text.tertiary),
+      );
     }
 
     final Widget pill;

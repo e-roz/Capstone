@@ -24,7 +24,7 @@ final gateTapsProvider = AutoDisposeFutureProvider<GateTapPage>.internal(
 // ignore: unused_element
 typedef GateTapsRef = AutoDisposeFutureProviderRef<GateTapPage>;
 String _$gateTapsQueryNotifierHash() =>
-    r'36c069ce9cc50250fa0ab6c1101265ed9aa09d29';
+    r'706806555498313657e73096d521d29244408b45';
 
 /// See also [GateTapsQueryNotifier].
 @ProviderFor(GateTapsQueryNotifier)

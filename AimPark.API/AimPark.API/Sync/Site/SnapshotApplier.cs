@@ -40,7 +40,7 @@ namespace AimPark.API.Sync.Site
             await ApplySlotsAsync(snapshot.ParkingSlots, ct);
             await ApplyVisitorPassesAsync(snapshot.VisitorPasses, ct);
             await ApplyVisitorCardsAsync(snapshot.VisitorCards, ct);
-            await ApplyIncidentsAsync(snapshot.Incidents, snapshot.IncidentEvidence, ct);
+            await ApplyIncidentsAsync(snapshot.Incidents, snapshot.IncidentEvidence, snapshot.IncidentFollowUps, ct);
             await ApplyWrongBayFlagsAsync(snapshot.WrongBayFlags, ct);
 
             // Last, so a snapshot that fails half way leaves the old list in force.
@@ -319,7 +319,8 @@ namespace AimPark.API.Sync.Site
         }
 
         private async Task ApplyIncidentsAsync(
-            List<Incident> incidents, List<IncidentEvidence> evidence, CancellationToken ct)
+            List<Incident> incidents, List<IncidentEvidence> evidence,
+            List<IncidentFollowUp> followUps, CancellationToken ct)
         {
             var local = await _db.Set<Incident>().ToDictionaryAsync(i => i.Id, ct);
 
@@ -346,6 +347,25 @@ namespace AimPark.API.Sync.Site
             {
                 _db.Set<IncidentEvidence>().Add(source);
                 added = true;
+            }
+
+            // Notes are only ever added. The one thing that changes afterwards is
+            // the cloud stamping them as read by an administrator.
+            var localFollowUps = await _db.Set<IncidentFollowUp>()
+                .ToDictionaryAsync(f => f.Id, ct);
+
+            foreach (var source in followUps)
+            {
+                if (!localFollowUps.TryGetValue(source.Id, out var followUp))
+                {
+                    _db.Set<IncidentFollowUp>().Add(source);
+                    added = true;
+                }
+                else if (followUp.SeenByAdminAt is null && source.SeenByAdminAt is not null)
+                {
+                    followUp.SeenByAdminAt = source.SeenByAdminAt;
+                    added = true;
+                }
             }
 
             if (added)

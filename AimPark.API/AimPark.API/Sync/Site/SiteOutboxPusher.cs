@@ -125,6 +125,7 @@ namespace AimPark.API.Sync.Site
             var passIds = Ids(SyncKinds.VisitorPass);
             var incidentIds = Ids(SyncKinds.Incident);
             var evidenceIds = Ids(SyncKinds.IncidentEvidence);
+            var followUpIds = Ids(SyncKinds.IncidentFollowUp);
             var readingIds = Ids(SyncKinds.AlprReading);
             var logIds = Ids(SyncKinds.ParkingLog);
             var attemptIds = Ids(SyncKinds.GateAccessAttempt);
@@ -145,6 +146,9 @@ namespace AimPark.API.Sync.Site
 
                 IncidentEvidence = await db.Set<IncidentEvidence>().AsNoTracking()
                     .Where(e => evidenceIds.Contains(e.Id)).ToListAsync(ct),
+
+                IncidentFollowUps = await db.Set<IncidentFollowUp>().AsNoTracking()
+                    .Where(u => followUpIds.Contains(u.Id)).ToListAsync(ct),
 
                 AlprReadings = await db.Set<AlprReading>().AsNoTracking()
                     .Where(r => readingIds.Contains(r.Id)).ToListAsync(ct),

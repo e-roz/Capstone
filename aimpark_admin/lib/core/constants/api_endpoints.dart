@@ -178,6 +178,10 @@ class ApiEndpoints {
       '/api/admin/incidents/$incidentId/start-review';
   static String reviewIncident(String incidentId) =>
       '/api/admin/incidents/$incidentId/review';
+  static String incidentFollowUps(String incidentId) =>
+      '/api/admin/incidents/$incidentId/follow-ups';
+  static String incidentFollowUpsSeen(String incidentId) =>
+      '/api/admin/incidents/$incidentId/follow-ups/seen';
 
   // Admin – Notifications
   static const notifications = '/api/admin/notifications';

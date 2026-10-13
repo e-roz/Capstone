@@ -24,7 +24,7 @@ final parkingLogsProvider = AutoDisposeFutureProvider<ParkingLogPage>.internal(
 // ignore: unused_element
 typedef ParkingLogsRef = AutoDisposeFutureProviderRef<ParkingLogPage>;
 String _$parkingLogsQueryNotifierHash() =>
-    r'03fc1f57f6d34b4df3054a0c0d9b1fa600b5eda0';
+    r'3d20915521e6c23b4dc6e4448aaf2f754a3b2a04';
 
 /// See also [ParkingLogsQueryNotifier].
 @ProviderFor(ParkingLogsQueryNotifier)

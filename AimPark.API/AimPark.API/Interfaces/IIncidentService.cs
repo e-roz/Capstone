@@ -35,5 +35,14 @@ namespace AimPark.API.Interfaces
         /// changed afterwards.
         /// </summary>
         Task<ActionResult<object>> ReviewAsync(Guid incidentId, Guid adminUserId, ReviewIncidentDto dto, CancellationToken ct);
+
+        /// <summary>
+        /// Security adds what they found out to a report that is still open.
+        /// Only adds: it never changes the report's status.
+        /// </summary>
+        Task<ActionResult<object>> AddFollowUpAsync(Guid incidentId, Guid securityUserId, AddIncidentFollowUpDto dto, CancellationToken ct);
+
+        /// <summary>The administrator opened the report; its follow-ups are no longer new.</summary>
+        Task<ActionResult<object>> MarkFollowUpsSeenAsync(Guid incidentId, CancellationToken ct);
     }
 }

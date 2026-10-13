@@ -4,6 +4,8 @@ import 'package:riverpod_annotation/riverpod_annotation.dart';
 import '../core/constants/api_endpoints.dart';
 import '../core/network/dio_client.dart';
 import '../models/gate_tap_event.dart';
+import '../router/destinations.dart';
+import 'auth_provider.dart';
 
 part 'gate_taps_provider.g.dart';
 
@@ -57,7 +59,23 @@ class GateTapsQuery {
 @riverpod
 class GateTapsQueryNotifier extends _$GateTapsQueryNotifier {
   @override
-  GateTapsQuery build() => const GateTapsQuery();
+  GateTapsQuery build() {
+    // See ParkingLogsQueryNotifier: a guard starts on today.
+    if (ref.read(staffRoleProvider) != StaffRole.security) {
+      return const GateTapsQuery();
+    }
+    final today = DateTime.now();
+    return GateTapsQuery(
+      from: DateTime(today.year, today.month, today.day),
+      to: DateTime(today.year, today.month, today.day, 23, 59, 59),
+    );
+  }
+
+  /// One whole day, for the guard's picker.
+  void setDay(DateTime day) => setDateRange(
+        DateTime(day.year, day.month, day.day),
+        DateTime(day.year, day.month, day.day, 23, 59, 59),
+      );
 
   void setPage(int page) => state = state.copyWith(page: page);
 

@@ -4,6 +4,8 @@ import 'package:riverpod_annotation/riverpod_annotation.dart';
 import '../core/constants/api_endpoints.dart';
 import '../core/network/dio_client.dart';
 import '../models/parking_log.dart';
+import '../router/destinations.dart';
+import 'auth_provider.dart';
 
 part 'parking_logs_provider.g.dart';
 
@@ -38,7 +40,18 @@ class ParkingLogsQuery {
 @riverpod
 class ParkingLogsQueryNotifier extends _$ParkingLogsQueryNotifier {
   @override
-  ParkingLogsQuery build() => const ParkingLogsQuery();
+  ParkingLogsQuery build() {
+    // A guard at the gate wants what is happening now, not every record there
+    // has ever been. An administrator reviewing reports still starts with all.
+    if (ref.read(staffRoleProvider) != StaffRole.security) {
+      return const ParkingLogsQuery();
+    }
+    final today = DateTime.now();
+    return ParkingLogsQuery(
+      from: DateTime(today.year, today.month, today.day),
+      to: DateTime(today.year, today.month, today.day, 23, 59, 59),
+    );
+  }
 
   // Every filter change goes back to page 1, so the page you were on cannot
   // fall past the end of a shorter result.
@@ -106,6 +119,12 @@ class ParkingLogsQueryNotifier extends _$ParkingLogsQueryNotifier {
         visitor: visitor,
         from: state.from,
         to: state.to,
+      );
+
+  /// One whole day, for the guard's picker.
+  void setDay(DateTime day) => setDateRange(
+        DateTime(day.year, day.month, day.day),
+        DateTime(day.year, day.month, day.day, 23, 59, 59),
       );
 
   void setDateRange(DateTime? from, DateTime? to) => _set(

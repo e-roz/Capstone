@@ -12,6 +12,10 @@ class IncidentSummary {
   /// for reports decided before the date was recorded.
   final DateTime? reviewedAt;
 
+  /// Notes Security added, and whether an administrator has yet to read any.
+  final int followUpCount;
+  final bool hasNewFollowUp;
+
   const IncidentSummary({
     required this.incidentId,
     required this.category,
@@ -20,6 +24,8 @@ class IncidentSummary {
     this.reportedByName = '',
     this.reportedByRole = '',
     this.reviewedAt,
+    this.followUpCount = 0,
+    this.hasNewFollowUp = false,
   });
 
   factory IncidentSummary.fromJson(Map<String, dynamic> json) =>
@@ -33,6 +39,8 @@ class IncidentSummary {
         reviewedAt: json['reviewedAt'] == null
             ? null
             : DateTime.parse(json['reviewedAt'].toString()),
+        followUpCount: (json['followUpCount'] as num?)?.toInt() ?? 0,
+        hasNewFollowUp: json['hasNewFollowUp'] == true,
       );
 }
 
@@ -84,6 +92,45 @@ class IncidentEvidenceItem {
       );
 }
 
+/// One note Security added to a report: what they found out, and optionally
+/// one photo or PDF. Added to, never edited.
+class IncidentFollowUp {
+  final String followUpId;
+  final String authorName;
+  final String note;
+  final DateTime createdAt;
+  final IncidentEvidenceItem? attachment;
+
+  /// No administrator has opened the report since it was added.
+  final bool isNew;
+
+  const IncidentFollowUp({
+    required this.followUpId,
+    required this.authorName,
+    required this.note,
+    required this.createdAt,
+    this.attachment,
+    this.isNew = false,
+  });
+
+  factory IncidentFollowUp.fromJson(Map<String, dynamic> json) {
+    final url = json['attachmentUrl']?.toString();
+    return IncidentFollowUp(
+      followUpId: json['followUpId']?.toString() ?? '',
+      authorName: json['authorName']?.toString() ?? '',
+      note: json['note']?.toString() ?? '',
+      createdAt: DateTime.parse(json['createdAt'].toString()),
+      attachment: url == null || url.isEmpty
+          ? null
+          : IncidentEvidenceItem(
+              url: url,
+              fileName: json['attachmentName']?.toString() ?? '',
+            ),
+      isNew: json['isNew'] == true,
+    );
+  }
+}
+
 class IncidentDetail {
   final String incidentId;
   final String category;
@@ -102,6 +149,9 @@ class IncidentDetail {
   /// post's server with no internet cannot reach the files.
   final int evidenceUnavailable;
 
+  /// What Security found out, oldest first.
+  final List<IncidentFollowUp> followUps;
+
   const IncidentDetail({
     required this.incidentId,
     required this.category,
@@ -116,7 +166,10 @@ class IncidentDetail {
     this.reportedByName = '',
     this.reportedByRole = '',
     this.evidenceUnavailable = 0,
+    this.followUps = const [],
   });
+
+  bool get hasNewFollowUp => followUps.any((f) => f.isNew);
 
   /// Resolved, dismissed or withdrawn: nothing left for anyone to decide.
   bool get isClosed =>
@@ -155,6 +208,9 @@ class IncidentDetail {
       reportedByRole: json['reportedByRole']?.toString() ?? '',
       evidence: evidence,
       evidenceUnavailable: (json['evidenceUnavailable'] as num?)?.toInt() ?? 0,
+      followUps: (json['followUps'] as List<dynamic>? ?? [])
+          .map((f) => IncidentFollowUp.fromJson(f as Map<String, dynamic>))
+          .toList(),
     );
   }
 }
