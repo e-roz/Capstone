@@ -310,13 +310,17 @@ class ParkingSummaryCard extends ConsumerWidget {
         loading: const SkeletonBlock(height: 96),
         data: (availability) {
           final usable = availability.slots.where((s) => s.status != 'OutOfService').toList();
-          final free = coverage.free(usable, availability.availableSlots);
           final noSignal = usable.where(coverage.silent).length;
+          // Room follows the cards when the server counts them.
+          final byCards = availability.usersInside != null;
+          final free = byCards
+              ? availability.availableSlots.clamp(0, usable.length - noSignal)
+              : coverage.free(usable, availability.availableSlots);
           final inBays = usable.where((s) => s.status == 'Occupied' && coverage.confirms(s)).length;
           final notInBay = (usable.length - free - noSignal - inBays).clamp(0, usable.length);
           final freeNotes = [
-            if (notInBay == 1) '1 car inside not yet in a bay',
-            if (notInBay > 1) '$notInBay cars inside not yet in a bay',
+            if (!byCards && notInBay == 1) '1 car inside not yet in a bay',
+            if (!byCards && notInBay > 1) '$notInBay cars inside not yet in a bay',
             if (noSignal > 0) '$noSignal with no sensor signal',
           ];
 
@@ -1537,8 +1541,16 @@ class _Summary extends StatelessWidget {
     // left out of both, and counted on their own.
     final coverage = _Coverage.of(context);
     final usable = slots.where((s) => s.status != 'OutOfService').toList();
-    final free = coverage.free(usable, availability.availableSlots);
     final noSignal = usable.where(coverage.silent).length;
+    // Cards decide the count: the server's tap-based room is shown as it is,
+    // not cut down to the bays a sensor sees empty. An older server sends no
+    // card count, and keeps the sensor-limited number it always had.
+    final usersInside = availability.usersInside;
+    final sensorsDetected = availability.sensorsDetected;
+    final byCards = usersInside != null && sensorsDetected != null;
+    final free = byCards
+        ? availability.availableSlots.clamp(0, usable.length - noSignal)
+        : coverage.free(usable, availability.availableSlots);
     final occupied = (usable.length - free - noSignal).clamp(0, usable.length);
     final down = slots.length - usable.length;
     // Cars that tapped in but no sensor sees in a bay yet — driving to one,
@@ -1557,7 +1569,17 @@ class _Summary extends StatelessWidget {
 
     final note = AppTypography.tabular(text.bodyMedium!.copyWith(color: t.text.secondary));
 
-    final occupancy = Column(
+    // Bays with a working sensor: the total both counts are read against.
+    final liveBays = usable.length - noSignal;
+
+    final occupancy = byCards
+        ? _CardsAgainstSensors(
+            usersInside: usersInside,
+            sensorsDetected: sensorsDetected,
+            liveBays: liveBays,
+            noSignal: noSignal,
+          )
+        : Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text('OCCUPANCY', style: _eyebrow(context)),
@@ -1666,6 +1688,165 @@ class _Summary extends StatelessWidget {
           const _Legend(),
         ],
       ),
+    );
+  }
+}
+
+/// Users inside (from card taps) beside sensors detected, and what the gap
+/// between them means: a car parked outside any bay, or one taking two. The
+/// server tells security once the gap has held five minutes; here it is just
+/// said plainly. While a sensor is silent the two can't be compared.
+class _CardsAgainstSensors extends StatelessWidget {
+  const _CardsAgainstSensors({
+    required this.usersInside,
+    required this.sensorsDetected,
+    required this.liveBays,
+    required this.noSignal,
+  });
+
+  final int usersInside;
+  final int sensorsDetected;
+  final int liveBays;
+  final int noSignal;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = context.tokens;
+    final text = Theme.of(context).textTheme;
+
+    final (intent, icon, message) = switch ((usersInside, sensorsDetected)) {
+      _ when noSignal > 0 => (
+          StatusIntent.neutral,
+          Icons.sensors_off_rounded,
+          noSignal == 1
+              ? "Can't compare while 1 sensor has no signal."
+              : "Can't compare while $noSignal sensors have no signal.",
+        ),
+      (final u, final s) when u == s => (
+          StatusIntent.success,
+          Icons.check_rounded,
+          'Users inside and sensors detected match.',
+        ),
+      (final u, final s) when u > s => (
+          StatusIntent.accent,
+          Icons.schedule_rounded,
+          'More users inside than sensors detect. Security is told if this lasts 5 minutes: a car may be parked outside a bay.',
+        ),
+      _ => (
+          StatusIntent.warning,
+          Icons.warning_amber_rounded,
+          'Sensors detect more cars than users inside. Security is told if this lasts 5 minutes: a car may be taking two bays.',
+        ),
+    };
+    final c = t.status.of(intent);
+
+    Widget card(String label, IconData cardIcon, int value, String caption, Color bar) {
+      final ratio = liveBays == 0 ? 0.0 : (value / liveBays).clamp(0.0, 1.0);
+      return Container(
+        padding: const EdgeInsets.all(AppSpacing.x4),
+        decoration: BoxDecoration(
+          color: t.surface.card,
+          borderRadius: AppRadii.mdAll,
+          border: Border.all(color: t.border.subtle),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(cardIcon, size: AppSizes.iconSm, color: t.text.secondary),
+                const SizedBox(width: AppSpacing.x2),
+                Text(label, style: text.bodyMedium?.copyWith(color: t.text.secondary)),
+              ],
+            ),
+            const SizedBox(height: AppSpacing.x2),
+            Text.rich(
+              TextSpan(
+                text: '$value',
+                style: AppTypography.tabular(text.displayMedium!),
+                children: [
+                  TextSpan(
+                    text: ' / $liveBays',
+                    style: text.titleMedium?.copyWith(color: t.text.secondary),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: AppSpacing.x3),
+            ClipRRect(
+              borderRadius: AppRadii.fullAll,
+              child: LinearProgressIndicator(
+                value: ratio,
+                minHeight: 8,
+                backgroundColor: t.surface.muted,
+                valueColor: AlwaysStoppedAnimation(bar),
+              ),
+            ),
+            const SizedBox(height: AppSpacing.x2),
+            Text(caption, style: text.bodySmall?.copyWith(color: t.text.tertiary)),
+          ],
+        ),
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('OCCUPANCY', style: _eyebrow(context)),
+        const SizedBox(height: AppSpacing.x2),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: AppSpacing.x3, vertical: AppSpacing.x2),
+          decoration: BoxDecoration(color: c.bg, borderRadius: AppRadii.smAll),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(icon, size: AppSizes.iconSm, color: c.fg),
+              const SizedBox(width: AppSpacing.x2),
+              Expanded(child: Text(message, style: text.bodySmall?.copyWith(color: c.fg))),
+            ],
+          ),
+        ),
+        const SizedBox(height: AppSpacing.x3),
+        Wrap(
+          spacing: AppSpacing.x3,
+          runSpacing: AppSpacing.x3,
+          children: [
+            SizedBox(
+              width: 220,
+              child: card(
+                'Users inside',
+                Icons.badge_outlined,
+                usersInside,
+                'From card taps. Decides if the gate lets a car in.',
+                t.status.accent.solid,
+              ),
+            ),
+            SizedBox(
+              width: 220,
+              child: card(
+                'Sensors detected',
+                Icons.sensors_rounded,
+                sensorsDetected,
+                'Bays a live sensor reads as occupied.',
+                t.status.danger.solid,
+              ),
+            ),
+          ],
+        ),
+        if (noSignal > 0) ...[
+          const SizedBox(height: AppSpacing.x3),
+          Row(
+            children: [
+              Icon(Icons.sensors_off_rounded, size: AppSizes.iconSm, color: t.status.neutral.fg),
+              const SizedBox(width: AppSpacing.x2),
+              Text(
+                '$noSignal with no sensor signal',
+                style: AppTypography.tabular(text.bodyMedium!.copyWith(color: t.text.secondary)),
+              ),
+            ],
+          ),
+        ],
+      ],
     );
   }
 }
