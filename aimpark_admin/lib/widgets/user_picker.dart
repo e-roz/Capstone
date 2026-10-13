@@ -75,7 +75,7 @@ class _UserPickerDialogState extends ConsumerState<_UserPickerDialog> {
         'page': 1,
         'pageSize': 25,
         // Only approved members can park, so only they can be given a parking
-        // entry or a violation. Rejected/pending/suspended accounts and staff
+        // entry or a violation. Rejected/pending/revoked accounts and staff
         // (Admin/Security) are filtered out server-side so paging stays correct.
         'status': 'Active',
         'role': 'User',
@@ -154,7 +154,7 @@ class _UserPickerDialogState extends ConsumerState<_UserPickerDialog> {
           padding: const EdgeInsets.symmetric(horizontal: AppSpacing.x6),
           child: Text(
             'No matching members.\nOnly approved users appear here — '
-            'pending, rejected, suspended, and staff accounts are excluded.',
+            'pending, rejected, revoked, and staff accounts are excluded.',
             textAlign: TextAlign.center,
             style: Theme.of(context)
                 .textTheme

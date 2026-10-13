@@ -23,7 +23,8 @@ namespace AimPark.API.Controllers
         /// Returns a paginated list of all users (including soft-deleted ones).
         /// Query params: page (default 1), pageSize (default 20),
         /// status (optional — either an AccountStatus value, or "Archived" to filter to archived accounts),
-        /// search (optional, matches full name, email, or plate number).
+        /// search (optional, matches full name, email, or plate number),
+        /// card (optional — "none" or "has"; limits the list to ordinary users with or without a card).
         /// </summary>
         [HttpGet]
         public Task<ActionResult<UserListResponse>> List(
@@ -32,26 +33,9 @@ namespace AimPark.API.Controllers
             [FromQuery] string? status = null,
             [FromQuery] string? search = null,
             [FromQuery] string? role = null,
+            [FromQuery] string? card = null,
             CancellationToken ct = default)
-            => _adminUserService.ListAsync(page, pageSize, status, search, role, ct);
-
-        /// <summary>
-        /// Suspends an active user account.
-        /// The optional reason is recorded in the audit log.
-        /// </summary>
-        [HttpPost("{userId:guid}/suspend")]
-        public Task<ActionResult<object>> Suspend(
-            Guid userId,
-            [FromBody] SuspendUserDto dto,
-            CancellationToken ct)
-            => _adminUserService.SuspendAsync(userId, GetAdminUserId(), dto, ct);
-
-        /// <summary>
-        /// Reverts a suspended user back to Active status.
-        /// </summary>
-        [HttpPost("{userId:guid}/unsuspend")]
-        public Task<ActionResult<object>> Unsuspend(Guid userId, CancellationToken ct)
-            => _adminUserService.UnsuspendAsync(userId, GetAdminUserId(), ct);
+            => _adminUserService.ListAsync(page, pageSize, status, search, role, card, ct);
 
         /// <summary>
         /// Archives a user account (soft delete). Sets IsDeleted=true and DeletedAt=now.

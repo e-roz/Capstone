@@ -15,21 +15,23 @@ import '../widgets/rfid_revoke_dialog.dart';
 import '../widgets/ui/ui.dart';
 import '../widgets/user_actions.dart';
 
-/// The statuses that get a chip. Pending review and Rejected are applicants,
-/// so they sit behind the "More" chip rather than beside the account states.
+/// The statuses that get a chip. Applicants (pending review, rejected) are not
+/// users yet, so they live on the Registrations screen and have no chip here.
 const _chipStatuses = [
   UserStatuses.active,
-  UserStatuses.suspended,
   UserStatuses.revoked,
   UserStatuses.archived,
 ];
-
-const _applicantStatuses = [UserStatuses.pendingReview, UserStatuses.rejected];
 
 const _roles = [
   AppFilterOption(UserRoles.user, 'User'),
   AppFilterOption(UserRoles.security, 'Security'),
   AppFilterOption(UserRoles.admin, 'Admin'),
+];
+
+const _cardOptions = [
+  AppFilterOption('has', 'Has card'),
+  AppFilterOption('none', 'No card'),
 ];
 
 final _joined = DateFormat('MMM d, yyyy');
@@ -89,6 +91,13 @@ class _UserManagementScreenState extends ConsumerState<UserManagementScreen> {
             options: _roles,
             allLabel: 'All roles',
             onChanged: notifier.setRole,
+          ),
+          AppFilterDropdown<String>(
+            label: 'Card',
+            value: query.card,
+            options: _cardOptions,
+            allLabel: 'All',
+            onChanged: notifier.setCard,
           ),
         ],
       ),
@@ -170,7 +179,7 @@ class _UserManagementScreenState extends ConsumerState<UserManagementScreen> {
             style: text.bodySmall?.copyWith(color: t.text.secondary),
           ),
         ),
-        // The API refuses to suspend or archive your own account, so the row
+        // The API refuses to archive your own account, so the row
         // offers nothing rather than buttons that only produce an error.
         DataCell(isSelf ? const SizedBox.shrink() : _RowMenu(user: user)),
       ],
@@ -195,7 +204,6 @@ class _StatusChips extends StatelessWidget {
       children: [
         _chip(context, 'All', null),
         for (final s in _chipStatuses) _chip(context, UserStatuses.label(s), s),
-        _ApplicantChip(value: value, onChanged: onChanged),
       ],
     );
   }
@@ -215,13 +223,11 @@ class _FilterChoiceChip extends StatelessWidget {
     required this.label,
     required this.selected,
     required this.onSelected,
-    this.trailing,
   });
 
   final String label;
   final bool selected;
   final VoidCallback onSelected;
-  final IconData? trailing;
 
   @override
   Widget build(BuildContext context) {
@@ -230,63 +236,11 @@ class _FilterChoiceChip extends StatelessWidget {
     final fg = selected ? t.brand.subtleText : t.text.primary;
 
     return ChoiceChip(
-      label: trailing == null
-          ? Text(label)
-          : Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(label),
-                const SizedBox(width: AppSpacing.x1),
-                Icon(trailing, size: AppSizes.iconSm, color: fg),
-              ],
-            ),
+      label: Text(label),
       selected: selected,
       onSelected: (_) => onSelected(),
       side: BorderSide(color: selected ? t.brand.primary : t.border.normal),
       labelStyle: text.labelMedium?.copyWith(color: fg),
-    );
-  }
-}
-
-/// Pending review and Rejected, kept reachable without giving applicants the
-/// same weight as account states. Shows the chosen one's name while it is on.
-class _ApplicantChip extends StatelessWidget {
-  const _ApplicantChip({required this.value, required this.onChanged});
-
-  final String? value;
-  final ValueChanged<String?> onChanged;
-
-  @override
-  Widget build(BuildContext context) {
-    final current = value;
-    final active = current != null && _applicantStatuses.contains(current);
-
-    return MenuAnchor(
-      style: _menuStyle(context),
-      menuChildren: [
-        for (final s in _applicantStatuses)
-          MenuItemButton(
-            leadingIcon: SizedBox(
-              width: AppSizes.iconSm,
-              child: value == s
-                  ? Icon(
-                      Icons.check,
-                      size: AppSizes.iconSm,
-                      color: context.tokens.brand.primary,
-                    )
-                  : null,
-            ),
-            onPressed: () => onChanged(s),
-            child: Text(UserStatuses.label(s)),
-          ),
-      ],
-      builder: (context, controller, _) => _FilterChoiceChip(
-        label: active ? UserStatuses.label(current) : 'More',
-        selected: active,
-        trailing: Icons.expand_more,
-        onSelected: () =>
-            controller.isOpen ? controller.close() : controller.open(),
-      ),
     );
   }
 }
@@ -485,8 +439,6 @@ class _CardCell extends StatelessWidget {
 // ── Row menu ─────────────────────────────────────────────────────────────────
 
 enum _RowAction {
-  suspend,
-  unsuspend,
   assignCard,
   revokeCard,
   archive,
@@ -494,8 +446,8 @@ enum _RowAction {
   review,
 }
 
-/// One "⋯" per row instead of a Suspend and an Archive button on every line,
-/// which made a destructive click far too easy. What it offers depends on the
+/// One "⋯" per row instead of an Archive button on every line, which made a
+/// destructive click far too easy. What it offers depends on the
 /// state the account is in; Archive is always last, after a divider.
 class _RowMenu extends ConsumerWidget {
   const _RowMenu({required this.user});
@@ -507,7 +459,6 @@ class _RowMenu extends ConsumerWidget {
     final t = context.tokens;
     final status = user.accountStatus;
     final hasCard = user.rfidTagId?.isNotEmpty ?? false;
-    final suspended = status == UserStatuses.suspended;
 
     PopupMenuItem<_RowAction> item(
       _RowAction value,
@@ -527,19 +478,11 @@ class _RowMenu extends ConsumerWidget {
       ),
     );
 
-    // The card item. The API will not issue a card to a suspended account, so
-    // the item stays visible but says why it cannot be used.
+    // The card item. Only an Active account can hold a card; a Revoked one is
+    // final, so it is not offered at all.
     PopupMenuItem<_RowAction> cardItem() => hasCard
         ? item(_RowAction.revokeCard, 'Revoke card…', Icons.block_outlined)
-        : item(
-            _RowAction.assignCard,
-            user.rfidStatus == 'Revoked'
-                ? 'Assign card and reinstate…'
-                : 'Assign card…',
-            Icons.nfc,
-            enabled: !suspended,
-            hint: suspended ? 'Lift the suspension first.' : null,
-          );
+        : item(_RowAction.assignCard, 'Assign card…', Icons.nfc);
 
     final List<PopupMenuEntry<_RowAction>> entries;
     if (user.isDeleted) {
@@ -551,16 +494,10 @@ class _RowMenu extends ConsumerWidget {
       ];
     } else {
       entries = [
-        if (status == UserStatuses.active)
-          item(_RowAction.suspend, 'Suspend…', Icons.pause_circle_outline),
-        if (suspended)
-          item(
-            _RowAction.unsuspend,
-            'Lift suspension',
-            Icons.play_circle_outline,
-          ),
-        cardItem(),
-        const PopupMenuDivider(),
+        if (status == UserStatuses.active) ...[
+          cardItem(),
+          const PopupMenuDivider(),
+        ],
         item(
           _RowAction.archive,
           'Archive…',
@@ -583,10 +520,6 @@ class _RowMenu extends ConsumerWidget {
       itemBuilder: (_) => entries,
       onSelected: (action) {
         switch (action) {
-          case _RowAction.suspend:
-            actions.suspend(context);
-          case _RowAction.unsuspend:
-            actions.unsuspend(context);
           case _RowAction.assignCard:
             actions.assignRfid(context);
           case _RowAction.revokeCard:

@@ -28,8 +28,8 @@ namespace AimPark.API.Services
             _storage = storage;
         }
 
-        // GET /api/admin/users?page=1&pageSize=20&status=Suspended&search=cruz&role=User (includes archived users)
-        public async Task<ActionResult<UserListResponse>> ListAsync(int page, int pageSize, string? status, string? search, string? role, CancellationToken ct)
+        // GET /api/admin/users?page=1&pageSize=20&status=Revoked&search=cruz&role=User&card=none (includes archived users)
+        public async Task<ActionResult<UserListResponse>> ListAsync(int page, int pageSize, string? status, string? search, string? role, string? card, CancellationToken ct)
         {
             // Clamp to sane defaults
             page = Math.Max(1, page);
@@ -43,6 +43,13 @@ namespace AimPark.API.Services
             // a decision is misleading. Matches the same condition the Pending
             // Registrations queue already uses.
             query = query.Where(u => u.RegistrationStep == RegistrationStep.Completed);
+
+            // Applicants are not users yet: anyone waiting on a decision, or
+            // turned down, lives on the Registrations page. Staff are left in
+            // whatever their status says.
+            query = query.Where(u => u.Role != UserRole.User
+                || (u.AccountStatus != AccountStatus.PendingReview
+                    && u.AccountStatus != AccountStatus.Rejected));
 
             // "Archived" isn't a real AccountStatus — it's the separate IsDeleted flag —
             // so it's handled as a virtual filter value here rather than a real enum member.
@@ -58,6 +65,20 @@ namespace AimPark.API.Services
             if (!string.IsNullOrWhiteSpace(role) && Enum.TryParse<UserRole>(role, true, out var parsedRole))
             {
                 query = query.Where(u => u.Role == parsedRole);
+            }
+
+            // Staff never hold a card, so they would only crowd out "No card".
+            // This runs on the server for the same reason the other filters do:
+            // the list is paged, and a client-side filter would only see one page.
+            if (string.Equals(card, "none", StringComparison.OrdinalIgnoreCase))
+            {
+                query = query.Where(u => u.Role == UserRole.User
+                    && (u.RfidTagId == null || u.RfidTagId == ""));
+            }
+            else if (string.Equals(card, "has", StringComparison.OrdinalIgnoreCase))
+            {
+                query = query.Where(u => u.Role == UserRole.User
+                    && u.RfidTagId != null && u.RfidTagId != "");
             }
 
             if (!string.IsNullOrWhiteSpace(search))
@@ -96,61 +117,6 @@ namespace AimPark.API.Services
                 Page       = page,
                 PageSize   = pageSize
             });
-        }
-
-        // POST /api/admin/users/{userId}/suspend
-        public async Task<ActionResult<object>> SuspendAsync(Guid userId, Guid adminUserId, SuspendUserDto dto, CancellationToken ct)
-        {
-            if (userId == adminUserId)
-                return new BadRequestObjectResult(new { message = "You cannot suspend your own account." });
-
-            var user = await _users.FindAsync(u => u.Id == userId, ct);
-            if (user is null)
-                return new NotFoundObjectResult(new { message = "User not found." });
-
-            if (user.IsDeleted)
-                return new BadRequestObjectResult(new { message = "Cannot suspend an archived user." });
-
-            if (user.AccountStatus == AccountStatus.Suspended)
-                return new BadRequestObjectResult(new { message = "User is already suspended." });
-
-            var oldStatus = user.AccountStatus.ToString();
-            user.AccountStatus = AccountStatus.Suspended;
-            user.UpdatedAt = DateTime.UtcNow;
-
-            await LogActionAsync(adminUserId, userId, "Suspend", oldStatus, user.AccountStatus.ToString(), dto.Reason, ct);
-
-            _users.Update(user);
-            await _users.SaveAsync(ct);
-
-            return new OkObjectResult(new { message = "User suspended." });
-        }
-
-        // POST /api/admin/users/{userId}/unsuspend
-        public async Task<ActionResult<object>> UnsuspendAsync(Guid userId, Guid adminUserId, CancellationToken ct)
-        {
-            var user = await _users.FindAsync(u => u.Id == userId, ct);
-            if (user is null)
-                return new NotFoundObjectResult(new { message = "User not found." });
-
-            if (user.IsDeleted)
-                return new BadRequestObjectResult(new { message = "Cannot unsuspend an archived user." });
-
-            if (user.AccountStatus != AccountStatus.Suspended)
-                return new BadRequestObjectResult(new { message = "User is not currently suspended." });
-
-            var oldStatus = user.AccountStatus.ToString();
-            // Revert to Active — suspension is always lifted back to Active,
-            // since the user was Active before being suspended.
-            user.AccountStatus = AccountStatus.Active;
-            user.UpdatedAt = DateTime.UtcNow;
-
-            await LogActionAsync(adminUserId, userId, "Unsuspend", oldStatus, user.AccountStatus.ToString(), null, ct);
-
-            _users.Update(user);
-            await _users.SaveAsync(ct);
-
-            return new OkObjectResult(new { message = "User unsuspended. Account restored to Active." });
         }
 
         // DELETE /api/admin/users/{userId} (archive — soft delete)
@@ -196,19 +162,14 @@ namespace AimPark.API.Services
             if (!user.IsDeleted)
                 return new BadRequestObjectResult(new { message = "User is not archived." });
 
-            var wasSuspended = user.AccountStatus == AccountStatus.Suspended;
             var oldValue = $"IsDeleted=true, DeletedAt={user.DeletedAt:O}, AccountStatus={user.AccountStatus}";
             user.IsDeleted = false;
             user.DeletedAt = null;
 
-            // Restore is meant to fully undo whatever locked the account out, so a suspension
-            // picked up before/along with the deletion is lifted too — otherwise the account
-            // comes back "restored" but still unable to log in, which reads as a bug to admins.
-            // Registration-review statuses (Rejected/PendingReview) are left untouched since
-            // restore isn't an approval action.
-            if (wasSuspended)
-                user.AccountStatus = AccountStatus.Active;
-
+            // Restore only undoes the archive. The account status is left as it
+            // was: a Revoked user stays Revoked, and registration-review statuses
+            // (Rejected/PendingReview) are untouched since restore isn't an
+            // approval action.
             user.UpdatedAt = DateTime.UtcNow;
 
             var newValue = $"IsDeleted=false, AccountStatus={user.AccountStatus}";
@@ -217,10 +178,7 @@ namespace AimPark.API.Services
             _users.Update(user);
             await _users.SaveAsync(ct);
 
-            var message = wasSuspended
-                ? "User restored successfully. Suspension was also lifted."
-                : "User restored successfully.";
-            return new OkObjectResult(new { message });
+            return new OkObjectResult(new { message = "User restored successfully." });
         }
 
         // POST /api/admin/users/{userId}/assign-rfid
@@ -238,14 +196,10 @@ namespace AimPark.API.Services
             // person through before anybody approved them. Revoking afterwards
             // works, but only once somebody notices.
             //
-            // Active is the only status a card belongs to: Rejected and
-            // Suspended are both decisions to keep this person out, and issuing
-            // a working card is the opposite of carrying them out.
-            // Revoked is the one exception: giving the card back is exactly how
-            // a user who lost access to three violations is reinstated.
-            var reinstating = user.AccountStatus == AccountStatus.Revoked;
-
-            if (user.AccountStatus != AccountStatus.Active && !reinstating)
+            // Active is the only status a card belongs to. Rejected and Revoked
+            // are decisions to keep this person out, and Revoked is final: three
+            // accountable violations cost the account and nothing hands it back.
+            if (user.AccountStatus != AccountStatus.Active)
             {
                 var reason = user.AccountStatus switch
                 {
@@ -255,7 +209,7 @@ namespace AimPark.API.Services
                     AccountStatus.Rejected =>
                         "This registration was rejected, so it cannot be given a card.",
                     _ =>
-                        "This account is suspended. Lift the suspension before issuing a card.",
+                        "This account has been revoked, so it cannot be given a card.",
                 };
                 return new BadRequestObjectResult(new { message = reason });
             }
@@ -300,13 +254,6 @@ namespace AimPark.API.Services
             user.RfidStatus = RfidStatus.Active;
             user.UpdatedAt = DateTime.UtcNow;
 
-            if (reinstating)
-            {
-                user.AccountStatus = AccountStatus.Active;
-                await LogActionAsync(adminUserId, userId, "Reinstate", "AccountStatus=Revoked",
-                    "AccountStatus=Active", "Reinstated by assigning a card", ct);
-            }
-
             if (card is not null) _db.Set<RfidCard>().Remove(card);
 
             await LogActionAsync(adminUserId, userId, "AssignRfid", oldValue, $"RfidTagId={user.RfidTagId}, RfidStatus={user.RfidStatus}", null, ct);
@@ -316,7 +263,7 @@ namespace AimPark.API.Services
 
             return new OkObjectResult(new
             {
-                message = reinstating ? "RFID tag assigned. The user is reinstated." : "RFID tag assigned."
+                message = "RFID tag assigned."
             });
         }
 
@@ -343,11 +290,10 @@ namespace AimPark.API.Services
         // Marks both the account and the RFID as Revoked, so User Management
         // says what happened instead of showing an ordinary "no card". The
         // physical card is filed Free by RevokeCardAsync, so it can be handed
-        // to anyone — including this user again, which reinstates them.
+        // to anyone else. Revoked is final: this user is not given a card again.
         //
         // Runs even when no card is on the account: the status is what keeps
-        // the record straight, and skipping it there left the user showing
-        // their old suspension.
+        // the record straight.
         public async Task<bool> RevokeForViolationLimitAsync(User user, Guid actorUserId, CancellationToken ct)
         {
             if (user.AccountStatus == AccountStatus.Revoked)

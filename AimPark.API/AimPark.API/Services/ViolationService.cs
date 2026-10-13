@@ -719,11 +719,14 @@ namespace AimPark.API.Services
             _violations.Update(trigger);
             await _db.SaveChangesAsync(ct);
 
+            // The account is gone, and with it any fine still waiting.
+            await _paymentService.WaiveOpenPenaltiesForUserAsync(user.Id, ct);
+
             await _notificationService.NotifyUserAsync(
                 user.Id,
                 NotificationType.Violation,
-                "RFID card revoked",
-                $"You now have {strikes} accountable violations, so your RFID card has been revoked. Please see the parking office.",
+                "Account revoked",
+                $"You now have {strikes} accountable violations, so your account has been revoked and your RFID card taken back. Any unpaid fines are cancelled. Please see the parking office.",
                 new Dictionary<string, string> { ["violationId"] = trigger.Id.ToString() },
                 ct);
 

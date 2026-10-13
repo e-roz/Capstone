@@ -23,10 +23,6 @@ class ApiEndpoints {
 
   // Admin – Users
   static const users = '/api/admin/users';
-  static String suspendUser(String userId) =>
-      '/api/admin/users/$userId/suspend';
-  static String unsuspendUser(String userId) =>
-      '/api/admin/users/$userId/unsuspend';
   static String markPaymentPaid(String paymentId) =>
       '/api/admin/payments/$paymentId/mark-paid';
   static String archiveUser(String userId) => '/api/admin/users/$userId';

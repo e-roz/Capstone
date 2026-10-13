@@ -68,22 +68,6 @@ class UserDetailScreen extends ConsumerWidget {
     }
 
     return [
-      if (detail.accountStatus == 'Active')
-        OutlinedButton.icon(
-          icon: const Icon(Icons.pause_circle_outline, size: AppSizes.iconSm),
-          label: const Text('Suspend'),
-          style: OutlinedButton.styleFrom(
-            foregroundColor: t.status.warning.fg,
-            side: BorderSide(color: t.status.warning.border),
-          ),
-          onPressed: () => actions.suspend(context),
-        ),
-      if (detail.accountStatus == 'Suspended')
-        FilledButton.icon(
-          icon: const Icon(Icons.play_circle_outline, size: AppSizes.iconSm),
-          label: const Text('Unsuspend'),
-          onPressed: () => actions.unsuspend(context),
-        ),
       OutlinedButton.icon(
         icon: const Icon(Icons.archive_outlined, size: AppSizes.iconSm),
         label: const Text('Archive'),
@@ -116,9 +100,9 @@ class _UserDetailView extends ConsumerWidget {
       'PendingReview' => 'Approve this registration first — assigning a '
           'card activates it at the gate.',
       'Rejected' => 'A rejected registration cannot be given a card.',
-      'Suspended' => 'Lift the suspension before issuing a card.',
-      // Revoked is allowed on purpose: assigning a card is how a user who
-      // lost access to three violations is reinstated.
+      // Revoked is final: three accountable violations cost the account.
+      'Revoked' => 'This account has been revoked, so it cannot be given a '
+          'card.',
       _ => null,
     };
 
@@ -300,7 +284,7 @@ class _UserActions {
   final RegistrationDetail detail;
   final WidgetRef ref;
 
-  /// Suspend, archive, restore and the card actions are shared with the
+  /// Archive, restore and the card actions are shared with the
   /// Users list's row menu, so both ask the same questions.
   UserAccountActions get _shared => UserAccountActions(
         ref: ref,
@@ -311,8 +295,6 @@ class _UserActions {
 
   Future<void> assignRfid(BuildContext context) => _shared.assignRfid(context);
   Future<void> revokeRfid(BuildContext context) => _shared.revokeRfid(context);
-  Future<void> suspend(BuildContext context) => _shared.suspend(context);
-  Future<void> unsuspend(BuildContext context) => _shared.unsuspend(context);
   Future<void> restore(BuildContext context) => _shared.restore(context);
   Future<void> archive(BuildContext context) => _shared.archive(context);
 

@@ -9,10 +9,19 @@ import '../theme/theme.dart';
 import '../widgets/checks_panel.dart';
 import '../widgets/ui/ui.dart';
 
+/// The three lists an applicant moves through. Pending is the queue; the
+/// other two are where a decision leaves them.
+const _statuses = ['Pending', 'Approved', 'Rejected'];
+
+/// What the checks found, as an admin would say it. "No warnings" is the
+/// applications whose documents agreed with what was typed; "With warnings"
+/// is everything the checks asked a person to look at, flagged or unreadable.
+const _clearFilter = 'clear';
+const _warningFilter = 'warnings';
+
 const _verdictFilters = [
-  AppFilterOption('LookCloser', 'Look closer'),
-  AppFilterOption('Unreadable', 'Unreadable'),
-  AppFilterOption('Clear', 'Clear'),
+  AppFilterOption(_clearFilter, 'No warnings'),
+  AppFilterOption(_warningFilter, 'With warnings'),
 ];
 
 /// Search, sort and the checks filter all run in the widget, not the
@@ -39,6 +48,9 @@ class _PendingRegistrationsScreenState
 
   String _search = '';
 
+  /// Which list is showing: Pending, Approved or Rejected.
+  String _status = 'Pending';
+
   /// Null shows everything. Set from the Checks filter to work one kind of
   /// finding at a time — clearing an "Unreadable" backlog without the
   /// "Look closer" ones resorting back to the top of the list every refresh.
@@ -57,12 +69,19 @@ class _PendingRegistrationsScreenState
   Widget build(BuildContext context) {
     return AppPage(
       title: 'Registrations',
-      subtitle: 'Applications waiting on a decision.',
+      subtitle: switch (_status) {
+        'Approved' => 'Applications that became users.',
+        'Rejected' => 'Applications that were turned down.',
+        _ => 'Applications waiting on a decision.',
+      },
       actions: [
         IconButton(
           icon: const Icon(Icons.refresh),
           tooltip: 'Refresh',
-          onPressed: () => ref.invalidate(pendingRegistrationsProvider),
+          onPressed: () {
+            ref.invalidate(pendingRegistrationsProvider);
+            ref.invalidate(decidedRegistrationsProvider);
+          },
         ),
       ],
       toolbar: AppToolbar(
@@ -71,16 +90,26 @@ class _PendingRegistrationsScreenState
           onChanged: (value) => setState(() => _search = value.toLowerCase()),
         ),
         filters: [
-          AppFilterDropdown<String>(
-            label: 'Checks',
-            value: _verdictFilter,
-            options: _verdictFilters,
-            allLabel: 'All',
-            onChanged: (value) => setState(() => _verdictFilter = value),
+          _StatusChips(
+            value: _status,
+            onChanged: (value) => setState(() {
+              _status = value;
+              _verdictFilter = null;
+            }),
           ),
+          // The checks only mean something while the application is still
+          // waiting; once it is decided there is nothing left to look at.
+          if (_status == 'Pending')
+            AppFilterDropdown<String>(
+              label: 'Checks',
+              value: _verdictFilter,
+              options: _verdictFilters,
+              allLabel: 'All',
+              onChanged: (value) => setState(() => _verdictFilter = value),
+            ),
         ],
       ),
-      body: AsyncView(
+      body: _status != 'Pending' ? _decidedBody(context) : AsyncView(
         value: ref.watch(pendingRegistrationsProvider),
         onRetry: () => ref.invalidate(pendingRegistrationsProvider),
         loading: const SkeletonTable(
@@ -177,6 +206,95 @@ class _PendingRegistrationsScreenState
     );
   }
 
+  /// The Approved and Rejected lists. One table shape each: they only differ
+  /// in what the last two columns say about the decision.
+  Widget _decidedBody(BuildContext context) {
+    final approved = _status == 'Approved';
+
+    return AsyncView(
+      value: ref.watch(decidedRegistrationsProvider(_status)),
+      onRetry: () => ref.invalidate(decidedRegistrationsProvider(_status)),
+      loading: const SkeletonTable(
+        columns: 6,
+        columnWidths: [160, 100, 200, 140, 180, 100],
+      ),
+      isEmpty: (list) => list.isEmpty,
+      empty: AppEmptyState(
+        icon: approved ? Icons.how_to_reg_outlined : Icons.block_outlined,
+        title: approved ? 'Nobody approved yet' : 'Nobody rejected',
+        message: approved
+            ? 'Applicants you approve show up here, and in Users.'
+            : 'Applicants you turn down show up here.',
+      ),
+      data: (all) {
+        final rows = _search.isEmpty
+            ? all
+            : all
+                .where((r) =>
+                    r.fullName.toLowerCase().contains(_search) ||
+                    r.email.toLowerCase().contains(_search))
+                .toList();
+
+        if (rows.isEmpty) {
+          return AppEmptyState(
+            icon: Icons.search_off,
+            title: 'No matches',
+            message: 'Nothing here matches \u201c$_search\u201d.',
+          );
+        }
+
+        final t = context.tokens;
+        final text = Theme.of(context).textTheme;
+
+        return AppDataTable(
+          columns: [
+            const DataColumn(label: Text('Name')),
+            const DataColumn(label: Text('Affiliation')),
+            const DataColumn(label: Text('Email')),
+            DataColumn(label: Text(approved ? 'Approved on' : 'Rejected on')),
+            DataColumn(label: Text(approved ? 'Approved by' : 'Reason')),
+            const DataColumn(label: Text('')),
+          ],
+          rows: [
+            for (final reg in rows)
+              DataRow(
+                onSelectChanged: (_) => context.go(
+                  approved ? '/users/${reg.userId}' : '/pending/${reg.userId}',
+                ),
+                cells: [
+                  DataCell(Text(reg.fullName, style: text.titleSmall)),
+                  DataCell(Text(reg.affiliation)),
+                  DataCell(Text(reg.email)),
+                  DataCell(Text(
+                    reg.decidedAt == null ? '-' : _fmt(reg.decidedAt!),
+                    style: text.bodyMedium?.copyWith(color: t.text.secondary),
+                  )),
+                  DataCell(approved
+                      ? Text(reg.decidedByName ?? 'Automatic',
+                          style: text.bodyMedium
+                              ?.copyWith(color: t.text.secondary))
+                      : _RejectedCell(reg: reg)),
+                  DataCell(AppRowAction(
+                    icon: Icons.open_in_new,
+                    label: 'View',
+                    onPressed: () => context.go(approved
+                        ? '/users/${reg.userId}'
+                        : '/pending/${reg.userId}'),
+                  )),
+                ],
+              ),
+          ],
+          footer: Text(
+            rows.length == all.length
+                ? '${all.length} ${_status.toLowerCase()}'
+                : '${rows.length} of ${all.length} ${_status.toLowerCase()}',
+            style: text.bodySmall?.copyWith(color: t.text.secondary),
+          ),
+        );
+      },
+    );
+  }
+
   void _sort(int column, bool ascending) => setState(() {
         _sortColumn = column;
         _sortAscending = ascending;
@@ -191,9 +309,14 @@ class _PendingRegistrationsScreenState
                 r.email.toLowerCase().contains(_search))
             .toList();
 
-    if (_verdictFilter != null) {
-      filtered =
-          filtered.where((r) => r.checksVerdict == _verdictFilter).toList();
+    if (_verdictFilter == _clearFilter) {
+      filtered = filtered.where((r) => r.checksVerdict == 'Clear').toList();
+    } else if (_verdictFilter == _warningFilter) {
+      filtered = filtered
+          .where((r) =>
+              r.checksVerdict == 'LookCloser' ||
+              r.checksVerdict == 'Unreadable')
+          .toList();
     }
 
     filtered.sort((a, b) {
@@ -228,4 +351,73 @@ class _PendingRegistrationsScreenState
         1 => '1 day',
         _ => '$days days',
       };
+}
+
+/// Why somebody was rejected, and how many times it has happened. Someone
+/// turned down twice for the same thing is a different conversation from a
+/// first-time typo.
+class _RejectedCell extends StatelessWidget {
+  const _RejectedCell({required this.reg});
+
+  final PendingRegistration reg;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = context.tokens;
+    final text = Theme.of(context).textTheme;
+    final reason = (reg.rejectionReason ?? '').trim();
+
+    return Column(
+      mainAxisAlignment: MainAxisAlignment.center,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          reason.isEmpty ? 'No reason recorded' : reason,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: text.bodyMedium?.copyWith(color: t.text.secondary),
+        ),
+        if (reg.timesRejected > 1)
+          Text(
+            'Rejected ${reg.timesRejected} times',
+            style: text.bodySmall?.copyWith(color: t.status.danger.fg),
+          ),
+      ],
+    );
+  }
+}
+
+/// Pending, Approved and Rejected. Styled like the Users screen's status chips
+/// so the two pages read as one family.
+class _StatusChips extends StatelessWidget {
+  const _StatusChips({required this.value, required this.onChanged});
+
+  final String value;
+  final ValueChanged<String> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = context.tokens;
+    final text = Theme.of(context).textTheme;
+
+    return Wrap(
+      spacing: AppSpacing.controlGap,
+      runSpacing: AppSpacing.controlGap,
+      crossAxisAlignment: WrapCrossAlignment.center,
+      children: [
+        for (final status in _statuses)
+          ChoiceChip(
+            label: Text(status),
+            selected: value == status,
+            onSelected: (_) => onChanged(status),
+            side: BorderSide(
+              color: value == status ? t.brand.primary : t.border.normal,
+            ),
+            labelStyle: text.labelMedium?.copyWith(
+              color: value == status ? t.brand.subtleText : t.text.primary,
+            ),
+          ),
+      ],
+    );
+  }
 }

@@ -19,7 +19,7 @@ namespace AimPark.API.Controllers
 
         /// <summary>
         /// Returns a paginated, most-recent-first list of every admin action taken
-        /// (suspend, unsuspend, archive, restore, approve, reject, reset-reapply, reset-step).
+        /// (archive, restore, approve, reject, reset-reapply, reset-step).
         /// Optional `action` query param filters to a single action type; optional
         /// `targetUserId` filters to one account's history, for the registration
         /// detail screen.

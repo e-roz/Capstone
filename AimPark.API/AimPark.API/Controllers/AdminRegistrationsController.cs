@@ -19,8 +19,9 @@ namespace AimPark.API.Controllers
         }
 
         [HttpGet("pending")]
-        public Task<ActionResult<List<PendingRegistrationResponse>>> GetPending(CancellationToken ct)
-            => _adminRegistrationService.GetPendingAsync(ct);
+        public Task<ActionResult<List<PendingRegistrationResponse>>> GetPending(
+            [FromQuery] string? status, CancellationToken ct)
+            => _adminRegistrationService.GetPendingAsync(status, ct);
 
         [HttpGet("{userId:guid}")]
         public Task<ActionResult<RegistrationDetailResponse>> GetDetail(Guid userId, CancellationToken ct)

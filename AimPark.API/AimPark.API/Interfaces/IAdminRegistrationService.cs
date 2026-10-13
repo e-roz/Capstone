@@ -6,7 +6,7 @@ namespace AimPark.API.Interfaces
 {
     public interface IAdminRegistrationService
     {
-        Task<ActionResult<List<PendingRegistrationResponse>>> GetPendingAsync(CancellationToken ct);
+        Task<ActionResult<List<PendingRegistrationResponse>>> GetPendingAsync(string? status, CancellationToken ct);
         Task<ActionResult<RegistrationDetailResponse>> GetDetailAsync(Guid userId, CancellationToken ct);
         Task<ActionResult<object>> ApproveAsync(Guid userId, Guid adminUserId, ApproveRegistrationDto dto, CancellationToken ct);
         Task<ActionResult<object>> RejectAsync(Guid userId, Guid adminUserId, RejectRegistrationDto dto, CancellationToken ct);

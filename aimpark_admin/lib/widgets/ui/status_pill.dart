@@ -101,8 +101,7 @@ class StatusIntents {
   /// Account status on User Management and User Detail.
   static StatusIntent user(String status) => switch (status) {
         'Active' => StatusIntent.success,
-        'Suspended' => StatusIntent.warning,
-        // Revoked: lost parking access after three accountable violations.
+        // Revoked: lost the account after three accountable violations.
         'Rejected' || 'Revoked' => StatusIntent.danger,
         'Pending' || 'PendingReview' => StatusIntent.info,
         _ => StatusIntent.neutral,
