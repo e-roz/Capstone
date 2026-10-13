@@ -116,7 +116,8 @@ public class VisitorCardTests
         Assert.Null(pass.CardCollectedAt);
 
         var cards = Body(await new VisitorCardService(db).ListAsync(default));
-        Assert.Equal("NotYetReturned", cards.Single().Whereabouts);
+        // The card is free again the moment the visitor taps out.
+        Assert.Equal("InDrawer", cards.Single().Whereabouts);
     }
 
     [Fact]
