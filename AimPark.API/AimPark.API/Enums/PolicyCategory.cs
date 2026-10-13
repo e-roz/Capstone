@@ -7,22 +7,20 @@ namespace AimPark.API.Enums
     ///
     /// An enum rather than free text so Reports can group by it without having
     /// to reconcile "Parking" against "parking " typed a month apart.
+    ///
+    /// Two kinds are enough: where the car was left, and how the person
+    /// behaved. Access, Documentation and Other used to be separate and were
+    /// folded into Conduct.
     /// </summary>
     public enum PolicyCategory
     {
         /// <summary>Bad parking itself — wrong bay, double-parked, over the line.</summary>
         Parking = 0,
 
-        /// <summary>Entry/exit and RFID misuse — tailgating, lending a card.</summary>
-        Access = 1,
-
-        /// <summary>Moving offences inside the campus grounds — speeding, wrong way.</summary>
-        Conduct = 2,
-
-        /// <summary>Registration and document problems — expired OR, unregistered plate.</summary>
-        Documentation = 3,
-
-        /// <summary>Anything that does not fit the four above.</summary>
-        Other = 4
+        /// <summary>
+        /// How the person behaved — tailgating, lending a card, damage, theft,
+        /// expired papers.
+        /// </summary>
+        Conduct = 2
     }
 }

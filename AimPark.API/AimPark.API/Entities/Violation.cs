@@ -25,7 +25,7 @@ namespace AimPark.API.Entities
         // the rule is the penalty.
         public decimal PenaltyAmount { get; set; }
         public SuspensionType SuspensionType { get; set; }
-        public int? SuspensionDays { get; set; }
+        public int? SuspensionHours { get; set; }
 
         public ViolationStatus Status { get; set; } = ViolationStatus.Issued;
 

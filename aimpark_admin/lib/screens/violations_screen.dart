@@ -195,9 +195,11 @@ class _RuleSummary extends StatelessWidget {
     final t = context.tokens;
     final text = Theme.of(context).textTheme;
     final suspension = switch (rule.defaultSuspensionType) {
-      'Temporary' => '${rule.defaultSuspensionDays} day suspension',
-      'Permanent' => 'Permanent suspension',
-      _ => 'No suspension',
+      'Temporary' when rule.defaultSuspensionHours != null =>
+        'Card suspended for ${formatHours(rule.defaultSuspensionHours!)}',
+      'Temporary' => 'Card suspended',
+      'Permanent' => 'Card revoked',
+      _ => 'No card action',
     };
     final starts = rule.defaultSuspensionType == 'None'
         ? ''
@@ -423,10 +425,11 @@ class _ViolationsTab extends ConsumerWidget {
           : StatusPill.of(
               // A bare "Temporary" left the reviewer to open the violation to
               // find out whether it meant three days or thirty.
-              v.suspensionType == 'Temporary' && v.suspensionDays != null
-                  ? '${v.suspensionType} · ${v.suspensionDays} '
-                      '${v.suspensionDays == 1 ? 'day' : 'days'}'
-                  : v.suspensionType,
+              v.suspensionType == 'Temporary' && v.suspensionHours != null
+                  ? 'Suspended · ${formatHours(v.suspensionHours!)}'
+                  : v.suspensionType == 'Permanent'
+                      ? 'Card revoked'
+                      : v.suspensionType,
               intent: v.suspensionType == 'Permanent'
                   ? StatusIntent.danger
                   : StatusIntent.warning,

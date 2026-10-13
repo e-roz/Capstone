@@ -30,7 +30,7 @@ class PolicyRuleActions extends _$PolicyRuleActions {
     required String category,
     required double defaultPenaltyAmount,
     required String defaultSuspensionType,
-    int? defaultSuspensionDays,
+    int? defaultSuspensionHours,
     required int appealWindowDays,
     required bool isActive,
   }) =>
@@ -42,7 +42,7 @@ class PolicyRuleActions extends _$PolicyRuleActions {
           'category': category,
           'defaultPenaltyAmount': defaultPenaltyAmount,
           'defaultSuspensionType': defaultSuspensionType,
-          'defaultSuspensionDays': defaultSuspensionDays,
+          'defaultSuspensionHours': defaultSuspensionHours,
           'appealWindowDays': appealWindowDays,
           'isActive': isActive,
         });
@@ -56,7 +56,7 @@ class PolicyRuleActions extends _$PolicyRuleActions {
     required String category,
     required double defaultPenaltyAmount,
     required String defaultSuspensionType,
-    int? defaultSuspensionDays,
+    int? defaultSuspensionHours,
     required int appealWindowDays,
     required bool isActive,
   }) =>
@@ -68,7 +68,7 @@ class PolicyRuleActions extends _$PolicyRuleActions {
           'category': category,
           'defaultPenaltyAmount': defaultPenaltyAmount,
           'defaultSuspensionType': defaultSuspensionType,
-          'defaultSuspensionDays': defaultSuspensionDays,
+          'defaultSuspensionHours': defaultSuspensionHours,
           'appealWindowDays': appealWindowDays,
           'isActive': isActive,
         });

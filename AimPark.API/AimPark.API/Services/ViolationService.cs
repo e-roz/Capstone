@@ -59,7 +59,21 @@ namespace AimPark.API.Services
                 .OrderBy(r => r.Title)
                 .ToListAsync(ct);
 
-            return new OkObjectResult(rules.Select(ToRuleResponse).ToList());
+            // One grouped count rather than a count per rule, so the list stays
+            // a single extra query however many rules there are.
+            var issued = await _db.Set<Violation>().AsNoTracking()
+                .GroupBy(v => v.PolicyRuleId)
+                .Select(g => new { RuleId = g.Key, Count = g.Count() })
+                .ToDictionaryAsync(x => x.RuleId, x => x.Count, ct);
+
+            return new OkObjectResult(rules
+                .Select(r =>
+                {
+                    var response = ToRuleResponse(r);
+                    response.IssuedCount = issued.GetValueOrDefault(r.Id);
+                    return response;
+                })
+                .ToList());
         }
 
         // POST /api/admin/policy-rules
@@ -78,7 +92,7 @@ namespace AimPark.API.Services
                 Category = category,
                 DefaultPenaltyAmount = dto.DefaultPenaltyAmount,
                 DefaultSuspensionType = suspensionType,
-                DefaultSuspensionDays = dto.DefaultSuspensionDays,
+                DefaultSuspensionHours = suspensionType == SuspensionType.Temporary ? dto.DefaultSuspensionHours : null,
                 AppealWindowDays = Math.Max(0, dto.AppealWindowDays),
                 IsActive = dto.IsActive,
                 CreatedAt = now,
@@ -107,7 +121,7 @@ namespace AimPark.API.Services
             rule.Category = category;
             rule.DefaultPenaltyAmount = dto.DefaultPenaltyAmount;
             rule.DefaultSuspensionType = suspensionType;
-            rule.DefaultSuspensionDays = dto.DefaultSuspensionDays;
+            rule.DefaultSuspensionHours = suspensionType == SuspensionType.Temporary ? dto.DefaultSuspensionHours : null;
             rule.AppealWindowDays = Math.Max(0, dto.AppealWindowDays);
             rule.IsActive = dto.IsActive;
             rule.UpdatedAt = DateTime.UtcNow;
@@ -157,7 +171,7 @@ namespace AimPark.API.Services
             // The rule is the penalty. No overrides: two people who broke the
             // same rule get the same consequence.
             var suspensionType = rule.DefaultSuspensionType;
-            var suspensionDays = suspensionType == SuspensionType.Temporary ? rule.DefaultSuspensionDays : null;
+            var suspensionHours = suspensionType == SuspensionType.Temporary ? rule.DefaultSuspensionHours : null;
 
             var now = DateTime.UtcNow;
             var windowDays = Math.Max(0, rule.AppealWindowDays);
@@ -172,7 +186,7 @@ namespace AimPark.API.Services
                 Description = dto.Description.Trim(),
                 PenaltyAmount = rule.DefaultPenaltyAmount,
                 SuspensionType = suspensionType,
-                SuspensionDays = suspensionDays,
+                SuspensionHours = suspensionHours,
                 Status = ViolationStatus.Issued,
                 IssuedByUserId = adminUserId,
                 RfidTagIdAtIssue = user.RfidTagId,
@@ -191,7 +205,7 @@ namespace AimPark.API.Services
 
             if (suspensionType != SuspensionType.None)
             {
-                ApplySuspension(user, suspensionType, suspensionDays, suspensionStartsAt);
+                ApplySuspension(user, suspensionType, suspensionHours, suspensionStartsAt);
                 _users.Update(user);
                 await _users.SaveAsync(ct);
             }
@@ -209,12 +223,12 @@ namespace AimPark.API.Services
                 (SuspensionType.Permanent, true) =>
                     " Your RFID access has been suspended, effective now.",
                 (SuspensionType.Temporary, true) =>
-                    $" Your RFID access has been suspended for {suspensionDays} day(s), effective now.",
+                    $" Your RFID access has been suspended for {FormatHours(suspensionHours ?? 0)}, effective now.",
 
                 (SuspensionType.Permanent, false) =>
                     $" Your RFID access will be suspended on {suspensionStartsAt:MMM d}. Appeal before then and it is put on hold until a decision is made.",
                 (SuspensionType.Temporary, false) =>
-                    $" Your RFID access will be suspended for {suspensionDays} day(s) starting {suspensionStartsAt:MMM d}. Appeal before then and it is put on hold until a decision is made.",
+                    $" Your RFID access will be suspended for {FormatHours(suspensionHours ?? 0)} starting {suspensionStartsAt:MMM d}. Appeal before then and it is put on hold until a decision is made.",
             };
 
             var penaltyNote = violation.PenaltyAmount > 0
@@ -646,7 +660,7 @@ namespace AimPark.API.Services
 
             if (user is not null && startSuspensionNow && violation.SuspensionType != SuspensionType.None)
             {
-                ApplySuspension(user, violation.SuspensionType, violation.SuspensionDays);
+                ApplySuspension(user, violation.SuspensionType, violation.SuspensionHours);
                 _users.Update(user);
                 await _users.SaveAsync(ct);
             }
@@ -720,7 +734,7 @@ namespace AimPark.API.Services
         /// When the suspension begins. Null means immediately.
         /// </param>
         private static void ApplySuspension(
-            User user, SuspensionType suspensionType, int? suspensionDays, DateTime? startsAt = null)
+            User user, SuspensionType suspensionType, int? suspensionHours, DateTime? startsAt = null)
         {
             // A revoked user has no card to suspend, and writing Suspended over
             // Revoked would hide why they lost access.
@@ -736,7 +750,7 @@ namespace AimPark.API.Services
             // otherwise the appeal window would eat the suspension it precedes,
             // and a 3-day penalty inside a 3-day window would never be served.
             user.RfidSuspendedUntil = suspensionType == SuspensionType.Temporary
-                ? effectiveFrom.AddDays(suspensionDays!.Value)
+                ? effectiveFrom.AddHours(suspensionHours!.Value)
                 : null;
             user.UpdatedAt = now;
         }
@@ -786,16 +800,32 @@ namespace AimPark.API.Services
                          && v.Id != exceptViolationId
                          && v.SuspensionType != SuspensionType.None
                          && (v.Status == ViolationStatus.Issued || v.Status == ViolationStatus.Accountable))
-                .Select(v => new { v.Status, v.SuspensionType, v.SuspensionDays, v.AccountableAt })
+                .Select(v => new { v.Status, v.SuspensionType, v.SuspensionHours, v.AccountableAt })
                 .ToListAsync(ct);
 
             return others.Any(v =>
                 v.Status == ViolationStatus.Issued
                 || v.SuspensionType == SuspensionType.Permanent
-                || (v.AccountableAt ?? now).AddDays(v.SuspensionDays ?? 0) > now);
+                || (v.AccountableAt ?? now).AddHours(v.SuspensionHours ?? 0) > now);
         }
 
-        private static BadRequestObjectResult? ValidateRuleDto(
+        /// <summary>
+        /// "36 hours" below a day or exactly on one ("2 days"), "1 day 12 hours"
+        /// between. Shared by every message that states a suspension length.
+        /// </summary>
+        public static string FormatHours(int hours)
+        {
+            static string Unit(int n, string word) => $"{n} {word}{(n == 1 ? "" : "s")}";
+
+            if (hours < 24)
+                return Unit(hours, "hour");
+
+            var days = hours / 24;
+            var rest = hours % 24;
+            return rest == 0 ? Unit(days, "day") : $"{Unit(days, "day")} {Unit(rest, "hour")}";
+        }
+
+        public static BadRequestObjectResult? ValidateRuleDto(
             UpsertPolicyRuleDto dto,
             out SuspensionType suspensionType,
             out PolicyCategory category)
@@ -806,7 +836,7 @@ namespace AimPark.API.Services
             if (string.IsNullOrWhiteSpace(dto.Title))
                 return new BadRequestObjectResult(new { message = "Title is required." });
 
-            if (!Enum.TryParse(dto.Category, true, out category))
+            if (!Enum.TryParse(dto.Category, true, out category) || !Enum.IsDefined(category))
                 return new BadRequestObjectResult(new { message = "Invalid policy category." });
 
             if (dto.DefaultPenaltyAmount < 0)
@@ -824,8 +854,24 @@ namespace AimPark.API.Services
             if (!Enum.TryParse(dto.DefaultSuspensionType, true, out suspensionType))
                 return new BadRequestObjectResult(new { message = "Invalid default suspension type." });
 
-            if (suspensionType == SuspensionType.Temporary && (dto.DefaultSuspensionDays is null || dto.DefaultSuspensionDays <= 0))
-                return new BadRequestObjectResult(new { message = "Temporary suspension requires a positive number of default days." });
+            // A violation that does nothing to the card is not a violation the
+            // card holder will remember. Existing rules saved before this stay
+            // readable; they are asked to pick an action the next time they
+            // are edited.
+            // An inactive rule can't be issued, so it needs no consequence. This
+            // is what lets an old rule with no card action be switched off
+            // without first inventing one for it.
+            if (suspensionType == SuspensionType.None && dto.IsActive)
+                return new BadRequestObjectResult(new { message = "Choose what happens to the RFID card: suspend it or revoke it." });
+
+            if (suspensionType == SuspensionType.Temporary && (dto.DefaultSuspensionHours is null || dto.DefaultSuspensionHours <= 0))
+                return new BadRequestObjectResult(new { message = "A suspension needs at least 1 hour." });
+
+            // Paying a fine never lifts a suspension, and a revoked card has no
+            // end date, so a fine on a revoking rule would buy the person
+            // nothing.
+            if (suspensionType == SuspensionType.Permanent && dto.DefaultPenaltyAmount > 0)
+                return new BadRequestObjectResult(new { message = "A rule that revokes the card cannot also carry a fine." });
 
             return null;
         }
@@ -857,7 +903,7 @@ namespace AimPark.API.Services
                     Status = v.Status.ToString(),
                     PenaltyAmount = v.PenaltyAmount,
                     SuspensionType = v.SuspensionType.ToString(),
-                    SuspensionDays = v.SuspensionDays,
+                    SuspensionHours = v.SuspensionHours,
                     CreatedAt = v.CreatedAt
                 })
                 .ToListAsync(ct);
@@ -915,7 +961,7 @@ namespace AimPark.API.Services
                 Description = row.Description,
                 PenaltyAmount = row.PenaltyAmount,
                 SuspensionType = row.SuspensionType.ToString(),
-                SuspensionDays = row.SuspensionDays,
+                SuspensionHours = row.SuspensionHours,
                 Status = row.Status.ToString(),
                 CreatedAt = row.CreatedAt,
                 UpdatedAt = row.UpdatedAt,
@@ -1011,7 +1057,7 @@ namespace AimPark.API.Services
             Category = r.Category.ToString(),
             DefaultPenaltyAmount = r.DefaultPenaltyAmount,
             DefaultSuspensionType = r.DefaultSuspensionType.ToString(),
-            DefaultSuspensionDays = r.DefaultSuspensionDays,
+            DefaultSuspensionHours = r.DefaultSuspensionHours,
             AppealWindowDays = r.AppealWindowDays,
             IsActive = r.IsActive,
             CreatedAt = r.CreatedAt,
