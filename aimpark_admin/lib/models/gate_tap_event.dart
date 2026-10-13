@@ -21,6 +21,10 @@ class GateTapEvent {
   final bool? plateMatches;
   final bool hasPhoto;
 
+  /// A refusal that needs a look: a card nobody holds, or a plate that is not
+  /// the holder's. Decided by the API so the rows and the summary agree.
+  final bool serious;
+
   const GateTapEvent({
     required this.id,
     required this.at,
@@ -36,6 +40,7 @@ class GateTapEvent {
     required this.registeredPlates,
     required this.plateMatches,
     required this.hasPhoto,
+    required this.serious,
   });
 
   bool get isManual => personKind == 'Manual';
@@ -77,5 +82,61 @@ class GateTapEvent {
     registeredPlates: json['registeredPlates'] as String?,
     plateMatches: json['plateMatches'] as bool?,
     hasPhoto: json['hasPhoto'] as bool? ?? false,
+    serious: json['serious'] as bool? ?? false,
+  );
+}
+
+/// Counts for the current date, gate and search filters, as the Gate Taps page
+/// shows above its table. Refusals are split by whether they need a look.
+class GateTapSummary {
+  final int entered;
+  final int exited;
+  final int deniedSerious;
+  final int deniedRoutine;
+  final int manual;
+
+  const GateTapSummary({
+    required this.entered,
+    required this.exited,
+    required this.deniedSerious,
+    required this.deniedRoutine,
+    required this.manual,
+  });
+
+  factory GateTapSummary.fromJson(Map<String, dynamic> json) => GateTapSummary(
+    entered: (json['entered'] as num?)?.toInt() ?? 0,
+    exited: (json['exited'] as num?)?.toInt() ?? 0,
+    deniedSerious: (json['deniedSerious'] as num?)?.toInt() ?? 0,
+    deniedRoutine: (json['deniedRoutine'] as num?)?.toInt() ?? 0,
+    manual: (json['manual'] as num?)?.toInt() ?? 0,
+  );
+}
+
+class GateTapPage {
+  final List<GateTapEvent> taps;
+  final GateTapSummary summary;
+  final int totalCount;
+  final int page;
+  final int pageSize;
+
+  const GateTapPage({
+    required this.taps,
+    required this.summary,
+    required this.totalCount,
+    required this.page,
+    required this.pageSize,
+  });
+
+  factory GateTapPage.fromJson(Map<String, dynamic> json) => GateTapPage(
+    taps: [
+      for (final t in json['taps'] as List? ?? const [])
+        GateTapEvent.fromJson(t as Map<String, dynamic>),
+    ],
+    summary: GateTapSummary.fromJson(
+      (json['summary'] as Map?)?.cast<String, dynamic>() ?? const {},
+    ),
+    totalCount: (json['totalCount'] as num?)?.toInt() ?? 0,
+    page: (json['page'] as num?)?.toInt() ?? 1,
+    pageSize: (json['pageSize'] as num?)?.toInt() ?? 25,
   );
 }

@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
 import '../core/utils/csv_export.dart';
@@ -11,11 +10,8 @@ import '../models/violation.dart';
 import '../providers/audit_logs_provider.dart';
 import '../providers/system_logs_provider.dart';
 import '../providers/violations_provider.dart';
-import '../providers/auth_provider.dart';
-import '../router/destinations.dart';
 import '../theme/theme.dart';
 import '../widgets/ui/ui.dart';
-import 'gate_taps_tab.dart';
 
 final _stamp = DateFormat('MMM d, yyyy HH:mm');
 final _isoStamp = DateFormat('yyyy-MM-dd HH:mm');
@@ -23,81 +19,49 @@ final _money = NumberFormat.currency(symbol: '₱', decimalDigits: 2);
 
 String _fileStamp() => DateFormat('yyyyMMdd-HHmm').format(DateTime.now());
 
-/// The System Logs module.
+/// The System Logs module, for administrators.
 ///
-/// The capstone document lists six things under this heading. Four are tabs:
-/// user activity, violations, administrative actions and system errors. RFID
-/// access now has its own Parking Logs page under Gates, and gate taps sit here
-/// as a fifth tab. The sixth thing — "Generated Reports — allows the
-/// administrator to view and export summarized logs" — is the Export CSV
-/// control on each tab, rather than a tab of its own that would hold nothing
-/// but download buttons.
+/// Four tabs: user activity, violations, administrative actions and system
+/// errors. The capstone document's RFID access log lives on the Parking Logs
+/// page and the gate taps on the Gate Taps page, both under Gates, because they
+/// are gate work and a guard reads them too. "Generated Reports — allows the
+/// administrator to view and export summarized logs" is the Export CSV control
+/// on each tab, rather than a tab of its own that would hold nothing but
+/// download buttons.
 ///
 /// Tab order follows how often a tab is opened: user activity is the daily
 /// question, and system errors are the one you hope never to need.
-class SystemLogsScreen extends ConsumerWidget {
+class SystemLogsScreen extends StatelessWidget {
   const SystemLogsScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    // "Access Monitoring" is the guard's module: gate taps
-    // and nothing else. The API refuses them user activity and system errors,
-    // and violations and admin actions are not theirs to read either - so
-    // Security gets the tabs it is entitled to rather than four that would
-    // error.
-    final isSecurity = ref.watch(staffRoleProvider) == StaffRole.security;
-
-    // "See all taps" on the Overview links here with ?tab=taps.
-    final wantsTaps =
-        GoRouterState.of(context).uri.queryParameters['tab'] == 'taps';
-    final tabs = isSecurity ? 1 : 5;
-
-    return DefaultTabController(
-      length: tabs,
-      initialIndex: wantsTaps ? tabs - 1 : 0,
-      child: _SystemLogsPage(isSecurity: isSecurity),
-    );
-  }
-}
-
-class _SystemLogsPage extends StatelessWidget {
-  const _SystemLogsPage({required this.isSecurity});
-
-  final bool isSecurity;
-
-  @override
   Widget build(BuildContext context) {
-    return AppPage(
-      title: isSecurity ? 'Access Monitoring' : 'System Logs',
-      subtitle: isSecurity
-          ? 'Every card tapped at a gate reader.'
-          : 'Monitor operations and verify the system is behaving.',
-      toolbar: Align(
-        alignment: Alignment.centerLeft,
-        child: TabBar(
-          isScrollable: true,
-          tabAlignment: TabAlignment.start,
-          tabs: [
-            if (!isSecurity) const Tab(text: 'User Activity'),
-            if (!isSecurity) ...[
-              const Tab(text: 'Violations'),
-              const Tab(text: 'Administrative Actions'),
-              const Tab(text: 'System Errors'),
+    return const DefaultTabController(
+      length: 4,
+      child: AppPage(
+        title: 'System Logs',
+        subtitle: 'Monitor operations and verify the system is behaving.',
+        toolbar: Align(
+          alignment: Alignment.centerLeft,
+          child: TabBar(
+            isScrollable: true,
+            tabAlignment: TabAlignment.start,
+            tabs: [
+              Tab(text: 'User Activity'),
+              Tab(text: 'Violations'),
+              Tab(text: 'Administrative Actions'),
+              Tab(text: 'System Errors'),
             ],
-            const Tab(text: 'Gate taps'),
+          ),
+        ),
+        body: TabBarView(
+          children: [
+            _UserActivityTab(),
+            _ViolationLogsTab(),
+            _AdminActionsTab(),
+            _SystemErrorsTab(),
           ],
         ),
-      ),
-      body: TabBarView(
-        children: [
-          if (!isSecurity) const _UserActivityTab(),
-          if (!isSecurity) ...[
-            const _ViolationLogsTab(),
-            const _AdminActionsTab(),
-            const _SystemErrorsTab(),
-          ],
-          const GateTapsTab(),
-        ],
       ),
     );
   }

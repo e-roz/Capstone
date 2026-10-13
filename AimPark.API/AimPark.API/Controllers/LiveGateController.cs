@@ -65,15 +65,97 @@ namespace AimPark.API.Controllers
             return Ok(new { taps });
         }
 
-        /// <summary>Every tap, newest first, a page at a time — Access Monitoring's Gate taps tab.</summary>
+        /// <summary>
+        /// Every tap, newest first, a page at a time — the Gate Taps page.
+        /// Optional filters: <c>result</c> (entered, exited, denied, manual),
+        /// <c>gate</c>, <c>plate</c> (match, mismatch), an inclusive <c>from</c>
+        /// to <c>to</c>, and <c>search</c> over name, card and plates.
+        /// </summary>
+        /// <remarks>
+        /// The summary counts follow the date, gate and search filters but not
+        /// <c>result</c> or <c>plate</c>: they are the breakdown you pick a
+        /// result from, so narrowing to one result must not zero the others.
+        /// </remarks>
         [HttpGet("history")]
         public async Task<ActionResult<object>> History(
-            [FromQuery] int page = 1, [FromQuery] int pageSize = 25, CancellationToken ct = default)
+            [FromQuery] int page = 1,
+            [FromQuery] int pageSize = 25,
+            [FromQuery] string? result = null,
+            [FromQuery] int? gate = null,
+            [FromQuery] string? plate = null,
+            [FromQuery] DateTime? from = null,
+            [FromQuery] DateTime? to = null,
+            [FromQuery] string? search = null,
+            CancellationToken ct = default)
         {
             page = Math.Max(1, page);
             pageSize = Math.Clamp(pageSize, 1, 100);
 
-            var query = _db.Set<GateTapEvent>().AsNoTracking();
+            var scope = _db.Set<GateTapEvent>().AsNoTracking();
+
+            if (gate is int g)
+                scope = scope.Where(t => t.Gate == g);
+            if (from is DateTime f)
+                scope = scope.Where(t => t.At >= f.ToUniversalTime());
+            if (to is DateTime u)
+                scope = scope.Where(t => t.At <= u.ToUniversalTime());
+
+            if (!string.IsNullOrWhiteSpace(search))
+            {
+                // Plates are held without spaces or dashes, so a typed one has
+                // to be squashed the same way before it can match.
+                var term = search.Trim();
+                var like = $"%{term}%";
+                var plateLike = $"%{term.Replace(" ", "").Replace("-", "")}%";
+                scope = scope.Where(t =>
+                    (t.PersonName != null && EF.Functions.ILike(t.PersonName, like)) ||
+                    (t.RfidTagId != null && EF.Functions.ILike(t.RfidTagId, like)) ||
+                    (t.CameraPlate != null && EF.Functions.ILike(t.CameraPlate, plateLike)) ||
+                    (t.RegisteredPlates != null && EF.Functions.ILike(t.RegisteredPlates, plateLike)));
+            }
+
+            var counts = await scope
+                .GroupBy(_ => 1)
+                .Select(grp => new
+                {
+                    Entered = grp.Count(t => t.Opened && t.PersonKind != GateTapPersonKind.Manual && t.Direction == "IN"),
+                    Exited = grp.Count(t => t.Opened && t.PersonKind != GateTapPersonKind.Manual && t.Direction == "OUT"),
+                    DeniedSerious = grp.Count(t => !t.Opened && t.PersonKind != GateTapPersonKind.Manual
+                        && (t.PersonKind == GateTapPersonKind.Unknown || t.PlateMatches == false)),
+                    DeniedRoutine = grp.Count(t => !t.Opened && t.PersonKind != GateTapPersonKind.Manual
+                        && t.PersonKind != GateTapPersonKind.Unknown && t.PlateMatches != false),
+                    Manual = grp.Count(t => t.PersonKind == GateTapPersonKind.Manual)
+                })
+                .FirstOrDefaultAsync(ct);
+
+            var query = scope;
+
+            switch (result?.ToLowerInvariant())
+            {
+                case "entered":
+                    query = query.Where(t => t.Opened && t.PersonKind != GateTapPersonKind.Manual && t.Direction == "IN");
+                    break;
+                case "exited":
+                    query = query.Where(t => t.Opened && t.PersonKind != GateTapPersonKind.Manual && t.Direction == "OUT");
+                    break;
+                case "denied":
+                    query = query.Where(t => !t.Opened && t.PersonKind != GateTapPersonKind.Manual);
+                    break;
+                case "manual":
+                    query = query.Where(t => t.PersonKind == GateTapPersonKind.Manual);
+                    break;
+            }
+
+            switch (plate?.ToLowerInvariant())
+            {
+                case "match":
+                    query = query.Where(t => t.PlateMatches == true);
+                    break;
+                case "mismatch":
+                    query = query.Where(t => t.PlateMatches == false);
+                    break;
+            }
+
             var totalCount = await query.CountAsync(ct);
             var taps = await query
                 .OrderByDescending(t => t.At)
@@ -82,17 +164,33 @@ namespace AimPark.API.Controllers
                 .Select(AsRow)
                 .ToListAsync(ct);
 
-            return Ok(new { taps, page, pageSize, totalCount });
+            var summary = new
+            {
+                entered = counts?.Entered ?? 0,
+                exited = counts?.Exited ?? 0,
+                deniedSerious = counts?.DeniedSerious ?? 0,
+                deniedRoutine = counts?.DeniedRoutine ?? 0,
+                manual = counts?.Manual ?? 0
+            };
+
+            return Ok(new { taps, page, pageSize, totalCount, summary });
         }
 
+        // "Serious" is the one place the rule lives, so the rows and the summary
+        // counts cannot disagree about which refusals need a look: a card nobody
+        // holds, or a plate that is not the card holder's. Anything else the
+        // gate refuses (no camera reading, a full lot, a double tap) is routine.
         private static readonly Expression<Func<GateTapEvent, GateTapRow>> AsRow = t => new GateTapRow(
             t.Id, t.At, t.Gate, t.ReaderName, t.Direction, t.Opened, t.Message, t.RfidTagId,
-            t.PersonName, t.PersonKind, t.CameraPlate, t.RegisteredPlates, t.PlateMatches, t.HasPhoto);
+            t.PersonName, t.PersonKind, t.CameraPlate, t.RegisteredPlates, t.PlateMatches, t.HasPhoto,
+            !t.Opened && t.PersonKind != GateTapPersonKind.Manual
+                && (t.PersonKind == GateTapPersonKind.Unknown || t.PlateMatches == false));
 
         public record GateTapRow(
             Guid Id, DateTime At, int Gate, string? ReaderName, string Direction, bool Opened,
             string Message, string? RfidTagId, string? PersonName, string PersonKind,
-            string? CameraPlate, string? RegisteredPlates, bool? PlateMatches, bool HasPhoto);
+            string? CameraPlate, string? RegisteredPlates, bool? PlateMatches, bool HasPhoto,
+            bool Serious);
 
         [HttpGet("taps/{id:guid}/photo")]
         public async Task<IActionResult> Photo(Guid id, CancellationToken ct)

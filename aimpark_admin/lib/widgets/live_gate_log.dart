@@ -145,7 +145,7 @@ class _LiveGateLogState extends ConsumerState<LiveGateLog> {
                 ),
               ),
               TextButton.icon(
-                onPressed: () => context.go('/system-logs?tab=taps'),
+                onPressed: () => context.go('/gate-taps'),
                 icon: const Icon(Icons.history, size: 18),
                 label: const Text('See all taps'),
               ),
