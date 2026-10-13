@@ -213,7 +213,7 @@ final incidentsQueryNotifierProvider =
     );
 
 typedef _$IncidentsQueryNotifier = AutoDisposeNotifier<IncidentsQuery>;
-String _$incidentActionsHash() => r'3668fcde2a1e8a4280fda8bb577ae4fc0179607c';
+String _$incidentActionsHash() => r'e411a2c22aea44daf967dfe6eaf72316e2c3fc0a';
 
 /// See also [IncidentActions].
 @ProviderFor(IncidentActions)
