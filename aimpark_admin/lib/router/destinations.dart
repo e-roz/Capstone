@@ -144,6 +144,15 @@ const navGroups = <NavGroup>[
       roles: {StaffRole.admin, StaffRole.security},
     ),
     NavItem(
+      icon: Icons.contactless_outlined,
+      selectedIcon: Icons.contactless,
+      label: 'Gate Taps',
+      route: '/gate-taps',
+      description:
+          'Every card tapped at a gate, including the ones turned away.',
+      roles: {StaffRole.admin, StaffRole.security},
+    ),
+    NavItem(
       icon: Icons.person_add_alt_outlined,
       selectedIcon: Icons.person_add_alt_1,
       label: 'Visitor Passes',
@@ -288,10 +297,10 @@ const navGroups = <NavGroup>[
       label: 'System Logs',
       route: '/system-logs',
       description:
-          'Administrative actions, RFID access and violations, with export.',
-      // "Access Monitoring" in the spec. Security sees the RFID access tab only
-      // — the API refuses them the other two, and the screen hides them.
-      roles: {StaffRole.admin, StaffRole.security},
+          'User activity, violations, administrative actions and system errors, with export.',
+      // Admin only. Security's half of "Access Monitoring" is Parking Logs and
+      // Gate Taps under Gates; the API refuses them everything on this page.
+      roles: {StaffRole.admin},
     ),
   ]),
   NavGroup('System', [
