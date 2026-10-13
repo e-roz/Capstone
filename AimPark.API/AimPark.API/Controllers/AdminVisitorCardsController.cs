@@ -34,14 +34,6 @@ namespace AimPark.API.Controllers
         public Task<ActionResult<VisitorCardResponse>> Add([FromBody] AddVisitorCardDto dto, CancellationToken ct)
             => _cards.AddAsync(dto, ct);
 
-        [HttpPost("{rfidTagId}/block")]
-        public Task<ActionResult<object>> Block(string rfidTagId, [FromBody] BlockVisitorCardDto? dto, CancellationToken ct)
-            => _cards.SetBlockedAsync(rfidTagId, blocked: true, dto?.Note, ct);
-
-        [HttpPost("{rfidTagId}/unblock")]
-        public Task<ActionResult<object>> Unblock(string rfidTagId, CancellationToken ct)
-            => _cards.SetBlockedAsync(rfidTagId, blocked: false, note: null, ct);
-
         [HttpDelete("{rfidTagId}")]
         public Task<ActionResult<object>> Remove(string rfidTagId, CancellationToken ct)
             => _cards.RemoveAsync(rfidTagId, ct);

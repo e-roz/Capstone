@@ -34,9 +34,6 @@ namespace AimPark.API.Services
                     message = "Card, visitor name and plate number are all required."
                 });
 
-            if (!Enum.TryParse<VehicleType>(dto.VehicleType, true, out var vehicleType))
-                return new BadRequestObjectResult(new { message = "Invalid vehicle type." });
-
             // A card belonging to a registered user must never be lent out. It
             // would open the barrier as *them*, park in their name, and bill
             // them for it.
@@ -50,7 +47,7 @@ namespace AimPark.API.Services
                 });
 
             // Only the cards an admin set aside for visitors. Anything else is
-            // somebody's own card, a blocked one, or a card nobody knows about.
+            // somebody's own card or a card nobody knows about.
             var card = await _db.Set<VisitorCard>().AsNoTracking()
                 .FirstOrDefaultAsync(c => c.RfidTagId == tag, ct);
 
@@ -60,16 +57,9 @@ namespace AimPark.API.Services
                     message = "That card isn't registered as a visitor card. Use one of the visitor cards, or ask an admin to register it."
                 });
 
-            if (card.State == VisitorCardState.Blocked)
-                return new ConflictObjectResult(new
-                {
-                    message = $"Visitor card {card.Label} is blocked. Use a different card."
-                });
-
-            await ExpireStalePassesAsync(ct);
-
             var alreadyOut = await _passes.ExistsAsync(
-                p => p.RfidTagId == tag && p.Status == VisitorPassStatus.Active, ct);
+                p => p.RfidTagId == tag
+                  && (p.Status == VisitorPassStatus.Active || p.Status == VisitorPassStatus.Expired), ct);
 
             if (alreadyOut)
                 return new ConflictObjectResult(new
@@ -77,9 +67,8 @@ namespace AimPark.API.Services
                     message = "That card is already out with another visitor. Take it back first, or use a different card."
                 });
 
-            // An expired pass is no longer Active, but its car may still be
-            // parked. The exit tap finds that car through this card, so the
-            // card stays with it until it leaves.
+            // The car may still be parked. The exit tap finds it through this
+            // card, so the card stays with it until it leaves.
             var carStillInside = await _db.Set<ParkingLog>()
                 .AnyAsync(l => l.ExitTime == null
                             && l.VisitorPass != null && l.VisitorPass.RfidTagId == tag, ct);
@@ -92,11 +81,10 @@ namespace AimPark.API.Services
 
             var now = DateTime.UtcNow;
 
-            // A pass with no end is a spare card that opens the barrier for
-            // ever, which is the one outcome lending cards must not produce.
-            var expiresAt = dto.ValidForHours is int hours && hours > 0
-                ? now.AddHours(Math.Min(hours, 24 * 7))
-                : now.Date.AddDays(1).AddSeconds(-1);
+            // A pass is used once: in, then out. It has no expiry. The column
+            // stays only so no migration is needed on the shared database, and
+            // nothing reads it.
+            var expiresAt = now.AddYears(100);
 
             var pass = new VisitorPass
             {
@@ -104,7 +92,6 @@ namespace AimPark.API.Services
                 RfidTagId = tag,
                 VisitorName = dto.VisitorName.Trim(),
                 PlateNumber = IdentifierNormalizer.NormalizePlate(dto.PlateNumber),
-                VehicleType = vehicleType,
                 Purpose = string.IsNullOrWhiteSpace(dto.Purpose) ? null : dto.Purpose.Trim(),
                 ContactNumber = IdentifierNormalizer.NormalizePhone(dto.ContactNumber),
                 IssuedByUserId = issuedByUserId,
@@ -130,13 +117,15 @@ namespace AimPark.API.Services
             page = Math.Max(1, page);
             pageSize = Math.Clamp(pageSize, 1, 100);
 
-            await ExpireStalePassesAsync(ct);
-
             var query = _db.Set<VisitorPass>().AsNoTracking();
             if (!string.IsNullOrWhiteSpace(status)
                 && Enum.TryParse<VisitorPassStatus>(status, true, out var parsed))
             {
-                query = query.Where(p => p.Status == parsed);
+                // Expired is no longer set; an old row that still has it is just
+                // a card that is still out.
+                query = parsed == VisitorPassStatus.Active
+                    ? query.Where(p => p.Status == VisitorPassStatus.Active || p.Status == VisitorPassStatus.Expired)
+                    : query.Where(p => p.Status == parsed);
             }
 
             var totalCount = await query.CountAsync(ct);
@@ -294,8 +283,6 @@ namespace AimPark.API.Services
                 });
             }
 
-            await ExpireStalePassesAsync(ct);
-
             var pass = await _db.Set<VisitorPass>().AsNoTracking()
                 .Where(p => p.RfidTagId == tag)
                 .OrderByDescending(p => p.IssuedAt)
@@ -306,16 +293,14 @@ namespace AimPark.API.Services
 
             // A visitor card between visitors. The last pass on it belongs to
             // somebody who has left, so showing their name would be wrong.
-            if (card is not null && (pass is null || pass.Status != VisitorPassStatus.Active))
+            if (card is not null && (pass is null || pass.Status == VisitorPassStatus.Returned))
                 return new OkObjectResult(new TagLookupResponse
                 {
                     Holder = "Visitor",
                     Name = $"Visitor card {card.Label}",
                     Affiliation = "Not lent to anyone",
                     AccessAllowed = false,
-                    DeniedReason = card.State == VisitorCardState.Blocked
-                        ? $"Visitor card {card.Label} is blocked."
-                        : "Not lent to anyone yet. Tap it at the entry gate to register the visitor."
+                    DeniedReason = "Not lent to anyone yet. Tap it at the entry gate to register the visitor."
                 });
 
             if (pass is null)
@@ -329,13 +314,9 @@ namespace AimPark.API.Services
             var passSession = await OpenSessionAsync(l => l.VisitorPassId == pass.Id, ct);
             var passPendingAlert = await GetPendingAlertAsync(userId: null, visitorPassId: pass.Id, ct);
 
-            var passDenied = pass.Status switch
-            {
-                VisitorPassStatus.Returned => "This card was handed back and is no longer in use.",
-                VisitorPassStatus.Expired => "This visitor pass has expired.",
-                _ when pass.ExpiresAt <= nowUtc => "This visitor pass has expired.",
-                _ => null
-            };
+            var passDenied = pass.Status == VisitorPassStatus.Returned
+                ? "This card was handed back and is no longer in use."
+                : null;
 
             return new OkObjectResult(new TagLookupResponse
             {
@@ -346,8 +327,7 @@ namespace AimPark.API.Services
                 [
                     new TagVehicleResponse
                     {
-                        PlateNumber = pass.PlateNumber,
-                        VehicleType = pass.VehicleType.ToString()
+                        PlateNumber = pass.PlateNumber
                     }
                 ],
                 AccessAllowed = passDenied is null,
@@ -355,7 +335,6 @@ namespace AimPark.API.Services
                 IsInside = passSession is not null,
                 SlotCode = passSession?.SlotCode,
                 EntryTime = passSession?.EntryTime,
-                PassExpiresAt = pass.ExpiresAt,
                 PendingAlert = passPendingAlert
             });
         }
@@ -390,38 +369,6 @@ namespace AimPark.API.Services
                 };
         }
 
-        /// <summary>
-        /// Closes out passes whose day has ended.
-        /// </summary>
-        /// <remarks>
-        /// Done lazily on read rather than by a scheduled job, matching how
-        /// expired RFID suspensions are handled. Nothing here needs to happen at
-        /// the stroke of midnight — it needs to be true by the time anybody
-        /// looks, and every path that could look calls this first.
-        ///
-        /// A card that is still out stays visible as Expired rather than
-        /// Returned. The guard is missing a card, and the list is where they
-        /// find that out.
-        /// </remarks>
-        private async Task ExpireStalePassesAsync(CancellationToken ct)
-        {
-            var now = DateTime.UtcNow;
-
-            var stale = await _db.Set<VisitorPass>()
-                .Where(p => p.Status == VisitorPassStatus.Active && p.ExpiresAt <= now)
-                .ToListAsync(ct);
-
-            if (stale.Count == 0) return;
-
-            foreach (var pass in stale)
-            {
-                pass.Status = VisitorPassStatus.Expired;
-                pass.UpdatedAt = now;
-            }
-
-            await _db.SaveChangesAsync(ct);
-        }
-
         private async Task<OpenSession?> OpenSessionAsync(
             System.Linq.Expressions.Expression<Func<ParkingLog, bool>> match,
             CancellationToken ct)
@@ -451,12 +398,13 @@ namespace AimPark.API.Services
                 RfidTagId = pass.RfidTagId,
                 VisitorName = pass.VisitorName,
                 PlateNumber = pass.PlateNumber,
-                VehicleType = pass.VehicleType.ToString(),
                 Purpose = pass.Purpose,
                 ContactNumber = pass.ContactNumber,
-                Status = pass.Status.ToString(),
+                // Expired is no longer set: an old row that has it is a card still out.
+                Status = (pass.Status == VisitorPassStatus.Returned
+                    ? VisitorPassStatus.Returned
+                    : VisitorPassStatus.Active).ToString(),
                 IssuedAt = pass.IssuedAt,
-                ExpiresAt = pass.ExpiresAt,
                 ReturnedAt = pass.ReturnedAt,
                 CardCollectedAt = pass.CardCollectedAt,
                 CardLabel = await _db.Set<VisitorCard>().AsNoTracking()

@@ -10,10 +10,11 @@ namespace AimPark.API.Interfaces
 
         Task<ActionResult<VisitorCardResponse>> AddAsync(AddVisitorCardDto dto, CancellationToken ct);
 
-        /// <summary>Blocks a lost or broken card, or puts a found one back in use.</summary>
-        Task<ActionResult<object>> SetBlockedAsync(string rfidTagId, bool blocked, string? note, CancellationToken ct);
-
-        /// <summary>Only for a card that was never lent; one with history is blocked instead.</summary>
+        /// <summary>
+        /// Takes a card out of the visitor drawer, e.g. to give it to a new
+        /// user. Its past visitors stay in the history. Refused while the card
+        /// is out with a visitor.
+        /// </summary>
         Task<ActionResult<object>> RemoveAsync(string rfidTagId, CancellationToken ct);
     }
 }

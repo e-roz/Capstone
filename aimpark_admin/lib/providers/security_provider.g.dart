@@ -124,7 +124,7 @@ final visitorPassQueryNotifierProvider =
 
 typedef _$VisitorPassQueryNotifier = AutoDisposeNotifier<VisitorPassQuery>;
 String _$visitorPassActionsHash() =>
-    r'a2207b4811dd7881da14cc325a393c5ea969a77a';
+    r'673571bc48a070b4bbafc7dd4a4aefd97483bfb2';
 
 /// See also [VisitorPassActions].
 @ProviderFor(VisitorPassActions)

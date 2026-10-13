@@ -27,7 +27,6 @@ import '../screens/user_management_screen.dart';
 import '../screens/security_gate_screen.dart';
 import '../screens/security_overview_screen.dart';
 import '../screens/violations_screen.dart';
-import '../screens/visitor_cards_screen.dart';
 import '../screens/visitor_passes_screen.dart';
 import '../widgets/admin_shell.dart';
 
@@ -121,10 +120,6 @@ GoRouter appRouter(Ref ref) {
           GoRoute(
             path: '/rfid-cards',
             builder: (context, state) => const RfidCardsScreen(),
-          ),
-          GoRoute(
-            path: '/visitor-cards',
-            builder: (context, state) => const VisitorCardsScreen(),
           ),
           GoRoute(
             path: '/system-logs',

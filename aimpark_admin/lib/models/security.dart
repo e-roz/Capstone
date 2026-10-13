@@ -8,16 +8,11 @@ class VisitorPass {
   final String? purpose;
   final String? contactNumber;
 
-  /// Active, Returned or Expired.
+  /// Active or Returned.
   final String status;
 
   final DateTime issuedAt;
-  final DateTime expiresAt;
   final DateTime? returnedAt;
-
-  /// When a guard confirmed the card was back in the drawer. Null after
-  /// [returnedAt] means the visitor left with it still in hand.
-  final DateTime? cardCollectedAt;
 
   /// What is written on the card, e.g. "V1".
   final String? cardLabel;
@@ -40,9 +35,7 @@ class VisitorPass {
     required this.contactNumber,
     required this.status,
     required this.issuedAt,
-    required this.expiresAt,
     required this.returnedAt,
-    required this.cardCollectedAt,
     required this.cardLabel,
     required this.issuedByName,
     required this.isInside,
@@ -50,9 +43,6 @@ class VisitorPass {
   });
 
   bool get isActive => status == 'Active';
-
-  /// The visitor tapped out, but nobody has confirmed the card is back.
-  bool get cardNotYetReturned => returnedAt != null && cardCollectedAt == null;
 
   factory VisitorPass.fromJson(Map<String, dynamic> json) => VisitorPass(
         passId: json['passId']?.toString() ?? '',
@@ -64,13 +54,9 @@ class VisitorPass {
         contactNumber: json['contactNumber']?.toString(),
         status: json['status']?.toString() ?? '',
         issuedAt: DateTime.parse(json['issuedAt'].toString()),
-        expiresAt: DateTime.parse(json['expiresAt'].toString()),
         returnedAt: json['returnedAt'] == null
             ? null
             : DateTime.parse(json['returnedAt'].toString()),
-        cardCollectedAt: json['cardCollectedAt'] == null
-            ? null
-            : DateTime.parse(json['cardCollectedAt'].toString()),
         cardLabel: json['cardLabel']?.toString(),
         issuedByName: json['issuedByName']?.toString(),
         isInside: json['isInside'] as bool? ?? false,
@@ -179,9 +165,6 @@ class TagLookup {
   final String? slotCode;
   final DateTime? entryTime;
 
-  /// Set only for a visitor card.
-  final DateTime? passExpiresAt;
-
   /// Set when the camera already flagged this exact card and nobody has
   /// acted on it yet.
   final PendingGateAlert? pendingAlert;
@@ -196,7 +179,6 @@ class TagLookup {
     required this.isInside,
     required this.slotCode,
     required this.entryTime,
-    required this.passExpiresAt,
     required this.pendingAlert,
   });
 
@@ -217,9 +199,6 @@ class TagLookup {
         entryTime: json['entryTime'] == null
             ? null
             : DateTime.parse(json['entryTime'].toString()),
-        passExpiresAt: json['passExpiresAt'] == null
-            ? null
-            : DateTime.parse(json['passExpiresAt'].toString()),
         pendingAlert: json['pendingAlert'] == null
             ? null
             : PendingGateAlert.fromJson(

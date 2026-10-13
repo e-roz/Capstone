@@ -77,10 +77,25 @@ namespace AimPark.API.Services
             return await ClaimForVehicleTypeAsync(vehicleType.Value, userId, atGate, ct);
         }
 
-        public async Task<SlotRecommendationResponse> ClaimForVehicleTypeAsync(
-            VehicleType vehicleType, Guid? userId, int? atGate, CancellationToken ct)
+        public Task<SlotRecommendationResponse> ClaimForVehicleTypeAsync(
+            VehicleType vehicleType, Guid? userId, int? atGate, CancellationToken ct) =>
+            ClaimFromTiersAsync(TiersFor(vehicleType), vehicleType, userId, atGate, ct);
+
+        public async Task<SlotRecommendationResponse> ClaimAnyAsync(int? atGate, CancellationToken ct)
         {
-            foreach (var tier in TiersFor(vehicleType))
+            var claim = await ClaimFromTiersAsync(
+                [[VehicleType.Car, VehicleType.Motorcycle]], VehicleType.Car, userId: null, atGate, ct);
+
+            if (claim.Result == AllocationResult.LotFull)
+                claim.Reason = "All slots are taken.";
+
+            return claim;
+        }
+
+        private async Task<SlotRecommendationResponse> ClaimFromTiersAsync(
+            IEnumerable<VehicleType[]> tiers, VehicleType vehicleType, Guid? userId, int? atGate, CancellationToken ct)
+        {
+            foreach (var tier in tiers)
             {
                 // Guid.Empty matches no parking log, so a visitor simply has no
                 // "gate you used last" and falls through to spare capacity —

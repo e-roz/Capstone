@@ -671,24 +671,6 @@ namespace AimPark.API.Services
                     message = "This card was handed back and is no longer in use."
                 });
 
-            if (pass.ExpiresAt <= nowUtc)
-            {
-                // Recorded, not just refused: the card is out past its day and
-                // the guard needs to see that in the pass list.
-                if (pass.Status == VisitorPassStatus.Active)
-                {
-                    pass.Status = VisitorPassStatus.Expired;
-                    pass.UpdatedAt = nowUtc;
-                    await _db.SaveChangesAsync(ct);
-                }
-
-                return new BadRequestObjectResult(new
-                {
-                    result = AllocationResult.RfidSuspended,
-                    message = "This visitor pass has expired. Issue a new one."
-                });
-            }
-
             var openSession = await _db.Set<ParkingLog>().AsNoTracking()
                 .AnyAsync(l => l.VisitorPassId == pass.Id && l.ExitTime == null, ct);
 
@@ -723,16 +705,14 @@ namespace AimPark.API.Services
                         message = "Slot is not available."
                     });
 
-                // Same rule as a registered vehicle, read off the pass.
-                var refusal = CheckSlotFits(slot, [pass.VehicleType]);
-                if (refusal is not null) return refusal;
             }
             else
             {
-                // The pass carries the vehicle type, since there is no
-                // registered vehicle to read it from.
-                var assignment = await _allocationService.ClaimForVehicleTypeAsync(
-                    pass.VehicleType, userId: null, dto.Gate, ct);
+                // A visitor may park anywhere, so any free bay of either kind
+                // is recommended: a guest with a car is let in while only
+                // motorcycle bays are free, and the other way round. Only a
+                // lot with no free bay at all turns a visitor away.
+                var assignment = await _allocationService.ClaimAnyAsync(dto.Gate, ct);
 
                 if (assignment.Result != AllocationResult.Assigned)
                     return new BadRequestObjectResult(new
@@ -756,7 +736,9 @@ namespace AimPark.API.Services
                 AlprReadingId = alprCheck.Matched?.Id,
                 AlprPlateNumber = alprCheck.Matched?.PlateNumber,
                 AlprMatched = alprCheck.Matched is not null ? true : null,
-                VehicleType = pass.VehicleType,
+                // Not recorded: a visitor's vehicle kind is unknown, and an
+                // unknown kind never tips the wrong-bay warning.
+                VehicleType = null,
                 CreatedAt = nowUtc
             };
 

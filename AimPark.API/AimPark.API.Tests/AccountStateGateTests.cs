@@ -204,7 +204,7 @@ public class AccountStateGateTests
 
         var issued = await new VisitorPassService(new Repository<VisitorPass>(g.Db), g.Db).IssueAsync(new IssueVisitorPassDto
         {
-            RfidTagId = VisitorTag, VisitorName = "Ana", PlateNumber = "abc 123", VehicleType = "Car"
+            RfidTagId = VisitorTag, VisitorName = "Ana", PlateNumber = "abc 123"
         }, Guid.NewGuid(), default);
         Assert.Equal(200, Status(issued));
 
