@@ -81,6 +81,7 @@ namespace AimPark.API.Services
                         UserId = u.Id,
                         FullName = u.FullName,
                         Email = u.Email,
+                        Affiliation = u.Affiliation.ToString(),
                         CreatedAt = u.CreatedAt,
                         UpdatedAt = u.UpdatedAt,
                         WaitingDays = Math.Max(0, (now.Date - u.UpdatedAt.Date).Days)
@@ -103,6 +104,14 @@ namespace AimPark.API.Services
                     row.ChecksNeedingAttention = checks.NeedsAttention;
                     row.ChecksUnreadable = checks.Unreadable;
                     row.ChecksSummary = QueueSummary(checks);
+
+                    var flagged = RegistrationChecks.Flagged(checks);
+                    row.FlaggedCount = flagged.Count;
+                    if (flagged.Count > 0)
+                    {
+                        row.TopFinding = flagged[0].Title;
+                        row.TopFindingSeverity = flagged[0].Severity;
+                    }
                     return row;
                 })
                 .ToList();
@@ -172,6 +181,7 @@ namespace AimPark.API.Services
                 CanReapplyAt = user.CanReapplyAt,
                 IsDeleted = user.IsDeleted,
                 CreatedAt = user.CreatedAt,
+                WaitingDays = Math.Max(0, (DateTime.UtcNow.Date - user.UpdatedAt.Date).Days),
                 RfidTagId = user.RfidTagId,
                 RfidStatus = user.RfidStatus.ToString(),
                 RfidSuspendedUntil = user.RfidSuspendedUntil,

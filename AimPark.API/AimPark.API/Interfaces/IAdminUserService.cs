@@ -23,6 +23,7 @@ namespace AimPark.API.Interfaces
         /// <param name="actorUserId">The admin whose action caused it, or Guid.Empty for the deadline job.</param>
         Task<bool> RevokeForViolationLimitAsync(User user, Guid actorUserId, CancellationToken ct);
         Task<ActionResult<BulkRevokeRfidResponse>> BulkRevokeRfidAsync(Guid adminUserId, BulkRevokeRfidDto dto, CancellationToken ct);
-        Task<ActionResult<List<RfidCardResponse>>> ListRfidCardsAsync(string? state, CancellationToken ct);
+        Task<ActionResult<List<RfidCardResponse>>> ListRfidCardsAsync(string? state, bool includeAssigned, CancellationToken ct);
+        Task<ActionResult<List<RfidCardHistoryEntry>>> GetRfidCardHistoryAsync(string tagId, CancellationToken ct);
     }
 }

@@ -22,9 +22,20 @@ namespace AimPark.API.Controllers
             _adminUserService = adminUserService;
         }
 
-        /// <summary>Optional <c>state</c> query param: "Free" or "Blocked".</summary>
+        /// <summary>
+        /// Optional <c>state</c> query param: "Free", "Blocked" or "Assigned".
+        /// Cards on someone's account are left out unless
+        /// <c>includeAssigned=true</c> (or <c>state=Assigned</c>), so callers
+        /// that only want the pool see the same list as before.
+        /// </summary>
         [HttpGet]
-        public Task<ActionResult<List<RfidCardResponse>>> List([FromQuery] string? state, CancellationToken ct)
-            => _adminUserService.ListRfidCardsAsync(state, ct);
+        public Task<ActionResult<List<RfidCardResponse>>> List(
+            [FromQuery] string? state, [FromQuery] bool includeAssigned, CancellationToken ct)
+            => _adminUserService.ListRfidCardsAsync(state, includeAssigned, ct);
+
+        /// <summary>Assign and revoke events for one card, newest first.</summary>
+        [HttpGet("{tagId}/history")]
+        public Task<ActionResult<List<RfidCardHistoryEntry>>> History(string tagId, CancellationToken ct)
+            => _adminUserService.GetRfidCardHistoryAsync(tagId, ct);
     }
 }

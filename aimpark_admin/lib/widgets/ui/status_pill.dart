@@ -116,6 +116,15 @@ class StatusIntents {
         _ => StatusIntent.info,
       };
 
+  /// A physical card on the RFID cards screen. Free is info, not success:
+  /// it is a card on the shelf, not a good outcome.
+  static StatusIntent rfidCard(String state) => switch (state) {
+        'Assigned' => StatusIntent.success,
+        'Free' => StatusIntent.info,
+        'Blocked' => StatusIntent.danger,
+        _ => StatusIntent.neutral,
+      };
+
   /// Registration review state — the `VerificationStatus` enum on the API.
   ///
   /// `Approved`/`Rejected` are kept as aliases for the wording the queue used

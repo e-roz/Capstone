@@ -33,8 +33,9 @@ class _PendingRegistrationsScreenState
   // silently means the wrong column the moment a column is inserted.
   static const _nameColumn = 0;
   static const _checksColumn = 1;
-  static const _emailColumn = 2;
-  static const _waitingColumn = 4;
+  static const _affiliationColumn = 2;
+  static const _emailColumn = 3;
+  static const _waitingColumn = 5;
 
   String _search = '';
 
@@ -83,8 +84,8 @@ class _PendingRegistrationsScreenState
         value: ref.watch(pendingRegistrationsProvider),
         onRetry: () => ref.invalidate(pendingRegistrationsProvider),
         loading: const SkeletonTable(
-          columns: 6,
-          columnWidths: [160, 140, 200, 140, 100, 100],
+          columns: 7,
+          columnWidths: [160, 180, 80, 200, 140, 100, 100],
         ),
         isEmpty: (list) => list.isEmpty,
         empty: const AppEmptyState(
@@ -112,8 +113,9 @@ class _PendingRegistrationsScreenState
             sortColumnIndex: _sortColumn,
             sortAscending: _sortAscending,
             columns: [
-              DataColumn(label: const Text('Full Name'), onSort: _sort),
+              DataColumn(label: const Text('Name'), onSort: _sort),
               DataColumn(label: const Text('Checks'), onSort: _sort),
+              DataColumn(label: const Text('Affiliation'), onSort: _sort),
               DataColumn(label: const Text('Email'), onSort: _sort),
               DataColumn(label: const Text('Submitted'), onSort: _sort),
               DataColumn(label: const Text('Waiting'), onSort: _sort),
@@ -143,12 +145,16 @@ class _PendingRegistrationsScreenState
       onSelectChanged: (_) => context.go('/pending/${reg.userId}'),
       cells: [
         DataCell(Text(reg.fullName, style: text.titleSmall)),
-        // Counts only. The evidence is one click away and would not survive
-        // being squeezed into a table cell anyway.
-        DataCell(ChecksPill(
+        // The worst finding in words, not a count: "Name mismatch" says
+        // what to look for, "2 need attention" only that something is there.
+        DataCell(TopFindingCell(
           verdict: reg.checksVerdict,
           summary: reg.checksSummary,
+          topFinding: reg.topFinding,
+          severity: reg.topFindingSeverity,
+          count: reg.flaggedCount,
         )),
+        DataCell(Text(reg.affiliation)),
         DataCell(Text(reg.email)),
         DataCell(Text(_fmt(reg.createdAt),
             style: text.bodyMedium?.copyWith(color: t.text.secondary))),
@@ -191,12 +197,19 @@ class _PendingRegistrationsScreenState
     }
 
     filtered.sort((a, b) {
+      // Nothing to review yet, so never ahead of an application that has
+      // documents — whichever way the column is sorted.
+      if (a.hasNoDocuments != b.hasNoDocuments) {
+        return a.hasNoDocuments ? 1 : -1;
+      }
+
       final order = switch (_sortColumn) {
         _nameColumn =>
           a.fullName.toLowerCase().compareTo(b.fullName.toLowerCase()),
         // Ranked, not alphabetical: sorting "2 need attention" against "All 6
         // passed" as text puts them in an order that means nothing.
         _checksColumn => a.concernRank.compareTo(b.concernRank),
+        _affiliationColumn => a.affiliation.compareTo(b.affiliation),
         _emailColumn => a.email.toLowerCase().compareTo(b.email.toLowerCase()),
         _waitingColumn => a.waitingDays.compareTo(b.waitingDays),
         _ => a.createdAt.compareTo(b.createdAt),

@@ -5,6 +5,9 @@ namespace AimPark.API.DTOs
         public Guid UserId { get; set; }
         public string FullName { get; set; } = string.Empty;
         public string Email { get; set; } = string.Empty;
+
+        /// <summary>Student, Faculty, or Staff.</summary>
+        public string Affiliation { get; set; } = string.Empty;
         public DateTime CreatedAt { get; set; }
         public DateTime UpdatedAt { get; set; }
 
@@ -23,6 +26,18 @@ namespace AimPark.API.DTOs
         public int ChecksTotal { get; set; }
         public int ChecksNeedingAttention { get; set; }
         public int ChecksUnreadable { get; set; }
+
+        /// <summary>
+        /// The most serious flagged finding in words ("Name mismatch"), or null
+        /// when nothing was flagged. Same wording as the review screen's first row.
+        /// </summary>
+        public string? TopFinding { get; set; }
+
+        /// <summary>Danger, Warning, or Neutral — the tone of <see cref="TopFinding"/>.</summary>
+        public string? TopFindingSeverity { get; set; }
+
+        /// <summary>How many findings were flagged, <see cref="TopFinding"/> included.</summary>
+        public int FlaggedCount { get; set; }
 
         /// <summary>Whole days since the applicant submitted. Nothing else says this.</summary>
         public int WaitingDays { get; set; }

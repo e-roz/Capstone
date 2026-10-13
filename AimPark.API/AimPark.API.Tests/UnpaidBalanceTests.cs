@@ -83,7 +83,7 @@ public class UnpaidBalanceTests
         var user = new User
         {
             Id = Guid.NewGuid(), FullName = "Juan", Email = "j@x.test", RfidTagId = Tag,
-            RfidStatus = RfidStatus.Active, Role = UserRole.User
+            RfidStatus = RfidStatus.Active, Role = UserRole.User, AccountStatus = AccountStatus.Active
         };
         var slot = new ParkingSlot { SlotCode = "A1", Status = ParkingSlotStatus.Available };
         db.AddRange(user, slot, new ParkingRate { VehicleType = null, RatePerHour = 30m });

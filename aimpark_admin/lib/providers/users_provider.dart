@@ -15,26 +15,34 @@ class UsersQuery {
   final int page;
   final int pageSize;
   final String? status; // null = all
+  final String? role; // null = all
   final String? search; // null/empty = no search filter
 
   const UsersQuery({
     this.page = 1,
     this.pageSize = 20,
     this.status,
+    this.role,
     this.search,
   });
+
+  bool get hasFilters =>
+      status != null || role != null || (search?.isNotEmpty ?? false);
 
   UsersQuery copyWith(
           {int? page,
           int? pageSize,
           String? status,
           bool clearStatus = false,
+          String? role,
+          bool clearRole = false,
           String? search,
           bool clearSearch = false}) =>
       UsersQuery(
         page: page ?? this.page,
         pageSize: pageSize ?? this.pageSize,
         status: clearStatus ? null : (status ?? this.status),
+        role: clearRole ? null : (role ?? this.role),
         search: clearSearch ? null : (search ?? this.search),
       );
 }
@@ -47,10 +55,13 @@ class UsersQueryNotifier extends _$UsersQueryNotifier {
   void setPage(int page) => state = state.copyWith(page: page);
   void setStatus(String? status) =>
       state = state.copyWith(status: status, clearStatus: status == null, page: 1);
+  void setRole(String? role) =>
+      state = state.copyWith(role: role, clearRole: role == null, page: 1);
   void setSearch(String? search) => state = state.copyWith(
       search: search,
       clearSearch: search == null || search.isEmpty,
       page: 1);
+  void clearFilters() => state = UsersQuery(pageSize: state.pageSize);
 }
 
 // ── Users list ───────────────────────────────────────────────────────────────
@@ -64,6 +75,7 @@ Future<UserListPage> userList(Ref ref) async {
     'page': query.page,
     'pageSize': query.pageSize,
     if (query.status != null) 'status': query.status,
+    if (query.role != null) 'role': query.role,
     if (query.search != null && query.search!.isNotEmpty) 'search': query.search,
   };
 
@@ -80,15 +92,27 @@ class BulkRevokeResult {
       {required this.revoked, required this.skippedCount, this.error});
 }
 
-// ── RFID card pool (Free / Blocked) ────────────────────────────────────────
+// ── RFID cards (Assigned / Free / Blocked) ─────────────────────────────────
 
+/// Every card at once — the screen filters and counts on the client, so the
+/// chip counts always add up to what the table can show.
 @riverpod
-Future<List<RfidCard>> rfidCards(Ref ref, {String? cardState}) async {
+Future<List<RfidCard>> rfidCards(Ref ref) async {
   final dio = ref.watch(dioProvider);
   final res = await dio.get(ApiEndpoints.rfidCards,
-      queryParameters: {'state': ?cardState});
+      queryParameters: {'includeAssigned': true});
   return (res.data as List<dynamic>)
       .map((c) => RfidCard.fromJson(c as Map<String, dynamic>))
+      .toList();
+}
+
+@riverpod
+Future<List<RfidCardHistoryEntry>> rfidCardHistory(
+    Ref ref, String rfidTagId) async {
+  final dio = ref.watch(dioProvider);
+  final res = await dio.get(ApiEndpoints.rfidCardHistory(rfidTagId));
+  return (res.data as List<dynamic>)
+      .map((e) => RfidCardHistoryEntry.fromJson(e as Map<String, dynamic>))
       .toList();
 }
 
