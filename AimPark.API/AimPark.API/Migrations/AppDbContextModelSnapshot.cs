@@ -689,11 +689,8 @@ namespace AimPark.API.Migrations
                     b.Property<DateTime?>("ExitTime")
                         .HasColumnType("timestamp with time zone");
 
-                    b.Property<Guid?>("LoggedByDeviceId")
-                        .HasColumnType("uuid");
-
-                    b.Property<Guid?>("LoggedByUserId")
-                        .HasColumnType("uuid");
+                    b.Property<int?>("Gate")
+                        .HasColumnType("integer");
 
                     b.Property<Guid?>("SlotId")
                         .HasColumnType("uuid");

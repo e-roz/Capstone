@@ -18,7 +18,6 @@ const _statuses = [
 
 final _money = NumberFormat.currency(symbol: '₱', decimalDigits: 2);
 final _dateTime = DateFormat('MMM d, yyyy HH:mm');
-final _dateOnly = DateFormat('MMM d, yyyy');
 String _fileStamp() => DateFormat('yyyyMMdd-HHmm').format(DateTime.now());
 
 /// Itemized payment history, filterable by date and status, with export.
@@ -60,7 +59,7 @@ class PaymentLogScreen extends ConsumerWidget {
             allLabel: 'All statuses',
             onChanged: notifier.setStatus,
           ),
-          _DateRangeButton(
+          AppDateRangeFilter(
             from: query.from,
             to: query.to,
             onChanged: notifier.setDateRange,
@@ -178,67 +177,5 @@ class PaymentLogScreen extends ConsumerWidget {
               'range to export the rest.'
           : 'Exported ${result.payments.length} payments.'),
     ));
-  }
-}
-
-/// A single-use date-range trigger — there's no shared date-range widget in
-/// `widgets/ui/` yet, and this is the only screen that needs one.
-class _DateRangeButton extends StatelessWidget {
-  const _DateRangeButton({
-    required this.from,
-    required this.to,
-    required this.onChanged,
-  });
-
-  final DateTime? from;
-  final DateTime? to;
-  final void Function(DateTime? from, DateTime? to) onChanged;
-
-  String get _label {
-    if (from == null && to == null) return 'All dates';
-    if (from != null && to != null) {
-      return '${_dateOnly.format(from!)} – ${_dateOnly.format(to!)}';
-    }
-    return from != null ? 'From ${_dateOnly.format(from!)}' : 'Until ${_dateOnly.format(to!)}';
-  }
-
-  bool get _active => from != null || to != null;
-
-  Future<void> _pick(BuildContext context) async {
-    final now = DateTime.now();
-    final picked = await showDateRangePicker(
-      context: context,
-      firstDate: DateTime(now.year - 5),
-      lastDate: now,
-      initialDateRange:
-          from != null && to != null ? DateTimeRange(start: from!, end: to!) : null,
-    );
-    if (picked == null) return;
-    // Inclusive of the whole end day — a picked range of Sep 1–Sep 1 should
-    // not filter out everything created after midnight.
-    onChanged(
-      picked.start,
-      DateTime(picked.end.year, picked.end.month, picked.end.day, 23, 59, 59),
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        OutlinedButton.icon(
-          icon: const Icon(Icons.date_range_outlined, size: AppSizes.iconSm),
-          label: Text(_label),
-          onPressed: () => _pick(context),
-        ),
-        if (_active)
-          IconButton(
-            icon: const Icon(Icons.close, size: AppSizes.iconSm),
-            tooltip: 'Clear date range',
-            onPressed: () => onChanged(null, null),
-          ),
-      ],
-    );
   }
 }

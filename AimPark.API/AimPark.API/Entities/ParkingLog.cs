@@ -62,10 +62,17 @@ namespace AimPark.API.Entities
         /// </remarks>
         public VehicleType? VehicleType { get; set; }
 
-        // Exactly one of these identifies who recorded the entry: a staff
-        // account working the admin panel, or a gate device reporting a scan.
-        public Guid? LoggedByUserId { get; set; }
-        public Guid? LoggedByDeviceId { get; set; }
+        /// <summary>
+        /// The gate the vehicle came in through. Null when the entry was keyed
+        /// in by hand with no gate named and no bay to infer one from.
+        /// </summary>
+        /// <remarks>
+        /// Stored on the row rather than read through <see cref="Slot"/>: the
+        /// bay is only what the allocator suggested, and the driver may have
+        /// parked elsewhere, but the gate is the one place the system actually
+        /// saw the vehicle.
+        /// </remarks>
+        public int? Gate { get; set; }
 
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     }

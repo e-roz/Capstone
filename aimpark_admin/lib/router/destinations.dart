@@ -135,6 +135,15 @@ const navGroups = <NavGroup>[
       roles: {StaffRole.admin, StaffRole.security},
     ),
     NavItem(
+      icon: Icons.history_outlined,
+      selectedIcon: Icons.history,
+      label: 'Parking Logs',
+      route: '/parking-logs',
+      description:
+          'Every vehicle that came in or out, with who, what and when.',
+      roles: {StaffRole.admin, StaffRole.security},
+    ),
+    NavItem(
       icon: Icons.person_add_alt_outlined,
       selectedIcon: Icons.person_add_alt_1,
       label: 'Visitor Passes',

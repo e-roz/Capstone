@@ -56,7 +56,7 @@ class ApiEndpoints {
   static const auditLogs = '/api/admin/audit-logs';
 
   // Admin – System Logs
-  static const rfidAccessLogs = '/api/admin/logs/rfid-access';
+  static const parkingLogs = '/api/admin/logs/parking';
   static const userActivityLogs = '/api/admin/logs/user-activity';
   static const systemErrorLogs = '/api/admin/logs/errors';
 
