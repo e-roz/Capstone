@@ -145,7 +145,6 @@ class _RegistrationDialogState extends ConsumerState<_RegistrationDialog> {
   late final _plate =
       TextEditingController(text: widget.pending.cameraPlate ?? '');
   final _purpose = TextEditingController();
-  var _vehicleType = 'Car';
   bool _busy = false;
   String? _error;
 
@@ -170,7 +169,6 @@ class _RegistrationDialogState extends ConsumerState<_RegistrationDialog> {
           widget.pending.id,
           visitorName: _name.text.trim(),
           plateNumber: _plate.text.trim(),
-          vehicleType: _vehicleType,
           purpose: _purpose.text.trim(),
         );
 
@@ -246,9 +244,6 @@ class _RegistrationDialogState extends ConsumerState<_RegistrationDialog> {
                     name: _name,
                     plate: _plate,
                     purpose: _purpose,
-                    vehicleType: _vehicleType,
-                    onVehicleTypeChanged: (v) =>
-                        setState(() => _vehicleType = v),
                     autofocusName: true,
                   ),
                 ],

@@ -167,9 +167,9 @@ class _VisitorCardsProviderElement
 }
 
 String _$visitorCardActionsHash() =>
-    r'42278de3e43afccbfaf03902d1d94a0fcdd3004c';
+    r'd994dfd296901e870d5ffa8bfd6756325d403885';
 
-/// Admin's changes to the drawer: register, block, unblock, remove.
+/// Admin's changes to the drawer: register and remove.
 ///
 /// Copied from [VisitorCardActions].
 @ProviderFor(VisitorCardActions)
@@ -186,7 +186,7 @@ final visitorCardActionsProvider =
 
 typedef _$VisitorCardActions = AutoDisposeNotifier<AsyncValue<void>>;
 String _$visitorRegistrationActionsHash() =>
-    r'408dad71bdc51e003274b4ae620236bcd2af204d';
+    r'816e958a141af867c5f4d1eaf5fc782b1e4b8e49';
 
 /// The guard's answer to a visitor card tapped at the gate.
 ///

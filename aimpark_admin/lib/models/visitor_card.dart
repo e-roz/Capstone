@@ -6,11 +6,7 @@ class VisitorCard {
   /// What is written on the card, e.g. "V1".
   final String label;
 
-  /// Active or Blocked.
-  final String state;
-  final String? note;
-
-  /// InDrawer, OutWithVisitor, NotYetReturned or Blocked.
+  /// InDrawer or OutWithVisitor.
   final String whereabouts;
 
   final String? lastPassId;
@@ -19,14 +15,12 @@ class VisitorCard {
   final DateTime? lastIssuedAt;
   final DateTime? lastReturnedAt;
 
-  /// A card that was never lent can be removed; one with history is blocked.
+  /// How many visitors have carried it.
   final int timesLent;
 
   const VisitorCard({
     required this.rfidTagId,
     required this.label,
-    required this.state,
-    required this.note,
     required this.whereabouts,
     required this.lastPassId,
     required this.lastVisitorName,
@@ -36,13 +30,9 @@ class VisitorCard {
     required this.timesLent,
   });
 
-  bool get isBlocked => state == 'Blocked';
-
   factory VisitorCard.fromJson(Map<String, dynamic> json) => VisitorCard(
         rfidTagId: json['rfidTagId']?.toString() ?? '',
         label: json['label']?.toString() ?? '',
-        state: json['state']?.toString() ?? '',
-        note: json['note']?.toString(),
         whereabouts: json['whereabouts']?.toString() ?? '',
         lastPassId: json['lastPassId']?.toString(),
         lastVisitorName: json['lastVisitorName']?.toString(),
@@ -55,10 +45,8 @@ class VisitorCard {
 
 /// How a card's whereabouts reads to a person.
 String visitorCardWhereaboutsLabel(String whereabouts) => switch (whereabouts) {
-      'InDrawer' => 'In the drawer',
+      'InDrawer' => 'Available',
       'OutWithVisitor' => 'Out with visitor',
-      'NotYetReturned' => 'Not yet returned',
-      'Blocked' => 'Blocked',
       _ => whereabouts,
     };
 

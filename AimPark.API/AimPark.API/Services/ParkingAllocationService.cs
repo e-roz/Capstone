@@ -82,15 +82,30 @@ namespace AimPark.API.Services
             return await ClaimForVehicleTypeAsync(vehicleType.Value, userId, atGate, ct);
         }
 
-        public async Task<SlotRecommendationResponse> ClaimForVehicleTypeAsync(
-            VehicleType vehicleType, Guid? userId, int? atGate, CancellationToken ct)
+        public Task<SlotRecommendationResponse> ClaimForVehicleTypeAsync(
+            VehicleType vehicleType, Guid? userId, int? atGate, CancellationToken ct) =>
+            ClaimFromTiersAsync(TiersFor(vehicleType), vehicleType, userId, atGate, ct);
+
+        public async Task<SlotRecommendationResponse> ClaimAnyAsync(int? atGate, CancellationToken ct)
+        {
+            var claim = await ClaimFromTiersAsync(
+                [[VehicleType.Car, VehicleType.Motorcycle]], VehicleType.Car, userId: null, atGate, ct);
+
+            if (claim.Result == AllocationResult.LotFull)
+                claim.Reason = "All slots are taken.";
+
+            return claim;
+        }
+
+        private async Task<SlotRecommendationResponse> ClaimFromTiersAsync(
+            IEnumerable<VehicleType[]> tiers, VehicleType vehicleType, Guid? userId, int? atGate, CancellationToken ct)
         {
             // Room is counted by cards: the lot is full when as many cars have
             // tapped in as there are working bays, whatever the sensors read.
             var room = await ParkingCapacity.LoadAsync(_db, ct);
             var roomButNoBay = false;
 
-            foreach (var tier in TiersFor(vehicleType))
+            foreach (var tier in tiers)
             {
                 if (room.FreeOf(tier) <= 0)
                     continue;

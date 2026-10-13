@@ -30,14 +30,20 @@ namespace AimPark.API.Interfaces
         /// one looked up from a registered vehicle.
         /// </summary>
         /// <remarks>
-        /// For visitors. They hold a lent card and no account, so there is no
-        /// <c>Vehicle</c> row to read a type from — the pass carries it instead.
-        ///
         /// <paramref name="userId"/> is used only for the tie-break that prefers
-        /// the gate somebody used last; pass null for a visitor, who by
-        /// definition has no last gate.
+        /// the gate somebody used last.
         /// </remarks>
         Task<SlotRecommendationResponse> ClaimForVehicleTypeAsync(
             VehicleType vehicleType, Guid? userId, int? atGate, CancellationToken ct);
+
+        /// <summary>
+        /// Claims any free bay, of either kind, for a visitor.
+        /// </summary>
+        /// <remarks>
+        /// A visitor has no registered vehicle and the system does not ask what
+        /// they drive: they may park anywhere, so a free bay of either kind
+        /// will do. <c>LotFull</c> comes back only when no bay at all is free.
+        /// </remarks>
+        Task<SlotRecommendationResponse> ClaimAnyAsync(int? atGate, CancellationToken ct);
     }
 }

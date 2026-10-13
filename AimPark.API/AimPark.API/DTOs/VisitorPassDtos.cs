@@ -9,17 +9,8 @@ namespace AimPark.API.DTOs
         public string VisitorName { get; set; } = string.Empty;
         public string PlateNumber { get; set; } = string.Empty;
 
-        /// <summary>Motorcycle or Car. Decides which bays they can be given.</summary>
-        public string VehicleType { get; set; } = "Car";
-
         public string? Purpose { get; set; }
         public string? ContactNumber { get; set; }
-
-        /// <summary>
-        /// Hours the card stays valid. Left null it expires at the end of the
-        /// day it was issued, which is what a day pass means.
-        /// </summary>
-        public int? ValidForHours { get; set; }
     }
 
     public class VisitorPassResponse
@@ -28,12 +19,10 @@ namespace AimPark.API.DTOs
         public string RfidTagId { get; set; } = string.Empty;
         public string VisitorName { get; set; } = string.Empty;
         public string PlateNumber { get; set; } = string.Empty;
-        public string VehicleType { get; set; } = string.Empty;
         public string? Purpose { get; set; }
         public string? ContactNumber { get; set; }
         public string Status { get; set; } = string.Empty;
         public DateTime IssuedAt { get; set; }
-        public DateTime ExpiresAt { get; set; }
         public DateTime? ReturnedAt { get; set; }
 
         /// <summary>
@@ -101,7 +90,6 @@ namespace AimPark.API.DTOs
         public DateTime? EntryTime { get; set; }
 
         /// <summary>Set only for a visitor card.</summary>
-        public DateTime? PassExpiresAt { get; set; }
 
         /// <summary>
         /// Set when the automatic gate path already turned this exact card

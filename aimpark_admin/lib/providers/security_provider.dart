@@ -133,7 +133,6 @@ class VisitorPassActions extends _$VisitorPassActions {
     required String rfidTagId,
     required String visitorName,
     required String plateNumber,
-    required String vehicleType,
     String? purpose,
     int? validForHours,
   }) async {
@@ -143,7 +142,6 @@ class VisitorPassActions extends _$VisitorPassActions {
         'rfidTagId': rfidTagId,
         'visitorName': visitorName,
         'plateNumber': plateNumber,
-        'vehicleType': vehicleType,
         if (purpose != null && purpose.isNotEmpty) 'purpose': purpose,
         'validForHours': ?validForHours,
       });

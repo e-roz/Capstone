@@ -249,15 +249,6 @@ class _LookupResult extends StatelessWidget {
                             ?.copyWith(color: t.status.danger.solid),
                       ),
                     ],
-                    if (result.passExpiresAt case final expires?) ...[
-                      const SizedBox(height: AppSpacing.x1),
-                      Text(
-                        'Visitor pass valid until '
-                        '${DateFormat('MMM d, HH:mm').format(expires.toLocal())}',
-                        style:
-                            text.bodySmall?.copyWith(color: t.text.secondary),
-                      ),
-                    ],
                   ],
                 ),
               ),

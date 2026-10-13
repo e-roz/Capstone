@@ -102,15 +102,10 @@ namespace AimPark.API.Sync.Site.GateReaders
 
             if (card is not null)
             {
-                if (card.State == VisitorCardState.Blocked)
-                    return new GateTapOutcome(false, "IN",
-                        $"Visitor card {card.Label} is blocked. Keep it and lend a different card.");
-
-                var now = DateTime.UtcNow;
                 var lent = await _db.Set<VisitorPass>().AsNoTracking()
                     .AnyAsync(p => p.RfidTagId == tag
-                                && p.Status == VisitorPassStatus.Active
-                                && p.ExpiresAt > now, ct);
+                                && (p.Status == VisitorPassStatus.Active
+                                    || p.Status == VisitorPassStatus.Expired), ct);
 
                 if (!lent)
                     return new GateTapOutcome(false, "IN",

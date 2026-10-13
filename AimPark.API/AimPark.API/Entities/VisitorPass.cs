@@ -41,8 +41,9 @@ namespace AimPark.API.Entities
         public string PlateNumber { get; set; } = string.Empty;
 
         /// <summary>
-        /// Decides which bays the allocator may pick from, exactly as a
-        /// registered vehicle's type does.
+        /// No longer asked or used: a visitor may park in any bay, so the
+        /// system never looks at what they drive. The column stays only so no
+        /// migration is needed on the shared database; it always reads Car.
         /// </summary>
         public VehicleType VehicleType { get; set; } = VehicleType.Car;
 

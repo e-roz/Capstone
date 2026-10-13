@@ -96,10 +96,6 @@ class ApiEndpoints {
   static const visitorCards = '/api/admin/visitor-cards';
   static String visitorCard(String rfidTagId) =>
       '/api/admin/visitor-cards/$rfidTagId';
-  static String blockVisitorCard(String rfidTagId) =>
-      '/api/admin/visitor-cards/$rfidTagId/block';
-  static String unblockVisitorCard(String rfidTagId) =>
-      '/api/admin/visitor-cards/$rfidTagId/unblock';
 
   // Security: attempts the automatic RFID+ALPR check turned away.
   static String dismissGateAccessAttempt(String attemptId) =>
