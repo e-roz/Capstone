@@ -30,6 +30,7 @@ class AppPage extends StatelessWidget {
     this.subtitle,
     this.actions = const [],
     this.toolbar,
+    this.badge,
     this.scrollable = false,
     this.maxWidth = double.infinity,
     this.onBack,
@@ -56,6 +57,9 @@ class AppPage extends StatelessWidget {
   /// An optional second row — filters, search, tabs — below the title block.
   final Widget? toolbar;
 
+  /// A small status pill beside the title, such as "Live".
+  final Widget? badge;
+
   final Widget body;
 
   /// Set when [body] is a column of cards rather than something that manages
@@ -77,6 +81,7 @@ class AppPage extends StatelessWidget {
       eyebrow: eyebrow,
       subtitle: subtitle,
       actions: actions,
+      badge: badge,
       onBack: onBack,
     );
 
@@ -126,11 +131,15 @@ class AppPageHeader extends StatelessWidget {
     this.eyebrow,
     this.subtitle,
     this.actions = const [],
+    this.badge,
     this.onBack,
   });
 
   final String title;
   final String? eyebrow;
+
+  /// See [AppPage.badge].
+  final Widget? badge;
   final String? subtitle;
   final List<Widget> actions;
 
@@ -176,7 +185,17 @@ class AppPageHeader extends StatelessWidget {
               ),
             ),
           ),
-        Text(title, style: text.headlineSmall),
+        if (badge == null)
+          Text(title, style: text.headlineSmall)
+        else
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Flexible(child: Text(title, style: text.headlineSmall)),
+              const SizedBox(width: AppSpacing.x3),
+              badge!,
+            ],
+          ),
         if (subtitle != null)
           Padding(
             padding: const EdgeInsets.only(top: AppSpacing.x1),
