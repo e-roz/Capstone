@@ -16,6 +16,7 @@ class UsersQuery {
   final int pageSize;
   final String? status; // null = all
   final String? role; // null = all
+  final String? card; // null = all, 'none' = no card, 'has' = has a card
   final String? search; // null/empty = no search filter
 
   const UsersQuery({
@@ -23,11 +24,15 @@ class UsersQuery {
     this.pageSize = 20,
     this.status,
     this.role,
+    this.card,
     this.search,
   });
 
   bool get hasFilters =>
-      status != null || role != null || (search?.isNotEmpty ?? false);
+      status != null ||
+      role != null ||
+      card != null ||
+      (search?.isNotEmpty ?? false);
 
   UsersQuery copyWith(
           {int? page,
@@ -36,6 +41,8 @@ class UsersQuery {
           bool clearStatus = false,
           String? role,
           bool clearRole = false,
+          String? card,
+          bool clearCard = false,
           String? search,
           bool clearSearch = false}) =>
       UsersQuery(
@@ -43,6 +50,7 @@ class UsersQuery {
         pageSize: pageSize ?? this.pageSize,
         status: clearStatus ? null : (status ?? this.status),
         role: clearRole ? null : (role ?? this.role),
+        card: clearCard ? null : (card ?? this.card),
         search: clearSearch ? null : (search ?? this.search),
       );
 }
@@ -57,6 +65,8 @@ class UsersQueryNotifier extends _$UsersQueryNotifier {
       state = state.copyWith(status: status, clearStatus: status == null, page: 1);
   void setRole(String? role) =>
       state = state.copyWith(role: role, clearRole: role == null, page: 1);
+  void setCard(String? card) =>
+      state = state.copyWith(card: card, clearCard: card == null, page: 1);
   void setSearch(String? search) => state = state.copyWith(
       search: search,
       clearSearch: search == null || search.isEmpty,
@@ -76,6 +86,7 @@ Future<UserListPage> userList(Ref ref) async {
     'pageSize': query.pageSize,
     if (query.status != null) 'status': query.status,
     if (query.role != null) 'role': query.role,
+    if (query.card != null) 'card': query.card,
     if (query.search != null && query.search!.isNotEmpty) 'search': query.search,
   };
 
@@ -122,23 +133,6 @@ Future<List<RfidCardHistoryEntry>> rfidCardHistory(
 class UserActions extends _$UserActions {
   @override
   AsyncValue<void> build() => const AsyncData(null);
-
-  Future<String?> suspend(String userId, {String? reason}) async {
-    return _run(() async {
-      final dio = ref.read(dioProvider);
-      final res = await dio.post(ApiEndpoints.suspendUser(userId),
-          data: {'reason': reason});
-      return (res.data as Map<String, dynamic>)['message']?.toString();
-    });
-  }
-
-  Future<String?> unsuspend(String userId) async {
-    return _run(() async {
-      final dio = ref.read(dioProvider);
-      final res = await dio.post(ApiEndpoints.unsuspendUser(userId));
-      return (res.data as Map<String, dynamic>)['message']?.toString();
-    });
-  }
 
   Future<String?> archive(String userId, String adminPassword) async {
     return _run(() async {

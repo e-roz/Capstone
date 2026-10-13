@@ -6,25 +6,22 @@ import '../core/utils/csv_export.dart';
 import '../core/utils/responsive.dart';
 import '../models/audit_log_entry.dart';
 import '../models/system_log_entries.dart';
-import '../models/violation.dart';
 import '../providers/audit_logs_provider.dart';
 import '../providers/system_logs_provider.dart';
-import '../providers/violations_provider.dart';
 import '../theme/theme.dart';
 import '../widgets/ui/ui.dart';
 
 final _stamp = DateFormat('MMM d, yyyy HH:mm');
 final _isoStamp = DateFormat('yyyy-MM-dd HH:mm');
-final _money = NumberFormat.currency(symbol: '₱', decimalDigits: 2);
 
 String _fileStamp() => DateFormat('yyyyMMdd-HHmm').format(DateTime.now());
 
 /// The System Logs module, for administrators.
 ///
-/// Four tabs: user activity, violations, administrative actions and system
-/// errors. The capstone document's RFID access log lives on the Parking Logs
-/// page and the gate taps on the Gate Taps page, both under Gates, because they
-/// are gate work and a guard reads them too. "Generated Reports — allows the
+/// Three tabs: user activity, administrative actions and system errors. The
+/// capstone document's RFID access log and gate taps live on the Parking Logs
+/// and Gate Taps pages under Gates, and its violation log is the Violations
+/// page, which now has the export. "Generated Reports — allows the
 /// administrator to view and export summarized logs" is the Export CSV control
 /// on each tab, rather than a tab of its own that would hold nothing but
 /// download buttons.
@@ -37,7 +34,7 @@ class SystemLogsScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return const DefaultTabController(
-      length: 4,
+      length: 3,
       child: AppPage(
         title: 'System Logs',
         subtitle: 'Monitor operations and verify the system is behaving.',
@@ -48,7 +45,6 @@ class SystemLogsScreen extends StatelessWidget {
             tabAlignment: TabAlignment.start,
             tabs: [
               Tab(text: 'User Activity'),
-              Tab(text: 'Violations'),
               Tab(text: 'Administrative Actions'),
               Tab(text: 'System Errors'),
             ],
@@ -57,7 +53,6 @@ class SystemLogsScreen extends StatelessWidget {
         body: TabBarView(
           children: [
             _UserActivityTab(),
-            _ViolationLogsTab(),
             _AdminActionsTab(),
             _SystemErrorsTab(),
           ],
@@ -328,120 +323,6 @@ class _AdminActionsTab extends ConsumerWidget {
             l.reason ?? '',
             l.oldValue ?? '',
             l.newValue ?? '',
-          ],
-      ],
-    );
-    _exported(context);
-  }
-}
-
-// ── Violation logs ───────────────────────────────────────────────────────────
-
-final _violationStatuses = [
-  for (final s in ViolationStatuses.all)
-    AppFilterOption(s, ViolationStatuses.label(s)),
-];
-
-class _ViolationLogsTab extends ConsumerWidget {
-  const _ViolationLogsTab();
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final query = ref.watch(violationLogsQueryNotifierProvider);
-    final notifier = ref.read(violationLogsQueryNotifierProvider.notifier);
-    final async = ref.watch(violationLogListProvider);
-
-    return _LogTabScaffold(
-      filters: [
-        AppFilterDropdown<String>(
-          label: 'Status',
-          value: query.status,
-          options: _violationStatuses,
-          allLabel: 'All statuses',
-          onChanged: notifier.setStatus,
-        ),
-      ],
-      onRefresh: () => ref.invalidate(violationLogListProvider),
-      onExport: async.hasValue
-          ? () => _export(context, async.requireValue.violations)
-          : null,
-      child: AsyncView(
-        value: async,
-        onRetry: () => ref.invalidate(violationLogListProvider),
-        loading: const SkeletonTable(
-          columns: 5,
-          columnWidths: [160, 100, 100, 120, 140],
-        ),
-        isEmpty: (page) => page.violations.isEmpty,
-        empty: const AppEmptyState(
-          icon: Icons.gavel_outlined,
-          title: 'No violations recorded',
-          message:
-              'Every violation and the penalty applied to it is recorded here. '
-              'Issue and manage them under Violation Tracking.',
-        ),
-        data: (page) => AppDataTable(
-          minWidth: 820,
-          columns: const [
-            DataColumn(label: Text('Rule')),
-            DataColumn(label: Text('Status')),
-            DataColumn(label: Text('Penalty'), numeric: true),
-            DataColumn(label: Text('Suspension')),
-            DataColumn(label: Text('Issued')),
-          ],
-          rows: [
-            for (final v in page.violations)
-              DataRow(cells: [
-                DataCell(Text(v.policyRuleTitle,
-                    style: Theme.of(context).textTheme.titleSmall)),
-                DataCell(StatusPill(
-                  label: ViolationStatuses.label(v.status),
-                  intent: StatusIntents.violation(v.status),
-                  dense: true,
-                )),
-                DataCell(AppNumericCell(_money.format(v.penaltyAmount))),
-                DataCell(Text(
-                  v.suspensionType == 'None' ? '—' : v.suspensionType,
-                  style: v.suspensionType == 'None'
-                      ? Theme.of(context)
-                          .textTheme
-                          .bodyMedium
-                          ?.copyWith(color: context.tokens.text.tertiary)
-                      : null,
-                )),
-                DataCell(Text(
-                  _stamp.format(v.createdAt.toLocal()),
-                  style: Theme.of(context)
-                      .textTheme
-                      .bodySmall
-                      ?.copyWith(color: context.tokens.text.secondary),
-                )),
-              ]),
-          ],
-          footer: AppPagination(
-            page: page.page,
-            pageSize: page.pageSize,
-            total: page.totalCount,
-            itemLabel: 'violations',
-            onPage: notifier.setPage,
-          ),
-        ),
-      ),
-    );
-  }
-
-  void _export(BuildContext context, List<ViolationSummary> violations) {
-    CsvExport.save(
-      fileName: 'aimpark-violation-logs-${_fileStamp()}.csv',
-      headers: const ['Issued', 'Rule', 'Status', 'Penalty', 'Suspension'],
-      rows: [
-        for (final v in violations)
-          [
-            _isoStamp.format(v.createdAt.toLocal()),
-            v.policyRuleTitle,
-            v.status,
-            v.penaltyAmount.toStringAsFixed(2),
-            v.suspensionType,
           ],
       ],
     );

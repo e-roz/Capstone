@@ -67,22 +67,22 @@ public class AccountStateGateTests
     // ── Refused at entry ───────────────────────────────────────────────────
 
     [Fact]
-    public async Task ASuspendedAccountIsRefusedAtEntry()
+    public async Task ARevokedAccountIsRefusedAtEntry()
     {
-        var g = await GateAsync(AccountStatus.Suspended);
+        var g = await GateAsync(AccountStatus.Revoked);
 
         var result = await EnterAsync(g);
 
         Assert.Equal(400, Status(result));
         Assert.Equal("RFID_SUSPENDED", Field(result, "result"));
-        Assert.Equal("Account suspended. See a guard.", Field(result, "message"));
+        Assert.Equal("Account revoked. See a guard.", Field(result, "message"));
         Assert.Empty(g.Db.ParkingLogs);
     }
 
     [Fact]
-    public async Task ASuspendedAccountAlreadyInsideCanStillLeave()
+    public async Task ARevokedAccountAlreadyInsideCanStillLeave()
     {
-        var g = await GateAsync(AccountStatus.Suspended);
+        var g = await GateAsync(AccountStatus.Revoked);
         g.Slot.Status = ParkingSlotStatus.Occupied;
         g.Db.Add(new ParkingLog { UserId = g.User.Id, SlotId = g.Slot.Id, EntryTime = DateTime.UtcNow.AddMinutes(-90) });
         await g.Db.SaveChangesAsync();
@@ -138,7 +138,7 @@ public class AccountStateGateTests
     [Fact]
     public async Task AReaderTapTellsTheDriverAndAManualEntryDoesNot()
     {
-        var g = await GateAsync(AccountStatus.Suspended);
+        var g = await GateAsync(AccountStatus.Revoked);
 
         await EnterAsync(g);
         Assert.Empty(g.Notices.Sent);
@@ -149,7 +149,7 @@ public class AccountStateGateTests
         Assert.Equal("IN", outcome.Direction);
         var notice = Assert.Single(g.Notices.Sent);
         Assert.Equal("Your card was refused", notice.Title);
-        Assert.Equal("Gate 2: your account is suspended. Contact the parking admin.", notice.Message);
+        Assert.Equal("Gate 2: your account is revoked. Contact the parking admin.", notice.Message);
     }
 
     // ── The violation suspension is its own thing ──────────────────────────
@@ -169,36 +169,12 @@ public class AccountStateGateTests
         Assert.Equal("RFID access is suspended.", Field(result, "message"));
     }
 
-    [Fact]
-    public async Task LiftingAnAccountSuspensionLeavesTheViolationSuspensionInPlace()
-    {
-        var g = await GateAsync(AccountStatus.Suspended);
-        var from = DateTime.UtcNow.AddDays(-1);
-        var until = DateTime.UtcNow.AddDays(3);
-        g.User.RfidStatus = RfidStatus.Suspended;
-        g.User.RfidSuspendedFrom = from;
-        g.User.RfidSuspendedUntil = until;
-        await g.Db.SaveChangesAsync();
-
-        var admins = new AdminUserService(
-            new Repository<User>(g.Db), new Repository<AdminAuditLog>(g.Db), g.Db, storage: null!);
-        Assert.Equal(200, Status(await admins.UnsuspendAsync(g.User.Id, Guid.NewGuid(), default)));
-
-        Assert.Equal(AccountStatus.Active, g.User.AccountStatus);
-        Assert.Equal(RfidStatus.Suspended, g.User.RfidStatus);
-        Assert.Equal(from, g.User.RfidSuspendedFrom);
-        Assert.Equal(until, g.User.RfidSuspendedUntil);
-
-        // And the gate now gives the violation's answer, not the account's.
-        Assert.Equal("RFID access is suspended.", Field(await EnterAsync(g), "message"));
-    }
-
     // ── Visitors ───────────────────────────────────────────────────────────
 
     [Fact]
     public async Task AVisitorCardStillGetsIn()
     {
-        var g = await GateAsync(AccountStatus.Suspended);
+        var g = await GateAsync(AccountStatus.Revoked);
         g.Db.VisitorCards.Add(new VisitorCard { RfidTagId = VisitorTag, Label = "V1", State = VisitorCardState.Active });
         await g.Db.SaveChangesAsync();
 

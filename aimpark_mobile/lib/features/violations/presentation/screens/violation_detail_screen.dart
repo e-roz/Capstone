@@ -57,11 +57,15 @@ class ViolationDetailScreen extends ConsumerWidget {
                     intent: appealUrgency(violation.appealDeadline!),
                   ),
                 AppFact(
-                  'Suspension',
-                  violation.suspensionDays != null
-                      ? '${violation.suspensionType} · '
-                            '${violation.suspensionDays} day(s)'
-                      : violation.suspensionType,
+                  'RFID card',
+                  switch (violation.suspensionType) {
+                    'Temporary' when violation.suspensionHours != null =>
+                      'Suspended · '
+                          '${Formatters.suspension(violation.suspensionHours!)}',
+                    'Temporary' => 'Suspended',
+                    'Permanent' => 'Revoked',
+                    _ => 'No change',
+                  },
                 ),
                 if (violation.isPaid)
                   AppFact(

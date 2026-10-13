@@ -216,11 +216,11 @@ class _RuleSection extends StatelessWidget {
                         label: 'Penalty',
                         value: _money.format(rule.defaultPenaltyAmount)),
                     AppField(
-                        label: 'Suspension',
+                        label: 'RFID card',
                         value: _suspension(rule.defaultSuspensionType,
-                            rule.defaultSuspensionDays)),
+                            rule.defaultSuspensionHours)),
                     AppField(
-                        label: 'Suspension starts',
+                        label: 'Card action starts',
                         value: rule.appealWindowDays == 0
                             ? 'Immediately'
                             : 'After ${rule.appealWindowDays} day(s)'),
@@ -261,8 +261,8 @@ class _ViolationSection extends StatelessWidget {
             fields: [
               AppField(label: 'Penalty', value: _money.format(v.penaltyAmount)),
               AppField(
-                  label: 'Suspension',
-                  value: _suspension(v.suspensionType, v.suspensionDays)),
+                  label: 'RFID card',
+                  value: _suspension(v.suspensionType, v.suspensionHours)),
               AppField(
                 label: 'Appeal until',
                 value: v.appealDeadline == null
@@ -604,7 +604,6 @@ class _Actions extends ConsumerWidget {
     final msg = await action;
     ref.invalidate(violationDetailProvider(v.violationId));
     ref.invalidate(violationListProvider);
-    ref.invalidate(violationLogListProvider);
     ref.invalidate(appealListProvider);
     ref.invalidate(pendingAppealCountProvider);
     if (!context.mounted) return;
@@ -708,11 +707,11 @@ Future<String?> _confirm(
   );
 }
 
-String _suspension(String type, int? days) => switch (type) {
-      'Temporary' when days != null =>
-        'Temporary · $days ${days == 1 ? 'day' : 'days'}',
-      'None' || '' => 'None',
-      _ => type,
+String _suspension(String type, int? hours) => switch (type) {
+      'Temporary' when hours != null => 'Card suspended · ${formatHours(hours)}',
+      'Temporary' => 'Card suspended',
+      'Permanent' => 'Card revoked',
+      _ => 'None',
     };
 
 // ── Shared pieces ────────────────────────────────────────────────────────────

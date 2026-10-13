@@ -8,8 +8,11 @@ namespace AimPark.API.DTOs
         public string Category { get; set; } = string.Empty;
         public decimal DefaultPenaltyAmount { get; set; }
         public string DefaultSuspensionType { get; set; } = string.Empty;
-        public int? DefaultSuspensionDays { get; set; }
+        public int? DefaultSuspensionHours { get; set; }
         public int AppealWindowDays { get; set; }
+
+        /// <summary>How many violations have been issued under this rule.</summary>
+        public int IssuedCount { get; set; }
         public bool IsActive { get; set; }
         public DateTime CreatedAt { get; set; }
         public DateTime UpdatedAt { get; set; }

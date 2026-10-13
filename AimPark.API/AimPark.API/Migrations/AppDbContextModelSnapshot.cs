@@ -1094,7 +1094,7 @@ namespace AimPark.API.Migrations
                     b.Property<decimal>("DefaultPenaltyAmount")
                         .HasColumnType("decimal(10,2)");
 
-                    b.Property<int?>("DefaultSuspensionDays")
+                    b.Property<int?>("DefaultSuspensionHours")
                         .HasColumnType("integer");
 
                     b.Property<string>("DefaultSuspensionType")
@@ -1570,7 +1570,7 @@ namespace AimPark.API.Migrations
                         .IsRequired()
                         .HasColumnType("text");
 
-                    b.Property<int?>("SuspensionDays")
+                    b.Property<int?>("SuspensionHours")
                         .HasColumnType("integer");
 
                     b.Property<string>("SuspensionType")

@@ -16,8 +16,10 @@ namespace AimPark.API.Entities
 
         public decimal DefaultPenaltyAmount { get; set; }
         public SuspensionType DefaultSuspensionType { get; set; } = SuspensionType.None;
-        // Only used when DefaultSuspensionType == Temporary
-        public int? DefaultSuspensionDays { get; set; }
+        // Only used when DefaultSuspensionType == Temporary. Hours rather than
+        // days so a light rule can hold the card for an afternoon instead of
+        // a full day.
+        public int? DefaultSuspensionHours { get; set; }
 
         /// <summary>
         /// Days the user's card keeps working after this rule is broken, so

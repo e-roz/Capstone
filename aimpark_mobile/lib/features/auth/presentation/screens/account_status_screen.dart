@@ -18,7 +18,7 @@ class AccountStatusScreen extends StatelessWidget {
     this.canReapplyAt,
   });
 
-  /// `PendingReview`, `Rejected`, `Suspended` — as returned by the API.
+  /// `PendingReview`, `Rejected`, `Revoked` — as returned by the API.
   final String accountStatus;
   final String? message;
   final String? rejectionReason;
@@ -26,7 +26,7 @@ class AccountStatusScreen extends StatelessWidget {
 
   bool get _isPending => accountStatus == 'PendingReview';
   bool get _isRejected => accountStatus == 'Rejected';
-  bool get _isSuspended => accountStatus == 'Suspended';
+  bool get _isRevoked => accountStatus == 'Revoked';
 
   /// Carries a [StatusIntent] rather than a `Color`: waiting for approval is
   /// *informational*, not orange, and stating the intent means dark mode
@@ -56,17 +56,18 @@ class AccountStatusScreen extends StatelessWidget {
       );
     }
 
-    if (_isSuspended) {
+    if (_isRevoked) {
       return (
         icon: Icons.gpp_bad_rounded,
         intent: StatusIntent.danger,
-        title: 'Account suspended',
+        title: 'Account revoked',
         body: message ??
-            'Your account has been suspended. Please contact the administrator.',
+            'Your account has been revoked after three accountable '
+                'violations. Please see the parking office.',
       );
     }
 
-    // A status this build does not recognise. Suspension used to be the
+    // A status this build does not recognise. A suspension used to be the
     // fallback, which made it the thing an unrecognised value said — and it
     // said it to people whose accounts were merely waiting for approval, after
     // the API sent `0` where the name was expected. An accusation is the worst

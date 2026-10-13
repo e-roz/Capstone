@@ -1253,19 +1253,16 @@ namespace AimPark.API.Services
                             registrationStatus = MapStatus(existing)
                         }) { StatusCode = 403 };
 
-                    case AccountStatus.Suspended:
+                    case AccountStatus.Revoked:
                         return new ObjectResult(new
                         {
-                            message = "Your account has been suspended. Please contact admin.",
+                            message = "Your account has been revoked after three accountable violations.",
                             registrationStatus = MapStatus(existing)
                         }) { StatusCode = 403 };
                 }
 
-                // Revoked users lost parking access, not their account: they
-                // still sign in to see their violations and pay. Without this
-                // they fell through to "Resume registration".
                 if (existing.RegistrationStep == RegistrationStep.Completed
-                    && existing.AccountStatus is AccountStatus.Active or AccountStatus.Revoked)
+                    && existing.AccountStatus is AccountStatus.Active)
                 {
                     if (_guardPost.RefuseIfGuard(existing) is { } guardPost)
                         return guardPost;

@@ -5,12 +5,12 @@ namespace AimPark.API.Enums
         PendingReview,
         Active,
         Rejected,
-        Suspended,
 
         /// <summary>
-        /// Lost parking access after three Accountable violations. Unlike
-        /// Suspended, the user can still sign in — to see their violations,
-        /// pay fines and appeal. Assigning a card reinstates them as Active.
+        /// Lost the account after three Accountable violations. Final: the
+        /// user cannot sign in, owes nothing, and is never given a card again.
+        /// Their student, licence and plate numbers stay on file, so the same
+        /// documents cannot be used to register again.
         /// </summary>
         Revoked
     }

@@ -114,10 +114,8 @@ namespace AimPark.API.Services
             return user.AccountStatus switch
             {
                 AccountStatus.Active => null,
-                AccountStatus.Suspended => ("Account suspended. See a guard.",
-                                            "account is suspended. Contact the parking admin."),
-                AccountStatus.Revoked => ("RFID access revoked. See a guard.",
-                                          "RFID access is revoked. Open the app to see why."),
+                AccountStatus.Revoked => ("Account revoked. See a guard.",
+                                          "account is revoked. Contact the parking admin."),
                 _ => ("Account not approved. See a guard.",
                       "account is not approved yet. Contact the parking admin."),
             };

@@ -6,8 +6,8 @@ namespace AimPark.API.DTOs
         public int TotalSlots { get; set; }
 
         /// <summary>
-        /// Free bays: in-service bays less the cars inside the lot, not the
-        /// green bays. See <see cref="Services.ParkingCapacity"/>.
+        /// Room by cards: bays with a working sensor less the cars inside the
+        /// lot, not the green bays. See <see cref="Services.ParkingCapacity"/>.
         /// </summary>
         public int AvailableSlots { get; set; }
 
@@ -28,6 +28,18 @@ namespace AimPark.API.DTOs
         /// once the thing reading them is off.
         /// </summary>
         public bool FeedPaused { get; set; }
+
+        /// <summary>Cars that tapped in and have not tapped out.</summary>
+        public int UsersInside { get; set; }
+
+        /// <summary>Bays a working sensor reads as occupied.</summary>
+        public int SensorsDetected { get; set; }
+
+        /// <summary>Bays with a working sensor: the total the two counts above are read against.</summary>
+        public int LiveBays { get; set; }
+
+        /// <summary>Bays whose sensor has stopped reading. While any is silent, the two counts cannot be compared.</summary>
+        public int NoSignalBays { get; set; }
     }
 
     public class ParkingSlotResponse

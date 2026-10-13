@@ -41,6 +41,19 @@ abstract class Formatters {
     return '${value.inHours}h ${value.inMinutes % 60}m';
   }
 
+  /// A suspension length: `1 hour`, `6 hours`, `1 day`, `1 day 12 hours`,
+  /// `2 days`. Spelled out because the user reads it as a penalty, not a
+  /// timer. Matches what the notification already told them.
+  static String suspension(int hours) {
+    String unit(int n, String word) => '$n $word${n == 1 ? '' : 's'}';
+    if (hours < 24) return unit(hours, 'hour');
+    final days = hours ~/ 24;
+    final rest = hours % 24;
+    return rest == 0
+        ? unit(days, 'day')
+        : '${unit(days, 'day')} ${unit(rest, 'hour')}';
+  }
+
   /// `Today`, `Yesterday`, else the date. Compares calendar days rather than
   /// elapsed hours — 11pm and 1am are different days, not "2 hours ago".
   static String relativeDay(DateTime value) {

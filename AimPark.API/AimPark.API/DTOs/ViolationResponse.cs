@@ -29,15 +29,15 @@ namespace AimPark.API.DTOs
         public string SuspensionType { get; set; } = string.Empty;
 
         /// <summary>
-        /// How long a Temporary suspension runs. Null for None and Permanent,
-        /// where there is no length to state.
+        /// How long a Temporary suspension runs, in hours. Null for None and
+        /// Permanent, where there is no length to state.
         /// </summary>
         /// <remarks>
         /// The list carried the type but not the length, so a row could say
         /// "Temporary" and leave the reviewer to open the violation to find out
         /// whether that meant three days or thirty.
         /// </remarks>
-        public int? SuspensionDays { get; set; }
+        public int? SuspensionHours { get; set; }
 
         public DateTime CreatedAt { get; set; }
 
@@ -61,7 +61,7 @@ namespace AimPark.API.DTOs
         public string Description { get; set; } = string.Empty;
         public decimal PenaltyAmount { get; set; }
         public string SuspensionType { get; set; } = string.Empty;
-        public int? SuspensionDays { get; set; }
+        public int? SuspensionHours { get; set; }
         public string Status { get; set; } = string.Empty;
         public DateTime CreatedAt { get; set; }
         public DateTime UpdatedAt { get; set; }

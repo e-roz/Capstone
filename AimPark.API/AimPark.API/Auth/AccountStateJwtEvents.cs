@@ -87,11 +87,11 @@ namespace AimPark.API.Auth
 
             switch (account.AccountStatus)
             {
-                case AccountStatus.Suspended:
+                case AccountStatus.Revoked:
                     Reject(
                         context,
                         AccountBlockedCode,
-                        "Your account has been suspended. Please contact the administrator.");
+                        "Your account has been revoked after three accountable violations.");
                     return;
 
                 case AccountStatus.Rejected:

@@ -83,6 +83,28 @@ namespace AimPark.API.Controllers
             return Ok(new { objectPath });
         }
 
+        /// <summary>
+        /// Stores the photo the guard PC kept for a gate tap, so an admin can
+        /// open it from the online panel. Raw JPEG body; the same tap sent
+        /// twice just overwrites itself.
+        /// </summary>
+        [HttpPost("tap-photos/{tapId:guid}")]
+        [RequestSizeLimit(TapPhotos.MaxBytes)]
+        public async Task<ActionResult<object>> TapPhoto(Guid tapId, CancellationToken ct)
+        {
+            using var body = new MemoryStream();
+            await Request.Body.CopyToAsync(body, ct);
+            var bytes = body.ToArray();
+
+            if (!TapPhotos.LooksLikeJpeg(bytes))
+                return BadRequest(new { message = "A tap photo must be a JPEG." });
+
+            await _files.EnsureBucketAsync(TapPhotos.Bucket, ct);
+            await _files.SaveBytesAsync(TapPhotos.Bucket, TapPhotos.ObjectPath(tapId), bytes, "image/jpeg", ct);
+
+            return Ok(new { tapId });
+        }
+
         private static bool IsIncidentEvidence(string? path) =>
             !string.IsNullOrWhiteSpace(path) &&
             path.StartsWith(IncidentEvidencePrefix, StringComparison.Ordinal) &&
