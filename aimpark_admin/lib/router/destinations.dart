@@ -155,21 +155,13 @@ const navGroups = <NavGroup>[
     NavItem(
       icon: Icons.person_add_alt_outlined,
       selectedIcon: Icons.person_add_alt_1,
-      label: 'Visitor Passes',
+      label: 'Visitors',
       route: '/visitors',
       moduleLabel: 'Visitor RFID Access',
       description:
-          'Visitor cards tapped at the gate, who has each one, and '
-          'which are not back yet.',
+          'The visitor cards, who has each one, and every visitor who '
+          'has come in.',
       roles: {StaffRole.admin, StaffRole.security},
-    ),
-    NavItem(
-      icon: Icons.style_outlined,
-      selectedIcon: Icons.style,
-      label: 'Visitor Cards',
-      route: '/visitor-cards',
-      description:
-          'The cards kept at the guard post for lending to visitors.',
     ),
     NavItem(
       icon: Icons.sensors_outlined,

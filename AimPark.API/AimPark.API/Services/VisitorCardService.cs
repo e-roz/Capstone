@@ -49,9 +49,7 @@ namespace AimPark.API.Services
                 {
                     RfidTagId = card.RfidTagId,
                     Label = card.Label,
-                    State = card.State.ToString(),
-                    Note = card.Note,
-                    Whereabouts = WhereIs(card.State, last?.ReturnedAt, last?.CardCollectedAt, last is not null),
+                    Whereabouts = WhereIs(last?.ReturnedAt, last is not null),
                     LastPassId = last?.Id,
                     LastVisitorName = last?.VisitorName,
                     LastPlateNumber = last?.PlateNumber,
@@ -64,16 +62,12 @@ namespace AimPark.API.Services
         }
 
         /// <summary>
-        /// Read off the last pass on the card. A pass that hasn't ended — even
-        /// an expired one — still has the card out with its visitor.
+        /// Read off the last pass on the card. A pass that hasn't ended still
+        /// has the card out with its visitor; once the visitor has left, the
+        /// card is free to lend again.
         /// </summary>
-        private static string WhereIs(
-            VisitorCardState state, DateTime? returnedAt, DateTime? collectedAt, bool everLent) =>
-            state == VisitorCardState.Blocked ? "Blocked"
-            : !everLent ? "InDrawer"
-            : returnedAt is null ? "OutWithVisitor"
-            : collectedAt is null ? "NotYetReturned"
-            : "InDrawer";
+        private static string WhereIs(DateTime? returnedAt, bool everLent) =>
+            everLent && returnedAt is null ? "OutWithVisitor" : "InDrawer";
 
         public async Task<ActionResult<VisitorCardResponse>> AddAsync(AddVisitorCardDto dto, CancellationToken ct)
         {
@@ -133,30 +127,8 @@ namespace AimPark.API.Services
             {
                 RfidTagId = card.RfidTagId,
                 Label = card.Label,
-                State = card.State.ToString(),
                 Whereabouts = "InDrawer",
                 CreatedAt = card.CreatedAt
-            });
-        }
-
-        public async Task<ActionResult<object>> SetBlockedAsync(
-            string rfidTagId, bool blocked, string? note, CancellationToken ct)
-        {
-            var card = await _db.Set<VisitorCard>().FindAsync([RfidTag.Normalize(rfidTagId)], ct);
-            if (card is null)
-                return new NotFoundObjectResult(new { message = "Visitor card not found." });
-
-            card.State = blocked ? VisitorCardState.Blocked : VisitorCardState.Active;
-            card.Note = blocked ? (string.IsNullOrWhiteSpace(note) ? null : note.Trim()) : null;
-            card.UpdatedAt = DateTime.UtcNow;
-
-            await _db.SaveChangesAsync(ct);
-
-            return new OkObjectResult(new
-            {
-                message = blocked
-                    ? $"Visitor card {card.Label} is blocked. The gate will refuse it."
-                    : $"Visitor card {card.Label} can be lent again."
             });
         }
 
@@ -167,15 +139,16 @@ namespace AimPark.API.Services
             if (card is null)
                 return new NotFoundObjectResult(new { message = "Visitor card not found." });
 
-            // Past passes name the card by its UID only. Once it has been lent,
-            // it stays on the list (blocked if need be) so those logs can still
-            // say "visitor card V3".
-            if (await _db.Set<VisitorPass>().AnyAsync(p => p.RfidTagId == tag, ct))
+            // A card that is out with a visitor cannot be taken off the list:
+            // the exit tap finds the car through it.
+            if (await _db.Set<VisitorPass>().AnyAsync(p => p.RfidTagId == tag && p.ReturnedAt == null, ct))
                 return new BadRequestObjectResult(new
                 {
-                    message = $"Visitor card {card.Label} has been lent before, so it stays on the list. Block it instead."
+                    message = $"Visitor card {card.Label} is out with a visitor. Take it back first."
                 });
 
+            // Past passes keep their visitor details. They name the card by its
+            // UID, so after this the history shows the UID instead of the label.
             _db.Set<VisitorCard>().Remove(card);
             await _db.SaveChangesAsync(ct);
 

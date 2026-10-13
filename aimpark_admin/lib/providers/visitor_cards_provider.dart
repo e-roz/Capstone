@@ -21,7 +21,7 @@ Future<List<VisitorCard>> visitorCards(Ref ref, {bool admin = false}) async {
   ];
 }
 
-/// Admin's changes to the drawer: register, block, unblock, remove.
+/// Admin's changes to the drawer: register and remove.
 @riverpod
 class VisitorCardActions extends _$VisitorCardActions {
   @override
@@ -31,13 +31,6 @@ class VisitorCardActions extends _$VisitorCardActions {
       _run(() => ref.read(dioProvider).post(ApiEndpoints.visitorCards,
           data: {'rfidTagId': rfidTagId, 'label': label}),
           fallback: 'Visitor card $label added.');
-
-  Future<String?> block(String rfidTagId, {String? note}) => _run(
-      () => ref.read(dioProvider).post(ApiEndpoints.blockVisitorCard(rfidTagId),
-          data: {'note': ?note}));
-
-  Future<String?> unblock(String rfidTagId) => _run(() =>
-      ref.read(dioProvider).post(ApiEndpoints.unblockVisitorCard(rfidTagId)));
 
   Future<String?> remove(String rfidTagId) => _run(
       () => ref.read(dioProvider).delete(ApiEndpoints.visitorCard(rfidTagId)));
@@ -74,7 +67,6 @@ class VisitorRegistrationActions extends _$VisitorRegistrationActions {
     String id, {
     required String visitorName,
     required String plateNumber,
-    required String vehicleType,
     String? purpose,
   }) =>
       _run(() => ref.read(dioProvider).post(
@@ -82,7 +74,6 @@ class VisitorRegistrationActions extends _$VisitorRegistrationActions {
             data: {
               'visitorName': visitorName,
               'plateNumber': plateNumber,
-              'vehicleType': vehicleType,
               if (purpose != null && purpose.isNotEmpty) 'purpose': purpose,
             },
           ));

@@ -5,26 +5,29 @@ import 'package:intl/intl.dart';
 import '../core/utils/responsive.dart';
 import '../models/security.dart';
 import '../models/visitor_card.dart';
+import '../providers/auth_provider.dart';
 import '../providers/security_provider.dart';
 import '../providers/visitor_cards_provider.dart';
+import '../router/destinations.dart';
 import '../theme/theme.dart';
 import '../widgets/rfid_scan_field.dart';
 import '../widgets/ui/ui.dart';
 import '../widgets/visitor_details_fields.dart';
 
-const _passStatuses = ['Active', 'Returned', 'Expired'];
+const _passStatuses = ['Active', 'Returned'];
 
-/// The drawer of visitor cards, and who is holding them.
+final _stamp = DateFormat('MMM d, HH:mm');
+
+/// The visitor cards and the visitors who have used them, on one page.
 ///
-/// Cards are normally lent at the gate: tapping an idle visitor card pops the
-/// visitor form wherever the guard is (see `VisitorRegistrationWatcher`), and
-/// the visitor's exit tap ends the pass. "Issue a card" here is the desk
-/// fallback for when a gate reader is down.
+/// A card is registered once (admin), lent to one visitor for one visit, and
+/// free again the moment that visitor taps out. Cards are normally lent at the
+/// gate: tapping a free card pops the visitor form wherever the guard is (see
+/// `VisitorRegistrationWatcher`). "Lend a card" here is the desk fallback for
+/// when a gate reader is down.
 ///
-/// Defaults to the Active filter rather than to everything, because the
-/// question a guard actually has is "which of my cards are out?" — the history
-/// matters at the end of the day, and the missing card matters now. Cards
-/// released at the exit but not handed back show in the strip on top.
+/// The history defaults to the Active filter, because the question a guard
+/// actually has is "who is still out with a card?".
 class VisitorPassesScreen extends ConsumerWidget {
   const VisitorPassesScreen({super.key});
 
@@ -32,43 +35,52 @@ class VisitorPassesScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final query = ref.watch(visitorPassQueryNotifierProvider);
     final notifier = ref.read(visitorPassQueryNotifierProvider.notifier);
+    final isAdmin = ref.watch(staffRoleProvider) != StaffRole.security;
 
     return AppPage(
-      title: 'Visitor Passes',
-      subtitle: 'Tap an idle visitor card at the entry gate to lend it. The '
-          "visitor's exit tap releases it; mark it returned once it is back.",
+      title: 'Visitors',
+      subtitle: 'Tap a free card at the entry gate to lend it. The '
+          "visitor's exit tap frees it again.",
+      actions: [
+        IconButton(
+          icon: const Icon(Icons.refresh),
+          tooltip: 'Refresh',
+          onPressed: () {
+            ref.invalidate(visitorPassListProvider);
+            ref.invalidate(visitorCardsProvider);
+          },
+        ),
+        if (isAdmin) ...[
+          const SizedBox(width: AppSpacing.x2),
+          OutlinedButton.icon(
+            onPressed: () => _showAddDialog(context, ref),
+            icon: const Icon(Icons.add),
+            label: const Text('Add card'),
+          ),
+        ],
+        const SizedBox(width: AppSpacing.x2),
+        FilledButton.icon(
+          onPressed: () => _showLendDialog(context, ref),
+          icon: const Icon(Icons.badge_outlined),
+          label: const Text('Lend a card'),
+        ),
+      ],
       body: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          _CardsSection(isAdmin: isAdmin),
           AppToolbar(
             filters: [
               AppFilterDropdown<String>(
-                label: 'Status',
+                label: 'History',
                 value: query.status,
                 options: [for (final s in _passStatuses) AppFilterOption(s, s)],
-                allLabel: 'All passes',
+                allLabel: 'All visitors',
                 onChanged: notifier.setStatus,
-              ),
-            ],
-            trailing: [
-              IconButton(
-                icon: const Icon(Icons.refresh),
-                tooltip: 'Refresh',
-                onPressed: () {
-                  ref.invalidate(visitorPassListProvider);
-                  ref.invalidate(visitorCardsProvider);
-                },
-              ),
-              const SizedBox(width: AppSpacing.x2),
-              FilledButton.icon(
-                onPressed: () => _showIssueDialog(context, ref),
-                icon: const Icon(Icons.add),
-                label: const Text('Issue a card'),
               ),
             ],
           ),
           const SizedBox(height: AppSpacing.headingGap),
-          const _CardStrip(),
           Expanded(
             child: AsyncView(
               value: ref.watch(visitorPassListProvider),
@@ -79,15 +91,10 @@ class VisitorPassesScreen extends ConsumerWidget {
                 icon: Icons.badge_outlined,
                 title: query.status == 'Active'
                     ? 'No cards are out'
-                    : 'No visitor passes',
+                    : 'No visitors yet',
                 message: query.status == 'Active'
-                    ? 'Every visitor card is in the drawer. Tap one at the entry gate when a guest arrives.'
-                    : 'Clear the filter to see every pass ever issued.',
-                action: FilledButton.icon(
-                  onPressed: () => _showIssueDialog(context, ref),
-                  icon: const Icon(Icons.add),
-                  label: const Text('Issue a card'),
-                ),
+                    ? 'Every card is free. Tap one at the entry gate when a guest arrives.'
+                    : 'Clear the filter to see every visitor.',
               ),
               data: (page) => Column(
                 children: [
@@ -105,7 +112,7 @@ class VisitorPassesScreen extends ConsumerWidget {
                     page: page.page,
                     pageSize: page.pageSize,
                     total: page.totalCount,
-                    itemLabel: 'passes',
+                    itemLabel: 'visitors',
                     onPage: notifier.setPage,
                   ),
                 ],
@@ -117,64 +124,120 @@ class VisitorPassesScreen extends ConsumerWidget {
     );
   }
 
-  Future<void> _showIssueDialog(BuildContext context, WidgetRef ref) async {
+  Future<void> _showAddDialog(BuildContext context, WidgetRef ref) async {
     final cardCtrl = TextEditingController();
-    final nameCtrl = TextEditingController();
-    final plateCtrl = TextEditingController();
-    final purposeCtrl = TextEditingController();
-    var vehicleType = 'Car';
+    final labelCtrl = TextEditingController();
     final formKey = GlobalKey<FormState>();
 
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setState) => AlertDialog(
-          title: const Text('Issue a Visitor Card at the Desk'),
-          content: SizedBox(
-            width: context.dialogWidth(440),
-            child: Form(
-              key: formKey,
-              autovalidateMode: AutovalidateMode.onUserInteraction,
-              child: SingleChildScrollView(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const AppRequiredNote(),
-                    RfidScanField(controller: cardCtrl),
-                    const SizedBox(height: AppSpacing.x2),
-                    Text(
-                      'Only a registered visitor card works. Usually you '
-                      'don\'t need this: tap the card at the entry gate and '
-                      'the form pops up there.',
-                      style: Theme.of(ctx).textTheme.bodySmall,
-                    ),
-                    const SizedBox(height: AppSpacing.x3),
-                    VisitorDetailsFields(
-                      name: nameCtrl,
-                      plate: plateCtrl,
-                      purpose: purposeCtrl,
-                      vehicleType: vehicleType,
-                      onVehicleTypeChanged: (v) =>
-                          setState(() => vehicleType = v),
-                    ),
-                  ],
+      builder: (ctx) => AlertDialog(
+        title: const Text('Add a visitor card'),
+        content: SizedBox(
+          width: context.dialogWidth(440),
+          child: Form(
+            key: formKey,
+            autovalidateMode: AutovalidateMode.onUserInteraction,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const AppRequiredNote(),
+                RfidScanField(controller: cardCtrl),
+                const SizedBox(height: AppSpacing.x3),
+                TextFormField(
+                  controller: labelCtrl,
+                  textCapitalization: TextCapitalization.characters,
+                  decoration: const InputDecoration(
+                    label: AppFieldLabel('Name', isRequired: true),
+                    helperText: 'What is written on the card, so guards can '
+                        'tell them apart (e.g. VISITOR 1).',
+                  ),
+                  validator: (v) => (v == null || v.trim().isEmpty)
+                      ? 'A name is required'
+                      : null,
                 ),
+              ],
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () {
+              if (formKey.currentState!.validate()) Navigator.pop(ctx, true);
+            },
+            child: const Text('Add card'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true || !context.mounted) return;
+
+    await _say(
+      context,
+      ref.read(visitorCardActionsProvider.notifier).add(
+            rfidTagId: cardCtrl.text.trim(),
+            label: labelCtrl.text.trim(),
+          ),
+    );
+  }
+
+  Future<void> _showLendDialog(BuildContext context, WidgetRef ref) async {
+    final cardCtrl = TextEditingController();
+    final nameCtrl = TextEditingController();
+    final plateCtrl = TextEditingController();
+    final purposeCtrl = TextEditingController();
+    final formKey = GlobalKey<FormState>();
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Lend a visitor card'),
+        content: SizedBox(
+          width: context.dialogWidth(440),
+          child: Form(
+            key: formKey,
+            autovalidateMode: AutovalidateMode.onUserInteraction,
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const AppRequiredNote(),
+                  RfidScanField(controller: cardCtrl),
+                  const SizedBox(height: AppSpacing.x2),
+                  Text(
+                    'Only a registered visitor card works. Usually you '
+                    "don't need this: tap the card at the entry gate and "
+                    'the form pops up there.',
+                    style: Theme.of(ctx).textTheme.bodySmall,
+                  ),
+                  const SizedBox(height: AppSpacing.x3),
+                  VisitorDetailsFields(
+                    name: nameCtrl,
+                    plate: plateCtrl,
+                    purpose: purposeCtrl,
+                  ),
+                ],
               ),
             ),
           ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('Cancel'),
-            ),
-            FilledButton(
-              onPressed: () {
-                if (formKey.currentState!.validate()) Navigator.pop(ctx, true);
-              },
-              child: const Text('Issue card'),
-            ),
-          ],
         ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () {
+              if (formKey.currentState!.validate()) Navigator.pop(ctx, true);
+            },
+            child: const Text('Lend card'),
+          ),
+        ],
       ),
     );
 
@@ -184,27 +247,33 @@ class VisitorPassesScreen extends ConsumerWidget {
           rfidTagId: cardCtrl.text.trim(),
           visitorName: nameCtrl.text.trim(),
           plateNumber: plateCtrl.text.trim(),
-          vehicleType: vehicleType,
           purpose: purposeCtrl.text.trim(),
         );
 
     if (!context.mounted) return;
     ScaffoldMessenger.of(context)
-        .showSnackBar(SnackBar(content: Text(msg ?? 'Card issued.')));
+        .showSnackBar(SnackBar(content: Text(msg ?? 'Card lent.')));
     ref.invalidate(visitorPassListProvider);
     ref.invalidate(visitorsOnSiteCountProvider);
     ref.invalidate(visitorCardsProvider);
   }
 }
 
-/// Every visitor card at a glance: in the drawer, out, or released at the
-/// exit but not handed back — the last being the one a guard has to chase.
-class _CardStrip extends ConsumerWidget {
-  const _CardStrip();
+Future<void> _say(BuildContext context, Future<String?> action) async {
+  final msg = await action;
+  if (!context.mounted || msg == null) return;
+  ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+}
+
+/// Every visitor card at a glance: free, or out with a visitor.
+class _CardsSection extends ConsumerWidget {
+  const _CardsSection({required this.isAdmin});
+
+  final bool isAdmin;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final cards = ref.watch(visitorCardsProvider()).valueOrNull;
+    final cards = ref.watch(visitorCardsProvider(admin: isAdmin)).valueOrNull;
     if (cards == null) return const SizedBox.shrink();
 
     final t = context.tokens;
@@ -214,88 +283,136 @@ class _CardStrip extends ConsumerWidget {
       return Padding(
         padding: const EdgeInsets.only(bottom: AppSpacing.headingGap),
         child: Text(
-          'No visitor cards are registered yet. An admin adds them under '
-          'Gates > Visitor Cards.',
+          isAdmin
+              ? 'No visitor cards yet. Use Add card to register the cards '
+                  'the guards lend out.'
+              : 'No visitor cards yet. An admin adds them here.',
           style: text.bodySmall?.copyWith(color: t.text.secondary),
         ),
       );
     }
 
+    final out = cards.where((c) => c.whereabouts == 'OutWithVisitor').length;
+
     return Padding(
       padding: const EdgeInsets.only(bottom: AppSpacing.headingGap),
-      child: Wrap(
-        spacing: AppSpacing.x2,
-        runSpacing: AppSpacing.x2,
-        children: [for (final card in cards) _CardChip(card: card)],
-      ),
-    );
-  }
-}
-
-class _CardChip extends ConsumerWidget {
-  const _CardChip({required this.card});
-
-  final VisitorCard card;
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final text = Theme.of(context).textTheme;
-    final t = context.tokens;
-
-    final intent = switch (card.whereabouts) {
-      'InDrawer' => StatusIntent.success,
-      'OutWithVisitor' => StatusIntent.info,
-      'NotYetReturned' => StatusIntent.warning,
-      _ => StatusIntent.danger,
-    };
-
-    final who = switch (card.whereabouts) {
-      'OutWithVisitor' || 'NotYetReturned' => card.lastVisitorName,
-      _ => null,
-    };
-
-    return AppCard(
-      padding: const EdgeInsets.symmetric(
-          horizontal: AppSpacing.x3, vertical: AppSpacing.x2),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(card.label, style: text.titleSmall),
-          const SizedBox(width: AppSpacing.x2),
-          StatusPill.of(visitorCardWhereaboutsLabel(card.whereabouts),
-              intent: intent, dense: true),
-          if (who != null) ...[
-            const SizedBox(width: AppSpacing.x2),
-            Text(who,
-                style: text.bodySmall?.copyWith(color: t.text.secondary)),
-          ],
-          if (card.whereabouts == 'NotYetReturned' &&
-              card.lastPassId != null) ...[
-            const SizedBox(width: AppSpacing.x2),
-            AppRowAction(
-              label: 'Card returned',
-              icon: Icons.inventory_2_outlined,
-              intent: StatusIntent.neutral,
-              onPressed: () => _confirmReturned(context, ref, card.lastPassId!),
-            ),
-          ],
+          Text(
+            'Cards · ${cards.length - out} available, $out out',
+            style: text.labelMedium?.copyWith(color: t.text.tertiary),
+          ),
+          const SizedBox(height: AppSpacing.x2),
+          Wrap(
+            spacing: AppSpacing.x2,
+            runSpacing: AppSpacing.x2,
+            children: [
+              for (final card in cards)
+                _CardTile(card: card, isAdmin: isAdmin),
+            ],
+          ),
         ],
       ),
     );
   }
 }
 
-Future<void> _confirmReturned(
-    BuildContext context, WidgetRef ref, String passId) async {
-  final msg = await ref
-      .read(visitorPassActionsProvider.notifier)
-      .confirmCardReturned(passId);
+class _CardTile extends ConsumerWidget {
+  const _CardTile({required this.card, required this.isAdmin});
 
-  if (!context.mounted) return;
-  ScaffoldMessenger.of(context)
-      .showSnackBar(SnackBar(content: Text(msg ?? 'Card marked as returned.')));
-  ref.invalidate(visitorPassListProvider);
-  ref.invalidate(visitorCardsProvider);
+  final VisitorCard card;
+  final bool isAdmin;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final text = Theme.of(context).textTheme;
+    final t = context.tokens;
+    final isOut = card.whereabouts == 'OutWithVisitor';
+
+    return SizedBox(
+      width: 230,
+      child: AppCard(
+        padding: const EdgeInsets.symmetric(
+            horizontal: AppSpacing.x3, vertical: AppSpacing.x2),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Expanded(child: Text(card.label, style: text.titleSmall)),
+                StatusPill.of(
+                  visitorCardWhereaboutsLabel(card.whereabouts),
+                  intent: isOut ? StatusIntent.info : StatusIntent.success,
+                  dense: true,
+                ),
+              ],
+            ),
+            const SizedBox(height: 2),
+            Text(card.rfidTagId,
+                style: text.bodySmall?.copyWith(color: t.text.tertiary)),
+            const SizedBox(height: AppSpacing.x1),
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    isOut
+                        ? '${card.lastVisitorName ?? ''} · ${card.lastPlateNumber ?? ''}'
+                        : card.lastVisitorName == null
+                            ? 'Never lent'
+                            : 'Last: ${card.lastVisitorName}',
+                    overflow: TextOverflow.ellipsis,
+                    style: text.bodySmall?.copyWith(color: t.text.secondary),
+                  ),
+                ),
+                if (isAdmin && !isOut)
+                  AppRowAction(
+                    label: 'Remove',
+                    icon: Icons.delete_outline,
+                    intent: StatusIntent.danger,
+                    onPressed: () => _confirmRemove(context, ref),
+                  ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _confirmRemove(BuildContext context, WidgetRef ref) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('Remove ${card.label}?'),
+        content: const Text(
+          'It stops being a visitor card, so you can give it to a new user. '
+          "The visitors who used it stay in the history, shown by the card's "
+          'ID instead of its name.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(
+                backgroundColor: context.tokens.status.danger.solid),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Remove card'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true || !context.mounted) return;
+
+    await _say(
+      context,
+      ref.read(visitorCardActionsProvider.notifier).remove(card.rfidTagId),
+    );
+    ref.invalidate(visitorPassListProvider);
+  }
 }
 
 class _PassCard extends ConsumerWidget {
@@ -308,13 +425,8 @@ class _PassCard extends ConsumerWidget {
     final t = context.tokens;
     final text = Theme.of(context).textTheme;
 
-    final intent = switch (pass.status) {
-      'Active' => StatusIntent.success,
-      'Returned' => StatusIntent.neutral,
-      // Expired means a card is out past its day and nobody has it back. That
-      // is a missing card, not a tidy end state.
-      _ => StatusIntent.warning,
-    };
+    final intent =
+        pass.status == 'Active' ? StatusIntent.success : StatusIntent.neutral;
 
     return AppCard(
       child: Column(
@@ -332,7 +444,7 @@ class _PassCard extends ConsumerWidget {
                     Text(pass.visitorName, style: text.titleSmall),
                     const SizedBox(height: 2),
                     Text(
-                      '${pass.cardLabel == null ? 'Card ${pass.rfidTagId}' : 'Card ${pass.cardLabel}'} · ${pass.plateNumber} · ${pass.vehicleType}',
+                      '${pass.cardLabel == null ? 'Card ${pass.rfidTagId}' : 'Card ${pass.cardLabel}'} · ${pass.plateNumber}',
                       style: text.bodySmall?.copyWith(color: t.text.secondary),
                     ),
                   ],
@@ -340,19 +452,11 @@ class _PassCard extends ConsumerWidget {
               ),
               if (pass.isInside)
                 StatusPill.of(
-                  pass.slotCode == null ? 'Inside' : 'At ${pass.slotCode}',
+                  'Inside',
                   intent: StatusIntent.info,
                   dense: true,
                   showDot: false,
                   icon: Icons.directions_car_outlined,
-                ),
-              if (pass.cardNotYetReturned)
-                StatusPill.of(
-                  'Card not yet returned',
-                  intent: StatusIntent.warning,
-                  dense: true,
-                  showDot: false,
-                  icon: Icons.credit_card_off_outlined,
                 ),
             ],
           ),
@@ -366,21 +470,13 @@ class _PassCard extends ConsumerWidget {
             runSpacing: AppSpacing.x1,
             children: [
               _Meta(
-                label: 'Issued',
-                value: DateFormat('MMM d, HH:mm').format(pass.issuedAt.toLocal()),
-              ),
-              _Meta(
-                label: 'Valid until',
-                value:
-                    DateFormat('MMM d, HH:mm').format(pass.expiresAt.toLocal()),
+                label: 'In',
+                value: _stamp.format(pass.issuedAt.toLocal()),
               ),
               if (pass.returnedAt case final returned?)
-                _Meta(
-                  label: 'Left',
-                  value: DateFormat('MMM d, HH:mm').format(returned.toLocal()),
-                ),
+                _Meta(label: 'Out', value: _stamp.format(returned.toLocal())),
               if (pass.issuedByName case final by?)
-                _Meta(label: 'Issued by', value: by),
+                _Meta(label: 'Lent by', value: by),
             ],
           ),
           // Inside: the exit tap ends the pass, nothing to press. Not inside
@@ -395,27 +491,6 @@ class _PassCard extends ConsumerWidget {
                   icon: Icons.assignment_return_outlined,
                   intent: StatusIntent.neutral,
                   onPressed: () => _returnPass(context, ref),
-                ),
-              ],
-            ),
-          ],
-          if (pass.cardNotYetReturned) ...[
-            const SizedBox(height: AppSpacing.x4),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.end,
-              children: [
-                Expanded(
-                  child: Text(
-                    'The visitor tapped out. Mark the card returned once it is '
-                    'back in the drawer.',
-                    style: text.bodySmall?.copyWith(color: t.text.secondary),
-                  ),
-                ),
-                AppRowAction(
-                  label: 'Card returned',
-                  icon: Icons.inventory_2_outlined,
-                  intent: StatusIntent.neutral,
-                  onPressed: () => _confirmReturned(context, ref, pass.passId),
                 ),
               ],
             ),

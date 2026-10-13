@@ -41,7 +41,7 @@ public class VisitorCardTests
 
     private static IssueVisitorPassDto Visitor(string name, string tag = Card) => new()
     {
-        RfidTagId = tag, VisitorName = name, PlateNumber = "abc 123", VehicleType = "Car"
+        RfidTagId = tag, VisitorName = name, PlateNumber = "abc 123"
     };
 
     private static int Status(IConvertToActionResult result) =>
@@ -76,15 +76,6 @@ public class VisitorCardTests
     }
 
     [Fact]
-    public async Task ABlockedVisitorCardCannotBeLent()
-    {
-        var db = await DbWithCardAsync(VisitorCardState.Blocked);
-        var result = await Passes(db).IssueAsync(Visitor("Ana"), Guard, default);
-
-        Assert.Equal(409, Status(result));
-    }
-
-    [Fact]
     public async Task AHandTypedUidMatchesTheCard()
     {
         var db = await DbWithCardAsync();
@@ -100,7 +91,7 @@ public class VisitorCardTests
         var db = await DbWithCardAsync();
         await ParkAsync(db, "Ana");
 
-        // Her pass ran out while she was inside; it is no longer Active.
+        // An old pass still marked Expired: the card is still out with her.
         var pass = db.VisitorPasses.Single();
         pass.Status = VisitorPassStatus.Expired;
         await db.SaveChangesAsync();
@@ -112,7 +103,7 @@ public class VisitorCardTests
     // ── Exit and return ────────────────────────────────────────────────────
 
     [Fact]
-    public async Task TheExitTapReleasesTheCardButItIsNotYetReturned()
+    public async Task TheExitTapEndsThePass()
     {
         var db = await DbWithCardAsync();
         var log = await ParkAsync(db, "Ana");
@@ -189,13 +180,25 @@ public class VisitorCardTests
     }
 
     [Fact]
-    public async Task ALentCardIsBlockedRatherThanRemoved()
+    public async Task ACardOutWithAVisitorCannotBeRemoved()
     {
         var db = await DbWithCardAsync();
         await ParkAsync(db, "Ana");
 
         Assert.Equal(400, Status(await new VisitorCardService(db).RemoveAsync(Card, default)));
         Assert.Single(db.VisitorCards);
+    }
+
+    [Fact]
+    public async Task ACardThatHasLeftCanBeRemovedAndTheVisitorStaysInTheHistory()
+    {
+        var db = await DbWithCardAsync();
+        var log = await ParkAsync(db, "Ana");
+        await Parking(db).LogExitAsync(new LogParkingExitDto { LogId = log.Id }, null, Guid.NewGuid(), default);
+
+        Assert.Equal(200, Status(await new VisitorCardService(db).RemoveAsync(Card, default)));
+        Assert.Empty(db.VisitorCards);
+        Assert.Equal("Ana", db.VisitorPasses.Single().VisitorName);
     }
 
     // ── The gate ───────────────────────────────────────────────────────────
@@ -208,16 +211,6 @@ public class VisitorCardTests
 
         Assert.False(outcome.Opened);
         Assert.Equal("V1", outcome.AwaitingVisitorCard);
-    }
-
-    [Fact]
-    public async Task ABlockedVisitorCardIsRefusedAtTheGate()
-    {
-        var db = await DbWithCardAsync(VisitorCardState.Blocked);
-        var outcome = await new GateTapHandler(db, parking: null!).HandleAsync(1, Guid.NewGuid(), Card, default);
-
-        Assert.False(outcome.Opened);
-        Assert.Null(outcome.AwaitingVisitorCard);
     }
 
     [Fact]

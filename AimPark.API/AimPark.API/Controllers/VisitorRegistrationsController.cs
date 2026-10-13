@@ -62,7 +62,6 @@ namespace AimPark.API.Controllers
         {
             public string VisitorName { get; set; } = string.Empty;
             public string PlateNumber { get; set; } = string.Empty;
-            public string VehicleType { get; set; } = "Car";
             public string? Purpose { get; set; }
         }
 
@@ -115,7 +114,6 @@ namespace AimPark.API.Controllers
                 RfidTagId = pending.RfidTagId,
                 VisitorName = dto.VisitorName,
                 PlateNumber = dto.PlateNumber,
-                VehicleType = dto.VehicleType,
                 Purpose = dto.Purpose
             }, guardId, ct);
 
