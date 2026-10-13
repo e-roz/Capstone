@@ -184,6 +184,7 @@ class AppTextField extends StatefulWidget {
     this.errorText,
     this.helperText,
     this.enabled = true,
+    this.autofocus = false,
     this.maxLines = 1,
     this.maxLength,
     this.hintText,
@@ -217,6 +218,10 @@ class AppTextField extends StatefulWidget {
   final String? errorText;
   final String? helperText;
   final bool enabled;
+
+  /// Takes focus when first built. For a field that appears because the user just
+  /// asked to change it, where being made to tap it a second time is friction.
+  final bool autofocus;
   final int maxLines;
   final int? maxLength;
 
@@ -280,6 +285,7 @@ class _AppTextFieldState extends State<AppTextField> {
         controller: widget.controller,
         focusNode: _focusNode,
         enabled: widget.enabled,
+        autofocus: widget.autofocus,
         obscureText: widget.obscureText,
         keyboardType: widget.keyboardType,
         textInputAction: widget.textInputAction,
@@ -405,11 +411,17 @@ class AppDateField extends StatelessWidget {
     this.helperText,
     this.errorText,
     this.enabled = true,
+    this.locked = false,
     this.hint = 'Tap to choose',
   });
 
   final String label;
   final DateTime? value;
+
+  /// Swaps the calendar icon for a padlock. Only the icon: whether a tap does
+  /// anything is still decided by [enabled] and [onChanged], so a screen that
+  /// locks a value owns what unlocking it means.
+  final bool locked;
 
   /// Null leaves the field readable but not editable.
   final ValueChanged<DateTime>? onChanged;
@@ -489,7 +501,7 @@ class AppDateField extends StatelessWidget {
                 ),
               ),
               Icon(
-                Icons.calendar_today_rounded,
+                locked ? Icons.lock_outline_rounded : Icons.calendar_today_rounded,
                 size: AppSizes.iconMd,
                 color: t.text.secondary,
               ),

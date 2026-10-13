@@ -203,9 +203,6 @@ namespace AimPark.API.Services
 
         public async Task<ActionResult<CompleteProfileResponse>> CompleteProfileAsync(CompleteProfileDto dto, string? sessionToken, CancellationToken ct)
         {
-            if (ValidationHelper.HasEmptyFields(dto.FullName))
-                return new BadRequestObjectResult(new { message = "Full name is required." });
-
             if (!dto.AcceptedTerms)
                 return new BadRequestObjectResult(new
                 {
@@ -237,11 +234,14 @@ namespace AimPark.API.Services
             if (!TryParseAffiliation(dto.Affiliation, out var affiliation))
                 return new BadRequestObjectResult(new { message = "Invalid affiliation." });
 
+            if (NameRequiredNow(affiliation) && ValidationHelper.HasEmptyFields(dto.FullName))
+                return new BadRequestObjectResult(new { message = "Full name is required." });
+
             var now = DateTime.UtcNow;
             var user = new User
             {
                 Id = Guid.NewGuid(),
-                FullName = dto.FullName.Trim(),
+                FullName = dto.FullName?.Trim() ?? string.Empty,
                 Email = session.Email,
                 IsEmailVerified = true,
                 Affiliation = affiliation,
@@ -276,9 +276,6 @@ namespace AimPark.API.Services
 
         public async Task<ActionResult<CompleteProfileResponse>> CompleteProfileForAuthenticatedUserAsync(CompleteProfileDto dto, Guid userId, CancellationToken ct)
         {
-            if (ValidationHelper.HasEmptyFields(dto.FullName))
-                return new BadRequestObjectResult(new { message = "Full name is required." });
-
             if (!dto.AcceptedTerms)
                 return new BadRequestObjectResult(new
                 {
@@ -306,9 +303,17 @@ namespace AimPark.API.Services
             if (!TryParseAffiliation(dto.Affiliation, out var affiliation))
                 return new BadRequestObjectResult(new { message = "Invalid affiliation." });
 
+            if (NameRequiredNow(affiliation) && ValidationHelper.HasEmptyFields(dto.FullName))
+                return new BadRequestObjectResult(new { message = "Full name is required." });
+
             var affiliationChanged = user.Affiliation != affiliation;
 
-            user.FullName = dto.FullName.Trim();
+            // A student's name comes from their registration form, so there is
+            // nothing to overwrite it with here — a blank keeps the name already on
+            // the account rather than erasing it.
+            if (!string.IsNullOrWhiteSpace(dto.FullName))
+                user.FullName = dto.FullName.Trim();
+
             user.Affiliation = affiliation;
             user.RegistrationStep = RegistrationStep.DocumentUpload;
             user.TermsAcceptedAt ??= DateTime.UtcNow;
@@ -481,6 +486,30 @@ namespace AimPark.API.Services
                     CarryForwardUnreadValues(extracted, previous);
             }
 
+            // A document that read as text can still come back without a value the
+            // registration needs. That is a reason to photograph it again, not to
+            // let the applicant type the value in: a read value is locked on the
+            // summary screen, and the typed one is only offered once the retakes
+            // are spent (CanContinue below).
+            //
+            // Only documents sent this time are asked for again. A reviewer's
+            // one-document retake must not send the applicant back to a document
+            // they were never asked about.
+            var sentTypes = files.Select(f => f.Type).ToHashSet();
+            foreach (var (type, labels) in MissingValues(extracted, user.Affiliation, sentTypes))
+            {
+                if (diagnostics.Any(d => d.DocumentType == type.ToString()))
+                    continue;
+
+                diagnostics.Add(new DocumentDiagnosisDto
+                {
+                    DocumentType = type.ToString(),
+                    Reason = MissingFieldsReason,
+                    Message = $"We couldn't read your {JoinLabels(labels)} on the {LabelFor(type)}. "
+                              + "Photograph it again, flat and in good light."
+                });
+            }
+
             // Before anything is stored. The photographed documents say what they
             // say however the form is edited afterwards, so a number that already
             // belongs to another account ends the attempt here — no files kept, no
@@ -617,19 +646,6 @@ namespace AimPark.API.Services
             if (duplicate is not null)
                 return await RefuseDuplicateAsync(user, duplicate, ct);
 
-            // A number the camera read is not the applicant's to rewrite. Small
-            // differences are OCR slips being corrected; a different number is a
-            // different document.
-            var rewritten = RewrittenIdentity(verification);
-            if (rewritten is not null)
-            {
-                return new BadRequestObjectResult(new
-                {
-                    message = $"The {rewritten} you entered does not match the one on your document. "
-                              + "Please retake the photo or correct only what was misread."
-                });
-            }
-
             // Counted here for the same reason the scan step counts them: the
             // allowance is what separates "photograph it again" from "this receipt
             // is never going to read, go on without it".
@@ -649,7 +665,18 @@ namespace AimPark.API.Services
             // say is added after it rather than before.
             _preScreening.Evaluate(verification, user, vehicle);
 
+            // After the checks, not before. Whatever name the account held when
+            // the documents arrived — Google's, or the one from an earlier
+            // submission — is what the registration form is compared against; set
+            // first, the form would be compared with itself and always agree.
+            if (user.Affiliation == Affiliation.Student
+                && NameFormat.DisplayName(verification.ConfirmedStudentName) is { } formName)
+            {
+                user.FullName = formName;
+            }
+
             AppendNote(verification, vehicleNote);
+            NoteVehicleEdits(verification, dto, user, vehicleType);
 
             // Re-derived here rather than carried over from the scan. These are the
             // submissions that reached a reviewer without the system ever confirming
@@ -753,29 +780,58 @@ namespace AimPark.API.Services
             return new BadRequestObjectResult(new { message = DuplicateIdentityGuard.ApplicantMessage });
         }
 
-        // How far a typed identifier may drift from what the camera read before it
-        // is treated as a different number rather than an OCR slip.
-        private const int MaxIdentifierEdits = 2;
-
         /// <summary>
-        /// Names the identity field the applicant rewrote beyond OCR noise, or null.
+        /// Says where the applicant changed the vehicle type or colour the receipt gave.
         /// </summary>
-        private static string? RewrittenIdentity(DocumentVerification v)
+        /// <remarks>
+        /// Neither is stored as read — only what was confirmed reaches the vehicle —
+        /// so the reading is made again from the OCR text kept with the submission.
+        /// That avoids a column for two values whose original matters only to the
+        /// reviewer, and only once.
+        ///
+        /// The note's opening words are the markers <see cref="RegistrationChecks"/>
+        /// turns into findings, so they must not be reworded without changing it.
+        /// </remarks>
+        private void NoteVehicleEdits(
+            DocumentVerification verification, ConfirmDocumentsDto dto, User user, VehicleType chosenType)
         {
-            static bool Rewritten(string? read, string? typed, Func<string?, string> normalise)
+            var payloads = DeserializePayloads(verification.RawPayloads);
+            if (payloads.Count == 0)
+                return;
+
+            var identityType = user.Affiliation == Affiliation.Student
+                ? DocumentType.Raf
+                : DocumentType.SchoolId;
+
+            OcrPayloadDto? PayloadFor(DocumentType type)
+                => payloads.TryGetValue(type, out var payload) ? payload : null;
+
+            var read = _extraction.Extract(
+                PayloadFor(identityType),
+                PayloadFor(DocumentType.License),
+                PayloadFor(DocumentType.OfficialReceipt),
+                user.FullName);
+
+            var readType = Enum.TryParse<VehicleType>(read.VehicleType, true, out var parsed)
+                ? parsed
+                : (VehicleType?)null;
+
+            if (readType is not null && readType != chosenType)
             {
-                var a = normalise(read);
-                var b = normalise(typed);
-                return a.Length > 0 && b.Length > 0 && FuzzyText.EditDistance(a, b) > MaxIdentifierEdits;
+                AppendNote(verification,
+                    $"{RegistrationChecks.VehicleTypeEditMarker} — the receipt reads {readType}, the applicant chose {chosenType}.");
             }
 
-            if (Rewritten(v.ExtractedStudentNumber, v.ConfirmedStudentNumber, IdentifierNormalizer.NormalizeStudentNumber))
-                return "student number";
+            var readColour = read.Color?.Trim();
+            var chosenColour = dto.Color?.Trim();
 
-            if (Rewritten(v.ExtractedLicenseNumber, v.ConfirmedLicenseNumber, IdentifierNormalizer.NormalizeLicenseNumber))
-                return "licence number";
-
-            return null;
+            if (!string.IsNullOrEmpty(readColour)
+                && !string.IsNullOrEmpty(chosenColour)
+                && !string.Equals(readColour, chosenColour, StringComparison.OrdinalIgnoreCase))
+            {
+                AppendNote(verification,
+                    $"{RegistrationChecks.ColourEditMarker} — the receipt reads \"{readColour}\", the applicant submitted \"{chosenColour}\".");
+            }
         }
 
         /// <summary>
@@ -1010,6 +1066,64 @@ namespace AimPark.API.Services
                 : verification.Notes + "\n" + note;
         }
 
+        private const string MissingFieldsReason = "MissingFields";
+
+        /// <summary>
+        /// The values each submitted document should have given and did not, by
+        /// document.
+        /// </summary>
+        /// <remarks>
+        /// Read off the values themselves rather than <see cref="ExtractedValuesDto.FieldsToCheck"/>:
+        /// those flags are set before an earlier submission's readings are carried
+        /// forward, so they would still call a carried value missing.
+        ///
+        /// A registration expiry worked out from the plate is not missing — it is
+        /// flagged as derived and the applicant glances at it. The school ID is never
+        /// read, so only a registration form can come up short on the identity side.
+        /// </remarks>
+        private static Dictionary<DocumentType, List<string>> MissingValues(
+            ExtractedValuesDto e, Affiliation affiliation, HashSet<DocumentType> sent)
+        {
+            var missing = new Dictionary<DocumentType, List<string>>();
+
+            void Check(DocumentType type, bool isMissing, string label)
+            {
+                if (!isMissing || !sent.Contains(type))
+                    return;
+
+                if (!missing.TryGetValue(type, out var labels))
+                    missing[type] = labels = [];
+
+                labels.Add(label);
+            }
+
+            if (affiliation == Affiliation.Student)
+            {
+                Check(DocumentType.Raf, string.IsNullOrWhiteSpace(e.StudentNumber), "student number");
+                Check(DocumentType.Raf, string.IsNullOrWhiteSpace(e.StudentName), "name");
+                Check(DocumentType.Raf, string.IsNullOrWhiteSpace(e.Section), "section");
+                Check(DocumentType.Raf, string.IsNullOrWhiteSpace(e.Semester), "term");
+            }
+
+            Check(DocumentType.License, string.IsNullOrWhiteSpace(e.LicenseName), "name");
+            Check(DocumentType.License, string.IsNullOrWhiteSpace(e.LicenseNumber), "licence number");
+            Check(DocumentType.License, e.LicenseExpiry is null, "expiry date");
+
+            Check(DocumentType.OfficialReceipt, string.IsNullOrWhiteSpace(e.PlateNumber), "plate number");
+            Check(DocumentType.OfficialReceipt, e.RegistrationExpiry is null, "registration expiry");
+            Check(DocumentType.OfficialReceipt, string.IsNullOrWhiteSpace(e.VehicleType), "vehicle type");
+            Check(DocumentType.OfficialReceipt, string.IsNullOrWhiteSpace(e.Color), "colour");
+
+            return missing;
+        }
+
+        private static string JoinLabels(List<string> labels) => labels.Count switch
+        {
+            1 => labels[0],
+            2 => $"{labels[0]} and {labels[1]}",
+            _ => string.Join(", ", labels[..^1]) + " and " + labels[^1]
+        };
+
         private static string LabelFor(DocumentType type) => type switch
         {
             DocumentType.Raf => "registration form",
@@ -1028,11 +1142,14 @@ namespace AimPark.API.Services
             if (user.AccountStatus != AccountStatus.Rejected)
                 return new BadRequestObjectResult(new { message = "Re-apply is only available for rejected accounts." });
 
-            if (user.CanReapplyAt is not null && DateTime.UtcNow < user.CanReapplyAt)
+            // A rejection is final. The only way past it is an administrator lifting
+            // it, which is what sets CanReapplyAt.
+            if (user.CanReapplyAt is null || DateTime.UtcNow < user.CanReapplyAt)
             {
                 return new BadRequestObjectResult(new
                 {
-                    message = $"You may re-apply after {user.CanReapplyAt:O}.",
+                    message = "This registration was rejected and cannot be submitted again. "
+                              + "Contact the administrator if you think this is a mistake.",
                     canReapplyAt = user.CanReapplyAt
                 });
             }
@@ -1064,6 +1181,13 @@ namespace AimPark.API.Services
 
             return new OkObjectResult(MapStatus(user));
         }
+
+        /// <summary>
+        /// Whether the sign-up form has to supply a name. Students do not: theirs is
+        /// read off the registration form and set when the documents are confirmed.
+        /// Faculty and staff still type it until their own route is settled.
+        /// </summary>
+        private static bool NameRequiredNow(Affiliation affiliation) => affiliation != Affiliation.Student;
 
         // Absent means Student — the overwhelming majority, and the app did not send
         // this field before. An unrecognised value is rejected rather than silently
@@ -1313,7 +1437,8 @@ namespace AimPark.API.Services
 
             return new BadRequestObjectResult(new
             {
-                message = "This account was rejected. Contact support for assistance.",
+                message = "This registration was rejected, so this email cannot be used to register again. "
+                          + "Contact the administrator if you think this is a mistake.",
                 reason = user.RejectionReason
             });
         }
