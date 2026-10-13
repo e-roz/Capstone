@@ -7,7 +7,6 @@ class RegistrationDetail {
   final String affiliation;
   final String? studentNumber;
   final String? section;
-  final DateTime? enrollmentValidUntil;
   final String registrationStep;
   final String accountStatus;
   final String verificationStatus;
@@ -17,6 +16,9 @@ class RegistrationDetail {
   final DateTime? canReapplyAt;
   final bool isDeleted;
   final DateTime createdAt;
+
+  /// Whole days since the last change, worked out as the queue does.
+  final int waitingDays;
   final String? rfidTagId;
   final String rfidStatus;
   final DateTime? rfidSuspendedUntil;
@@ -35,7 +37,6 @@ class RegistrationDetail {
     required this.affiliation,
     this.studentNumber,
     this.section,
-    this.enrollmentValidUntil,
     required this.registrationStep,
     required this.accountStatus,
     required this.verificationStatus,
@@ -45,6 +46,7 @@ class RegistrationDetail {
     this.canReapplyAt,
     required this.isDeleted,
     required this.createdAt,
+    this.waitingDays = 0,
     this.rfidTagId,
     required this.rfidStatus,
     this.rfidSuspendedUntil,
@@ -61,9 +63,6 @@ class RegistrationDetail {
         affiliation: json['affiliation']?.toString() ?? 'Student',
         studentNumber: json['studentNumber']?.toString(),
         section: json['section']?.toString(),
-        enrollmentValidUntil: json['enrollmentValidUntil'] != null
-            ? DateTime.tryParse(json['enrollmentValidUntil'].toString())
-            : null,
         registrationStep: json['registrationStep']?.toString() ?? '',
         accountStatus: json['accountStatus']?.toString() ?? '',
         verificationStatus: json['verificationStatus']?.toString() ?? '',
@@ -77,6 +76,7 @@ class RegistrationDetail {
             : null,
         isDeleted: (json['isDeleted'] as bool?) ?? false,
         createdAt: DateTime.parse(json['createdAt'].toString()),
+        waitingDays: (json['waitingDays'] as num?)?.toInt() ?? 0,
         rfidTagId: json['rfidTagId']?.toString(),
         rfidStatus: json['rfidStatus']?.toString() ?? 'Unassigned',
         rfidSuspendedUntil: json['rfidSuspendedUntil'] != null

@@ -544,6 +544,9 @@ namespace AimPark.API.Migrations
                     b.Property<Guid>("ReportedByUserId")
                         .HasColumnType("uuid");
 
+                    b.Property<DateTime?>("ReviewedAt")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<Guid?>("ReviewedByUserId")
                         .HasColumnType("uuid");
 
@@ -1333,9 +1336,6 @@ namespace AimPark.API.Migrations
                     b.Property<string>("Email")
                         .IsRequired()
                         .HasColumnType("text");
-
-                    b.Property<DateTime?>("EnrollmentValidUntil")
-                        .HasColumnType("timestamp with time zone");
 
                     b.Property<string>("ExternalProviderId")
                         .HasColumnType("text");

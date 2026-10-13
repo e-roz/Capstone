@@ -10,17 +10,10 @@ namespace AimPark.API.Services
 {
     public class PaymentService : IPaymentService
     {
-        /// <summary>
-        /// Grace period for a parking fee. Short — the driver has just left and
-        /// the amount is small.
-        /// </summary>
-        private static readonly TimeSpan ParkingFeeDueWindow = TimeSpan.FromDays(7);
-
-        /// <summary>
-        /// Grace period for a violation penalty. Longer, because it is larger and
-        /// because the appeal window has to fit inside it.
-        /// </summary>
-        private static readonly TimeSpan ViolationDueWindow = TimeSpan.FromDays(14);
+        // No bill has a due date. A parking fee is owed the moment the driver
+        // leaves, and a violation fine exists only once the violation is final;
+        // either one stops the next entry at the gate until it is paid. A date
+        // weeks out told the payer the opposite of what the gate did.
 
         private readonly IRepository<PaymentTransaction> _payments;
         private readonly IRepository<ParkingRate> _rates;
@@ -110,7 +103,7 @@ namespace AimPark.API.Services
                 RatePerHourApplied = ratePerHour,
                 AmountDue = amountDue,
                 Status = PaymentStatus.Pending,
-                DueAt = DateTime.UtcNow.Add(ParkingFeeDueWindow),
+                DueAt = null,
                 CreatedAt = DateTime.UtcNow
             };
 
@@ -162,7 +155,7 @@ namespace AimPark.API.Services
                 RatePerHourApplied = 0,
                 AmountDue = violation.PenaltyAmount,
                 Status = PaymentStatus.Pending,
-                DueAt = DateTime.UtcNow.Add(ViolationDueWindow),
+                DueAt = null,
                 CreatedAt = DateTime.UtcNow
             };
 
@@ -273,6 +266,72 @@ namespace AimPark.API.Services
             });
         }
 
+        // POST /api/payments/checkout-all — "Pay all"
+        //
+        // The server decides which bills those are and what they total; the phone
+        // sends neither a list nor an amount. Payable means Pending, owing money,
+        // and not already inside a checkout. They all get the same provider id, so
+        // the one settlement that comes back pays every one of them.
+        public async Task<ActionResult<CheckoutResponse>> StartCheckoutAllAsync(
+            Guid userId,
+            CancellationToken ct)
+        {
+            var bills = (await _payments.GetAllAsync(
+                    p => p.UserId == userId
+                      && p.Status == PaymentStatus.Pending
+                      && p.PaidAt == null
+                      && p.AmountDue > 0m,
+                    ct))
+                .OrderBy(p => p.CreatedAt)
+                .ToList();
+
+            if (bills.Count == 0)
+            {
+                // Also what a second tap gets while a Pay all is open: those bills
+                // are Processing now, and a provider link cannot be rebuilt later.
+                return new ConflictObjectResult(new
+                {
+                    message = "There is nothing to pay right now, or a payment is already in progress."
+                });
+            }
+
+            GatewayCheckout checkout;
+            try
+            {
+                checkout = await _gateway.CreateBundleCheckoutAsync(bills, ct);
+            }
+            catch (Exception ex)
+            {
+                // Nothing was touched, so the only thing lost is this attempt.
+                _logger.LogError(ex, "Could not open a checkout for {Count} bills of user {UserId}.", bills.Count, userId);
+                return new ObjectResult(new
+                {
+                    message = "The payment service could not be reached. Please try again in a moment."
+                })
+                { StatusCode = StatusCodes.Status502BadGateway };
+            }
+
+            var now = DateTime.UtcNow;
+            foreach (var bill in bills)
+            {
+                bill.Status = PaymentStatus.Processing;
+                bill.Provider = _gateway.Name;
+                bill.ProviderPaymentId = checkout.ProviderPaymentId;
+                bill.CheckoutStartedAt = now;
+                _payments.Update(bill);
+            }
+            await _payments.SaveAsync(ct);
+
+            return new OkObjectResult(new CheckoutResponse
+            {
+                PaymentId = bills[0].Id,
+                PaymentIds = bills.Select(b => b.Id).ToList(),
+                CheckoutUrl = checkout.CheckoutUrl,
+                Provider = _gateway.Name,
+                AmountDue = bills.Sum(b => b.AmountDue)
+            });
+        }
+
         // POST /api/payments/callback  (the provider calls this, not the app)
         public async Task<bool> HandleGatewayCallbackAsync(
             string rawBody,
@@ -286,10 +345,12 @@ namespace AimPark.API.Services
             // only make the provider send it again.
             if (!settlement.Paid) return true;
 
-            var payment = await _payments.FindAsync(
+            // One id can cover several bills ("Pay all"); a single bill is just the
+            // case of one.
+            var checkoutBills = await _payments.GetAllAsync(
                 p => p.ProviderPaymentId == settlement.ProviderPaymentId, ct);
 
-            if (payment is null)
+            if (checkoutBills.Count == 0)
             {
                 // Not an error worth failing the callback over: a provider that
                 // gets a non-2xx keeps retrying, and no number of retries will
@@ -304,23 +365,32 @@ namespace AimPark.API.Services
             // arrives more than once as a matter of course. Paying attention to
             // it twice would move PaidAt and fire a second receipt at someone
             // who paid once.
-            if (payment.Status == PaymentStatus.Paid) return true;
+            var open = checkoutBills.Where(b => b.Status != PaymentStatus.Paid).ToList();
+            if (open.Count == 0) return true;
 
-            payment.Status = PaymentStatus.Paid;
-            payment.PaidAt = DateTime.UtcNow;
-            payment.Method = settlement.Method ?? PaymentMethod.GCash;
-            payment.ReferenceNumber = settlement.ReferenceNumber;
-            payment.Provider ??= _gateway.Name;
-
-            _payments.Update(payment);
+            var paidAt = DateTime.UtcNow;
+            foreach (var bill in open)
+            {
+                bill.Status = PaymentStatus.Paid;
+                bill.PaidAt = paidAt;
+                bill.Method = settlement.Method ?? PaymentMethod.GCash;
+                bill.ReferenceNumber = settlement.ReferenceNumber;
+                bill.Provider ??= _gateway.Name;
+                _payments.Update(bill);
+            }
             await _payments.SaveAsync(ct);
 
+            // One message for one payment, however many bills it covered.
+            var first = open[0];
+            var total = open.Sum(b => b.AmountDue);
             await _notificationService.NotifyUserAsync(
-                payment.UserId,
+                first.UserId,
                 NotificationType.Payment,
                 "Payment received",
-                $"₱{payment.AmountDue:0.00} paid. Thank you.",
-                new Dictionary<string, string> { ["paymentId"] = payment.Id.ToString() },
+                open.Count == 1
+                    ? $"₱{total:0.00} paid. Thank you."
+                    : $"₱{total:0.00} paid for {open.Count} bills. Thank you.",
+                new Dictionary<string, string> { ["paymentId"] = first.Id.ToString() },
                 ct);
 
             return true;

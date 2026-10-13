@@ -3,8 +3,11 @@ using AimPark.API.DTOs;
 using AimPark.API.Entities;
 using AimPark.API.Enums;
 using AimPark.API.Interfaces;
+using AimPark.API.Sync;
+using AimPark.API.Sync.Cloud;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 
 namespace AimPark.API.Services
 {
@@ -12,16 +15,68 @@ namespace AimPark.API.Services
     {
         private readonly IRepository<ParkingSlot> _slots;
         private readonly AppDbContext _db;
+        private readonly SiteLinkState _link;
+        private readonly SiteOptions _site;
 
-        public ParkingSlotService(IRepository<ParkingSlot> slots, AppDbContext db)
+        /// <summary>
+        /// Without a word from the guard post for this long, the bays are not
+        /// trusted. The guard post reports every 15 s; the admin map uses the
+        /// same 60 s.
+        /// </summary>
+        private static readonly TimeSpan GuardPostSilentAfter = TimeSpan.FromSeconds(60);
+
+        public ParkingSlotService(
+            IRepository<ParkingSlot> slots,
+            AppDbContext db,
+            SiteLinkState link,
+            IOptions<SiteOptions> site)
         {
             _slots = slots;
             _db = db;
+            _link = link;
+            _site = site.Value;
         }
 
-        // GET /api/parking/slots
+        // GET /api/parking/slots — what the mobile app reads.
+        //
+        // The bays are only as good as the guard post that feeds them. If it dies
+        // the cloud keeps the last state it was sent, so a lot with the power off
+        // still read "9 free" and the app said "Updated just now". Once the guard
+        // post has gone quiet every bay is reported as No signal instead. The admin
+        // list (ListAllAsync) is left alone: it shows the last known state and says
+        // so, which is what an admin needs.
         public async Task<ActionResult<ParkingAvailabilityResponse>> GetAvailabilityAsync(CancellationToken ct)
-            => await BuildResponseAsync(_db.Set<ParkingSlot>().AsNoTracking(), ct);
+        {
+            var response = await BuildResponseAsync(_db.Set<ParkingSlot>().AsNoTracking(), ct);
+
+            // At the guard post the sensors are read directly; there is no link
+            // to be silent.
+            if (!_site.IsCloud) return response;
+
+            var link = _link.Snapshot();
+            var heardAt = new[] { link.LastPushAt, link.HealthAt }.Max();
+            response.LastHeardAt = heardAt;
+
+            // Never heard since the cloud started: with the guard post in charge
+            // of the gates that means it is off. While the cloud still runs the
+            // gates itself (before the guard post is live, or in development)
+            // there may be no guard post at all, so only a link that *was* up and
+            // then went quiet counts.
+            var silent = heardAt is null
+                ? !_site.CloudGateEndpointsEnabled || _site.TreatUnheardGuardPostAsSilent
+                : DateTime.UtcNow - heardAt.Value > GuardPostSilentAfter;
+
+            if (!silent) return response;
+
+            foreach (var slot in response.Slots)
+                slot.Status = ParkingSlotStatus.NoSignal.ToString();
+
+            response.AvailableSlots = 0;
+            response.AvailableCars = 0;
+            response.AvailableMotorcycles = 0;
+            response.FeedPaused = true;
+            return response;
+        }
 
         // GET /api/admin/parking/slots
         public async Task<ActionResult<ParkingAvailabilityResponse>> ListAllAsync(CancellationToken ct)

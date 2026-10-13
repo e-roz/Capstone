@@ -60,21 +60,6 @@ class ParkingHistoryResult {
     return null;
   }
 
-  /// Consecutive-day streak, counting back from today, of at least one log
-  /// per calendar day. Derived client-side — there's no Streak entity in
-  /// the backend.
-  int get streakDays {
-    final days = logs.map((l) => DateTime(l.entryTime.year, l.entryTime.month, l.entryTime.day)).toSet();
-    var streak = 0;
-    var cursor = DateTime.now();
-    cursor = DateTime(cursor.year, cursor.month, cursor.day);
-    while (days.contains(cursor)) {
-      streak++;
-      cursor = cursor.subtract(const Duration(days: 1));
-    }
-    return streak;
-  }
-
   factory ParkingHistoryResult.fromJson(Map<String, dynamic> json) {
     return ParkingHistoryResult(
       logs: (json['logs'] as List<dynamic>)

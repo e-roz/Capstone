@@ -235,11 +235,11 @@ abstract class AppTheme {
         ),
         border: OutlineInputBorder(
           borderRadius: AppRadius.mdAll,
-          borderSide: BorderSide(color: t.border.normal, width: 1.5),
+          borderSide: BorderSide(color: t.border.control, width: 1.5),
         ),
         enabledBorder: OutlineInputBorder(
           borderRadius: AppRadius.mdAll,
-          borderSide: BorderSide(color: t.border.normal, width: 1.5),
+          borderSide: BorderSide(color: t.border.control, width: 1.5),
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: AppRadius.mdAll,
@@ -269,7 +269,7 @@ abstract class AppTheme {
         shape: const RoundedRectangleBorder(
           borderRadius: BorderRadius.all(Radius.circular(6)),
         ),
-        side: BorderSide(color: t.border.strong, width: 2),
+        side: BorderSide(color: t.border.control, width: 2),
         fillColor: WidgetStateProperty.resolveWith((states) {
           if (states.contains(WidgetState.selected)) return t.brand.primary;
           return Colors.transparent;
@@ -280,7 +280,7 @@ abstract class AppTheme {
       radioTheme: RadioThemeData(
         fillColor: WidgetStateProperty.resolveWith((states) {
           if (states.contains(WidgetState.selected)) return t.brand.primary;
-          return t.border.strong;
+          return t.border.control;
         }),
       ),
 
@@ -289,7 +289,7 @@ abstract class AppTheme {
         thumbColor: WidgetStatePropertyAll(t.surface.card),
         trackColor: WidgetStateProperty.resolveWith((states) {
           if (states.contains(WidgetState.selected)) return t.brand.primary;
-          return t.border.strong;
+          return t.border.control;
         }),
       ),
 

@@ -702,8 +702,6 @@ namespace AimPark.API.Services
         /// else's identifier.
         ///
         /// Only the person fields are copied across, as the admin approval does.
-        /// The enrolment end date is not set: nothing on the school form prints a
-        /// usable one, and it stays blank until somebody supplies it.
         /// </remarks>
         private bool TryAutoApprove(
             User user, DocumentVerification verification, Vehicle? vehicle)

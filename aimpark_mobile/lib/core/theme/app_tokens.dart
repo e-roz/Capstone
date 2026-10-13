@@ -285,28 +285,35 @@ class AppBorderTokens {
     required this.subtle,
     required this.normal,
     required this.strong,
+    required this.control,
     required this.focus,
   });
 
   /// Dividers — barely there on purpose.
   final Color subtle;
 
-  /// Card and input outlines. Kept light: the reference separates cards with
-  /// tinted fill and whitespace more than with a drawn line, so this is a
-  /// finishing hairline rather than the primary separator [AppCard] used to
-  /// lean on.
+  /// Card outlines and the border of a quiet button. Still a finishing
+  /// hairline rather than the primary separator, but strong enough to be seen
+  /// on the canvas — the previous value was 1.2:1 and cards read as borderless.
   final Color normal;
 
   /// A pressed card, an emphasised separator.
   final Color strong;
+
+  /// The edge of anything the user has to find to operate: a text field, a
+  /// checkbox, a switch track. At least 3:1 against the surface it sits on,
+  /// which is the accessibility floor for a control's boundary. Cards use
+  /// [normal]; inputs must not.
+  final Color control;
 
   /// The focus ring on an input. Never remove it; recolour it if you must.
   final Color focus;
 
   static const light = AppBorderTokens(
     subtle: AppPalette.neutral100,
-    normal: AppPalette.neutral200,
+    normal: AppPalette.neutral300,
     strong: AppPalette.neutral400,
+    control: AppPalette.neutral450,
     focus: AppPalette.indigo500,
   );
 
@@ -314,6 +321,7 @@ class AppBorderTokens {
     subtle: AppPalette.neutral800,
     normal: AppPalette.neutral700,
     strong: AppPalette.neutral500,
+    control: AppPalette.neutral500,
     focus: AppPalette.indigo400,
   );
 
@@ -322,6 +330,7 @@ class AppBorderTokens {
       subtle: Color.lerp(a.subtle, b.subtle, t)!,
       normal: Color.lerp(a.normal, b.normal, t)!,
       strong: Color.lerp(a.strong, b.strong, t)!,
+      control: Color.lerp(a.control, b.control, t)!,
       focus: Color.lerp(a.focus, b.focus, t)!,
     );
   }
@@ -383,8 +392,10 @@ class AppAccentTokens {
     onSolid: AppPalette.neutral0,
   );
 
+  // sky600, not 500: white on 500 is 3.96:1, short of the 4.5 a button label
+  // needs. 600 is 5.9:1.
   static const accentLight = AppAccentTokens(
-    primary: AppPalette.sky500,
+    primary: AppPalette.sky600,
     pressed: AppPalette.sky700,
     subtle: AppPalette.sky100,
     subtleText: AppPalette.sky700,
@@ -399,12 +410,15 @@ class AppAccentTokens {
     onSolid: AppPalette.neutral0,
   );
 
+  // Dark ink on the bright mint, as in the dark theme: white on mint500 is only
+  // 3.1:1, where neutral900 is 6.1:1. Keeps the fresh mint that "a free bay"
+  // is drawn in rather than darkening it into a second forest green.
   static const tertiaryLight = AppAccentTokens(
     primary: AppPalette.mint500,
     pressed: AppPalette.mint700,
     subtle: AppPalette.mint100,
     subtleText: AppPalette.mint700,
-    onSolid: AppPalette.neutral0,
+    onSolid: AppPalette.neutral900,
   );
 
   static const tertiaryDark = AppAccentTokens(
@@ -511,17 +525,20 @@ class AppStatusTokens {
       border: AppPalette.green200,
       solid: AppPalette.green500,
     ),
+    // `solid` is the one tone drawn as a dot, a stripe or a filled button, so it
+    // has to clear 3:1 as a shape and 4.5:1 under white text. amber500 was
+    // 2.6:1 and red500 was 4.0:1; the 600 steps are 4.0 and 5.5.
     warning: StatusColors(
       bg: AppPalette.amber100,
       fg: AppPalette.amber700,
       border: AppPalette.amber200,
-      solid: AppPalette.amber500,
+      solid: AppPalette.amber600,
     ),
     danger: StatusColors(
       bg: AppPalette.red100,
       fg: AppPalette.red700,
       border: AppPalette.red200,
-      solid: AppPalette.red500,
+      solid: AppPalette.red600,
     ),
     brand: StatusColors(
       bg: AppPalette.indigo100,

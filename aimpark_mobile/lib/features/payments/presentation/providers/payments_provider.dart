@@ -23,6 +23,17 @@ class PaymentsNotifier extends _$PaymentsNotifier {
     state = const AsyncLoading();
     state = await AsyncValue.guard(() => ref.read(paymentsRepositoryProvider).list());
   }
+
+  /// Fetches again without blanking the list first — for coming back from a
+  /// payment page, where the person is looking at the screen and a flash of
+  /// skeleton rows would read as the app having lost their bills. If the request
+  /// fails the list they were already looking at stays.
+  Future<void> refreshQuietly() async {
+    final fresh = await AsyncValue.guard(
+      () => ref.read(paymentsRepositoryProvider).list(),
+    );
+    if (fresh.hasValue) state = fresh;
+  }
 }
 
 @riverpod

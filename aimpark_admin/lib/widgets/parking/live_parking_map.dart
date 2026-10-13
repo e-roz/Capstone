@@ -1821,6 +1821,12 @@ class _SensorCoverage {
   /// relays the same list.
   factory _SensorCoverage.from(DeviceHealthState local, SiteLink? link) {
     if (local.report case final report?) return _SensorCoverage.of(report.devices);
+    // The guard post has gone quiet, so the device list the cloud still holds is
+    // as old as its silence. Believing it kept sensors "online" that nobody has
+    // heard from, and their bays stayed green while the hub was powered off.
+    // Nothing vouches for a bay now: every one reads No signal, and the stale
+    // banner above the map says why.
+    if (link != null && link.stale) return const _SensorCoverage({});
     if (link != null && link.reportsHealth) return _SensorCoverage.of(link.devices);
     // Still finding out where this panel is (no answer from either yet):
     // grey until a sensor is heard from, never green on a guess.

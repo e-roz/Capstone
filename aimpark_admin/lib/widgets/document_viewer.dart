@@ -6,6 +6,20 @@ import '../theme/theme.dart';
 
 const _imageExtensions = ['.jpg', '.jpeg', '.png'];
 
+/// Whether [fileName] can be shown inline rather than opened in a new tab.
+bool isImageDocument(String fileName) =>
+    _imageExtensions.any(fileName.toLowerCase().endsWith);
+
+/// A document type as a person says it. The API sends the enum name
+/// (`OfficialReceipt`, `Raf`), which must never reach the screen.
+String documentLabel(String type) => switch (type) {
+      'Raf' => 'Registration form',
+      'SchoolId' => 'School ID',
+      'License' => "Driver's licence",
+      'OfficialReceipt' => 'Official receipt',
+      _ => type,
+    };
+
 /// Opens a document for review: images are previewed inline, PDFs open in a
 /// new browser tab (Flutter Web has no reliable in-app PDF renderer, but
 /// browsers already handle PDFs well natively).
@@ -15,10 +29,7 @@ Future<void> viewDocument(
   required String fileName,
   required String url,
 }) async {
-  final ext = fileName.toLowerCase();
-  final isImage = _imageExtensions.any(ext.endsWith);
-
-  if (isImage) {
+  if (isImageDocument(fileName)) {
     await showDialog<void>(
       context: context,
       builder: (ctx) => Dialog(

@@ -18,6 +18,7 @@ namespace AimPark.API.Services
         private readonly INotificationService _notificationService;
         private readonly AppDbContext _db;
         private readonly ISlotSensors _sensors;
+        private readonly IEntryDues _entryDues;
 
         public ParkingHistoryService(
             IRepository<ParkingLog> logs,
@@ -26,9 +27,11 @@ namespace AimPark.API.Services
             IParkingAllocationService allocationService,
             INotificationService notificationService,
             AppDbContext db,
-            ISlotSensors sensors)
+            ISlotSensors sensors,
+            IEntryDues? entryDues = null)
         {
             _sensors = sensors;
+            _entryDues = entryDues ?? new DbEntryDues(db);
             _logs = logs;
             _slots = slots;
             _paymentService = paymentService;
@@ -95,6 +98,29 @@ namespace AimPark.API.Services
                 Page = page,
                 PageSize = pageSize
             });
+        }
+
+        /// <summary>
+        /// Why this account may not enter, or null when it may. The first text
+        /// is for the gate display, the second finishes "Your …" in the
+        /// driver's notification. Neither carries the admin's reason.
+        /// </summary>
+        public static (string Gate, string Notice)? AccountRefusal(User user)
+        {
+            if (user.IsDeleted)
+                return ("Account archived. See a guard.",
+                        "account is archived. Contact the parking admin.");
+
+            return user.AccountStatus switch
+            {
+                AccountStatus.Active => null,
+                AccountStatus.Suspended => ("Account suspended. See a guard.",
+                                            "account is suspended. Contact the parking admin."),
+                AccountStatus.Revoked => ("RFID access revoked. See a guard.",
+                                          "RFID access is revoked. Open the app to see why."),
+                _ => ("Account not approved. See a guard.",
+                      "account is not approved yet. Contact the parking admin."),
+            };
         }
 
         /// <summary>
@@ -183,6 +209,31 @@ namespace AimPark.API.Services
                     message = "User not found. Provide a valid userId or rfidTagId."
                 });
 
+            // The account itself, before anything about the card. Suspending or
+            // archiving a user leaves RfidStatus alone on purpose — that field
+            // belongs to violation suspensions, and lifting one must never lift
+            // the other — so the gate has to read the account directly.
+            // Entry only: a driver already inside can always leave.
+            if (AccountRefusal(user) is var (gateMessage, notice))
+            {
+                if (loggedByDeviceId is not null)
+                {
+                    await _notificationService.NotifyUserAsync(
+                        user.Id,
+                        NotificationType.Parking,
+                        "Your card was refused",
+                        $"{(dto.Gate is int g ? $"Gate {g}: y" : "Y")}our {notice}",
+                        null,
+                        ct);
+                }
+
+                return new BadRequestObjectResult(new
+                {
+                    result = AllocationResult.RfidSuspended,
+                    message = gateMessage
+                });
+            }
+
             var nowUtc = DateTime.UtcNow;
 
             // Temporary suspension has expired — lazily reactivate.
@@ -213,6 +264,34 @@ namespace AimPark.API.Services
                 {
                     result = AllocationResult.RfidSuspended,
                     message = "RFID access is suspended."
+                });
+            }
+
+            // Owes money. Entry only: LogExitAsync never looks at this, so a
+            // blocked driver who is already inside can still leave.
+            var owed = await _entryDues.GetOwedAsync(user.Id, ct);
+            var balance = UnpaidBalance.Evaluate(owed, nowUtc);
+
+            if (balance.Blocked)
+            {
+                if (loggedByDeviceId is not null)
+                {
+                    await _notificationService.NotifyUserAsync(
+                        user.Id,
+                        NotificationType.Parking,
+                        "Your card was refused",
+                        $"{(dto.Gate is int g ? $"Gate {g}: y" : "Y")}ou have an unpaid balance of ₱{balance.Outstanding:N2}. Pay it in the app to enter.",
+                        new Dictionary<string, string> { ["screen"] = "parking-history" },
+                        ct);
+                }
+
+                return new BadRequestObjectResult(new
+                {
+                    result = AllocationResult.UnpaidBalance,
+                    message = $"Unpaid balance of ₱{balance.Outstanding:N2}. Pay in the app to enter.",
+                    // Not "amountDue": the gate display appends "₱N due." to that
+                    // key, which would repeat the figure already in the message.
+                    outstandingBalance = balance.Outstanding
                 });
             }
 
@@ -576,32 +655,6 @@ namespace AimPark.API.Services
         }
 
         /// <summary>
-        /// Tells whoever pressed "Notify me" that the full lot has a bay again.
-        /// </summary>
-        /// <remarks>
-        /// Only the watchers. This used to push "The lot is full" and "A slot
-        /// just opened" to every user, including everyone already parked and
-        /// everyone not coming in today. The full-lot state is shown in the app
-        /// where the Notify-me button lives, so it no longer needs a push.
-        ///
-        /// Fired on the transition only: one free bay right after an exit means
-        /// *this* vehicle freed the only one. Read off the count, so there is no
-        /// extra column to get out of step with the slots table.
-        /// </remarks>
-        private async Task AnnounceSlotOpenedAsync(CancellationToken ct)
-        {
-            var free = await _db.Set<ParkingSlot>().AsNoTracking()
-                .CountAsync(sl => sl.Status == ParkingSlotStatus.Available, ct);
-
-            if (free != 1) return;
-
-            await _notificationService.NotifySlotWatchersAsync(
-                "A slot just opened",
-                "The lot was full and a bay has come free. Open the app to see where.",
-                ct);
-        }
-
-        /// <summary>
         /// Entry for a card that belongs to no account - a pass lent to a
         /// visitor.
         /// </summary>
@@ -846,7 +899,6 @@ namespace AimPark.API.Services
 
             await _logs.SaveAsync(ct);
 
-            await AnnounceSlotOpenedAsync(ct);
 
             // Visitor parking is free by design — a guest being escorted in for
             // a specific purpose, not a campus regular. No quote, no charge.

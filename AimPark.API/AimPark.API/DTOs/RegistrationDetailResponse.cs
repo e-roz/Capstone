@@ -8,7 +8,6 @@ namespace AimPark.API.DTOs
         public string Affiliation { get; set; } = string.Empty;
         public string? StudentNumber { get; set; }
         public string? Section { get; set; }
-        public DateTime? EnrollmentValidUntil { get; set; }
 
         public string RegistrationStep { get; set; } = string.Empty;
         public string AccountStatus { get; set; } = string.Empty;
@@ -19,6 +18,9 @@ namespace AimPark.API.DTOs
         public DateTime? CanReapplyAt { get; set; }
         public bool IsDeleted { get; set; }
         public DateTime CreatedAt { get; set; }
+
+        /// <summary>Whole days since the last change, worked out as the queue does.</summary>
+        public int WaitingDays { get; set; }
         public string? RfidTagId { get; set; }
         public string RfidStatus { get; set; } = string.Empty;
         public DateTime? RfidSuspendedUntil { get; set; }

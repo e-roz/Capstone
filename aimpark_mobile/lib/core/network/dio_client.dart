@@ -28,6 +28,14 @@ const registrationSessionTokenKey = 'registration_session_token';
 const _accountUnavailableCode = 'account_unavailable';
 const _accountBlockedCode = 'account_blocked';
 
+const _retryCountKey = 'retry_count_503';
+const _retryDelays = [
+  Duration(seconds: 5),
+  Duration(seconds: 10),
+  Duration(seconds: 15),
+  Duration(seconds: 20),
+];
+
 class DioClient {
   DioClient(this._router, this._resetLocalState) {
     dio = Dio(
@@ -38,6 +46,32 @@ class DioClient {
         // which routinely takes 30-60s and used to fail outright.
         connectTimeout: const Duration(seconds: 60),
         receiveTimeout: const Duration(seconds: 60),
+      ),
+    );
+
+    // First in line, so the 401 handling below only ever sees a request's
+    // final outcome rather than every attempt along the way.
+    dio.interceptors.add(
+      InterceptorsWrapper(
+        onError: (error, handler) async {
+          final options = error.requestOptions;
+          final attempt = (options.extra[_retryCountKey] as int?) ?? 0;
+          if (error.response?.statusCode != 503 ||
+              attempt >= _retryDelays.length) {
+            return handler.next(error);
+          }
+          // A 503 here is Render answering for a container that is still
+          // booting, so the request never reached the API and is safe to
+          // repeat whatever its method. The delays add up to about the 60s a
+          // cold start takes.
+          await Future<void>.delayed(_retryDelays[attempt]);
+          options.extra[_retryCountKey] = attempt + 1;
+          try {
+            handler.resolve(await dio.fetch<dynamic>(options));
+          } on DioException catch (e) {
+            handler.next(e);
+          }
+        },
       ),
     );
 

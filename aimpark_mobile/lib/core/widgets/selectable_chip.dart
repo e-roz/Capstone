@@ -37,12 +37,15 @@ class SelectableChip extends StatelessWidget {
         ? t.text.disabled
         : selected
             ? t.brand.onSolid
-            : t.text.secondary;
+            : t.text.primary;
 
     return Semantics(
       button: true,
       selected: selected,
       enabled: enabled,
+      label: label,
+      excludeSemantics: true,
+      onTap: enabled ? onTap : null,
       child: GestureDetector(
         onTap: enabled
             ? () {
@@ -53,32 +56,51 @@ class SelectableChip extends StatelessWidget {
         child: AnimatedContainer(
           duration: AppMotion.fast,
           curve: AppMotion.standard,
-          height: 36,
-          alignment: Alignment.center,
-          padding: const EdgeInsets.symmetric(horizontal: 14),
+          // A floor, not a fixed height: 44dp to be hit with a thumb, and free to
+          // grow when the system text is large.
+          constraints: const BoxConstraints(minHeight: 44),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
           decoration: BoxDecoration(
             color: selected ? t.brand.primary : t.surface.card,
             borderRadius: AppRadius.fullAll,
             border: Border.all(
+              // An unchosen chip is a control, so its edge uses the control
+              // border (3:1) rather than the card hairline it used to share.
               color: !enabled
                   ? t.border.subtle
                   : selected
                       ? t.brand.primary
-                      : t.border.normal,
+                      : t.border.control,
+              width: 1.5,
             ),
           ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              if (icon != null) ...[
-                Icon(icon, size: AppSizes.iconSm, color: fg),
-                const SizedBox(width: 6),
+          // Centred with factors of 1 so the chip is exactly as wide and tall as
+          // its label. A plain `alignment: center` on the container makes it
+          // grow to fill whatever width it is offered, and a Wrap offers the whole
+          // row — which is how every chip became a full-width bar and the group a
+          // single column.
+          child: Center(
+            widthFactor: 1,
+            heightFactor: 1,
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (icon != null) ...[
+                  Icon(icon, size: AppSizes.iconMd, color: fg),
+                  const SizedBox(width: 8),
+                ],
+                // Flexible, so a long label wraps to a second line at a large
+                // text size instead of running off the end of the chip.
+                Flexible(
+                  child: Text(
+                    label,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: context.text.labelLarge?.copyWith(color: fg),
+                  ),
+                ),
               ],
-              Text(
-                label,
-                style: context.text.labelMedium?.copyWith(color: fg),
-              ),
-            ],
+            ),
           ),
         ),
       ),

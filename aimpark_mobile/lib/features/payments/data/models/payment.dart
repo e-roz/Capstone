@@ -13,7 +13,6 @@ class Payment {
     this.entryTime,
     this.exitTime,
     this.paidAt,
-    this.dueAt,
     this.method,
     this.referenceNumber,
     this.provider,
@@ -33,9 +32,6 @@ class Payment {
   final DateTime createdAt;
   final DateTime? paidAt;
 
-  /// When settlement is expected. Null on older records created before due
-  /// dates existed, so every read has to tolerate its absence.
-  final DateTime? dueAt;
 
   /// Cash, GCash, Maya or Card. Null until the bill is settled.
   final String? method;
@@ -48,6 +44,22 @@ class Payment {
 
   bool get isPaid => paidAt != null;
 
+  /// What the bill is for, in words. The API sends the enum name — `ParkingFee`,
+  /// `Violation` — and the bill used to print it as it came.
+  String get sourceLabel => isViolation ? 'Violation fine' : 'Parking fee';
+
+  /// A fine rather than a parking fee. The API's enum name is `ViolationPenalty`,
+  /// and comparing against `'violation'` alone is what made every fine show up as
+  /// a parking fee.
+  bool get isViolation => source.toLowerCase().startsWith('violation');
+
+  /// Written off — nothing owed, nothing paid.
+  bool get isWaived => status.toLowerCase() == 'waived';
+
+  /// Owed and not yet being paid: the bills a person can act on right now. A
+  /// bill whose checkout is already open is [isProcessing], not this.
+  bool get isPayable => !isPaid && !isWaived && !isProcessing;
+
   /// A checkout is open and nothing has come back from the provider yet.
   ///
   /// The gap between leaving for GCash and the money being confirmed is real,
@@ -56,27 +68,14 @@ class Payment {
   /// payer pays a second time.
   bool get isProcessing => !isPaid && status.toLowerCase() == 'processing';
 
-  bool get isOverdue =>
-      !isPaid && dueAt != null && DateTime.now().isAfter(dueAt!);
-
-  /// Whole days until the deadline. Negative once it has passed.
-  int? get daysUntilDue {
-    if (dueAt == null) return null;
-    final due = DateTime(dueAt!.year, dueAt!.month, dueAt!.day);
-    final now = DateTime.now();
-    return due.difference(DateTime(now.year, now.month, now.day)).inDays;
-  }
-
-  /// Short human phrasing for the deadline, or null when there is nothing to say.
-  String? get dueLabel {
-    if (isPaid || dueAt == null) return null;
-
-    final days = daysUntilDue!;
-    if (days < 0) return 'Overdue by ${-days} day(s)';
-    if (days == 0) return 'Due today';
-    if (days == 1) return 'Due tomorrow';
-    return 'Due in $days days';
-  }
+  /// What to say about when it is due, or null when there is nothing to say.
+  ///
+  /// There are no due dates. A parking fee is owed the moment the driver leaves,
+  /// and a violation fine exists only once the violation is final; either one
+  /// stops the next entry at the gate until it is paid. "Due now" is the whole
+  /// truth, so that is all it says. Bills raised before this was settled still
+  /// carry a date from the server, which is ignored.
+  String? get dueLabel => isPayable ? 'Due now' : null;
 
   factory Payment.fromJson(Map<String, dynamic> json) {
     return Payment(
@@ -93,7 +92,6 @@ class Payment {
       status: json['status'] as String,
       createdAt: DateTime.parse(json['createdAt'] as String),
       paidAt: json['paidAt'] == null ? null : DateTime.parse(json['paidAt'] as String),
-      dueAt: json['dueAt'] == null ? null : DateTime.parse(json['dueAt'] as String),
       method: json['method'] as String?,
       referenceNumber: json['referenceNumber'] as String?,
       provider: json['provider'] as String?,

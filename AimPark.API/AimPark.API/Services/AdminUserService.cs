@@ -83,6 +83,7 @@ namespace AimPark.API.Services
                     Role         = u.Role.ToString(),
                     AccountStatus = u.AccountStatus.ToString(),
                     RfidStatus   = u.RfidStatus.ToString(),
+                    RfidTagId    = u.RfidTagId,
                     IsDeleted    = u.IsDeleted,
                     CreatedAt    = u.CreatedAt
                 })
@@ -410,33 +411,204 @@ namespace AimPark.API.Services
             return new OkObjectResult(response);
         }
 
-        // GET /api/admin/rfid-cards?state=Free
+        // GET /api/admin/rfid-cards?state=Free&includeAssigned=true
         //
         // The pool an admin picks from when handing out a card someone else
         // already carried — and, filtered to Blocked, the list of UIDs that
         // must never be reissued.
-        public async Task<ActionResult<List<RfidCardResponse>>> ListRfidCardsAsync(string? state, CancellationToken ct)
+        //
+        // With includeAssigned, cards currently on someone's account are added
+        // too. Those have no RfidCard row (assigning deletes it), so they are
+        // read off User.RfidTagId instead. Opt-in, so a caller that only wants
+        // the pool gets exactly the list it always did.
+        public async Task<ActionResult<List<RfidCardResponse>>> ListRfidCardsAsync(
+            string? state, bool includeAssigned, CancellationToken ct)
         {
-            var query = _db.Set<RfidCard>().AsNoTracking().AsQueryable();
+            var wantPool = true;
+            var wantAssigned = includeAssigned;
+            RfidCardState? poolState = null;
 
-            if (!string.IsNullOrWhiteSpace(state) && Enum.TryParse<RfidCardState>(state, true, out var parsedState))
-                query = query.Where(c => c.State == parsedState);
-
-            var cards = await query
-                .OrderByDescending(c => c.UpdatedAt)
-                .Select(c => new RfidCardResponse
+            if (!string.IsNullOrWhiteSpace(state))
+            {
+                if (state.Equals("Assigned", StringComparison.OrdinalIgnoreCase))
                 {
-                    RfidTagId = c.RfidTagId,
-                    State = c.State.ToString(),
-                    Reason = c.Reason.ToString(),
-                    Note = c.Note,
-                    LastUserId = c.LastUserId,
-                    LastUserName = c.LastUserName,
-                    UpdatedAt = c.UpdatedAt
+                    wantPool = false;
+                    wantAssigned = true;
+                }
+                else if (Enum.TryParse<RfidCardState>(state, true, out var parsedState))
+                {
+                    poolState = parsedState;
+                    wantAssigned = false;
+                }
+            }
+
+            var cards = new List<RfidCardResponse>();
+
+            if (wantAssigned)
+                cards.AddRange(await ListAssignedCardsAsync(ct));
+
+            if (wantPool)
+            {
+                var query = _db.Set<RfidCard>().AsNoTracking().AsQueryable();
+                if (poolState is not null)
+                    query = query.Where(c => c.State == poolState.Value);
+
+                var pool = await query
+                    .Select(c => new RfidCardResponse
+                    {
+                        RfidTagId = c.RfidTagId,
+                        State = c.State.ToString(),
+                        Reason = c.Reason.ToString(),
+                        Note = c.Note,
+                        LastUserId = c.LastUserId,
+                        LastUserName = c.LastUserName,
+                        UpdatedAt = c.UpdatedAt
+                    })
+                    .ToListAsync(ct);
+
+                // Assigning deletes the pool row, so a tag in both lists means
+                // the data drifted. The account is what the gate reads, so the
+                // assigned entry wins rather than the card showing up twice.
+                var held = cards.Select(c => c.RfidTagId).ToHashSet();
+                cards.AddRange(pool.Where(c => !held.Contains(c.RfidTagId)));
+            }
+
+            return new OkObjectResult(cards
+                .OrderByDescending(c => c.UpdatedAt.HasValue)
+                .ThenByDescending(c => c.UpdatedAt)
+                .ToList());
+        }
+
+        private async Task<List<RfidCardResponse>> ListAssignedCardsAsync(CancellationToken ct)
+        {
+            var holders = await _db.Set<User>().AsNoTracking()
+                .Where(u => u.RfidTagId != null && u.RfidTagId != "")
+                .Select(u => new
+                {
+                    u.Id,
+                    u.FullName,
+                    u.StudentNumber,
+                    u.Affiliation,
+                    u.Role,
+                    u.RfidTagId,
+                    u.RfidStatus,
+                    u.RfidSuspendedUntil,
+                    u.IsDeleted
                 })
                 .ToListAsync(ct);
 
-            return new OkObjectResult(cards);
+            if (holders.Count == 0) return [];
+
+            // The account has no "assigned at" column. The newest AssignRfid
+            // audit row for the holder is that moment — assigning is the only
+            // way RfidTagId gets set, so it is always for the card they hold.
+            var ids = holders.Select(h => h.Id).ToList();
+            var assignedAt = await _db.Set<AdminAuditLog>().AsNoTracking()
+                .Where(l => l.Action == "AssignRfid" && ids.Contains(l.TargetUserId))
+                .GroupBy(l => l.TargetUserId)
+                .Select(g => new { UserId = g.Key, At = g.Max(l => l.CreatedAt) })
+                .ToDictionaryAsync(x => x.UserId, x => x.At, ct);
+
+            return holders.Select(h => new RfidCardResponse
+            {
+                RfidTagId = h.RfidTagId!,
+                State = "Assigned",
+                UpdatedAt = assignedAt.TryGetValue(h.Id, out var at) ? at : null,
+                HolderUserId = h.Id,
+                HolderName = h.FullName,
+                HolderStudentNumber = h.StudentNumber,
+                HolderAffiliation = h.Affiliation.ToString(),
+                HolderRole = h.Role.ToString(),
+                HolderRfidStatus = h.RfidStatus.ToString(),
+                HolderSuspendedUntil = h.RfidSuspendedUntil,
+                HolderArchived = h.IsDeleted
+            }).ToList();
+        }
+
+        // GET /api/admin/rfid-cards/{tagId}/history
+        //
+        // The audit log is keyed by user, not by card, so a card's history is
+        // found through the "RfidTagId=..." text the assign and revoke rows
+        // already store: the new value of an AssignRfid, the old value of a
+        // RevokeRfid. A Reinstate row carries no tag; it is matched to the
+        // AssignRfid written in the same request for the same user.
+        public async Task<ActionResult<List<RfidCardHistoryEntry>>> GetRfidCardHistoryAsync(string tagId, CancellationToken ct)
+        {
+            var tag = RfidTag.Normalize(tagId);
+            if (tag.Length == 0)
+                return new BadRequestObjectResult(new { message = "RFID tag ID is required." });
+
+            // The trailing comma anchors the match, so card AB does not also
+            // pick up card AB12.
+            var marker = $"RfidTagId={tag},";
+
+            var rows = await _db.Set<AdminAuditLog>().AsNoTracking()
+                .Where(l =>
+                    (l.Action == "AssignRfid" && l.NewValue != null && l.NewValue.Contains(marker)) ||
+                    (l.Action == "RevokeRfid" && l.OldValue != null && l.OldValue.Contains(marker)))
+                .ToListAsync(ct);
+
+            var assigns = rows.Where(r => r.Action == "AssignRfid").ToList();
+            if (assigns.Count > 0)
+            {
+                var assignedUsers = assigns.Select(a => a.TargetUserId).Distinct().ToList();
+                var reinstates = await _db.Set<AdminAuditLog>().AsNoTracking()
+                    .Where(l => l.Action == "Reinstate" && assignedUsers.Contains(l.TargetUserId))
+                    .ToListAsync(ct);
+
+                rows.AddRange(reinstates.Where(r => assigns.Any(a =>
+                    a.TargetUserId == r.TargetUserId &&
+                    Math.Abs((a.CreatedAt - r.CreatedAt).TotalSeconds) < 5)));
+            }
+
+            var userIds = rows.SelectMany(r => new[] { r.AdminUserId, r.TargetUserId }).Distinct().ToList();
+            var names = await _db.Set<User>().AsNoTracking()
+                .Where(u => userIds.Contains(u.Id))
+                .Select(u => new { u.Id, u.FullName })
+                .ToDictionaryAsync(u => u.Id, u => u.FullName, ct);
+
+            return new OkObjectResult(rows
+                .OrderByDescending(r => r.CreatedAt)
+                .Select(r =>
+                {
+                    var (reason, note) = r.Action == "RevokeRfid"
+                        ? SplitRevokeReason(r.Reason)
+                        : (null, r.Action == "Reinstate" ? null : r.Reason);
+
+                    var bySystem = r.AdminUserId == Guid.Empty;
+                    return new RfidCardHistoryEntry
+                    {
+                        Action = r.Action,
+                        Reason = reason,
+                        Note = note,
+                        UserId = r.TargetUserId,
+                        UserName = names.GetValueOrDefault(r.TargetUserId, "Unknown user"),
+                        ActorUserId = bySystem ? null : r.AdminUserId,
+                        ActorName = bySystem ? "System" : names.GetValueOrDefault(r.AdminUserId, "Unknown user"),
+                        CreatedAt = r.CreatedAt
+                    };
+                })
+                .ToList());
+        }
+
+        /// <summary>
+        /// RevokeCardAsync stores the reason as <c>Lost</c> or <c>Lost: note</c>.
+        /// Anything not in that shape is returned whole as the note, so an old
+        /// row is shown as written rather than guessed at.
+        /// </summary>
+        public static (string? reason, string? note) SplitRevokeReason(string? raw)
+        {
+            if (string.IsNullOrWhiteSpace(raw)) return (null, null);
+
+            var split = raw.IndexOf(':');
+            var head = (split < 0 ? raw : raw[..split]).Trim();
+            // Letters only: Enum.TryParse would also accept "3" as Lost.
+            if (head.Length == 0 || !head.All(char.IsLetter) ||
+                !Enum.TryParse<RfidRevokeReason>(head, true, out var reason))
+                return (null, raw);
+
+            var note = split < 0 ? null : raw[(split + 1)..].Trim();
+            return (reason.ToString(), string.IsNullOrEmpty(note) ? null : note);
         }
 
         /// <summary>

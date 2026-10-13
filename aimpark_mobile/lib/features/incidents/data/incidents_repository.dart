@@ -21,7 +21,9 @@ class IncidentsRepository {
     return IncidentDetail.fromJson(response.data as Map<String, dynamic>);
   }
 
-  Future<void> create({
+  /// Files a report and returns its id, so the app can open it. Null only if an
+  /// older server answered without one.
+  Future<String?> create({
     required String category,
     required String description,
     String? location,
@@ -35,7 +37,9 @@ class IncidentsRepository {
     for (final path in evidencePaths) {
       formData.files.add(MapEntry('Evidence', await MultipartFile.fromFile(path)));
     }
-    await _dio.post(ApiEndpoints.incidents, data: formData);
+    final response = await _dio.post(ApiEndpoints.incidents, data: formData);
+    final data = response.data;
+    return data is Map ? data['incidentId']?.toString() : null;
   }
 
   /// Corrects a report. Attachments are append-only and not touched here.

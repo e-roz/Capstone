@@ -18,6 +18,9 @@ namespace AimPark.API.Controllers
             _incidentService = incidentService;
         }
 
+        // Admin decides reports, so an admin filing one would only be
+        // reviewing their own. Users and security staff report.
+        [Authorize(Roles = "User,Security")]
         [HttpPost]
         [RequestSizeLimit(10 * 1024 * 1024)]
         [RequestFormLimits(MultipartBodyLengthLimit = 10 * 1024 * 1024)]

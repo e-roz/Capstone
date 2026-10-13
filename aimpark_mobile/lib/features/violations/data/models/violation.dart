@@ -1,9 +1,39 @@
-/// A violation status as the user should read it — "Pending Appeal", not
-/// "PendingAppeal". `Appealed` means the user won their appeal.
+import '../../../../core/theme/theme.dart';
+
+/// A violation status as the user should read it.
+///
+/// The API's names are the lifecycle's, not a person's: `Appealed` means the
+/// appeal was *won*, which reads as "I have appealed" to anyone who did not write
+/// the code, and `Accountable` means the case is closed against the user.
+///
+/// `Accountable` is "Final" rather than "Appeal denied" because it is two things:
+/// the office rejecting an appeal, and the appeal deadline passing with no appeal
+/// filed at all. "Final" is true of both.
 String violationStatusLabel(String status) => switch (status.toLowerCase()) {
       'pendingappeal' => 'Pending Appeal',
+      'appealed' => 'Appeal accepted',
+      'accountable' => 'Final',
       _ => status,
     };
+
+/// The appeal window as a phrase that stands on its own: "3 days left to
+/// appeal", "less than a day left to appeal", "Appeal window has ended".
+String appealCountdown(DateTime deadline, {DateTime? now}) {
+  final left = appealTimeLeft(deadline, now: now);
+  return left == 'ended' ? 'Appeal window has ended' : '$left to appeal';
+}
+
+/// How urgent an open appeal window is: red inside the last day or once it has
+/// ended, amber before that.
+///
+/// Amber is the floor, not blue. An open violation carries a penalty and a
+/// deadline; "information" undersold it.
+StatusIntent appealUrgency(DateTime deadline, {DateTime? now}) {
+  final remaining = deadline.difference(now ?? DateTime.now());
+  return remaining < const Duration(days: 1)
+      ? StatusIntent.danger
+      : StatusIntent.warning;
+}
 
 /// How long is left to appeal, in words: "3 days left", "1 day left",
 /// "less than a day left", or "ended".
@@ -14,6 +44,9 @@ String appealTimeLeft(DateTime deadline, {DateTime? now}) {
   final days = (remaining.inHours / 24).ceil();
   return '$days ${days == 1 ? 'day' : 'days'} left';
 }
+
+/// Accountable violations at which the RFID card is revoked.
+const kStrikeLimit = 3;
 
 class ViolationSummary {
   const ViolationSummary({
@@ -50,6 +83,26 @@ class ViolationSummary {
   final DateTime? paidAt;
 
   bool get isPaid => paymentStatus?.toLowerCase() == 'paid';
+
+  /// Still in play: issued, or under appeal. Something the user has to do
+  /// something about.
+  ///
+  /// `Accountable` is closed — the case went against the user and nothing is
+  /// left to act on but the fee, which the payments balance covers separately.
+  /// This used to live on the standing helper; it is a fact about a violation,
+  /// so it lives here.
+  bool get isOpen {
+    final s = status.toLowerCase();
+    return s == 'issued' || s == 'pendingappeal';
+  }
+
+  /// The case went against the user: the one status that counts as a strike.
+  ///
+  /// An appeal that is won becomes `Appealed` and a dismissed one `Dismissed`,
+  /// so neither counts. A violation still `Issued` or under appeal does not
+  /// either — it may yet go away. This is the same rule the server uses to
+  /// revoke the card, so the count on Home cannot disagree with the gate.
+  bool get isStrike => status.toLowerCase() == 'accountable';
 
   /// Whether there is anything left for the user to do about this violation.
   ///

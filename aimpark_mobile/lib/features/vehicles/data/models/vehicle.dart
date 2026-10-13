@@ -19,6 +19,11 @@ class Vehicle {
 
   final String color;
 
+  /// A two-wheeler. Anything else is treated as a car — the lot has two kinds of
+  /// bay, and an unrecognised type is far more likely to be a car than a third
+  /// kind of vehicle.
+  bool get isMotorcycle => vehicleType.toLowerCase().contains('motor');
+
   /// Null when no receipt has been read for this vehicle yet.
   final DateTime? registrationValidThrough;
 

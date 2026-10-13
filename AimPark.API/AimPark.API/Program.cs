@@ -113,6 +113,14 @@ builder.Services.AddCors(options =>
     options.AddPolicy("AllowAdminWeb", policy =>
     {
         policy.WithOrigins(allowedOrigins)
+              // `flutter run -d edge` / `-d chrome` pick a new random port every
+              // run, so in Development any localhost port is allowed. Never in
+              // production: there only the configured origins above are.
+              .SetIsOriginAllowed(origin =>
+                  allowedOrigins.Contains(origin) ||
+                  (builder.Environment.IsDevelopment() &&
+                   Uri.TryCreate(origin, UriKind.Absolute, out var uri) &&
+                   uri.Host is "localhost" or "127.0.0.1"))
               .AllowAnyMethod()
               .AllowAnyHeader()
               // Without this the browser hides Content-Disposition from the

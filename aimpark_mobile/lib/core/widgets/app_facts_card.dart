@@ -5,7 +5,13 @@ import 'app_card.dart';
 
 /// One recorded fact: what it is, and what it says.
 class AppFact {
-  const AppFact(this.label, this.value, {this.intent});
+  const AppFact(
+    this.label,
+    this.value, {
+    this.intent,
+    this.struck = false,
+    this.note,
+  });
 
   final String label;
 
@@ -16,6 +22,15 @@ class AppFact {
   /// Colours the value where it carries a verdict of its own — an overdue
   /// date, a waived charge.
   final StatusIntent? intent;
+
+  /// Draws the value with a line through it: a figure that is on the record but
+  /// does not apply — a penalty on a violation whose appeal was accepted. Left
+  /// printed at full weight, it contradicted the banner above it that said no
+  /// penalty applied.
+  final bool struck;
+
+  /// A short line under the value, for saying why: "Not charged".
+  final String? note;
 }
 
 /// A card of label/value pairs, divided by hairlines, with an optional
@@ -106,6 +121,11 @@ class _Row extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // A plain Text, deliberately not Flexible. A Flexible label beside an
+          // Expanded value splits the free width between them *evenly* and leaves
+          // the label's unused share empty, so the values stopped short of the
+          // right edge and ended wherever the label's half ran out. The value
+          // shrinks to fit instead — see the FittedBox below.
           Text(
             fact.label,
             style: emphasis
@@ -114,19 +134,43 @@ class _Row extends StatelessWidget {
           ),
           const SizedBox(width: AppSpacing.md),
           Expanded(
-            child: Text(
-              fact.value.isEmpty ? '—' : fact.value,
-              textAlign: TextAlign.end,
-              // Tabular throughout: these columns are read down as much as
-              // across, and proportional digits make a column of times and
-              // amounts look ragged.
-              style: AppTypography.tabular(
-                (emphasis
-                        ? context.text.headlineMedium
-                        : context.text.bodyMedium?.copyWith(
-                            fontWeight: FontWeight.w600,
-                          ))!,
-              ).copyWith(color: c?.fg),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                // Scaled down to fit rather than wrapped: a figure split over two
+                // lines is not a figure.
+                FittedBox(
+                  fit: BoxFit.scaleDown,
+                  alignment: AlignmentDirectional.centerEnd,
+                  child: Text(
+                    fact.value.isEmpty ? '—' : fact.value,
+                    textAlign: TextAlign.end,
+                    // Tabular throughout: these columns are read down as much as
+                    // across, and proportional digits make a column of times and
+                    // amounts look ragged.
+                    style: AppTypography.tabular(
+                      (emphasis
+                          ? context.text.headlineMedium
+                          : context.text.bodyMedium?.copyWith(
+                              fontWeight: FontWeight.w600,
+                            ))!,
+                    ).copyWith(
+                      color: fact.struck ? t.text.secondary : c?.fg,
+                      decoration:
+                          fact.struck ? TextDecoration.lineThrough : null,
+                    ),
+                  ),
+                ),
+                if (fact.note != null)
+                  Text(
+                    fact.note!,
+                    textAlign: TextAlign.end,
+                    style: context.text.bodySmall?.copyWith(
+                      color: c?.fg,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+              ],
             ),
           ),
         ],

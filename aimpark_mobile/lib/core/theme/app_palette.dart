@@ -42,7 +42,12 @@ class AppPalette {
   static const neutral200 = Color(0xFFE2E0D7);
   static const neutral300 = Color(0xFFCBC8BB);
   static const neutral400 = Color(0xFF9E9A8C);
-  static const neutral500 = Color(0xFF74705F);
+  // The edge of a control that must be seen to be used — an input, a checkbox.
+  // 3.5:1 against the canvas; 400 above is 2.6:1 and is for decoration only.
+  static const neutral450 = Color(0xFF888474);
+  // Secondary text. Darkened from 74705F, which was 4.3:1 on a muted well and
+  // so failed AA wherever it sat on a chip or an icon tile.
+  static const neutral500 = Color(0xFF6C6858);
   static const neutral600 = Color(0xFF54503F);
   static const neutral700 = Color(0xFF3A3728);
   static const neutral800 = Color(0xFF24221A);

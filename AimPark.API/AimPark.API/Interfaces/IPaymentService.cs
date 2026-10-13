@@ -42,6 +42,9 @@ namespace AimPark.API.Interfaces
         /// </remarks>
         Task<ActionResult<CheckoutResponse>> StartCheckoutAsync(Guid userId, Guid paymentId, CancellationToken ct);
 
+        /// <summary>One checkout covering every bill the caller can pay now ("Pay all").</summary>
+        Task<ActionResult<CheckoutResponse>> StartCheckoutAllAsync(Guid userId, CancellationToken ct);
+
         /// <summary>
         /// Settles a bill from a provider's callback. Safe to call twice with the
         /// same message.

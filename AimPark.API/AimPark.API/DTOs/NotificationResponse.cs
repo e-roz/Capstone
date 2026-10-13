@@ -18,5 +18,8 @@ namespace AimPark.API.DTOs
         public string? TargetRole { get; set; }
         public DateTime CreatedAt { get; set; }
         public bool IsRead { get; set; }
+
+        /// <summary>The administrator who sent it. Null for what the system raised itself.</summary>
+        public string? SentByName { get; set; }
     }
 }

@@ -24,43 +24,12 @@ namespace AimPark.API.Interfaces
             string message,
             IDictionary<string, string>? data,
             CancellationToken ct);
-        /// <summary>
-        /// Raises a notification for everyone holding a role, with no
-        /// administrator behind it, and pushes it to their devices.
-        /// </summary>
-        /// <remarks>
-        /// Distinct from <c>BroadcastAsync</c>, which records the administrator
-        /// who chose to send it. This is the system noticing something - the lot
-        /// filling up, a bay coming free - where there is no author to record
-        /// and nobody pressed anything.
-        ///
-        /// Best-effort and never throws, for the same reason as
-        /// <see cref="NotifyUserAsync"/>: logging an entry must not fail because
-        /// messaging did.
-        /// </remarks>
-        Task NotifyRoleAsync(
-            UserRole role,
-            NotificationType type,
-            string title,
-            string message,
-            CancellationToken ct);
-
-        /// <summary>
-        /// Tells the people waiting on a full lot that a bay has come free.
-        /// </summary>
-        /// <remarks>
-        /// Push only, with no row in anyone's alerts list: "a slot just opened"
-        /// is stale within minutes, and the list is for things worth reading
-        /// later. Best-effort and never throws.
-        /// </remarks>
-        Task NotifySlotWatchersAsync(string title, string message, CancellationToken ct);
-
-        Task<ActionResult<object>> GetSlotWatchAsync(Guid userId, CancellationToken ct);
-        Task<ActionResult<object>> WatchSlotsAsync(Guid userId, CancellationToken ct);
-        Task<ActionResult<object>> UnwatchSlotsAsync(Guid userId, CancellationToken ct);
 
         Task<ActionResult<NotificationListResponse>> ListAllAsync(int page, int pageSize, CancellationToken ct);
         Task<ActionResult<NotificationListResponse>> ListForUserAsync(Guid userId, UserRole role, int page, int pageSize, CancellationToken ct);
         Task<ActionResult<object>> MarkReadAsync(Guid userId, Guid notificationId, CancellationToken ct);
+
+        /// <summary>Marks everything addressed to this user, personally or by role, as read.</summary>
+        Task<ActionResult<object>> MarkAllReadAsync(Guid userId, UserRole role, CancellationToken ct);
     }
 }

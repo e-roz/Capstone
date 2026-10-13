@@ -27,7 +27,7 @@ final notificationsRepositoryProvider =
 typedef NotificationsRepositoryRef =
     AutoDisposeProviderRef<NotificationsRepository>;
 String _$notificationsNotifierHash() =>
-    r'ea7eecc4de81a19e0d76966e5749d163d04c84dc';
+    r'aaea660700c5f61f85aef8af0420836e4e275832';
 
 /// See also [NotificationsNotifier].
 @ProviderFor(NotificationsNotifier)

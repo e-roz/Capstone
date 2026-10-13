@@ -25,10 +25,11 @@ namespace AimPark.API.Controllers
         [HttpGet]
         public Task<ActionResult<IncidentListResponse>> List(
             [FromQuery] string? status = null,
+            [FromQuery] string? search = null,
             [FromQuery] int page = 1,
             [FromQuery] int pageSize = 20,
             CancellationToken ct = default)
-            => _incidentService.ListAllAsync(status, page, pageSize, ct);
+            => _incidentService.ListAllAsync(status, search, page, pageSize, ct);
 
         [HttpGet("{incidentId:guid}")]
         public Task<ActionResult<IncidentDetailResponse>> GetDetail(Guid incidentId, CancellationToken ct)
@@ -37,6 +38,11 @@ namespace AimPark.API.Controllers
         // Reviewing is a decision with a consequence - it closes somebody's
         // report and notifies them - so it stays with the administrator, and
         // the panel hides the control rather than letting it 403.
+        [Authorize(Roles = "Admin")]
+        [HttpPost("{incidentId:guid}/start-review")]
+        public Task<ActionResult<object>> StartReview(Guid incidentId, CancellationToken ct)
+            => _incidentService.StartReviewAsync(incidentId, GetAdminUserId(), ct);
+
         [Authorize(Roles = "Admin")]
         [HttpPut("{incidentId:guid}/review")]
         public Task<ActionResult<object>> Review(Guid incidentId, [FromBody] ReviewIncidentDto dto, CancellationToken ct)

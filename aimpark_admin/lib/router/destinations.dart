@@ -236,12 +236,11 @@ const navGroups = <NavGroup>[
       selectedIcon: Icons.report,
       label: 'Incidents',
       route: '/incidents',
-      moduleLabel: 'Incidents & Appeals',
-      description:
-          'Review reported incidents and decide violation appeals.',
-      // Security reports what they see on the ground and follows it up. The
-      // appeals half of the module is admin work, and the screen hides that tab
-      // for them rather than the whole destination being withheld.
+      moduleLabel: 'Incident Reports',
+      description: 'Review reported incidents and decide each one.',
+      // Security reports what they see on the ground and reads the queue;
+      // deciding a report is the administrator's. Appeals live under
+      // Violations, which stays admin-only.
       roles: {StaffRole.admin, StaffRole.security},
     ),
     NavItem(

@@ -11,7 +11,7 @@ import '../providers/audit_logs_provider.dart';
 import '../providers/registrations_provider.dart';
 import '../theme/theme.dart';
 import '../widgets/checks_panel.dart';
-import '../widgets/document_viewer.dart';
+import '../widgets/review_documents.dart';
 import '../widgets/ui/ui.dart';
 
 String _fmt(DateTime dt) => DateFormat('MMM d, yyyy HH:mm').format(dt.toLocal());
@@ -30,7 +30,7 @@ class RegistrationDetailScreen extends ConsumerWidget {
       title: detail?.fullName ?? 'Registration',
       subtitle: detail == null
           ? 'Reviewing a submitted registration.'
-          : '${detail.affiliation} · ${detail.email}',
+          : _headline(detail),
       scrollable: true,
       onBack: () => context.go('/pending'),
       actions: [
@@ -43,16 +43,10 @@ class RegistrationDetailScreen extends ConsumerWidget {
         // buttons on every single application: submitting sets that field to
         // `ManualReview`, and nothing in the API ever writes `Pending`.
         if (detail != null && detail.accountStatus == 'PendingReview') ...[
-          FilledButton.icon(
-            icon: const Icon(Icons.check, size: AppSizes.iconSm),
-            label: const Text('Approve'),
-            onPressed: () => _approve(context, ref, detail),
-          ),
-          // Sits between Approve and Reject because that is where it belongs in
-          // the reviewer's thinking. Most refusals are not "this person may not
-          // park here" but "I cannot read this receipt", and rejection was the
-          // only tool available for both — which cost the applicant all four
-          // documents and a cooldown to fix one photograph.
+          // Most refusals are not "this person may not park here" but "I
+          // cannot read this receipt", and rejection was the only tool for
+          // both — which cost the applicant all their documents and a
+          // cooldown to fix one photograph.
           OutlinedButton.icon(
             icon: const Icon(Icons.photo_camera_outlined, size: AppSizes.iconSm),
             label: const Text('Ask to retake'),
@@ -67,6 +61,21 @@ class RegistrationDetailScreen extends ConsumerWidget {
             ),
             onPressed: () => _showRejectDialog(context, ref, detail),
           ),
+          // A filled Approve beside a red finding reads as the expected next
+          // step. Over anything red or amber it steps down to a secondary
+          // button and says what it is.
+          if (detail.checks?.hasSerious ?? false)
+            OutlinedButton.icon(
+              icon: const Icon(Icons.check, size: AppSizes.iconSm),
+              label: const Text('Approve anyway…'),
+              onPressed: () => _approve(context, ref, detail),
+            )
+          else
+            FilledButton.icon(
+              icon: const Icon(Icons.check, size: AppSizes.iconSm),
+              label: const Text('Approve'),
+              onPressed: () => _approve(context, ref, detail),
+            ),
         ],
         IconButton(
           icon: const Icon(Icons.refresh),
@@ -77,10 +86,21 @@ class RegistrationDetailScreen extends ConsumerWidget {
       body: AsyncView(
         value: async,
         onRetry: () => ref.invalidate(registrationDetailProvider(userId)),
-        loading: const SkeletonDetail(sections: 2, fieldsPerSection: 3),
+        loading: const _ReviewSkeleton(),
         data: (detail) => _DetailView(detail: detail),
       ),
     );
+  }
+
+  static String _headline(RegistrationDetail detail) {
+    final waited = switch (detail.waitingDays) {
+      0 => 'waiting since today',
+      1 => 'waiting 1 day',
+      final n => 'waiting $n days',
+    };
+    return '${detail.affiliation} · Applied '
+        '${DateFormat('MMM d, yyyy').format(detail.createdAt.toLocal())} · $waited'
+        ' · ${detail.email}';
   }
 
   /// Approving used to be one dialog regardless of what the checks found — a
@@ -91,16 +111,13 @@ class RegistrationDetailScreen extends ConsumerWidget {
   /// they matter most.
   Future<void> _approve(
       BuildContext context, WidgetRef ref, RegistrationDetail detail) async {
-    final isStudent = detail.affiliation == 'Student';
     final needsOverride =
         detail.checks != null && detail.checks!.verdict != 'Clear';
 
     final noteCtrl = TextEditingController();
     final formKey = GlobalKey<FormState>();
-    DateTime? enrollmentValidUntil;
 
-    final result = await showDialog<
-        ({DateTime? enrollmentValidUntil, String? overrideNote})>(
+    final result = await showDialog<({String? overrideNote})>(
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setState) => AlertDialog(
@@ -148,44 +165,6 @@ class RegistrationDetailScreen extends ConsumerWidget {
                           : null,
                     ),
                   ],
-                  if (isStudent) ...[
-                    const SizedBox(height: AppSpacing.x3),
-                    FormField<DateTime>(
-                      validator: (_) => enrollmentValidUntil == null
-                          ? 'Required for student accounts'
-                          : null,
-                      builder: (state) => InkWell(
-                        onTap: () async {
-                          final now = DateTime.now();
-                          final picked = await showDatePicker(
-                            context: ctx,
-                            initialDate: enrollmentValidUntil ?? now,
-                            firstDate: now.subtract(const Duration(days: 30)),
-                            lastDate: now.add(const Duration(days: 730)),
-                          );
-                          if (picked == null) return;
-                          setState(() => enrollmentValidUntil = picked);
-                          state.didChange(picked);
-                        },
-                        child: InputDecorator(
-                          decoration: InputDecoration(
-                            labelText: 'Enrolment valid until',
-                            errorText: state.errorText,
-                            suffixIcon: const Icon(
-                              Icons.calendar_today_outlined,
-                              size: 18,
-                            ),
-                          ),
-                          child: Text(
-                            enrollmentValidUntil == null
-                                ? 'Select a date'
-                                : DateFormat('MMM d, yyyy')
-                                    .format(enrollmentValidUntil!),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
                 ],
               ),
             ),
@@ -197,7 +176,6 @@ class RegistrationDetailScreen extends ConsumerWidget {
               onPressed: () {
                 if (!formKey.currentState!.validate()) return;
                 Navigator.pop(ctx, (
-                  enrollmentValidUntil: enrollmentValidUntil,
                   overrideNote: needsOverride ? noteCtrl.text.trim() : null,
                 ));
               },
@@ -212,7 +190,6 @@ class RegistrationDetailScreen extends ConsumerWidget {
 
     final msg = await ref.read(registrationActionsProvider.notifier).approve(
           userId,
-          enrollmentValidUntil: result.enrollmentValidUntil,
           overrideNote: result.overrideNote,
         );
 
@@ -542,19 +519,53 @@ class RegistrationDetailScreen extends ConsumerWidget {
 
 // ── Detail view ──────────────────────────────────────────────────────────────
 
-class _DetailView extends StatelessWidget {
+/// Below this the findings and the documents stack instead of sitting side by
+/// side; two columns any narrower leave the image too small to read.
+const double _twoColumnWidth = 960;
+
+/// Top to bottom: what the checks found, the handful of values to check, then
+/// the findings next to the documents they are about.
+///
+/// The Status, Personal and Vehicle cards that used to sit here are gone. Their
+/// useful values are in the key facts grid; the rest were enum names
+/// (`PendingReview`, `ManualReview`) that told the reviewer nothing.
+class _DetailView extends StatefulWidget {
   const _DetailView({required this.detail});
 
   final RegistrationDetail detail;
 
   @override
+  State<_DetailView> createState() => _DetailViewState();
+}
+
+class _DetailViewState extends State<_DetailView> {
+  int _tab = 0;
+
+  @override
   Widget build(BuildContext context) {
+    final detail = widget.detail;
+    final checks = detail.checks;
+    final tabs = ReviewDocumentTab.forDetail(detail);
+
+    void openDocument(String type) {
+      final i = tabs.indexWhere((t) => t.type == type);
+      if (i >= 0) setState(() => _tab = i);
+    }
+
+    final findings = checks == null
+        ? null
+        : FindingsCard(checks: checks, onOpenDocument: openDocument);
+    final documents = ReviewDocuments(
+      tabs: tabs,
+      selected: _tab,
+      onSelect: (i) => setState(() => _tab = i),
+    );
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         // A rejection is the one thing on this page that changes what the
-        // reviewer should do next, so it sits above the record rather than
-        // seventh in a list of fields where it previously hid.
+        // reviewer should do next, so it sits above everything else.
         if (detail.rejectionReason case final reason?) ...[
           _RejectionBanner(
             reason: reason,
@@ -563,106 +574,541 @@ class _DetailView extends StatelessWidget {
           ),
           const SizedBox(height: AppSpacing.gutter),
         ],
-        // What the checks found comes before the record they were run against.
-        // The fields below are reference material; this is the part that tells
-        // a reviewer where to spend their attention.
-        if (detail.checks case final checks?) ...[
-          ChecksVerdictBanner(checks: checks),
-          const SizedBox(height: AppSpacing.gutter),
-          if (checks.person case final person?) ...[
-            CheckGroupCard(group: person),
-            const SizedBox(height: AppSpacing.gutter),
-          ],
-          for (final group in checks.vehicles) ...[
-            CheckGroupCard(group: group),
-            const SizedBox(height: AppSpacing.gutter),
-          ],
-          if (checks.edits.isNotEmpty) ...[
-            ValueEditsCard(edits: checks.edits),
-            const SizedBox(height: AppSpacing.gutter),
-          ],
-        ],
-        AppSectionCard(
-          title: 'Status',
-          icon: Icons.verified_outlined,
-          child: AppFieldGrid(
-            fields: [
-              AppField(
-                label: 'Account Status',
-                child: StatusPill.of(detail.accountStatus,
-                    intent: StatusIntents.user(detail.accountStatus)),
-              ),
-              AppField(
-                label: 'Verification Status',
-                child: StatusPill.of(detail.verificationStatus,
-                    intent:
-                        StatusIntents.registration(detail.verificationStatus)),
-              ),
-              AppField(
-                  label: 'Registration Step', value: detail.registrationStep),
-            ],
-          ),
-        ),
+        if (checks != null)
+          FindingsSummaryBox(checks: checks)
+        else
+          const _NoDocumentsBox(),
         const SizedBox(height: AppSpacing.gutter),
-        AppSectionCard(
-          title: 'Personal Information',
-          icon: Icons.person_outline,
-          child: AppFieldGrid(
-            fields: [
-              AppField(label: 'Full Name', value: detail.fullName, emphasis: true),
-              AppField(label: 'Email', value: detail.email),
-              AppField(label: 'Affiliation', value: detail.affiliation),
-              // Blank for faculty and staff, who have no RAF — the affiliation
-              // above is what tells the reviewer which of those this is.
-              if (detail.studentNumber case final number?)
-                AppField(label: 'Student Number', value: number),
-              if (detail.section case final section?)
-                AppField(label: 'Section', value: section),
-              if (detail.enrollmentValidUntil case final until?)
-                AppField(label: 'Enrolled Until', value: _fmt(until)),
-            ],
-          ),
-        ),
-        // One card per vehicle: a card holder may register several, and a single
-        // card would silently show only the first.
-        for (final (i, vehicle) in detail.vehicles.indexed) ...[
-          const SizedBox(height: AppSpacing.gutter),
-          AppSectionCard(
-            title: detail.vehicles.length > 1
-                ? 'Vehicle ${i + 1} of ${detail.vehicles.length}'
-                : 'Vehicle Information',
-            icon: Icons.directions_car_outlined,
-            child: AppFieldGrid(
-              fields: [
-                AppField(
-                  label: 'Plate Number',
-                  value: vehicle.plateNumber ?? '—',
-                  emphasis: true,
-                ),
-                AppField(
-                    label: 'Vehicle Type', value: vehicle.vehicleType ?? '—'),
-                AppField(label: 'Color', value: vehicle.color ?? '—'),
-              ],
-            ),
-          ),
-        ],
-        if (detail.documents.isNotEmpty) ...[
-          const SizedBox(height: AppSpacing.gutter),
-          AppSectionCard(
-            title: 'Uploaded Documents',
-            subtitle: 'Open each one to check it against the details above.',
-            icon: Icons.folder_outlined,
-            padding: EdgeInsets.zero,
-            child: Column(
+        _KeyFacts(detail: detail),
+        const SizedBox(height: AppSpacing.gutter),
+        LayoutBuilder(
+          builder: (context, constraints) {
+            if (constraints.maxWidth < _twoColumnWidth || findings == null) {
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  if (findings != null) ...[
+                    findings,
+                    const SizedBox(height: AppSpacing.gutter),
+                  ],
+                  documents,
+                ],
+              );
+            }
+            return Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                for (final doc in detail.documents) _DocumentTile(doc: doc),
+                Expanded(flex: 5, child: findings),
+                const SizedBox(width: AppSpacing.gutter),
+                Expanded(flex: 6, child: documents),
               ],
-            ),
-          ),
-        ],
+            );
+          },
+        ),
         const SizedBox(height: AppSpacing.gutter),
         _HistoryCard(userId: detail.userId),
       ],
+    );
+  }
+}
+
+class _NoDocumentsBox extends StatelessWidget {
+  const _NoDocumentsBox();
+
+  @override
+  Widget build(BuildContext context) {
+    final t = context.tokens;
+    final text = Theme.of(context).textTheme;
+
+    return AppCard(
+      child: Row(
+        children: [
+          Icon(Icons.info_outline, size: AppSizes.iconMd, color: t.text.secondary),
+          const SizedBox(width: AppSpacing.x3),
+          Expanded(
+            child: Text(
+              'No documents submitted yet, so nothing has been checked.',
+              style: text.bodyMedium?.copyWith(color: t.text.secondary),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ── Key facts ────────────────────────────────────────────────────────────────
+
+/// Columns for the key facts grid at a given width. Shared with the skeleton
+/// so the loading state is the same shape as what replaces it. The name cell
+/// takes two of them.
+int _factColumns(double width) => width >= 900 ? 4 : 2;
+
+/// A key fact's state, said in words. Colour backs the words up; it is never
+/// the only signal, so "Jan 31, 2026" in red also reads "Expired 8 months ago".
+class _FactStatus {
+  const _FactStatus(this.text, this.intent, this.icon);
+
+  final String text;
+  final StatusIntent intent;
+  final IconData icon;
+
+  static _FactStatus of(String text, FindingSeverity severity) => _FactStatus(
+        text,
+        intentOfSeverity(severity),
+        switch (severity) {
+          FindingSeverity.danger => Icons.cancel_outlined,
+          FindingSeverity.warning => Icons.error_outline,
+          FindingSeverity.neutral => Icons.info_outline,
+          FindingSeverity.passed => Icons.check_circle_outline,
+        },
+      );
+
+  static const notRead = _FactStatus('Not read', StatusIntent.neutral, Icons.info_outline);
+}
+
+/// "8 months", "12 days", "2 years" — the gap between today and [date].
+String _span(DateTime date) {
+  final today = DateUtils.dateOnly(DateTime.now());
+  final days = DateUtils.dateOnly(date).difference(today).inDays.abs();
+  String unit(int n, String word) => '$n ${n == 1 ? word : '${word}s'}';
+  if (days < 31) return unit(days, 'day');
+  if (days < 365) return unit(days ~/ 30, 'month');
+  return unit(days ~/ 365, 'year');
+}
+
+/// An expiry date's state, worded from the finding's severity and the date.
+_FactStatus _expiryStatus(Finding? finding, DateTime? date) {
+  if (date == null || finding == null) return _FactStatus.notRead;
+  final today = DateUtils.dateOnly(DateTime.now());
+  final isToday = DateUtils.dateOnly(date) == today;
+
+  return switch (finding.severity) {
+    FindingSeverity.danger => _FactStatus.of('Expired ${_span(date)} ago', FindingSeverity.danger),
+    FindingSeverity.warning => _FactStatus.of(
+        isToday ? 'Expires today' : 'Expires in ${_span(date)}', FindingSeverity.warning),
+    FindingSeverity.passed => _FactStatus.of('Valid · ${_span(date)} left', FindingSeverity.passed),
+    FindingSeverity.neutral => _FactStatus.notRead,
+  };
+}
+
+/// Where a value came from, as a small tag beside it.
+enum _Source {
+  signUp('Sign-up', StatusIntent.neutral),
+  read('Read', StatusIntent.info),
+  changed('Changed', StatusIntent.warning),
+  typed('Typed', StatusIntent.warning);
+
+  const _Source(this.label, this.intent);
+  final String label;
+  final StatusIntent intent;
+}
+
+/// The values a reviewer checks against the documents, each saying where it
+/// came from and what state it is in. Read from the submission — the account
+/// only receives the student number on approval, which is why it used to
+/// show nowhere here.
+class _KeyFacts extends StatelessWidget {
+  const _KeyFacts({required this.detail});
+
+  final RegistrationDetail detail;
+
+  @override
+  Widget build(BuildContext context) {
+    final checks = detail.checks;
+    final facts = checks?.facts ?? const RegistrationFacts();
+    final isStudent = detail.affiliation == 'Student';
+
+    Finding? about(Set<String> keys) => checks?.findingFor(keys);
+    bool edited(String key) => checks?.edited(key) ?? false;
+    String date(DateTime? d) =>
+        d == null ? 'Not read' : DateFormat('MMM d, yyyy').format(d);
+
+    final vehicle = detail.vehicles.isEmpty ? null : detail.vehicles.first;
+    final vehicleFacts = facts.vehicles.isEmpty ? null : facts.vehicles.first;
+
+    // ── Name: three sources side by side ──
+    final nameFinding = about({
+      'NameMatch',
+      'Edit.Name',
+      'Edit.Licencename',
+      'DuplicateUpload',
+    });
+    final nameStatus = switch (nameFinding) {
+      null => null,
+      Finding(key: 'NameMatch', severity: FindingSeverity.danger) =>
+        _FactStatus.of('Names do not match', FindingSeverity.danger),
+      Finding(key: 'NameMatch', severity: FindingSeverity.passed) =>
+        _FactStatus.of('Name found on the licence', FindingSeverity.passed),
+      final f => _FactStatus.of(f.title, f.severity),
+    };
+
+    // "Typed" when the phone read nothing, "Changed" when it read something
+    // the applicant then overwrote — the edit finding's title says which.
+    _Source readOrChanged(String? value, String editKey) {
+      if (value == null || !edited(editKey)) return _Source.read;
+      final edit = about({editKey});
+      return edit != null && edit.title.contains('typed')
+          ? _Source.typed
+          : _Source.changed;
+    }
+
+    final name = _NameCell(
+      rows: [
+        (
+          label: 'Account name',
+          hint: 'Typed at sign-up',
+          value: detail.fullName,
+          source: _Source.signUp,
+        ),
+        if (isStudent)
+          (
+            label: 'School form',
+            hint: 'Read by the phone',
+            value: facts.schoolFormName,
+            source: readOrChanged(facts.schoolFormName, 'Edit.Name'),
+          ),
+        (
+          label: 'Licence',
+          hint: 'Read by the phone',
+          value: facts.licenseName,
+          source: readOrChanged(facts.licenseName, 'Edit.Licencename'),
+        ),
+      ],
+      status: nameStatus,
+    );
+
+    // ── The rest ──
+    final cells = <Widget>[
+      if (isStudent) ...[
+        _FactCell(
+          label: 'Student number',
+          value: facts.studentNumber ?? detail.studentNumber ?? 'Not read',
+          note: switch (facts.section ?? detail.section) {
+            final s? => 'Section $s',
+            null => null,
+          },
+          status: facts.studentNumber == null
+              ? _FactStatus.notRead
+              : facts.studentNumberTyped
+                  ? _FactStatus.of('Typed by applicant', FindingSeverity.warning)
+                  : const _FactStatus(
+                      'Read from school form', StatusIntent.info, Icons.document_scanner_outlined),
+        ),
+        _FactCell(
+          label: 'Term',
+          value: facts.semester ?? 'Not read',
+          // Never green: the system does not know the current term.
+          status: facts.semester == null
+              ? _FactStatus.notRead
+              : _FactStatus.of('Confirm it yourself', FindingSeverity.neutral),
+        ),
+      ] else ...[
+        _FactCell(
+          label: 'School ID',
+          value: 'Check the image',
+          note: 'Faculty and staff have no student number',
+          status: _FactStatus.of('Phone does not read it', FindingSeverity.neutral),
+        ),
+        _FactCell(
+          label: 'Affiliation',
+          value: detail.affiliation,
+          status: _FactStatus.of('No term to check', FindingSeverity.neutral),
+        ),
+      ],
+      _FactCell(
+        label: 'Licence number',
+        value: facts.licenseNumberMasked ?? 'Not given',
+        note: 'Only the last 4 shown',
+        status: facts.licenseNumberMasked == null
+            ? _FactStatus.notRead
+            : facts.licenseNumberTyped
+                ? _FactStatus.of('Typed by applicant', FindingSeverity.warning)
+                : const _FactStatus(
+                    'Read from licence', StatusIntent.info, Icons.document_scanner_outlined),
+      ),
+      _FactCell(
+        label: 'Licence valid until',
+        value: date(facts.licenseExpiry),
+        status: _expiryStatus(about({'LicenseValidity'}), facts.licenseExpiry),
+      ),
+      _FactCell(
+        label: 'Plate',
+        value: vehicleFacts?.plateNumber ?? vehicle?.plateNumber ?? 'Not read',
+        note: [
+          if (vehicle != null)
+            [vehicle.vehicleType, vehicle.color]
+                .whereType<String>()
+                .where((s) => s.isNotEmpty)
+                .join(' · '),
+          if (detail.vehicles.length > 1) '+${detail.vehicles.length - 1} more',
+        ].where((s) => s.isNotEmpty).join(' · '),
+        status: switch (about({'PlateMatch', 'Edit.Platenumber'})) {
+          null => _FactStatus.notRead,
+          Finding(key: 'PlateMatch', severity: FindingSeverity.passed) =>
+            _FactStatus.of('Read from receipt', FindingSeverity.passed),
+          final f => _FactStatus.of(f.title, f.severity),
+        },
+      ),
+      _FactCell(
+        label: 'Registration valid until',
+        value: date(vehicleFacts?.registrationExpiry),
+        note: detail.vehicles.length > 1 ? 'First vehicle' : null,
+        status: _expiryStatus(
+            about({'RegistrationValidity'}), vehicleFacts?.registrationExpiry),
+      ),
+    ];
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final columns = _factColumns(constraints.maxWidth);
+        final cell =
+            (constraints.maxWidth - AppSpacing.gutter * (columns - 1)) / columns;
+        return Wrap(
+          spacing: AppSpacing.gutter,
+          runSpacing: AppSpacing.gutter,
+          children: [
+            SizedBox(width: cell * 2 + AppSpacing.gutter, child: name),
+            for (final c in cells) SizedBox(width: cell, child: c),
+          ],
+        );
+      },
+    );
+  }
+}
+
+/// The card both fact cells share: white, with a thin bar in the status
+/// colour down the left edge and the status in words at the bottom.
+class _FactFrame extends StatelessWidget {
+  const _FactFrame({required this.label, required this.child, this.status});
+
+  final String label;
+  final Widget child;
+  final _FactStatus? status;
+
+  static const double minHeight = 116;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = context.tokens;
+    final text = Theme.of(context).textTheme;
+    final c = status == null ? null : t.status.of(status!.intent);
+
+    // Only states worth a glance get the bar; "read" and "not read" do not.
+    final bar = switch (status?.intent) {
+      StatusIntent.danger || StatusIntent.warning || StatusIntent.success => c!.solid,
+      _ => null,
+    };
+
+    return Container(
+      constraints: const BoxConstraints(minHeight: minHeight),
+      clipBehavior: Clip.antiAlias,
+      decoration: BoxDecoration(
+        color: t.surface.card,
+        borderRadius: AppRadii.mdAll,
+        border: Border.all(color: t.border.normal),
+      ),
+      child: IntrinsicHeight(
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            if (bar != null) Container(width: 3, color: bar),
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.all(AppSpacing.x3),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(label, style: text.labelSmall?.copyWith(color: t.text.tertiary)),
+                    const SizedBox(height: AppSpacing.x1),
+                    child,
+                    if (status case final s?) ...[
+                      const Spacer(),
+                      const SizedBox(height: AppSpacing.x2),
+                      Row(
+                        children: [
+                          Icon(s.icon, size: AppSizes.iconSm, color: c!.fg),
+                          const SizedBox(width: AppSpacing.x1),
+                          Flexible(
+                            child: Text(
+                              s.text,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: text.labelLarge?.copyWith(color: c.fg),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _FactCell extends StatelessWidget {
+  const _FactCell({
+    required this.label,
+    required this.value,
+    this.note,
+    this.status,
+  });
+
+  final String label;
+  final String value;
+  final String? note;
+  final _FactStatus? status;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = context.tokens;
+    final text = Theme.of(context).textTheme;
+
+    return _FactFrame(
+      label: label,
+      status: status,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(value, style: text.titleMedium),
+          if (note case final n? when n.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(top: 2),
+              child: Text(
+                n,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: text.bodyMedium?.copyWith(color: t.text.secondary),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+/// The name as each source has it, so a mismatch is visible as two different
+/// lines rather than inferred from a red box.
+class _NameCell extends StatelessWidget {
+  const _NameCell({required this.rows, this.status});
+
+  final List<({String label, String hint, String? value, _Source source})> rows;
+  final _FactStatus? status;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = context.tokens;
+    final text = Theme.of(context).textTheme;
+
+    return _FactFrame(
+      label: 'Name',
+      status: status,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          for (final r in rows)
+            Padding(
+              padding: const EdgeInsets.only(top: AppSpacing.x1),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  SizedBox(
+                    width: 128,
+                    child: Tooltip(
+                      message: r.hint,
+                      child: Text(
+                        r.label,
+                        style: text.bodyMedium?.copyWith(color: t.text.secondary),
+                      ),
+                    ),
+                  ),
+                  Expanded(
+                    child: Text(
+                      r.value ?? 'Nothing read',
+                      style: r.value == null
+                          ? text.bodyMedium?.copyWith(color: t.text.tertiary)
+                          : text.titleSmall,
+                    ),
+                  ),
+                  if (r.value != null) ...[
+                    const SizedBox(width: AppSpacing.x2),
+                    StatusPill(
+                      label: r.source.label,
+                      intent: r.source.intent,
+                      dense: true,
+                      showDot: false,
+                    ),
+                  ],
+                ],
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+// ── Loading ──────────────────────────────────────────────────────────────────
+
+/// The review screen's own shape: summary box, the fact cells, findings beside
+/// the document. Built from the shared skeleton pieces, never by wrapping card
+/// chrome in a shimmer.
+class _ReviewSkeleton extends StatelessWidget {
+  const _ReviewSkeleton();
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final w = constraints.maxWidth;
+        final columns = _factColumns(w);
+        final cell = (w - AppSpacing.gutter * (columns - 1)) / columns;
+
+        const findings = SkeletonDetail(sections: 1, fieldsPerSection: 4);
+        const documents = SkeletonBlock(height: 460);
+
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const SkeletonBlock(height: 92),
+            const SizedBox(height: AppSpacing.gutter),
+            Wrap(
+              spacing: AppSpacing.gutter,
+              runSpacing: AppSpacing.gutter,
+              children: [
+                SizedBox(
+                  width: cell * 2 + AppSpacing.gutter,
+                  child: const SkeletonBlock(height: _FactFrame.minHeight),
+                ),
+                for (var i = 0; i < 6; i++)
+                  SizedBox(
+                    width: cell,
+                    child: const SkeletonBlock(height: _FactFrame.minHeight),
+                  ),
+              ],
+            ),
+            const SizedBox(height: AppSpacing.gutter),
+            if (w < _twoColumnWidth) ...[
+              findings,
+              const SizedBox(height: AppSpacing.gutter),
+              documents,
+            ] else
+              const Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(flex: 5, child: findings),
+                  SizedBox(width: AppSpacing.gutter),
+                  Expanded(flex: 6, child: documents),
+                ],
+              ),
+          ],
+        );
+      },
     );
   }
 }
@@ -725,7 +1171,7 @@ class _HistoryRow extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           StatusPill(
-            label: entry.action,
+            label: _actionLabel(entry.action),
             intent: StatusIntents.auditAction(entry.action),
             dense: true,
           ),
@@ -751,6 +1197,16 @@ class _HistoryRow extends StatelessWidget {
     );
   }
 }
+
+/// The audit log's action names, as a reviewer would say them.
+String _actionLabel(String action) => switch (action) {
+      'Approve' => 'Approved',
+      'Reject' => 'Rejected',
+      'RequestDocumentRetake' => 'Asked to retake',
+      'ResetStep' => 'Step reset',
+      'ResetReapply' => 'Cooldown reset',
+      _ => action,
+    };
 
 class _RejectionBanner extends StatelessWidget {
   const _RejectionBanner({
@@ -805,37 +1261,6 @@ class _RejectionBanner extends StatelessWidget {
             ),
           ),
         ],
-      ),
-    );
-  }
-}
-
-class _DocumentTile extends StatelessWidget {
-  const _DocumentTile({required this.doc});
-
-  final DocumentInfo doc;
-
-  @override
-  Widget build(BuildContext context) {
-    final t = context.tokens;
-    final text = Theme.of(context).textTheme;
-
-    return ListTile(
-      leading: Icon(Icons.insert_drive_file_outlined, color: t.text.secondary),
-      title: Text(doc.type, style: text.titleSmall),
-      subtitle: Text(
-        doc.fileName,
-        style: text.bodySmall?.copyWith(color: t.text.secondary),
-      ),
-      trailing: AppRowAction(
-        label: 'View',
-        icon: Icons.visibility_outlined,
-        onPressed: () => viewDocument(
-          context,
-          title: doc.type,
-          fileName: doc.fileName,
-          url: doc.filePath,
-        ),
       ),
     );
   }

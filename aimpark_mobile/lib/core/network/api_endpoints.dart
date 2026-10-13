@@ -24,10 +24,11 @@ class ApiEndpoints {
   static const resetPassword = '/api/auth/reset-password';
 
   static const notifications = '/api/notifications';
+  static const notificationsReadAll = '/api/notifications/read-all';
+
   static String notificationRead(String notificationId) =>
       '/api/notifications/$notificationId/read';
   static const deviceToken = '/api/notifications/device-token';
-  static const slotWatch = '/api/notifications/slot-watch';
 
   static const parkingHistory = '/api/parking/history';
   static const parkingSlots = '/api/parking/slots';
@@ -52,6 +53,10 @@ class ApiEndpoints {
   static String paymentDetail(String paymentId) => '/api/payments/$paymentId';
   static String paymentCheckout(String paymentId) =>
       '/api/payments/$paymentId/checkout';
+
+  /// One checkout for every bill that can be paid. Not built on the server yet;
+  /// see `kPayAllAvailable`.
+  static const paymentsCheckoutAll = '/api/payments/checkout-all';
 
   static const incidents = '/api/incidents';
   static String incidentDetail(String incidentId) => '/api/incidents/$incidentId';

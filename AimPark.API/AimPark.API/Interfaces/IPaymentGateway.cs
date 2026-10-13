@@ -53,6 +53,14 @@ namespace AimPark.API.Interfaces
         /// the signature, what exactly is signed, and which of several events
         /// means "the money arrived".
         /// </remarks>
+        /// <summary>
+        /// One checkout for several bills at once — "Pay all". One line item per
+        /// bill, one total, one id. Every bill is later settled by that single id.
+        /// </summary>
+        Task<GatewayCheckout> CreateBundleCheckoutAsync(
+            IReadOnlyList<PaymentTransaction> payments,
+            CancellationToken ct = default);
+
         bool TryReadEvent(string rawBody, IDictionary<string, string> headers, out GatewayEvent gatewayEvent);
     }
 }

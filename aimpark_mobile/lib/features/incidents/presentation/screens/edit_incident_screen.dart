@@ -5,8 +5,8 @@ import '../../../../core/theme/theme.dart';
 import '../../../../core/utils/app_flushbar.dart';
 import '../../../../core/widgets/widgets.dart';
 import '../../data/models/incident.dart';
+import '../incident_categories.dart';
 import '../providers/incidents_provider.dart';
-import 'report_incident_screen.dart';
 
 /// Corrects a report the user already filed. Evidence is deliberately absent:
 /// attachments are append-only server-side, so photos cannot be removed after
@@ -79,25 +79,38 @@ class _EditIncidentScreenState extends ConsumerState<EditIncidentScreen> {
       body: ListView(
         padding: kScreenListPadding,
         children: [
-          AppChipGroup<String>(
-            label: 'Category',
+          const AppFormSectionHeader(
+            number: 1,
+            title: 'What kind of incident?',
+            requirement: FieldRequirement.required,
+          ),
+          const SizedBox(height: AppSpacing.md),
+          AppChoiceTiles<String>(
             options: kIncidentCategories,
+            icons: kIncidentCategoryIcons,
+            intents: kIncidentCategoryIntents,
             value: _category,
             enabled: !_isSaving,
             onChanged: (value) => setState(() => _category = value),
           ),
+          const SizedBox(height: AppSpacing.xl),
+          const AppFormSectionHeader(number: 2, title: 'Details'),
           const SizedBox(height: AppSpacing.md),
           AppTextField(
             label: 'What happened?',
+            requirement: FieldRequirement.required,
             controller: _description,
-            maxLines: 4,
+            maxLines: 5,
+            maxLength: 500,
+            showCounter: true,
             enabled: !_isSaving,
             textCapitalization: TextCapitalization.sentences,
             textInputAction: TextInputAction.newline,
           ),
           const SizedBox(height: AppSpacing.md),
           AppTextField(
-            label: 'Location (optional)',
+            label: 'Location',
+            requirement: FieldRequirement.optional,
             controller: _location,
             enabled: !_isSaving,
             textCapitalization: TextCapitalization.sentences,
