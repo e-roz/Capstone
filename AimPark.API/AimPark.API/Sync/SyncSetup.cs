@@ -100,6 +100,10 @@ namespace AimPark.API.Sync
             services.AddHostedService(sp => sp.GetRequiredService<EspNowHubs>());
             services.AddSingleton<AimPark.API.Interfaces.ISlotSensors>(sp => sp.GetRequiredService<EspNowHubs>());
 
+            // Cards against sensors: tells security when they have disagreed
+            // for five minutes.
+            services.AddHostedService<AimPark.API.Services.ParkingMismatchMonitor>();
+
             // Keeps this PC on the newest release, installed when the gates are quiet.
             services.AddHttpClient(Site.Updates.SiteUpdater.HttpClientName, c =>
             {

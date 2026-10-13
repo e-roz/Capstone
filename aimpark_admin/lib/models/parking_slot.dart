@@ -115,13 +115,22 @@ class ParkingAvailability {
   final List<ParkingSlot> slots;
   final int totalSlots;
 
-  /// Free bays: in-service bays less the cars inside the lot, not the green
-  /// bays. A car that entered counts until its exit tap, wherever it parked.
+  /// Room by cards: bays with a working sensor less the cars inside the lot,
+  /// not the green bays. A car that entered counts until its exit tap,
+  /// wherever it parked.
   final int availableSlots;
 
   /// The same, per bay type. Null from a server older than this count.
   final int? availableCars;
   final int? availableMotorcycles;
+
+  /// Cars that tapped in and have not tapped out. Null from a server older
+  /// than this count.
+  final int? usersInside;
+
+  /// Bays a working sensor reads as occupied, the number to set beside
+  /// [usersInside]. Null from an older server.
+  final int? sensorsDetected;
 
   const ParkingAvailability({
     required this.slots,
@@ -129,6 +138,8 @@ class ParkingAvailability {
     required this.availableSlots,
     this.availableCars,
     this.availableMotorcycles,
+    this.usersInside,
+    this.sensorsDetected,
   });
 
   factory ParkingAvailability.fromJson(Map<String, dynamic> json) =>
@@ -140,5 +151,7 @@ class ParkingAvailability {
         availableSlots: (json['availableSlots'] as num?)?.toInt() ?? 0,
         availableCars: (json['availableCars'] as num?)?.toInt(),
         availableMotorcycles: (json['availableMotorcycles'] as num?)?.toInt(),
+        usersInside: (json['usersInside'] as num?)?.toInt(),
+        sensorsDetected: (json['sensorsDetected'] as num?)?.toInt(),
       );
 }

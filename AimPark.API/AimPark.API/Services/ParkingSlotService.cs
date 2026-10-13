@@ -74,6 +74,9 @@ namespace AimPark.API.Services
             response.AvailableSlots = 0;
             response.AvailableCars = 0;
             response.AvailableMotorcycles = 0;
+            response.SensorsDetected = 0;
+            response.LiveBays = 0;
+            response.NoSignalBays = response.Slots.Count;
             response.FeedPaused = true;
             return response;
         }
@@ -184,6 +187,7 @@ namespace AimPark.API.Services
                 .ToListAsync(ct);
 
             var room = await ParkingCapacity.LoadAsync(_db, ct);
+            var count = await ParkingCapacity.LoadCountAsync(_db, ct);
 
             return new ParkingAvailabilityResponse
             {
@@ -191,7 +195,11 @@ namespace AimPark.API.Services
                 TotalSlots = slots.Count,
                 AvailableSlots = room.Free,
                 AvailableCars = room.FreeCars,
-                AvailableMotorcycles = room.FreeMotorcycles
+                AvailableMotorcycles = room.FreeMotorcycles,
+                UsersInside = count.UsersInside,
+                SensorsDetected = count.SensorsDetected,
+                LiveBays = count.TotalBays,
+                NoSignalBays = count.NoSignalBays
             };
         }
     }

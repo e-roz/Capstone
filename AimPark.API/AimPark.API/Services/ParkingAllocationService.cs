@@ -51,8 +51,13 @@ namespace AimPark.API.Services
             if (vehicleType is null)
                 return NoVehicle();
 
+            var room = await ParkingCapacity.LoadAsync(_db, ct);
+
             foreach (var tier in TiersFor(vehicleType.Value))
             {
+                if (room.FreeOf(tier) <= 0)
+                    continue;
+
                 // No gate context — the driver has not committed to a barrier
                 // yet, so steering them to the emptier gate is the whole point.
                 var ranked = await RankCandidatesAsync(userId, tier, atGate: null, ct);
@@ -80,14 +85,28 @@ namespace AimPark.API.Services
         public async Task<SlotRecommendationResponse> ClaimForVehicleTypeAsync(
             VehicleType vehicleType, Guid? userId, int? atGate, CancellationToken ct)
         {
+            // Room is counted by cards: the lot is full when as many cars have
+            // tapped in as there are working bays, whatever the sensors read.
+            var room = await ParkingCapacity.LoadAsync(_db, ct);
+            var roomButNoBay = false;
+
             foreach (var tier in TiersFor(vehicleType))
             {
+                if (room.FreeOf(tier) <= 0)
+                    continue;
+
                 // Guid.Empty matches no parking log, so a visitor simply has no
                 // "gate you used last" and falls through to spare capacity —
                 // which is the right answer for somebody who has never been
                 // here before.
                 var ranked = await RankCandidatesAsync(
                     userId ?? Guid.Empty, tier, atGate, ct);
+
+                if (ranked.Count == 0)
+                {
+                    roomButNoBay = true;
+                    continue;
+                }
 
                 foreach (var candidate in ranked.Take(MaxClaimAttempts))
                 {
@@ -99,7 +118,10 @@ namespace AimPark.API.Services
                 }
             }
 
-            return LotFull(vehicleType);
+            // Cards say there is room, but no bay reads free: someone is taking
+            // two bays or parked outside one. The driver is let in anyway and
+            // the guard is told about the gap (see ParkingMismatchMonitor).
+            return roomButNoBay ? NoBayToGive() : LotFull(vehicleType);
         }
 
         /// <summary>
@@ -133,13 +155,6 @@ namespace AimPark.API.Services
         {
             var acceptable = tier.Select(t => (VehicleType?)t).ToArray();
             var now = DateTime.UtcNow;
-
-            // A bay is room only while its sensor reads it empty and no car
-            // inside was given it — the same count the apps show. See
-            // ParkingCapacity.
-            var room = await ParkingCapacity.LoadAsync(_db, ct);
-            if (room.FreeOf(tier) <= 0)
-                return [];
 
             // A bay given to a car still inside is never offered again, even
             // while its sensor sees it empty.
@@ -229,6 +244,12 @@ namespace AimPark.API.Services
         {
             Result = AllocationResult.NoVehicleRegistered,
             Reason = "No registered vehicle found for this account."
+        };
+
+        private static SlotRecommendationResponse NoBayToGive() => new()
+        {
+            Result = AllocationResult.Assigned,
+            Reason = "No bay reads free right now. Park in any open bay."
         };
 
         private static SlotRecommendationResponse LotFull(VehicleType vehicleType) => new()
