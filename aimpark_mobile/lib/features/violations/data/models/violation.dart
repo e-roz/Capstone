@@ -148,7 +148,7 @@ class ViolationDetail {
     required this.createdAt,
     required this.updatedAt,
     this.appealDeadline,
-    this.suspensionDays,
+    this.suspensionHours,
     this.paymentStatus,
     this.paidAt,
     this.amountDue,
@@ -166,7 +166,8 @@ class ViolationDetail {
   final String description;
   final double penaltyAmount;
   final String suspensionType;
-  final int? suspensionDays;
+  /// How long a Temporary suspension runs, in hours. Null for Permanent.
+  final int? suspensionHours;
   final String status;
   final DateTime createdAt;
   final DateTime updatedAt;
@@ -212,7 +213,7 @@ class ViolationDetail {
       description: json['description'] as String,
       penaltyAmount: (json['penaltyAmount'] as num).toDouble(),
       suspensionType: json['suspensionType'] as String,
-      suspensionDays: json['suspensionDays'] as int?,
+      suspensionHours: json['suspensionHours'] as int?,
       status: json['status'] as String,
       createdAt: DateTime.parse(json['createdAt'] as String),
       updatedAt: DateTime.parse(json['updatedAt'] as String),

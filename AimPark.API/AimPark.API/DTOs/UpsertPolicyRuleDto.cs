@@ -5,11 +5,13 @@ namespace AimPark.API.DTOs
         public string Title { get; set; } = string.Empty;
         public string Description { get; set; } = string.Empty;
 
-        /// <summary>Parking, Access, Conduct, Documentation or Other.</summary>
+        /// <summary>Parking or Conduct.</summary>
         public string Category { get; set; } = "Parking";
         public decimal DefaultPenaltyAmount { get; set; }
-        public string DefaultSuspensionType { get; set; } = "None";
-        public int? DefaultSuspensionDays { get; set; }
+
+        /// <summary>Temporary or Permanent. Every rule does something to the card.</summary>
+        public string DefaultSuspensionType { get; set; } = "Temporary";
+        public int? DefaultSuspensionHours { get; set; }
 
         /// <summary>
         /// Days the offender's card keeps working so they can appeal before the

@@ -26,22 +26,43 @@ class ViolationStatuses {
       status == issued || status == pendingAppeal;
 }
 
+/// "1 hour", "6 hours", "1 day", "1 day 12 hours", "2 days". Mirrors
+/// `ViolationService.FormatHours` so the admin panel and the notifications
+/// state a suspension the same way.
+String formatHours(int hours) {
+  String unit(int n, String word) => '$n $word${n == 1 ? '' : 's'}';
+  if (hours < 24) return unit(hours, 'hour');
+  final days = hours ~/ 24;
+  final rest = hours % 24;
+  return rest == 0
+      ? unit(days, 'day')
+      : '${unit(days, 'day')} ${unit(rest, 'hour')}';
+}
+
 class PolicyRule {
   final String ruleId;
   final String title;
   final String description;
 
-  /// Parking, Access, Conduct, Documentation or Other.
+  /// Parking or Conduct.
   final String category;
 
   final double defaultPenaltyAmount;
+
+  /// Temporary, Permanent (the card is revoked), or None on a rule written
+  /// before every rule had to act on the card.
   final String defaultSuspensionType;
-  final int? defaultSuspensionDays;
+
+  /// How long a Temporary suspension runs, in hours.
+  final int? defaultSuspensionHours;
 
   /// Days the offender's card keeps working so they can appeal before the
   /// suspension starts. 0 means it starts immediately.
   final int appealWindowDays;
   final bool isActive;
+
+  /// How many violations have been issued under this rule.
+  final int issuedCount;
   final DateTime createdAt;
   final DateTime updatedAt;
 
@@ -52,9 +73,10 @@ class PolicyRule {
     required this.category,
     required this.defaultPenaltyAmount,
     required this.defaultSuspensionType,
-    required this.defaultSuspensionDays,
+    required this.defaultSuspensionHours,
     this.appealWindowDays = 3,
     required this.isActive,
+    this.issuedCount = 0,
     required this.createdAt,
     required this.updatedAt,
   });
@@ -70,9 +92,11 @@ class PolicyRule {
             (json['defaultPenaltyAmount'] as num?)?.toDouble() ?? 0,
         defaultSuspensionType:
             json['defaultSuspensionType']?.toString() ?? 'None',
-        defaultSuspensionDays: (json['defaultSuspensionDays'] as num?)?.toInt(),
+        defaultSuspensionHours:
+            (json['defaultSuspensionHours'] as num?)?.toInt(),
         appealWindowDays: (json['appealWindowDays'] as num?)?.toInt() ?? 3,
         isActive: (json['isActive'] as bool?) ?? true,
+        issuedCount: (json['issuedCount'] as num?)?.toInt() ?? 0,
         createdAt: DateTime.parse(json['createdAt'].toString()),
         updatedAt: DateTime.parse(json['updatedAt'].toString()),
       );
@@ -94,8 +118,9 @@ class ViolationSummary {
   final double penaltyAmount;
   final String suspensionType;
 
-  /// How long a Temporary suspension runs. Null for None and Permanent.
-  final int? suspensionDays;
+  /// How long a Temporary suspension runs, in hours. Null for None and
+  /// Permanent.
+  final int? suspensionHours;
 
   final DateTime createdAt;
 
@@ -111,7 +136,7 @@ class ViolationSummary {
     required this.status,
     required this.penaltyAmount,
     required this.suspensionType,
-    required this.suspensionDays,
+    required this.suspensionHours,
     required this.createdAt,
   });
 
@@ -128,7 +153,7 @@ class ViolationSummary {
         status: json['status']?.toString() ?? '',
         penaltyAmount: (json['penaltyAmount'] as num?)?.toDouble() ?? 0,
         suspensionType: json['suspensionType']?.toString() ?? '',
-        suspensionDays: (json['suspensionDays'] as num?)?.toInt(),
+        suspensionHours: (json['suspensionHours'] as num?)?.toInt(),
         createdAt: DateTime.parse(json['createdAt'].toString()),
       );
 }
@@ -168,7 +193,7 @@ class ViolationDetail {
   final String description;
   final double penaltyAmount;
   final String suspensionType;
-  final int? suspensionDays;
+  final int? suspensionHours;
   final String status;
   final DateTime createdAt;
   final DateTime updatedAt;
@@ -223,7 +248,7 @@ class ViolationDetail {
     required this.description,
     required this.penaltyAmount,
     required this.suspensionType,
-    required this.suspensionDays,
+    required this.suspensionHours,
     required this.status,
     required this.createdAt,
     required this.updatedAt,
@@ -265,7 +290,7 @@ class ViolationDetail {
         description: json['description']?.toString() ?? '',
         penaltyAmount: (json['penaltyAmount'] as num?)?.toDouble() ?? 0,
         suspensionType: json['suspensionType']?.toString() ?? '',
-        suspensionDays: (json['suspensionDays'] as num?)?.toInt(),
+        suspensionHours: (json['suspensionHours'] as num?)?.toInt(),
         status: json['status']?.toString() ?? '',
         createdAt: DateTime.parse(json['createdAt'].toString()),
         updatedAt: DateTime.parse(json['updatedAt'].toString()),
