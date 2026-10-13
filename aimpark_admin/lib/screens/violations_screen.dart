@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
+import '../core/utils/csv_export.dart';
 import '../core/utils/responsive.dart';
 import '../models/violation.dart';
 import '../providers/violations_provider.dart';
@@ -237,6 +238,7 @@ class _ViolationsTab extends ConsumerWidget {
     final query = ref.watch(violationsQueryNotifierProvider);
     final notifier = ref.read(violationsQueryNotifierProvider.notifier);
     final rules = ref.watch(policyRulesProvider).value ?? const <PolicyRule>[];
+    final violations = ref.watch(violationListProvider);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -279,6 +281,13 @@ class _ViolationsTab extends ConsumerWidget {
               ),
           ],
           trailing: [
+            OutlinedButton.icon(
+              icon: const Icon(Icons.download_outlined, size: AppSizes.iconSm),
+              label: const Text('Export CSV'),
+              onPressed: violations.hasValue
+                  ? () => _export(context, violations.requireValue.violations)
+                  : null,
+            ),
             IconButton(
               icon: const Icon(Icons.refresh),
               tooltip: 'Refresh',
@@ -340,6 +349,46 @@ class _ViolationsTab extends ConsumerWidget {
       q.ruleId != null ||
       q.userId != null ||
       (q.search?.isNotEmpty ?? false);
+
+  /// Covers the page on screen, which is the only set of rows the person
+  /// exporting has actually reviewed. Narrow the filters to export a subset.
+  void _export(BuildContext context, List<ViolationSummary> violations) {
+    final stamp = DateFormat('yyyy-MM-dd HH:mm');
+    CsvExport.save(
+      fileName:
+          'aimpark-violations-${DateFormat('yyyyMMdd-HHmm').format(DateTime.now())}.csv',
+      headers: const [
+        'Issued',
+        'User',
+        'Student number',
+        'RFID tag',
+        'Rule',
+        'Status',
+        'Penalty',
+        'Suspension',
+        'Appeal until',
+      ],
+      rows: [
+        for (final v in violations)
+          [
+            stamp.format(v.createdAt.toLocal()),
+            v.userFullName,
+            v.studentNumber ?? '',
+            v.rfidTagId ?? '',
+            v.policyRuleTitle,
+            ViolationStatuses.label(v.status),
+            v.penaltyAmount.toStringAsFixed(2),
+            v.suspensionType,
+            v.appealDeadline == null
+                ? ''
+                : stamp.format(v.appealDeadline!.toLocal()),
+          ],
+      ],
+    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('Violations exported.')));
+  }
 
   DataRow _row(BuildContext context, WidgetRef ref, ViolationSummary v) {
     final t = context.tokens;

@@ -604,7 +604,6 @@ class _Actions extends ConsumerWidget {
     final msg = await action;
     ref.invalidate(violationDetailProvider(v.violationId));
     ref.invalidate(violationListProvider);
-    ref.invalidate(violationLogListProvider);
     ref.invalidate(appealListProvider);
     ref.invalidate(pendingAppealCountProvider);
     if (!context.mounted) return;

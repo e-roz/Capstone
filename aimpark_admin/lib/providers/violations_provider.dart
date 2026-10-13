@@ -191,40 +191,6 @@ Future<ViolationDetail> violationDetail(Ref ref, String violationId) async {
   return ViolationDetail.fromJson(response.data as Map<String, dynamic>);
 }
 
-// ── Violation logs (System Logs module) ─────────────────────────────────────
-
-/// The same endpoint as [violationList], behind its own query state.
-///
-/// System Logs shows violations as an audit trail while Violation Tracking
-/// shows them as a work queue. Sharing one notifier between the two would mean
-/// filtering the log silently re-filtered the queue you left behind on the
-/// other screen, and paging one paged the other.
-@riverpod
-class ViolationLogsQueryNotifier extends _$ViolationLogsQueryNotifier {
-  @override
-  ViolationsQuery build() => const ViolationsQuery();
-
-  void setPage(int page) => state = state.copyWith(page: page);
-  void setStatus(String? status) => state =
-      state.copyWith(status: status, clearStatus: status == null, page: 1);
-}
-
-@riverpod
-Future<ViolationListPage> violationLogList(Ref ref) async {
-  final query = ref.watch(violationLogsQueryNotifierProvider);
-  final dio = ref.watch(dioProvider);
-
-  final params = <String, dynamic>{
-    'page': query.page,
-    'pageSize': query.pageSize,
-    if (query.status != null) 'status': query.status,
-  };
-
-  final response =
-      await dio.get(ApiEndpoints.violations, queryParameters: params);
-  return ViolationListPage.fromJson(response.data as Map<String, dynamic>);
-}
-
 // ── Appeals ───────────────────────────────────────────────────────────────
 
 class AppealsQuery {
