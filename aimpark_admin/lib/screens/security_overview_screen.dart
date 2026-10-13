@@ -426,7 +426,6 @@ class _InsideNow extends ConsumerWidget {
                     subtitle: Text(
                       [
                         ?session.plateNumber,
-                        ?session.slotCode,
                         'in at ${DateFormat('HH:mm').format(session.entryTime.toLocal())}',
                       ].join(' · '),
                     ),

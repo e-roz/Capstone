@@ -346,8 +346,8 @@ namespace AimPark.API.Services
 
                 // Naming the slot by hand used to skip every rule the allocator
                 // applies, so the panel would put a car in a motorcycle bay.
-                var refusal = await CheckSlotFitsAsync(
-                    slot, vehicleType is VehicleType known ? [known] : registeredTypes, ct);
+                var refusal = CheckSlotFits(
+                    slot, vehicleType is VehicleType known ? [known] : registeredTypes);
                 if (refusal is not null) return refusal;
             }
             else
@@ -405,14 +405,17 @@ namespace AimPark.API.Services
             // A receipt, and the only way someone learns their card was used
             // by somebody else. No clock time in the text: the server runs on
             // UTC and the phone already stamps the notification itself.
-            var where = slot is not null
-                ? $"Gate {slot.Gate}, slot {slot.SlotCode}"
-                : dto.Gate is int entryGate ? $"Gate {entryGate}" : "Entry logged";
+            // The gate, never the bay: the bay given at the gate is only a
+            // recommendation, so the text must not say where the car parked.
+            var entryGate = dto.Gate ?? slot?.Gate;
+            var where = entryGate is int enteredGate
+                ? $"You're parked. You entered through Gate {enteredGate}."
+                : "You're parked.";
             await _notificationService.NotifyUserAsync(
                 user.Id,
                 NotificationType.Parking,
                 "You're in",
-                $"{where}. Not you? Report it in the app right away.",
+                $"{where} Not you? Report it in the app right away.",
                 new Dictionary<string, string> { ["screen"] = "parking-history" },
                 ct);
 
@@ -440,8 +443,8 @@ namespace AimPark.API.Services
         /// check against — a user with no vehicle on file. That is the admin's
         /// judgement to make, so it passes.
         /// </remarks>
-        private async Task<ActionResult<object>?> CheckSlotFitsAsync(
-            ParkingSlot slot, IReadOnlyCollection<VehicleType> types, CancellationToken ct)
+        private static ActionResult<object>? CheckSlotFits(
+            ParkingSlot slot, IReadOnlyCollection<VehicleType> types)
         {
             if (types.Count == 0) return null;
 
@@ -453,27 +456,6 @@ namespace AimPark.API.Services
                     message = $"Slot {slot.SlotCode} is for {SlotFit.Describe(slot.VehicleType)}, "
                             + "which does not match this vehicle."
                 });
-            }
-
-            // Fits, but only through the overflow rule. The allocator reaches
-            // for a four-wheel bay just once the motorcycle bays are gone, and
-            // a manual placement has to hold to the same limit or the handful
-            // of car bays get spent on motorcycles while their own sit empty.
-            if (types.All(t => SlotFit.IsOverflow(slot.VehicleType, t)))
-            {
-                var motorcycleBayFree = await _db.Set<ParkingSlot>().AsNoTracking()
-                    .AnyAsync(s => s.VehicleType == VehicleType.Motorcycle
-                               && s.Status == ParkingSlotStatus.Available, ct);
-
-                if (motorcycleBayFree)
-                {
-                    return new BadRequestObjectResult(new
-                    {
-                        result = AllocationResult.SlotUnavailable,
-                        message = $"Slot {slot.SlotCode} is a four-wheel bay. Motorcycle bays are "
-                                + "still free, so use one of those first."
-                    });
-                }
             }
 
             return null;
@@ -740,7 +722,7 @@ namespace AimPark.API.Services
                     });
 
                 // Same rule as a registered vehicle, read off the pass.
-                var refusal = await CheckSlotFitsAsync(slot, [pass.VehicleType], ct);
+                var refusal = CheckSlotFits(slot, [pass.VehicleType]);
                 if (refusal is not null) return refusal;
             }
             else

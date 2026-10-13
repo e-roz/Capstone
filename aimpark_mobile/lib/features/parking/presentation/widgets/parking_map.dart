@@ -9,22 +9,21 @@ import '../../domain/lot_layout.dart';
 /// How one bay reads on the map.
 ///
 /// Deliberately not [StatusIntents.slot]: that maps `occupied` to the brand tone,
-/// and the map has to say *which bay is yours*, which needs the one brand colour
-/// to itself.
+/// and the map keeps the one brand colour for the suggested bay.
+///
+/// There is no "yours": the lot only knows which bays have a car in them, never
+/// whose, so the map cannot say where a driver parked.
 enum BayState {
   free,
   taken,
   outOfService,
   noSignal,
-  yours,
   suggested;
 
   static BayState of(
     ParkingSlot slot, {
-    String? myCode,
     String? suggestedCode,
   }) {
-    if (myCode != null && slot.slotCode == myCode) return yours;
     if (suggestedCode != null && slot.slotCode == suggestedCode) {
       return suggested;
     }
@@ -43,7 +42,6 @@ enum BayState {
     BayState.taken => 'Taken',
     BayState.outOfService => 'Out of service',
     BayState.noSignal => 'No signal',
-    BayState.yours => 'Yours',
     BayState.suggested => 'Suggested',
   };
 }
@@ -71,16 +69,12 @@ class ParkingMap extends StatelessWidget {
   const ParkingMap({
     super.key,
     required this.availability,
-    this.myCode,
     this.suggestedCode,
     this.userHasCar = false,
     this.userHasMotorcycle = false,
   });
 
   final ParkingAvailability availability;
-
-  /// The bay this user is parked in, if they are.
-  final String? myCode;
 
   /// The bay the server suggested, if they asked.
   final String? suggestedCode;
@@ -129,11 +123,7 @@ class ParkingMap extends StatelessWidget {
     final layout = LotLayout.of(availability.slots);
 
     Widget bay(ParkingSlot slot, {required bool mirrored, required double w}) {
-      final state = BayState.of(
-        slot,
-        myCode: myCode,
-        suggestedCode: suggestedCode,
-      );
+      final state = BayState.of(slot, suggestedCode: suggestedCode);
       return _Bay(
         slot: slot,
         state: state,
@@ -200,10 +190,7 @@ class ParkingMap extends StatelessWidget {
               ),
             ),
             const SizedBox(height: AppSpacing.md),
-            _Legend(
-              showYours: myCode != null,
-              showSuggested: suggestedCode != null,
-            ),
+            _Legend(showSuggested: suggestedCode != null),
             // Bays the drawing has no room for are listed rather than dropped.
             if (layout.unplaced.isNotEmpty) ...[
               const SizedBox(height: AppSpacing.lg),
@@ -265,11 +252,6 @@ class _Bay extends StatelessWidget {
               : Icons.directions_car_rounded);
 
     final Widget trailing = switch (state) {
-      BayState.yours => _Tag(
-        label: 'You',
-        fill: t.brand.onSolid,
-        ink: t.brand.primary,
-      ),
       // An icon, not a word: "Suggested" does not fit in a bay beside its code.
       // The legend and the sheet say what it means.
       BayState.suggested => Container(
@@ -410,11 +392,6 @@ class _BayColors {
       t.text.disabled,
       code: t.text.secondary,
     ),
-    BayState.yours => _BayColors(
-      t.brand.primary,
-      t.brand.primary,
-      t.brand.onSolid,
-    ),
     BayState.suggested => _BayColors(
       t.tertiary.subtle,
       t.brand.primary,
@@ -422,29 +399,6 @@ class _BayColors {
       borderWidth: 2.5,
     ),
   };
-}
-
-class _Tag extends StatelessWidget {
-  const _Tag({required this.label, required this.fill, required this.ink});
-
-  final String label;
-  final Color fill;
-  final Color ink;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-      decoration: BoxDecoration(color: fill, borderRadius: AppRadius.fullAll),
-      child: Text(
-        label,
-        style: context.text.labelMedium?.copyWith(
-          color: ink,
-          fontWeight: FontWeight.w800,
-        ),
-      ),
-    );
-  }
 }
 
 /// A slow ring around the suggested bay, so it can be found on a map of eighteen
@@ -666,11 +620,10 @@ class _DashPainter extends CustomPainter {
 // ── Legend ───────────────────────────────────────────────────────────────────
 
 class _Legend extends StatelessWidget {
-  const _Legend({required this.showYours, required this.showSuggested});
+  const _Legend({required this.showSuggested});
 
   /// Only listed when the colour appears on the map. A key to something that is
   /// not there is noise.
-  final bool showYours;
   final bool showSuggested;
 
   @override
@@ -683,7 +636,6 @@ class _Legend extends StatelessWidget {
         const _LegendItem(state: BayState.taken),
         const _LegendItem(state: BayState.outOfService),
         const _LegendItem(state: BayState.noSignal),
-        if (showYours) const _LegendItem(state: BayState.yours),
         if (showSuggested) const _LegendItem(state: BayState.suggested),
       ],
     );
@@ -759,7 +711,7 @@ class _BaySheet extends StatelessWidget {
     BayState.free => StatusIntent.success,
     BayState.taken || BayState.outOfService => StatusIntent.neutral,
     BayState.noSignal => StatusIntent.warning,
-    BayState.yours || BayState.suggested => StatusIntent.brand,
+    BayState.suggested => StatusIntent.brand,
   };
 
   String get _message => switch (state) {
@@ -770,7 +722,6 @@ class _BaySheet extends StatelessWidget {
     BayState.outOfService => 'This bay is out of service.',
     BayState.noSignal =>
       "This bay's sensor is not reporting, so it is not counted as free.",
-    BayState.yours => "You're parked here.",
     BayState.suggested =>
       'Suggested for you. It is not held, so it may be taken before you '
           'arrive.',

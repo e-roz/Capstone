@@ -18,9 +18,8 @@ namespace AimPark.API.Helpers
     ///   and no vehicle of this type is on its way to a bay.
     ///
     /// A different bay of the right type is never a warning: the bay given at
-    /// the gate is only a suggestion. Nor is a motorcycle in a four-wheel bay
-    /// once every motorcycle bay is taken, which is the overflow
-    /// <see cref="SlotFit"/> allows.
+    /// the gate is only a suggestion. A motorcycle in a four-wheel bay is
+    /// always a warning, because motorcycles are never let in for a car bay.
     /// </remarks>
     public static class WrongBayRule
     {
@@ -41,17 +40,10 @@ namespace AimPark.API.Helpers
             if (filled.Type is not VehicleType bayType)
                 return false; // Takes any vehicle.
 
-            if (bayType == VehicleType.Car
-                && !bays.Any(b => b.Type == VehicleType.Motorcycle && b.Status == ParkingSlotStatus.Available))
-                return false; // Motorcycle overflow is allowed.
-
             var byId = bays.ToDictionary(b => b.Id);
-            VehicleType? GivenType(Session s) =>
-                s.GivenBayId is Guid id && byId.TryGetValue(id, out var b) ? b.Type : null;
 
             // Unknown counts as belonging, so a guess never tips the count.
-            // So does a motorcycle the gate itself sent to a car bay.
-            bool Belongs(Session s) => s.Type is null || s.Type == bayType || GivenType(s) == bayType;
+            bool Belongs(Session s) => s.Type is null || s.Type == bayType;
 
             var taken = bays.Count(b => b.Type == bayType && b.Status == ParkingSlotStatus.Occupied);
             if (taken > inside.Count(Belongs))

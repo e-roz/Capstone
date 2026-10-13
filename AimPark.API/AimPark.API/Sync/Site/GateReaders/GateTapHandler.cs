@@ -144,9 +144,6 @@ namespace AimPark.API.Sync.Site.GateReaders
 
             var message = Text("message") ?? (status < 300 ? "Done." : "Refused.");
 
-            if (Text("slotCode") is { } slot)
-                message += $" Slot {slot}.";
-
             if (decimal.TryParse(Text("amountDue"), out var due) && due > 0)
                 message += $" ₱{due:0.##} due.";
 

@@ -116,7 +116,6 @@ class _LiveParkingMapCardState extends ConsumerState<LiveParkingMapCard> {
     // A refresh still in flight is left to finish rather than stacked.
     if (ref.read(parkingSlotsProvider).isLoading) return;
     ref.invalidate(parkingSlotsProvider);
-    ref.invalidate(activeParkingSessionsProvider);
     ref.invalidate(wrongBayFlagsProvider);
   }
 
@@ -138,11 +137,6 @@ class _LiveParkingMapCardState extends ConsumerState<LiveParkingMapCard> {
     // A bay reads free or taken only while a sensor vouches for it.
     final coverage = _SensorCoverage.from(ref.watch(deviceHealthProvider), link);
     final stale = !atGuardPost && link != null && link.stale;
-    final sessions = {
-      for (final s in ref.watch(activeParkingSessionsProvider).valueOrNull ??
-          const <ActiveParkingSession>[])
-        if (s.slotCode != null) s.slotCode!: s,
-    };
 
     // No header of its own: the clock and the status badge sit in the page
     // header ([ParkingStatus]), next to the page's actions.
@@ -184,7 +178,6 @@ class _LiveParkingMapCardState extends ConsumerState<LiveParkingMapCard> {
                   child: _MapWithSummary(
                     slots: availability.slots,
                     availability: availability,
-                    sessions: sessions,
                     compact: widget.compact,
                     onBayTap: widget.onBayTap,
                     health: health,
@@ -680,7 +673,6 @@ class _MapWithSummary extends StatelessWidget {
   const _MapWithSummary({
     required this.slots,
     required this.availability,
-    required this.sessions,
     required this.compact,
     required this.onBayTap,
     required this.health,
@@ -689,7 +681,6 @@ class _MapWithSummary extends StatelessWidget {
 
   final List<ParkingSlot> slots;
   final ParkingAvailability availability;
-  final Map<String, ActiveParkingSession> sessions;
   final bool compact;
   final void Function(ParkingSlot slot)? onBayTap;
   final Map<int, GateStatus> health;
@@ -708,7 +699,6 @@ class _MapWithSummary extends StatelessWidget {
     final map = _LotMap(
       left: left,
       right: right,
-      sessions: sessions,
       compact: compact,
       onBayTap: onBayTap,
       health: health,
@@ -767,7 +757,7 @@ class _MapWithSummary extends StatelessWidget {
             ],
             if (unplaced.isNotEmpty) ...[
               const SizedBox(height: AppSpacing.x5),
-              _Unplaced(slots: unplaced, sessions: sessions, onBayTap: onBayTap),
+              _Unplaced(slots: unplaced, onBayTap: onBayTap),
             ],
           ],
         );
@@ -812,7 +802,6 @@ class _LotMap extends StatelessWidget {
   const _LotMap({
     required this.left,
     required this.right,
-    required this.sessions,
     required this.compact,
     required this.onBayTap,
     required this.health,
@@ -821,7 +810,6 @@ class _LotMap extends StatelessWidget {
 
   final List<ParkingSlot> left;
   final List<ParkingSlot> right;
-  final Map<String, ActiveParkingSession> sessions;
   final bool compact;
   final void Function(ParkingSlot slot)? onBayTap;
   final Map<int, GateStatus> health;
@@ -856,7 +844,6 @@ class _LotMap extends StatelessWidget {
             child: i < bays.length
                 ? _Bay(
                     slot: bays[i],
-                    session: sessions[bays[i].slotCode],
                     compact: compact,
                     stallOnRight: alignRight,
                     onTap: onBayTap,
@@ -1283,14 +1270,12 @@ class _LanePainter extends CustomPainter {
 class _Bay extends StatefulWidget {
   const _Bay({
     required this.slot,
-    required this.session,
     required this.compact,
     required this.stallOnRight,
     required this.onTap,
   });
 
   final ParkingSlot slot;
-  final ActiveParkingSession? session;
   final bool compact;
 
   /// Right-column bays have their back wall on the right.
@@ -1310,7 +1295,6 @@ class _BayState extends State<_Bay> {
     final t = context.tokens;
     final text = Theme.of(context).textTheme;
     final slot = widget.slot;
-    final session = widget.session;
     // No sensor signal: shown grey, whatever it last read, until a linked
     // sensor is heard from again.
     final coverage = _Coverage.of(context);
@@ -1335,9 +1319,6 @@ class _BayState extends State<_Bay> {
               : '${slot.slotCode} · Sensor has no signal (last seen ${_statusLabel(slot.status).toLowerCase()})'
           : '${slot.slotCode} · ${_statusLabel(slot.status)}',
       slot.isMotorcycle ? 'Motorcycle bay' : slot.vehicleType == 'Car' ? 'Four-wheel bay' : 'Any vehicle',
-      if (session != null) session.userName,
-      if (session?.plateNumber != null) session!.plateNumber!,
-      if (session != null) 'In since ${_clock.format(manila(session.entryTime))}',
       if (wrongBay != null)
         wrongBay.isConfirmed
             ? 'Wrong kind of vehicle here (confirmed)'
@@ -1388,12 +1369,6 @@ class _BayState extends State<_Bay> {
             ),
           ],
         ),
-        if (!widget.compact && session != null)
-          Text(
-            session.plateNumber ?? session.userName,
-            overflow: TextOverflow.ellipsis,
-            style: text.labelSmall?.copyWith(color: fg.withValues(alpha: 0.85)),
-          ),
       ],
     );
 
@@ -1470,10 +1445,9 @@ class _EmptyBay extends StatelessWidget {
 }
 
 class _Unplaced extends StatelessWidget {
-  const _Unplaced({required this.slots, required this.sessions, required this.onBayTap});
+  const _Unplaced({required this.slots, required this.onBayTap});
 
   final List<ParkingSlot> slots;
-  final Map<String, ActiveParkingSession> sessions;
   final void Function(ParkingSlot slot)? onBayTap;
 
   @override
@@ -1508,7 +1482,6 @@ class _Unplaced extends StatelessWidget {
                 height: 36,
                 child: _Bay(
                   slot: s,
-                  session: sessions[s.slotCode],
                   compact: true,
                   stallOnRight: false,
                   onTap: onBayTap,

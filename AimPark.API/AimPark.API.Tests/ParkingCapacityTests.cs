@@ -132,7 +132,7 @@ public class ParkingCapacityTests
     }
 
     [Fact]
-    public void AVehicleMayUseItsFallbackTier()
+    public void FreeOfCountsOnlyTheTypesAsked()
     {
         var room = ParkingCapacity.Of(Lot(), Inside(motorcycles: 6));
         Assert.Equal(0, room.FreeOf([VehicleType.Motorcycle]));

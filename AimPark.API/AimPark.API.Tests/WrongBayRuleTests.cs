@@ -54,15 +54,10 @@ public class WrongBayRuleTests
     }
 
     [Fact]
-    public void AMotorcycleInACarBayIsFineWhenMotorcycleBaysAreFull()
+    public void AMotorcycleInACarBayIsFlaggedEvenWhenMotorcycleBaysAreFull()
     {
-        Assert.False(Warn(C1, Lot(c1: Taken, m1: Taken, m2: Taken), In(Moto, null), In(Moto, M1), In(Moto, M2)));
-    }
-
-    [Fact]
-    public void AMotorcycleTheGateSentToACarBayIsFine()
-    {
-        Assert.False(Warn(C1, Lot(c1: Taken), In(Moto, C1)));
+        // No overflow: a full set of motorcycle bays means no more motorcycles.
+        Assert.True(Warn(C1, Lot(c1: Taken, m1: Taken, m2: Taken), In(Moto, null), In(Moto, M1), In(Moto, M2)));
     }
 
     [Fact]
