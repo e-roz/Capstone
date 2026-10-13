@@ -241,7 +241,7 @@ final pendingAppealCountProvider = AutoDisposeFutureProvider<int>.internal(
 @Deprecated('Will be removed in 3.0. Use Ref instead')
 // ignore: unused_element
 typedef PendingAppealCountRef = AutoDisposeFutureProviderRef<int>;
-String _$policyRuleActionsHash() => r'e7b356ef827e971a45434ce81edee597d4caa75c';
+String _$policyRuleActionsHash() => r'3356e51b42c9bc973b9376f1f52ca37504817cfa';
 
 /// See also [PolicyRuleActions].
 @ProviderFor(PolicyRuleActions)
