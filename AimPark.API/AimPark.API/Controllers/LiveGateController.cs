@@ -2,6 +2,8 @@ using System.Linq.Expressions;
 using AimPark.API.Data;
 using AimPark.API.Entities;
 using AimPark.API.Enums;
+using AimPark.API.Interfaces;
+using AimPark.API.Sync;
 using AimPark.API.Sync.Site.Cameras;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
@@ -29,10 +31,12 @@ namespace AimPark.API.Controllers
     {
         private readonly CameraFrames? _cameras;
         private readonly AppDbContext _db;
+        private readonly IFileStorageService? _files;
         public LiveGateController(IServiceProvider services, AppDbContext db)
         {
             _cameras = services.GetService<CameraFrames>();
             _db = db;
+            _files = services.GetService<IFileStorageService>();
         }
 
         /// <summary>How many taps the Overview's live log shows.</summary>
@@ -203,9 +207,18 @@ namespace AimPark.API.Controllers
             var expired = NotFound(new { message = "No photo for this tap. Photos are kept for 30 days." });
             if (tap is null) return expired;
 
-            // Photos never leave the guard PC.
+            // In the cloud the photo is the copy the guard PC sent up. It may
+            // not have arrived yet (no internet at the guard post), so a miss
+            // is "not there yet", not an error.
             if (_cameras is null)
-                return NotFound(new { message = "Tap photos are kept on the guard post's PC. Open this from the guard post's panel." });
+            {
+                if (_files is null) return expired;
+
+                var sent = await _files.DownloadAsync(TapPhotos.Bucket, TapPhotos.ObjectPath(id), ct);
+                return sent is null
+                    ? NotFound(new { message = "This photo has not reached the cloud yet, or it is older than 30 days." })
+                    : File(sent, "image/jpeg");
+            }
 
             var path = CameraFrames.PhotoPath(id, tap.At);
             return System.IO.File.Exists(path) ? PhysicalFile(path, "image/jpeg") : expired;
