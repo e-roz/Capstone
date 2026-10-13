@@ -21,7 +21,7 @@ namespace AimPark.API.Sync.Site.Cameras
 
         private const int PhotoDays = 30;
 
-        private static readonly string PhotosRoot = Path.Combine(
+        public static readonly string PhotosRoot = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData),
             "AimPark", "tap-photos");
 

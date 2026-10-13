@@ -91,6 +91,8 @@ namespace AimPark.API.Sync
             services.AddSingleton<PendingVisitorRegistrations>();
             services.AddSingleton<CameraFrames>();
             services.AddHostedService(sp => sp.GetRequiredService<CameraFrames>());
+            // Each tap's photo goes up to the cloud for the online admin panel.
+            services.AddHostedService<TapPhotoUploader>();
             services.AddSingleton<UsbGateReaders>();
             services.AddHostedService(sp => sp.GetRequiredService<UsbGateReaders>());
 
@@ -123,6 +125,8 @@ namespace AimPark.API.Sync
             services.AddHostedService<AimPark.API.Services.NotificationReminderService>();
             // Issued violations past their appeal deadline become Accountable.
             services.AddHostedService<AimPark.API.Services.ViolationDeadlineService>();
+            // Tap photos sent up from the guard PC are kept for 30 days.
+            services.AddHostedService<AimPark.API.Services.TapPhotoCleanupService>();
             services.AddScoped<ISaveChangesInterceptor, MasterDataChangeInterceptor>();
             services.AddScoped<SnapshotBuilder>();
             services.AddScoped<EventIngestor>();
