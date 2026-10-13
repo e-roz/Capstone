@@ -90,6 +90,7 @@ namespace AimPark.API.Controllers
             [FromQuery] DateTime? from = null,
             [FromQuery] DateTime? to = null,
             [FromQuery] string? search = null,
+            [FromQuery] bool? serious = null,
             CancellationToken ct = default)
         {
             page = Math.Max(1, page);
@@ -150,6 +151,12 @@ namespace AimPark.API.Controllers
                     break;
             }
 
+            // Only the refusals worth a look (the rule AsRow flags as Serious),
+            // for the Overview's activity feed.
+            if (serious == true)
+                query = query.Where(t => !t.Opened && t.PersonKind != GateTapPersonKind.Manual
+                    && (t.PersonKind == GateTapPersonKind.Unknown || t.PlateMatches == false));
+
             switch (plate?.ToLowerInvariant())
             {
                 case "match":
@@ -184,7 +191,7 @@ namespace AimPark.API.Controllers
         // counts cannot disagree about which refusals need a look: a card nobody
         // holds, or a plate that is not the card holder's. Anything else the
         // gate refuses (no camera reading, a full lot, a double tap) is routine.
-        private static readonly Expression<Func<GateTapEvent, GateTapRow>> AsRow = t => new GateTapRow(
+        internal static readonly Expression<Func<GateTapEvent, GateTapRow>> AsRow = t => new GateTapRow(
             t.Id, t.At, t.Gate, t.ReaderName, t.Direction, t.Opened, t.Message, t.RfidTagId,
             t.PersonName, t.PersonKind, t.CameraPlate, t.RegisteredPlates, t.PlateMatches, t.HasPhoto,
             !t.Opened && t.PersonKind != GateTapPersonKind.Manual

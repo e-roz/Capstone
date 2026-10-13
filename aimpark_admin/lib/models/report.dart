@@ -12,11 +12,33 @@ class ReportsSummary {
 
   /// Bays that exist but cannot be parked in.
   final int outOfServiceSlots;
+
+  /// Bays whose sensor has stopped reading.
+  final int noSignalSlots;
+
+  /// Bays a car could use. Free plus occupied add up to this, always.
+  final int usableBays;
+  final int freeFourWheel;
+  final int usableFourWheel;
+  final int freeMotorcycle;
+  final int usableMotorcycle;
   final int sessionsToday;
+  final int sessionsInPeriod;
+
+  /// Everything paid in the period: fees plus fines.
   final double revenueCollected;
+  final double feesCollected;
+  final double finesCollected;
+
+  /// Owed right now, whatever the period.
   final double revenuePending;
+  final double feesPending;
+  final double finesPending;
   final int violationsIssued;
   final int openIncidents;
+
+  /// Refusals today that need a look: an unknown card or a plate mismatch.
+  final int seriousDenialsToday;
 
   const ReportsSummary({
     required this.totalUsers,
@@ -25,17 +47,30 @@ class ReportsSummary {
     required this.occupiedSlots,
     required this.availableSlots,
     this.outOfServiceSlots = 0,
+    this.noSignalSlots = 0,
+    this.usableBays = 0,
+    this.freeFourWheel = 0,
+    this.usableFourWheel = 0,
+    this.freeMotorcycle = 0,
+    this.usableMotorcycle = 0,
     required this.sessionsToday,
+    this.sessionsInPeriod = 0,
     required this.revenueCollected,
+    this.feesCollected = 0,
+    this.finesCollected = 0,
     required this.revenuePending,
+    this.feesPending = 0,
+    this.finesPending = 0,
     required this.violationsIssued,
     required this.openIncidents,
+    this.seriousDenialsToday = 0,
   });
 
   /// Bays that could actually take a car right now — the denominator for any
   /// "how full are we" figure. A lot with 10 bays where 8 are broken is at
   /// capacity with 2 cars, not at 20%.
-  int get usableSlots => totalSlots - outOfServiceSlots;
+  int get usableSlots =>
+      usableBays > 0 ? usableBays : totalSlots - outOfServiceSlots;
 
   /// 0.0–1.0. Zero when nothing is usable, which reads better than a division
   /// by zero and is honest: no capacity cannot be "full".
@@ -49,11 +84,24 @@ class ReportsSummary {
         occupiedSlots: (json['occupiedSlots'] as num?)?.toInt() ?? 0,
         availableSlots: (json['availableSlots'] as num?)?.toInt() ?? 0,
         outOfServiceSlots: (json['outOfServiceSlots'] as num?)?.toInt() ?? 0,
+        noSignalSlots: (json['noSignalSlots'] as num?)?.toInt() ?? 0,
+        usableBays: (json['usableSlots'] as num?)?.toInt() ?? 0,
+        freeFourWheel: (json['freeFourWheel'] as num?)?.toInt() ?? 0,
+        usableFourWheel: (json['usableFourWheel'] as num?)?.toInt() ?? 0,
+        freeMotorcycle: (json['freeMotorcycle'] as num?)?.toInt() ?? 0,
+        usableMotorcycle: (json['usableMotorcycle'] as num?)?.toInt() ?? 0,
         sessionsToday: (json['sessionsToday'] as num?)?.toInt() ?? 0,
+        sessionsInPeriod: (json['sessionsInPeriod'] as num?)?.toInt() ?? 0,
         revenueCollected: (json['revenueCollected'] as num?)?.toDouble() ?? 0,
+        feesCollected: (json['feesCollected'] as num?)?.toDouble() ?? 0,
+        finesCollected: (json['finesCollected'] as num?)?.toDouble() ?? 0,
         revenuePending: (json['revenuePending'] as num?)?.toDouble() ?? 0,
+        feesPending: (json['feesPending'] as num?)?.toDouble() ?? 0,
+        finesPending: (json['finesPending'] as num?)?.toDouble() ?? 0,
         violationsIssued: (json['violationsIssued'] as num?)?.toInt() ?? 0,
         openIncidents: (json['openIncidents'] as num?)?.toInt() ?? 0,
+        seriousDenialsToday:
+            (json['seriousDenialsToday'] as num?)?.toInt() ?? 0,
       );
 }
 
@@ -180,12 +228,23 @@ class ViolationBreakdown {
 
 class RevenuePoint {
   final DateTime date;
-  final double amount;
 
-  const RevenuePoint({required this.date, required this.amount});
+  /// Fees plus fines.
+  final double amount;
+  final double fees;
+  final double fines;
+
+  const RevenuePoint({
+    required this.date,
+    required this.amount,
+    this.fees = 0,
+    this.fines = 0,
+  });
 
   factory RevenuePoint.fromJson(Map<String, dynamic> json) => RevenuePoint(
         date: DateTime.parse(json['date'].toString()),
         amount: (json['amount'] as num?)?.toDouble() ?? 0,
+        fees: (json['fees'] as num?)?.toDouble() ?? 0,
+        fines: (json['fines'] as num?)?.toDouble() ?? 0,
       );
 }
