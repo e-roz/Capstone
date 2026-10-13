@@ -11,6 +11,15 @@ import '../router/destinations.dart';
 import '../theme/theme.dart';
 import '../widgets/ui/ui.dart';
 
+/// Which devices the list shows. Starts on Active: a revoked device is a
+/// retired one, and a list that opens full of them hides the ones in use.
+final _statusFilterProvider = StateProvider.autoDispose<String?>((ref) => 'Active');
+
+const _statusOptions = [
+  AppFilterOption('Active', 'Active'),
+  AppFilterOption('Revoked', 'Revoked'),
+];
+
 /// Every RFID reader and ALPR camera registered to a gate, with the key
 /// each one authenticates as. A key is only ever shown once, right after
 /// it's created — this screen otherwise only shows its first 12 characters,
@@ -23,11 +32,18 @@ class GateDevicesScreen extends ConsumerWidget {
 
   final bool siteServers;
 
-  bool _shows(GateDevice d) =>
-      (d.deviceType == GateDeviceType.siteServer) == siteServers;
+  bool _shows(GateDevice d, String? status) =>
+      (d.deviceType == GateDeviceType.siteServer) == siteServers &&
+      switch (status) {
+        'Active' => !d.isRevoked,
+        'Revoked' => d.isRevoked,
+        _ => true,
+      };
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final status = ref.watch(_statusFilterProvider);
+
     return AppPage(
       title: siteServers ? 'Site Server' : 'Devices',
       subtitle: siteServers
@@ -39,6 +55,16 @@ class GateDevicesScreen extends ConsumerWidget {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           AppToolbar(
+            filters: [
+              AppFilterDropdown<String>(
+                label: 'Status',
+                value: status,
+                options: _statusOptions,
+                allLabel: 'All',
+                onChanged: (v) =>
+                    ref.read(_statusFilterProvider.notifier).state = v,
+              ),
+            ],
             trailing: [
               IconButton(
                 icon: const Icon(Icons.refresh),
@@ -60,18 +86,27 @@ class GateDevicesScreen extends ConsumerWidget {
             child: AsyncView(
               value: ref
                   .watch(gateDeviceListProvider)
-                  .whenData((all) => all.where(_shows).toList()),
+                  .whenData(
+                      (all) => all.where((d) => _shows(d, status)).toList()),
               onRetry: () => ref.invalidate(gateDeviceListProvider),
               loading: const SkeletonTable(),
               isEmpty: (devices) => devices.isEmpty,
               empty: AppEmptyState(
                 icon: siteServers ? Icons.dns_outlined : Icons.sensors_outlined,
-                title: siteServers ? 'No site server yet' : 'No devices yet',
-                message: siteServers
-                    ? 'Register the guard post PC to give it a key for syncing.'
-                    : 'Register the RFID reader or ALPR camera at a gate '
-                        'to give it a key.',
-                action: FilledButton.icon(
+                title: status == 'Revoked'
+                    ? 'No revoked devices'
+                    : siteServers
+                        ? 'No site server yet'
+                        : 'No devices yet',
+                message: status == 'Revoked'
+                    ? 'Devices you revoke are listed here.'
+                    : siteServers
+                        ? 'Register the guard post PC to give it a key for syncing.'
+                        : 'Register the RFID reader or ALPR camera at a gate '
+                            'to give it a key.',
+                action: status == 'Revoked'
+                    ? null
+                    : FilledButton.icon(
                   onPressed: () => _showRegisterDialog(context, ref),
                   icon: const Icon(Icons.add),
                   label: Text(siteServers
