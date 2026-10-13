@@ -1,6 +1,7 @@
 using AimPark.API.Data;
 using AimPark.API.DTOs;
 using AimPark.API.Entities;
+using AimPark.API.Enums;
 using AimPark.API.Interfaces;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -16,11 +17,16 @@ namespace AimPark.API.Services
             _db = db;
         }
 
-        // GET /api/admin/logs/rfid-access?page=1&pageSize=20&source=Device
+        // GET /api/admin/logs/parking?page=1&pageSize=20&search=ABC&gate=1&vehicleType=Car&visitor=true&from=...&to=...
         public async Task<ActionResult<RfidAccessLogListResponse>> ListRfidAccessAsync(
             int page,
             int pageSize,
-            string? source,
+            string? search,
+            int? gate,
+            VehicleType? vehicleType,
+            bool? visitor,
+            DateTime? from,
+            DateTime? to,
             CancellationToken ct)
         {
             page = Math.Max(1, page);
@@ -28,12 +34,40 @@ namespace AimPark.API.Services
 
             var query = _db.Set<ParkingLog>().AsNoTracking();
 
-            // A row carries either a device or a staff account, never both, so
-            // the filter is a null check rather than a stored discriminator.
-            if (string.Equals(source, "Device", StringComparison.OrdinalIgnoreCase))
-                query = query.Where(l => l.LoggedByDeviceId != null);
-            else if (string.Equals(source, "Manual", StringComparison.OrdinalIgnoreCase))
-                query = query.Where(l => l.LoggedByDeviceId == null);
+            if (gate is int g)
+                query = query.Where(l => l.Gate == g);
+
+            if (vehicleType is VehicleType vt)
+                query = query.Where(l => l.VehicleType == vt);
+
+            if (visitor is bool isVisitor)
+                query = isVisitor
+                    ? query.Where(l => l.VisitorPassId != null)
+                    : query.Where(l => l.VisitorPassId == null);
+
+            // Entry time is what the table sorts and shows, so the range is on it.
+            if (from is DateTime f)
+                query = query.Where(l => l.EntryTime >= f.ToUniversalTime());
+            if (to is DateTime t)
+                query = query.Where(l => l.EntryTime <= t.ToUniversalTime());
+
+            if (!string.IsNullOrWhiteSpace(search))
+            {
+                // Plates are held uppercase and unspaced, so a typed "abc 123"
+                // has to be squashed the same way before it can match.
+                var term = search.Trim();
+                var plate = term.Replace(" ", "").Replace("-", "").ToUpperInvariant();
+                var like = $"%{term}%";
+                var plateLike = $"%{plate}%";
+
+                query = query.Where(l =>
+                    (l.User != null && EF.Functions.ILike(l.User.FullName, like)) ||
+                    (l.VisitorPass != null && EF.Functions.ILike(l.VisitorPass.VisitorName, like)) ||
+                    (l.AlprPlateNumber != null && EF.Functions.ILike(l.AlprPlateNumber, plateLike)) ||
+                    (l.VisitorPass != null && EF.Functions.ILike(l.VisitorPass.PlateNumber, plateLike)) ||
+                    (l.UserId != null && _db.Set<Vehicle>().Any(v =>
+                        v.UserId == l.UserId && EF.Functions.ILike(v.PlateNumber, plateLike))));
+            }
 
             var totalCount = await query.CountAsync(ct);
 
@@ -48,9 +82,10 @@ namespace AimPark.API.Services
                     l.EntryTime,
                     l.ExitTime,
                     l.CreatedAt,
-                    l.LoggedByDeviceId,
-                    l.LoggedByUserId,
                     l.VisitorPassId,
+                    l.Gate,
+                    l.VehicleType,
+                    l.AlprPlateNumber,
                     UserName = l.User != null
                         ? l.User.FullName
                         : l.VisitorPass != null
@@ -61,52 +96,62 @@ namespace AimPark.API.Services
                         : l.VisitorPass != null
                             ? l.VisitorPass.RfidTagId
                             : null,
-                    SlotCode = l.Slot != null ? l.Slot.SlotCode : null,
-                    Gate = l.Slot != null ? (int?)l.Slot.Gate : null
+                    VisitorPlate = l.VisitorPass != null ? l.VisitorPass.PlateNumber : null,
+                    VisitorType = l.VisitorPass != null ? (VehicleType?)l.VisitorPass.VehicleType : null,
+                    Purpose = l.VisitorPass != null ? l.VisitorPass.Purpose : null
                 })
                 .ToListAsync(ct);
 
-            // Two batched lookups rather than a join per row: the recorder is a
-            // device on most rows and a staff account on a few, and neither has
-            // a navigation property on ParkingLog to join through.
-            var deviceIds = logs.Where(l => l.LoggedByDeviceId != null)
-                                .Select(l => l.LoggedByDeviceId!.Value)
-                                .Distinct()
-                                .ToList();
-            var deviceNames = await _db.Set<GateDevice>().AsNoTracking()
-                .Where(d => deviceIds.Contains(d.Id))
-                .ToDictionaryAsync(d => d.Id, d => d.Name, ct);
-
-            var staffIds = logs.Where(l => l.LoggedByUserId != null)
-                               .Select(l => l.LoggedByUserId!.Value)
-                               .Distinct()
-                               .ToList();
-            var staffNames = await _db.Set<User>().AsNoTracking()
-                .Where(u => staffIds.Contains(u.Id))
-                .ToDictionaryAsync(u => u.Id, u => u.FullName, ct);
+            // One batched lookup for the account holders on this page, to fill in
+            // a plate and a type when the camera read none.
+            var userIds = logs.Where(l => l.UserId != null)
+                              .Select(l => l.UserId!.Value)
+                              .Distinct()
+                              .ToList();
+            var vehiclesByUser = (await _db.Set<Vehicle>().AsNoTracking()
+                    .Where(v => userIds.Contains(v.UserId))
+                    .Select(v => new { v.UserId, v.PlateNumber, v.VehicleType })
+                    .ToListAsync(ct))
+                .GroupBy(v => v.UserId)
+                .ToDictionary(grp => grp.Key, grp => grp.ToList());
 
             var response = logs.Select(l =>
             {
-                var byDevice = l.LoggedByDeviceId != null;
+                var registered = l.UserId is Guid uid && vehiclesByUser.TryGetValue(uid, out var vs)
+                    ? vs
+                    : null;
+
+                // Type recorded at entry, else the only type the holder has.
+                var type = l.VehicleType ?? l.VisitorType;
+                if (type is null && registered is not null)
+                {
+                    var types = registered.Select(v => v.VehicleType).Distinct().ToList();
+                    if (types.Count == 1) type = types[0];
+                }
+
+                // What the camera read, else the registered plate of that type
+                // when there is exactly one, else nothing: guessing between a
+                // holder's two cars would put the wrong plate in the record.
+                var plate = l.AlprPlateNumber ?? l.VisitorPlate;
+                if (plate is null && registered is not null && type is not null)
+                {
+                    var ofType = registered.Where(v => v.VehicleType == type).ToList();
+                    if (ofType.Count == 1) plate = ofType[0].PlateNumber;
+                }
+
                 return new RfidAccessLogEntryResponse
                 {
                     Id = l.Id,
                     UserId = l.UserId,
                     UserName = l.UserName,
                     IsVisitor = l.VisitorPassId != null,
+                    VisitorPurpose = l.Purpose,
                     RfidTagId = l.RfidTagId,
-                    SlotCode = l.SlotCode,
+                    VehicleType = type?.ToString(),
+                    PlateNumber = plate,
                     Gate = l.Gate,
                     EntryTime = l.EntryTime,
                     ExitTime = l.ExitTime,
-                    Source = byDevice ? "Device" : "Manual",
-                    RecordedBy = byDevice
-                        // A paired wireless gate has no Gate Devices row: it is named by its gate.
-                        ? deviceNames.GetValueOrDefault(l.LoggedByDeviceId!.Value,
-                            l.Gate is int g ? $"Gate {g} board" : "Gate board")
-                        : l.LoggedByUserId != null
-                            ? staffNames.GetValueOrDefault(l.LoggedByUserId.Value, "Unknown user")
-                            : null,
                     CreatedAt = l.CreatedAt
                 };
             }).ToList();

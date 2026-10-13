@@ -6,11 +6,9 @@ import 'package:intl/intl.dart';
 import '../core/utils/csv_export.dart';
 import '../core/utils/responsive.dart';
 import '../models/audit_log_entry.dart';
-import '../models/rfid_access_log.dart';
 import '../models/system_log_entries.dart';
 import '../models/violation.dart';
 import '../providers/audit_logs_provider.dart';
-import '../providers/rfid_access_logs_provider.dart';
 import '../providers/system_logs_provider.dart';
 import '../providers/violations_provider.dart';
 import '../providers/auth_provider.dart';
@@ -27,21 +25,22 @@ String _fileStamp() => DateFormat('yyyyMMdd-HHmm').format(DateTime.now());
 
 /// The System Logs module.
 ///
-/// The capstone document lists six things under this heading. Five are tabs:
-/// user activity, RFID access, violations, administrative actions and system
-/// errors. The sixth — "Generated Reports — allows the administrator to view and
-/// export summarized logs" — is the Export CSV control on each tab, rather than
-/// a tab of its own that would hold nothing but five download buttons.
+/// The capstone document lists six things under this heading. Four are tabs:
+/// user activity, violations, administrative actions and system errors. RFID
+/// access now has its own Parking Logs page under Gates, and gate taps sit here
+/// as a fifth tab. The sixth thing — "Generated Reports — allows the
+/// administrator to view and export summarized logs" — is the Export CSV
+/// control on each tab, rather than a tab of its own that would hold nothing
+/// but download buttons.
 ///
-/// Tab order follows how often a tab is opened, not the order the document
-/// lists them in: user activity and gate access are the daily questions, and
-/// system errors are the one you hope never to need.
+/// Tab order follows how often a tab is opened: user activity is the daily
+/// question, and system errors are the one you hope never to need.
 class SystemLogsScreen extends ConsumerWidget {
   const SystemLogsScreen({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    // "Access Monitoring" is the guard's module: RFID access and gate taps,
+    // "Access Monitoring" is the guard's module: gate taps
     // and nothing else. The API refuses them user activity and system errors,
     // and violations and admin actions are not theirs to read either - so
     // Security gets the tabs it is entitled to rather than four that would
@@ -51,7 +50,7 @@ class SystemLogsScreen extends ConsumerWidget {
     // "See all taps" on the Overview links here with ?tab=taps.
     final wantsTaps =
         GoRouterState.of(context).uri.queryParameters['tab'] == 'taps';
-    final tabs = isSecurity ? 2 : 6;
+    final tabs = isSecurity ? 1 : 5;
 
     return DefaultTabController(
       length: tabs,
@@ -71,7 +70,7 @@ class _SystemLogsPage extends StatelessWidget {
     return AppPage(
       title: isSecurity ? 'Access Monitoring' : 'System Logs',
       subtitle: isSecurity
-          ? 'Every card scanned at the barrier, by reader and by hand.'
+          ? 'Every card tapped at a gate reader.'
           : 'Monitor operations and verify the system is behaving.',
       toolbar: Align(
         alignment: Alignment.centerLeft,
@@ -80,7 +79,6 @@ class _SystemLogsPage extends StatelessWidget {
           tabAlignment: TabAlignment.start,
           tabs: [
             if (!isSecurity) const Tab(text: 'User Activity'),
-            const Tab(text: 'RFID Access'),
             if (!isSecurity) ...[
               const Tab(text: 'Violations'),
               const Tab(text: 'Administrative Actions'),
@@ -93,7 +91,6 @@ class _SystemLogsPage extends StatelessWidget {
       body: TabBarView(
         children: [
           if (!isSecurity) const _UserActivityTab(),
-          const _RfidAccessTab(),
           if (!isSecurity) ...[
             const _ViolationLogsTab(),
             const _AdminActionsTab(),
@@ -367,163 +364,6 @@ class _AdminActionsTab extends ConsumerWidget {
             l.reason ?? '',
             l.oldValue ?? '',
             l.newValue ?? '',
-          ],
-      ],
-    );
-    _exported(context);
-  }
-}
-
-// ── RFID access logs ─────────────────────────────────────────────────────────
-
-const _sources = [
-  AppFilterOption('Device', 'Reader scan'),
-  AppFilterOption('Manual', 'Logged by staff'),
-];
-
-class _RfidAccessTab extends ConsumerWidget {
-  const _RfidAccessTab();
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final query = ref.watch(rfidAccessLogsQueryNotifierProvider);
-    final notifier = ref.read(rfidAccessLogsQueryNotifierProvider.notifier);
-    final async = ref.watch(rfidAccessLogsProvider);
-
-    return _LogTabScaffold(
-      filters: [
-        AppFilterDropdown<String>(
-          label: 'Source',
-          value: query.source,
-          options: _sources,
-          allLabel: 'All sources',
-          onChanged: notifier.setSource,
-        ),
-      ],
-      onRefresh: () => ref.invalidate(rfidAccessLogsProvider),
-      onExport: async.hasValue
-          ? () => _export(context, async.requireValue.logs)
-          : null,
-      child: AsyncView(
-        value: async,
-        onRetry: () => ref.invalidate(rfidAccessLogsProvider),
-        loading: const SkeletonTable(
-          columns: 6,
-          columnWidths: [160, 110, 140, 140, 100, 110],
-        ),
-        isEmpty: (page) => page.logs.isEmpty,
-        empty: const AppEmptyState(
-          icon: Icons.nfc,
-          title: 'No gate activity recorded',
-          message:
-              'Every entry and exit — whether scanned at a reader or logged by '
-              'staff — is recorded here with its timestamps.',
-        ),
-        data: (page) => AppDataTable(
-          minWidth: 1000,
-          columns: const [
-            DataColumn(label: Text('User')),
-            DataColumn(label: Text('Slot')),
-            DataColumn(label: Text('Entry')),
-            DataColumn(label: Text('Exit')),
-            DataColumn(label: Text('Duration')),
-            DataColumn(label: Text('Source')),
-          ],
-          rows: [for (final entry in page.logs) _row(context, entry)],
-          footer: AppPagination(
-            page: page.page,
-            pageSize: page.pageSize,
-            total: page.totalCount,
-            itemLabel: 'gate events',
-            onPage: notifier.setPage,
-          ),
-        ),
-      ),
-    );
-  }
-
-  DataRow _row(BuildContext context, RfidAccessLogEntry entry) {
-    final t = context.tokens;
-    final text = Theme.of(context).textTheme;
-
-    return DataRow(cells: [
-      DataCell(AppPrimaryCell(
-        title: entry.userName,
-        subtitle: entry.rfidTagId == null
-            ? 'No tag on file'
-            : 'Tag ${entry.rfidTagId}',
-      )),
-      DataCell(Text(
-        entry.slotCode == null
-            ? '—'
-            : '${entry.slotCode}${entry.gate == null ? '' : ' · Gate ${entry.gate}'}',
-        style: entry.slotCode == null
-            ? text.bodyMedium?.copyWith(color: t.text.tertiary)
-            : text.bodyMedium,
-      )),
-      DataCell(Text(
-        _stamp.format(entry.entryTime.toLocal()),
-        style: text.bodySmall,
-      )),
-      DataCell(entry.exitTime == null
-          ? const StatusPill.of('Still inside',
-              intent: StatusIntent.accent, dense: true)
-          : Text(_stamp.format(entry.exitTime!.toLocal()),
-              style: text.bodySmall)),
-      DataCell(Text(
-        _durationLabel(entry.duration),
-        style: entry.duration == null
-            ? text.bodyMedium?.copyWith(color: t.text.tertiary)
-            : AppTypography.tabular(text.bodyMedium!),
-      )),
-      // A reader scan and a hand-keyed correction are not the same evidence,
-      // and an auditor asking "did the hardware actually see this card?" needs
-      // to be able to tell them apart at a glance.
-      DataCell(StatusPill.of(
-        entry.source == 'Device' ? 'Reader' : 'Manual',
-        intent: entry.source == 'Device'
-            ? StatusIntent.success
-            : StatusIntent.warning,
-        dense: true,
-        showDot: false,
-        icon: entry.source == 'Device' ? Icons.sensors : Icons.keyboard,
-      )),
-    ]);
-  }
-
-  static String _durationLabel(Duration? d) {
-    if (d == null) return '—';
-    final hours = d.inHours;
-    final minutes = d.inMinutes.remainder(60);
-    return hours == 0 ? '${minutes}m' : '${hours}h ${minutes}m';
-  }
-
-  void _export(BuildContext context, List<RfidAccessLogEntry> logs) {
-    CsvExport.save(
-      fileName: 'aimpark-rfid-access-${_fileStamp()}.csv',
-      headers: const [
-        'User',
-        'RFID tag',
-        'Slot',
-        'Gate',
-        'Entry',
-        'Exit',
-        'Duration',
-        'Source',
-        'Recorded by',
-      ],
-      rows: [
-        for (final l in logs)
-          [
-            l.userName,
-            l.rfidTagId ?? '',
-            l.slotCode ?? '',
-            l.gate?.toString() ?? '',
-            _isoStamp.format(l.entryTime.toLocal()),
-            l.exitTime == null ? '' : _isoStamp.format(l.exitTime!.toLocal()),
-            _durationLabel(l.duration),
-            l.source,
-            l.recordedBy ?? '',
           ],
       ],
     );

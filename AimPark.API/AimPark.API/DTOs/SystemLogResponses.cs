@@ -1,12 +1,12 @@
 namespace AimPark.API.DTOs
 {
     /// <summary>
-    /// One RFID entry/exit event, as the System Logs module shows it.
+    /// One vehicle's stay in the lot, as the Parking Logs page shows it.
     ///
     /// This is a projection over <c>ParkingLog</c> rather than a table of its
-    /// own: every field the capstone document asks for in "RFID Access Logs —
-    /// tracks vehicle entry and exit using RFID, including timestamps and user
-    /// identification" is already recorded when a gate reports a scan.
+    /// own: the entry and exit times, who came in and what they drove are all
+    /// recorded when a gate reports a scan. The gate is shown instead of a bay
+    /// because the bay is only a suggestion; the gate is where the vehicle was seen.
     /// </summary>
     public class RfidAccessLogEntryResponse
     {
@@ -21,20 +21,21 @@ namespace AimPark.API.DTOs
         /// <summary>True when the card was one lent to a visitor.</summary>
         public bool IsVisitor { get; set; }
 
+        /// <summary>What a visitor is here for, as the guard wrote it. Null for members.</summary>
+        public string? VisitorPurpose { get; set; }
+
         public string? RfidTagId { get; set; }
-        public string? SlotCode { get; set; }
+
+        /// <summary>"Car" or "Motorcycle"; null when it cannot be told.</summary>
+        public string? VehicleType { get; set; }
+
+        /// <summary>The plate the camera read, else the registered one; null when neither is known.</summary>
+        public string? PlateNumber { get; set; }
+
         public int? Gate { get; set; }
 
         public DateTime EntryTime { get; set; }
         public DateTime? ExitTime { get; set; }
-
-        /// <summary>"Device" when a reader reported it, "Manual" when a member
-        /// of staff logged it from the panel. This is the difference between a
-        /// real RFID scan and a keyed-in correction, so it is worth a column.</summary>
-        public string Source { get; set; } = string.Empty;
-
-        /// <summary>Reader name, or the staff account that keyed it in.</summary>
-        public string? RecordedBy { get; set; }
 
         public DateTime CreatedAt { get; set; }
     }

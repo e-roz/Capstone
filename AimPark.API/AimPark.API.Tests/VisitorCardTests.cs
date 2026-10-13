@@ -56,7 +56,7 @@ public class VisitorCardTests
         var pass = await db.VisitorPasses.OrderByDescending(p => p.IssuedAt).FirstAsync();
         var log = new ParkingLog
         {
-            VisitorPassId = pass.Id, EntryTime = DateTime.UtcNow.AddMinutes(-30), LoggedByUserId = Guard
+            VisitorPassId = pass.Id, EntryTime = DateTime.UtcNow.AddMinutes(-30)
         };
         db.ParkingLogs.Add(log);
         await db.SaveChangesAsync();
@@ -166,7 +166,7 @@ public class VisitorCardTests
         ben.EntryTime = DateTime.UtcNow;
         await db.SaveChangesAsync();
 
-        var result = await new AdminLogService(db).ListRfidAccessAsync(1, 20, null, default);
+        var result = await new AdminLogService(db).ListRfidAccessAsync(1, 20, null, null, null, null, null, null, default);
         var logs = Body(result).Logs;
 
         Assert.Equal(["Ben", "Ana"], logs.Select(l => l.UserName));

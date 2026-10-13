@@ -10,6 +10,7 @@ library;
 export 'app_card.dart';
 export 'app_chart.dart';
 export 'app_data_table.dart';
+export 'app_date_range_filter.dart';
 export 'app_field.dart';
 export 'app_form.dart';
 export 'app_page.dart';

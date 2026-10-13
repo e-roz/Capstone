@@ -63,8 +63,8 @@ namespace AimPark.API.Sync.Site.GateReaders
         /// <summary>
         /// A tap at a gate known only by its number: a paired wireless gate
         /// board, which needs no Gate Devices entry. <paramref name="deviceId"/>
-        /// stands for it in ParkingLog.LoggedByDeviceId, so the tap takes the
-        /// device path (plate check included) and the log shows which board.
+        /// stands for it as the reporting device, so the tap takes the device
+        /// path (plate check included).
         /// </summary>
         public async Task<GateTapOutcome> HandleAsync(int gate, Guid deviceId, string rawTag, CancellationToken ct)
         {

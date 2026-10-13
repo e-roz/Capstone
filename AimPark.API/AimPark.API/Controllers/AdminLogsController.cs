@@ -1,4 +1,5 @@
 using AimPark.API.DTOs;
+using AimPark.API.Enums;
 using AimPark.API.Interfaces;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -23,16 +24,22 @@ namespace AimPark.API.Controllers
 
         /// <summary>
         /// Vehicle entry and exit as recorded at the gates, most recent first.
-        /// Optional `source` filters to "Device" (a real RFID scan) or "Manual"
-        /// (keyed in from the admin panel).
+        /// Optional filters: `search` (name or plate), `gate`, `vehicleType`,
+        /// `visitor` (true for visitors only, false for members only), and an
+        /// entry-time range `from` to `to` (both inclusive).
         /// </summary>
-        [HttpGet("rfid-access")]
-        public Task<ActionResult<RfidAccessLogListResponse>> ListRfidAccess(
+        [HttpGet("parking")]
+        public Task<ActionResult<RfidAccessLogListResponse>> ListParkingLogs(
             [FromQuery] int page = 1,
             [FromQuery] int pageSize = 20,
-            [FromQuery] string? source = null,
+            [FromQuery] string? search = null,
+            [FromQuery] int? gate = null,
+            [FromQuery] VehicleType? vehicleType = null,
+            [FromQuery] bool? visitor = null,
+            [FromQuery] DateTime? from = null,
+            [FromQuery] DateTime? to = null,
             CancellationToken ct = default)
-            => _logService.ListRfidAccessAsync(page, pageSize, source, ct);
+            => _logService.ListRfidAccessAsync(page, pageSize, search, gate, vehicleType, visitor, from, to, ct);
 
         /// <summary>
         /// Account activity — logins, failed logins, registrations and status

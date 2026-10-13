@@ -1,4 +1,5 @@
 using AimPark.API.DTOs;
+using AimPark.API.Enums;
 using Microsoft.AspNetCore.Mvc;
 
 namespace AimPark.API.Interfaces
@@ -12,7 +13,12 @@ namespace AimPark.API.Interfaces
         Task<ActionResult<RfidAccessLogListResponse>> ListRfidAccessAsync(
             int page,
             int pageSize,
-            string? source,
+            string? search,
+            int? gate,
+            VehicleType? vehicleType,
+            bool? visitor,
+            DateTime? from,
+            DateTime? to,
             CancellationToken ct);
 
         Task<ActionResult<UserActivityLogListResponse>> ListUserActivityAsync(
