@@ -85,14 +85,4 @@ namespace AimPark.API.DTOs
         /// </summary>
         public List<Guid>? PaymentIds { get; set; }
     }
-
-    /// <summary>An admin recording money taken by hand.</summary>
-    public class MarkPaidDto
-    {
-        /// <summary>Cash unless stated — the only method that reaches a person.</summary>
-        public string? Method { get; set; }
-
-        /// <summary>An OR number, or whatever the payer was given.</summary>
-        public string? ReferenceNumber { get; set; }
-    }
 }

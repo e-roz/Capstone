@@ -416,54 +416,6 @@ namespace AimPark.API.Services
             return true;
         }
 
-        // POST /api/admin/payments/{paymentId}/mark-paid
-        public async Task<ActionResult<object>> MarkPaidByAdminAsync(
-            Guid paymentId,
-            Guid adminUserId,
-            MarkPaidDto dto,
-            CancellationToken ct)
-        {
-            var payment = await _payments.FindAsync(p => p.Id == paymentId, ct);
-            if (payment is null)
-                return new NotFoundObjectResult(new { message = "Payment not found." });
-
-            if (payment.Status == PaymentStatus.Paid)
-                return new BadRequestObjectResult(new { message = "This bill is already paid." });
-
-            if (payment.Status == PaymentStatus.Waived)
-                return new BadRequestObjectResult(new { message = "This bill was waived." });
-
-            var method = Enum.TryParse<PaymentMethod>(dto.Method, true, out var parsed)
-                ? parsed
-                : PaymentMethod.Cash;
-
-            payment.Status = PaymentStatus.Paid;
-            payment.PaidAt = DateTime.UtcNow;
-            payment.Method = method;
-            payment.ReferenceNumber = string.IsNullOrWhiteSpace(dto.ReferenceNumber)
-                ? null
-                : dto.ReferenceNumber.Trim();
-
-            // The whole point of the row: online money lands in an account with a
-            // provider's record behind it, and cash lands in somebody's hand.
-            // This is the only thing that can say whose.
-            payment.ConfirmedByUserId = adminUserId;
-            payment.Provider = null;
-
-            _payments.Update(payment);
-            await _payments.SaveAsync(ct);
-
-            await _notificationService.NotifyUserAsync(
-                payment.UserId,
-                NotificationType.Payment,
-                "Payment recorded",
-                $"₱{payment.AmountDue:0.00} received. Thank you.",
-                new Dictionary<string, string> { ["paymentId"] = payment.Id.ToString() },
-                ct);
-
-            return new OkObjectResult(new { message = $"Marked as paid ({method})." });
-        }
-
         // GET /api/admin/payments
         public Task<ActionResult<PaymentListResponse>> ListAllAsync(
             string? status, DateTime? from, DateTime? to, int page, int pageSize, CancellationToken ct)
