@@ -168,10 +168,21 @@ class _IncidentsTab extends ConsumerWidget {
                       )),
                       DataCell(Text(_categoryLabel(i.category),
                           style: Theme.of(context).textTheme.titleSmall)),
-                      DataCell(StatusPill.of(
-                        _statusLabel(i.status),
-                        intent: StatusIntents.incident(i.status),
-                        dense: true,
+                      DataCell(Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          StatusPill.of(
+                            _statusLabel(i.status),
+                            intent: StatusIntents.incident(i.status),
+                            dense: true,
+                          ),
+                          // Only the administrator needs pointing at it: the
+                          // follow-up is addressed to them.
+                          if (!isSecurity && i.hasNewFollowUp) ...[
+                            const SizedBox(width: AppSpacing.x2),
+                            const _NewFollowUpTag(),
+                          ],
+                        ],
                       )),
                       DataCell(_DateText(i.createdAt)),
                       // Blank until an administrator decides. Withdrawn reports
@@ -453,7 +464,7 @@ typedef _Decision = ({String status, String notes});
 
 Future<void> _showDetail(
     BuildContext context, WidgetRef ref, String incidentId) async {
-  final IncidentDetail detail;
+  IncidentDetail detail;
   try {
     detail = await ref.read(incidentDetailProvider(incidentId).future);
   } catch (_) {
@@ -469,11 +480,30 @@ Future<void> _showDetail(
   // A guard reads the queue read-only - knowing what has already been reported
   // is exactly what stops the same broken barrier being reported twice - and a
   // decided report is final for everyone.
-  final canDecide = ref.read(staffRoleProvider) != StaffRole.security &&
-      !detail.isClosed;
+  final isSecurity = ref.read(staffRoleProvider) == StaffRole.security;
+  final canDecide = !isSecurity && !detail.isClosed;
+
+  // Security adds what they found out while the report is open; once it is
+  // decided, what was written about it is final too.
+  final canFollowUp = isSecurity && !detail.isClosed;
+
+  // Opening the report is reading what Security wrote. The dialog keeps the
+  // copy fetched above, so the "New" marks still show for this visit.
+  if (!isSecurity && detail.hasNewFollowUp) {
+    ref
+        .read(incidentActionsProvider.notifier)
+        .markFollowUpsSeen(incidentId)
+        .then((_) => ref.invalidate(incidentListProvider));
+  }
 
   final notesCtrl = TextEditingController();
   String? notesError;
+
+  final followUpCtrl = TextEditingController();
+  PickedFile? followUpFile;
+  String? followUpError;
+  var sendingFollowUp = false;
+  var showAllFindings = false;
 
   final decision = await showDialog<_Decision>(
     context: context,
@@ -515,6 +545,76 @@ Future<void> _showDetail(
           if (sure == true && ctx.mounted) {
             Navigator.pop(ctx, (status: status, notes: notes));
           }
+        }
+
+        void openAttachment(IncidentEvidenceItem item) => viewDocument(
+              ctx,
+              title: item.fileName.isEmpty ? 'Attachment' : item.fileName,
+              fileName: item.fileName,
+              url: item.url,
+            );
+
+        Future<void> attachToFollowUp() async {
+          final file = await BrowserFiles.pick(
+            accept: _allowedExtensions.map((e) => '.$e').join(','),
+          );
+          if (file == null) return;
+
+          final ext = file.name.contains('.')
+              ? file.name.split('.').last.toLowerCase()
+              : '';
+          String? problem;
+          if (!_allowedExtensions.contains(ext)) {
+            problem = 'Only a JPG, PNG or PDF can be attached.';
+          } else if (file.bytes.length > _maxFileBytes) {
+            problem = '${file.name} is over 5 MB.';
+          }
+
+          setState(() {
+            followUpError = problem;
+            if (problem == null) followUpFile = file;
+          });
+        }
+
+        Future<void> sendFollowUp() async {
+          final note = followUpCtrl.text.trim();
+          if (note.isEmpty) {
+            setState(() => followUpError = 'Write what you found out');
+            return;
+          }
+
+          setState(() {
+            sendingFollowUp = true;
+            followUpError = null;
+          });
+
+          final error = await ref
+              .read(incidentActionsProvider.notifier)
+              .addFollowUp(incidentId, note, attachment: followUpFile);
+          if (!ctx.mounted) return;
+
+          if (error != null) {
+            setState(() {
+              sendingFollowUp = false;
+              followUpError = error;
+            });
+            return;
+          }
+
+          // Reload so the new note shows in the list straight away.
+          try {
+            detail = await ref.refresh(incidentDetailProvider(incidentId).future);
+          } catch (_) {
+            // The note is saved; it shows the next time the report is opened.
+          }
+          if (!ctx.mounted) return;
+
+          followUpCtrl.clear();
+          setState(() {
+            sendingFollowUp = false;
+            followUpFile = null;
+          });
+          ref.invalidate(incidentListProvider);
         }
 
         final sc = t.status.of(StatusIntents.incident(detail.status));
@@ -608,6 +708,16 @@ Future<void> _showDetail(
                       ],
                     ),
                   const SizedBox(height: AppSpacing.x4),
+                  if (!isSecurity && detail.followUps.isNotEmpty) ...[
+                    _FindingsBanner(
+                      followUps: detail.followUps,
+                      expanded: showAllFindings,
+                      onToggle: () =>
+                          setState(() => showAllFindings = !showAllFindings),
+                      onOpenAttachment: openAttachment,
+                    ),
+                    const SizedBox(height: AppSpacing.x3),
+                  ],
                   // What was reported is read-only evidence; the coloured edge
                   // follows the report's status, and the muted well keeps it
                   // from being mistaken for the field the admin fills in.
@@ -701,6 +811,78 @@ Future<void> _showDetail(
                             text.bodySmall?.copyWith(color: t.text.tertiary),
                       ),
                   ],
+                  if (isSecurity && (detail.followUps.isNotEmpty || canFollowUp)) ...[
+                    const SizedBox(height: AppSpacing.x5),
+                    _SectionLabel(
+                      icon: Icons.notes,
+                      label: 'Security follow-up',
+                      count: detail.followUps.length,
+                    ),
+                    const SizedBox(height: AppSpacing.x2),
+                    for (final f in detail.followUps)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: AppSpacing.x2),
+                        child: _FollowUpTile(
+                          item: f,
+                          onOpenAttachment: openAttachment,
+                        ),
+                      ),
+                    if (canFollowUp) ...[
+                      TextField(
+                        controller: followUpCtrl,
+                        maxLines: 3,
+                        maxLength: 2000,
+                        enabled: !sendingFollowUp,
+                        textCapitalization: TextCapitalization.sentences,
+                        onChanged: (_) {
+                          if (followUpError != null) {
+                            setState(() => followUpError = null);
+                          }
+                        },
+                        decoration: InputDecoration(
+                          label: const AppFieldLabel('Add a follow-up'),
+                          helperText:
+                              'Who, where, which plate. The administrator reads this before deciding.',
+                          errorText: followUpError,
+                        ),
+                      ),
+                      const SizedBox(height: AppSpacing.x2),
+                      Row(
+                        children: [
+                          if (followUpFile != null)
+                            Flexible(
+                              child: InputChip(
+                                avatar: Icon(
+                                  followUpFile!.name.toLowerCase().endsWith('.pdf')
+                                      ? Icons.picture_as_pdf_outlined
+                                      : Icons.image_outlined,
+                                  size: AppSizes.iconSm,
+                                ),
+                                label: Text(
+                                  '${followUpFile!.name} · ${followUpFile!.readableSize}',
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                                onDeleted: sendingFollowUp
+                                    ? null
+                                    : () => setState(() => followUpFile = null),
+                              ),
+                            )
+                          else
+                            OutlinedButton.icon(
+                              onPressed: sendingFollowUp ? null : attachToFollowUp,
+                              icon: const Icon(Icons.attach_file,
+                                  size: AppSizes.iconSm),
+                              label: const Text('Attach'),
+                            ),
+                          const Spacer(),
+                          FilledButton(
+                            onPressed: sendingFollowUp ? null : sendFollowUp,
+                            child: Text(sendingFollowUp ? 'Adding…' : 'Add follow-up'),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ],
                   const SizedBox(height: AppSpacing.x5),
                   if (canDecide) ...[
                     const _SectionLabel(
@@ -736,7 +918,8 @@ Future<void> _showDetail(
                     const _Callout(
                       intent: StatusIntent.info,
                       icon: Icons.lock_outline,
-                      text: 'Only an administrator can decide on a report.',
+                      text: 'Only an administrator can decide on a report. '
+                          'Your follow-ups go to the administrator, not the reporter.',
                     ),
                 ],
               ),
@@ -784,6 +967,184 @@ Future<void> _showDetail(
   ref.invalidate(incidentListProvider);
   ref.invalidate(openIncidentCountProvider);
   ref.invalidate(incidentDetailProvider(incidentId));
+}
+
+/// "New follow-up" beside a status in the queue.
+class _NewFollowUpTag extends StatelessWidget {
+  const _NewFollowUpTag();
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.tokens.status.of(StatusIntent.accent);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+      decoration: BoxDecoration(color: c.bg, borderRadius: AppRadii.fullAll),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.chat_bubble_outline, size: 12, color: c.fg),
+          const SizedBox(width: 4),
+          Text(
+            'New follow-up',
+            style: Theme.of(context)
+                .textTheme
+                .labelSmall
+                ?.copyWith(color: c.fg, fontWeight: FontWeight.w700),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// One note: what was found out, who wrote it and when, and its photo or PDF
+/// if it has one.
+class _FollowUpTile extends StatelessWidget {
+  const _FollowUpTile({
+    required this.item,
+    required this.onOpenAttachment,
+    this.showNew = false,
+  });
+
+  final IncidentFollowUp item;
+  final void Function(IncidentEvidenceItem) onOpenAttachment;
+
+  /// Mark a note the administrator has not read before this visit.
+  final bool showNew;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = context.tokens;
+    final text = Theme.of(context).textTheme;
+    final accent = t.status.of(StatusIntent.accent);
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(AppSpacing.x3),
+      decoration: BoxDecoration(
+        color: t.surface.muted,
+        borderRadius: AppRadii.smAll,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(item.note, style: text.bodyMedium),
+          const SizedBox(height: AppSpacing.x1),
+          Row(
+            children: [
+              Flexible(
+                child: Text(
+                  '${item.authorName.isEmpty ? 'Security' : item.authorName}'
+                  ' · ${_dateTime.format(item.createdAt.toLocal())}',
+                  style: text.labelSmall?.copyWith(color: t.text.tertiary),
+                ),
+              ),
+              if (showNew && item.isNew) ...[
+                const SizedBox(width: AppSpacing.x2),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+                  decoration: BoxDecoration(
+                      color: accent.bg, borderRadius: AppRadii.fullAll),
+                  child: Text('New',
+                      style: text.labelSmall?.copyWith(
+                          color: accent.fg, fontWeight: FontWeight.w700)),
+                ),
+              ],
+            ],
+          ),
+          if (item.attachment case final attachment?) ...[
+            const SizedBox(height: AppSpacing.x2),
+            _EvidenceRow(
+              item: attachment,
+              onOpen: () => onOpenAttachment(attachment),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+/// What Security found out, on top of the report so the administrator reads it
+/// first. Labelled as Security's word, not as verified.
+class _FindingsBanner extends StatelessWidget {
+  const _FindingsBanner({
+    required this.followUps,
+    required this.expanded,
+    required this.onToggle,
+    required this.onOpenAttachment,
+  });
+
+  final List<IncidentFollowUp> followUps;
+  final bool expanded;
+  final VoidCallback onToggle;
+  final void Function(IncidentEvidenceItem) onOpenAttachment;
+
+  @override
+  Widget build(BuildContext context) {
+    final text = Theme.of(context).textTheme;
+    final c = context.tokens.status.of(StatusIntent.accent);
+
+    // Folded, only the latest note: it is the last word on the matter.
+    final shown = expanded ? followUps : [followUps.last];
+    final count = followUps.length;
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(AppSpacing.x3),
+      decoration: BoxDecoration(
+        color: c.bg,
+        borderRadius: AppRadii.smAll,
+        border: Border.all(color: c.solid, width: 1.5),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.verified_user_outlined,
+                  size: AppSizes.iconSm, color: c.fg),
+              const SizedBox(width: AppSpacing.x2),
+              Expanded(
+                child: Text(
+                  'Security findings',
+                  style: text.titleSmall
+                      ?.copyWith(color: c.fg, fontWeight: FontWeight.w700),
+                ),
+              ),
+              Text(
+                count == 1 ? '1 note' : '$count notes',
+                style: text.labelSmall?.copyWith(color: c.fg),
+              ),
+            ],
+          ),
+          const SizedBox(height: AppSpacing.x2),
+          for (final f in shown)
+            Padding(
+              padding: const EdgeInsets.only(bottom: AppSpacing.x2),
+              child: _FollowUpTile(
+                item: f,
+                showNew: true,
+                onOpenAttachment: onOpenAttachment,
+              ),
+            ),
+          Text(
+            'Written by Security. Not verified by an administrator.',
+            style: text.labelSmall?.copyWith(color: c.fg),
+          ),
+          if (count > 1)
+            Align(
+              alignment: Alignment.centerLeft,
+              child: TextButton(
+                onPressed: onToggle,
+                child: Text(
+                    expanded ? 'Show latest only' : 'Show all $count notes'),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
 }
 
 /// One attachment: what it is called, what kind of file it is, and a way to

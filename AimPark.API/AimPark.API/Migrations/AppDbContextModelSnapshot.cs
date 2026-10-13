@@ -597,6 +597,43 @@ namespace AimPark.API.Migrations
                     b.ToTable("IncidentEvidence");
                 });
 
+            modelBuilder.Entity("AimPark.API.Entities.IncidentFollowUp", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("AttachmentName")
+                        .HasColumnType("text");
+
+                    b.Property<string>("AttachmentPath")
+                        .HasColumnType("text");
+
+                    b.Property<Guid>("AuthorUserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("timestamp with time zone")
+                        .HasDefaultValueSql("NOW()");
+
+                    b.Property<Guid>("IncidentId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Note")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<DateTime?>("SeenByAdminAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("IncidentId");
+
+                    b.ToTable("IncidentFollowUps");
+                });
+
             modelBuilder.Entity("AimPark.API.Entities.Notification", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1885,6 +1922,17 @@ namespace AimPark.API.Migrations
                 });
 
             modelBuilder.Entity("AimPark.API.Entities.IncidentEvidence", b =>
+                {
+                    b.HasOne("AimPark.API.Entities.Incident", "Incident")
+                        .WithMany()
+                        .HasForeignKey("IncidentId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Incident");
+                });
+
+            modelBuilder.Entity("AimPark.API.Entities.IncidentFollowUp", b =>
                 {
                     b.HasOne("AimPark.API.Entities.Incident", "Incident")
                         .WithMany()

@@ -13,6 +13,7 @@ namespace AimPark.API.Services
         private static readonly string[] AllowedExtensions = [".jpg", ".jpeg", ".png", ".pdf"];
         private const int MaxEvidenceFiles = 5;
         private const long MaxFileSizeBytes = 5 * 1024 * 1024;
+        private const int MaxFollowUpLength = 2000;
 
         private readonly IRepository<Incident> _incidents;
         private readonly IRepository<IncidentEvidence> _evidence;
@@ -118,11 +119,11 @@ namespace AimPark.API.Services
 
         // GET /api/incidents
         public Task<ActionResult<IncidentListResponse>> GetMyIncidentsAsync(Guid userId, int page, int pageSize, CancellationToken ct)
-            => ListAsync(_db.Set<Incident>().AsNoTracking().Where(i => i.ReportedByUserId == userId), page, pageSize, ct);
+            => ListAsync(_db.Set<Incident>().AsNoTracking().Where(i => i.ReportedByUserId == userId), page, pageSize, includeFollowUps: false, ct);
 
         // GET /api/incidents/{id}
         public Task<ActionResult<IncidentDetailResponse>> GetMyIncidentDetailAsync(Guid userId, Guid incidentId, CancellationToken ct)
-            => GetDetailAsync(i => i.Id == incidentId && i.ReportedByUserId == userId, ct);
+            => GetDetailAsync(i => i.Id == incidentId && i.ReportedByUserId == userId, includeFollowUps: false, ct);
 
         // PUT /api/incidents/{id}
         public async Task<ActionResult<object>> UpdateMyIncidentAsync(
@@ -206,12 +207,12 @@ namespace AimPark.API.Services
                 query = query.Where(i => i.ReportedByUser.FullName.ToLower().Contains(term));
             }
 
-            return ListAsync(query, page, pageSize, ct);
+            return ListAsync(query, page, pageSize, includeFollowUps: true, ct);
         }
 
         // GET /api/admin/incidents/{id}
         public Task<ActionResult<IncidentDetailResponse>> GetDetailForAdminAsync(Guid incidentId, CancellationToken ct)
-            => GetDetailAsync(i => i.Id == incidentId, ct);
+            => GetDetailAsync(i => i.Id == incidentId, includeFollowUps: true, ct);
 
         // POST /api/admin/incidents/{id}/start-review
         public async Task<ActionResult<object>> StartReviewAsync(Guid incidentId, Guid adminUserId, CancellationToken ct)
@@ -309,8 +310,8 @@ namespace AimPark.API.Services
                 ct);
         }
 
-        private static async Task<ActionResult<IncidentListResponse>> ListAsync(
-            IQueryable<Incident> query, int page, int pageSize, CancellationToken ct)
+        private async Task<ActionResult<IncidentListResponse>> ListAsync(
+            IQueryable<Incident> query, int page, int pageSize, bool includeFollowUps, CancellationToken ct)
         {
             page = Math.Max(1, page);
             pageSize = Math.Clamp(pageSize, 1, 100);
@@ -330,6 +331,12 @@ namespace AimPark.API.Services
                     i.Description,
                     i.Location,
                     i.ReviewedAt,
+                    FollowUps = includeFollowUps
+                        ? _db.Set<IncidentFollowUp>().Count(f => f.IncidentId == i.Id)
+                        : 0,
+                    NewFollowUps = includeFollowUps
+                        ? _db.Set<IncidentFollowUp>().Count(f => f.IncidentId == i.Id && f.SeenByAdminAt == null)
+                        : 0,
                     ReporterName = i.ReportedByUser.FullName,
                     ReporterRole = i.ReportedByUser.Role
                 })
@@ -344,6 +351,8 @@ namespace AimPark.API.Services
                 DescriptionPreview = IncidentSummaryResponse.Preview(r.Description),
                 Location = r.Location,
                 ReviewedAt = r.ReviewedAt,
+                FollowUpCount = r.FollowUps,
+                HasNewFollowUp = r.NewFollowUps > 0,
                 ReportedByName = r.ReporterName,
                 ReportedByRole = r.ReporterRole.ToString()
             }).ToList();
@@ -358,7 +367,7 @@ namespace AimPark.API.Services
         }
 
         private async Task<ActionResult<IncidentDetailResponse>> GetDetailAsync(
-            System.Linq.Expressions.Expression<Func<Incident, bool>> predicate, CancellationToken ct)
+            System.Linq.Expressions.Expression<Func<Incident, bool>> predicate, bool includeFollowUps, CancellationToken ct)
         {
             var incident = await _db.Set<Incident>().AsNoTracking().FirstOrDefaultAsync(predicate, ct);
             if (incident is null)
@@ -393,6 +402,10 @@ namespace AimPark.API.Services
                 .Select(u => new { u.FullName, u.Role })
                 .FirstOrDefaultAsync(ct);
 
+            var followUps = includeFollowUps
+                ? await LoadFollowUpsAsync(incident.Id, ct)
+                : [];
+
             return new OkObjectResult(new IncidentDetailResponse
             {
                 IncidentId = incident.Id,
@@ -408,8 +421,143 @@ namespace AimPark.API.Services
                 EvidenceUnavailable = unavailable,
                 ReportedByName = reporter?.FullName,
                 ReportedByRole = reporter?.Role.ToString(),
-                ReviewedAt = incident.ReviewedAt
+                ReviewedAt = incident.ReviewedAt,
+                FollowUps = followUps
             });
+        }
+
+        private async Task<List<IncidentFollowUpItem>> LoadFollowUpsAsync(Guid incidentId, CancellationToken ct)
+        {
+            var rows = await _db.Set<IncidentFollowUp>().AsNoTracking()
+                .Where(f => f.IncidentId == incidentId)
+                .OrderBy(f => f.CreatedAt)
+                .ToListAsync(ct);
+
+            var authorIds = rows.Select(r => r.AuthorUserId).Distinct().ToList();
+            var names = await _db.Set<User>().AsNoTracking()
+                .Where(u => authorIds.Contains(u.Id))
+                .ToDictionaryAsync(u => u.Id, u => u.FullName, ct);
+
+            var items = new List<IncidentFollowUpItem>();
+            foreach (var row in rows)
+            {
+                // A file out of reach costs the attachment, not the note.
+                string? url = null;
+                if (!string.IsNullOrEmpty(row.AttachmentPath))
+                {
+                    try
+                    {
+                        url = await _fileStorage.GetFileUrlAsync(row.AttachmentPath, ct);
+                    }
+                    catch (Exception ex) when (!ct.IsCancellationRequested)
+                    {
+                        _logger.LogWarning(ex, "Could not open follow-up attachment {Path}.", row.AttachmentPath);
+                    }
+                }
+
+                items.Add(new IncidentFollowUpItem
+                {
+                    FollowUpId = row.Id,
+                    AuthorName = names.TryGetValue(row.AuthorUserId, out var name) ? name : "Security",
+                    Note = row.Note,
+                    CreatedAt = row.CreatedAt,
+                    AttachmentUrl = url,
+                    AttachmentName = row.AttachmentName,
+                    IsNew = row.SeenByAdminAt is null
+                });
+            }
+
+            return items;
+        }
+
+        // POST /api/admin/incidents/{id}/follow-ups
+        public async Task<ActionResult<object>> AddFollowUpAsync(
+            Guid incidentId, Guid securityUserId, AddIncidentFollowUpDto dto, CancellationToken ct)
+        {
+            var note = dto.Note?.Trim() ?? string.Empty;
+            if (note.Length == 0)
+                return new BadRequestObjectResult(new { message = "Write what you found out." });
+            if (note.Length > MaxFollowUpLength)
+                return new BadRequestObjectResult(new { message = $"Keep it under {MaxFollowUpLength} characters." });
+
+            var file = dto.Attachment;
+            if (file is not null)
+            {
+                var ext = Path.GetExtension(file.FileName).ToLowerInvariant();
+                if (!AllowedExtensions.Contains(ext))
+                    return new BadRequestObjectResult(new { message = $"Unsupported file type: {ext}" });
+                if (file.Length > MaxFileSizeBytes)
+                    return new BadRequestObjectResult(new { message = "The attachment must be 5MB or smaller." });
+            }
+
+            var incident = await _incidents.FindAsync(i => i.Id == incidentId, ct);
+            if (incident is null)
+                return new NotFoundObjectResult(new { message = "Incident not found." });
+
+            // Once decided or withdrawn the report is final, and so is what
+            // was written about it.
+            if (incident.Status != IncidentStatus.Submitted && incident.Status != IncidentStatus.UnderReview)
+                return new BadRequestObjectResult(new
+                {
+                    message = $"This report is already {incident.Status.ToString().ToLowerInvariant()}, so follow-ups can no longer be added."
+                });
+
+            var followUp = new IncidentFollowUp
+            {
+                Id = Guid.NewGuid(),
+                IncidentId = incident.Id,
+                AuthorUserId = securityUserId,
+                Note = note,
+                CreatedAt = DateTime.UtcNow
+            };
+
+            // File first, note second: a note that promises a photo it does not
+            // have is worse than none. At the guard post this needs the internet.
+            if (file is not null)
+            {
+                var ext = Path.GetExtension(file.FileName).ToLowerInvariant();
+                var objectPath = $"incident-evidence/{incident.Id}/{Guid.NewGuid()}{ext}";
+                try
+                {
+                    await _fileStorage.SaveFileAsync(objectPath, file, ct);
+                }
+                catch (Exception ex) when (!ct.IsCancellationRequested)
+                {
+                    _logger.LogWarning(ex, "Follow-up attachment could not be stored; the note was not saved.");
+                    return new ObjectResult(new
+                    {
+                        message = "The attachment could not be uploaded, so the note was not saved. " +
+                                  "Try again, or add the note without it."
+                    })
+                    { StatusCode = StatusCodes.Status503ServiceUnavailable };
+                }
+
+                followUp.AttachmentPath = objectPath;
+                followUp.AttachmentName = file.FileName;
+            }
+
+            _db.Set<IncidentFollowUp>().Add(followUp);
+            await _db.SaveChangesAsync(ct);
+
+            return new OkObjectResult(new { message = "Follow-up added.", followUpId = followUp.Id });
+        }
+
+        // POST /api/admin/incidents/{id}/follow-ups/seen
+        public async Task<ActionResult<object>> MarkFollowUpsSeenAsync(Guid incidentId, CancellationToken ct)
+        {
+            var unseen = await _db.Set<IncidentFollowUp>()
+                .Where(f => f.IncidentId == incidentId && f.SeenByAdminAt == null)
+                .ToListAsync(ct);
+
+            if (unseen.Count == 0)
+                return new OkObjectResult(new { message = "Nothing new." });
+
+            var now = DateTime.UtcNow;
+            foreach (var f in unseen)
+                f.SeenByAdminAt = now;
+
+            await _db.SaveChangesAsync(ct);
+            return new OkObjectResult(new { message = "Marked as read." });
         }
     }
 }

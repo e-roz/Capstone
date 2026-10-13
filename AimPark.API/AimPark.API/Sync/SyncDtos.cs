@@ -17,6 +17,7 @@ namespace AimPark.API.Sync
         public const string GateDevice = nameof(Entities.GateDevice);
         public const string Incident = nameof(Entities.Incident);
         public const string IncidentEvidence = nameof(Entities.IncidentEvidence);
+        public const string IncidentFollowUp = nameof(Entities.IncidentFollowUp);
         public const string GateTapEvent = nameof(Entities.GateTapEvent);
         public const string WrongBayFlag = nameof(Entities.WrongBayFlag);
         public const string Push = "Push";
@@ -50,6 +51,9 @@ namespace AimPark.API.Sync
 
         /// <summary>Attachment records only. The files themselves stay in cloud storage.</summary>
         public List<IncidentEvidence> IncidentEvidence { get; set; } = [];
+
+        /// <summary>What Security found out, so a note added in one place shows in the other.</summary>
+        public List<IncidentFollowUp> IncidentFollowUps { get; set; } = [];
 
         /// <summary>
         /// Recent wrong-bay warnings, so a review made in the cloud reaches
@@ -148,6 +152,7 @@ namespace AimPark.API.Sync
         public List<VisitorPass> VisitorPasses { get; set; } = [];
         public List<Incident> Incidents { get; set; } = [];
         public List<IncidentEvidence> IncidentEvidence { get; set; } = [];
+        public List<IncidentFollowUp> IncidentFollowUps { get; set; } = [];
         public List<AlprReading> AlprReadings { get; set; } = [];
         public List<ParkingLog> ParkingLogs { get; set; } = [];
         public List<SlotStatusUpdate> SlotStatuses { get; set; } = [];
@@ -160,7 +165,7 @@ namespace AimPark.API.Sync
         public List<PushRequest> Pushes { get; set; } = [];
 
         public bool IsEmpty =>
-            VisitorPasses.Count == 0 && Incidents.Count == 0 && IncidentEvidence.Count == 0 &&
+            VisitorPasses.Count == 0 && Incidents.Count == 0 && IncidentEvidence.Count == 0 && IncidentFollowUps.Count == 0 &&
             AlprReadings.Count == 0 && ParkingLogs.Count == 0 &&
             SlotStatuses.Count == 0 && GateAccessAttempts.Count == 0 &&
             PaymentTransactions.Count == 0 && Notifications.Count == 0 &&

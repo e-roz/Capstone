@@ -160,6 +160,42 @@ class IncidentActions extends _$IncidentActions {
     }
   }
 
+  /// Security adds what they found out. Notes only: the report's status is
+  /// not touched. Returns null on success, or what went wrong.
+  Future<String?> addFollowUp(
+    String incidentId,
+    String note, {
+    PickedFile? attachment,
+  }) async {
+    try {
+      final dio = ref.read(dioProvider);
+      final form = FormData.fromMap({'Note': note});
+      if (attachment != null) {
+        form.files.add(MapEntry(
+          'Attachment',
+          MultipartFile.fromBytes(attachment.bytes, filename: attachment.name),
+        ));
+      }
+      await dio.post(ApiEndpoints.incidentFollowUps(incidentId), data: form);
+      return null;
+    } on DioException catch (e) {
+      final data = e.response?.data;
+      if (data is Map) return data['message']?.toString() ?? e.message ?? 'Error';
+      return e.message ?? 'Unknown error';
+    }
+  }
+
+  /// The administrator opened the report, so its follow-ups are no longer new.
+  /// Best effort: failing to stamp them must not stop the report opening.
+  Future<void> markFollowUpsSeen(String incidentId) async {
+    try {
+      final dio = ref.read(dioProvider);
+      await dio.post(ApiEndpoints.incidentFollowUpsSeen(incidentId));
+    } on DioException {
+      // The tag simply stays until the next time it is opened.
+    }
+  }
+
   /// The final decision: [status] is `Resolved` or `Dismissed`.
   Future<String?> review(String incidentId, String status, String adminNotes) async {
     state = const AsyncLoading();

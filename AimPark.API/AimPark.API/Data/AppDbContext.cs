@@ -22,6 +22,7 @@ namespace AimPark.API.Data
         public DbSet<NotificationRead> NotificationReads { get; set; }
         public DbSet<Incident> Incidents { get; set; }
         public DbSet<IncidentEvidence> IncidentEvidence { get; set; }
+        public DbSet<IncidentFollowUp> IncidentFollowUps { get; set; }
         public DbSet<ParkingRate> ParkingRates { get; set; }
         public DbSet<PaymentTransaction> PaymentTransactions { get; set; }
         public DbSet<PolicyRule> PolicyRules { get; set; }
@@ -479,6 +480,21 @@ namespace AimPark.API.Data
                 entity.HasOne(e => e.Incident)
                       .WithMany()
                       .HasForeignKey(e => e.IncidentId)
+                      .OnDelete(DeleteBehavior.Cascade);
+            });
+
+            modelBuilder.Entity<IncidentFollowUp>(entity =>
+            {
+                entity.HasKey(f => f.Id);
+
+                entity.HasIndex(f => f.IncidentId);
+
+                entity.Property(f => f.CreatedAt)
+                      .HasDefaultValueSql("NOW()");
+
+                entity.HasOne(f => f.Incident)
+                      .WithMany()
+                      .HasForeignKey(f => f.IncidentId)
                       .OnDelete(DeleteBehavior.Cascade);
             });
 

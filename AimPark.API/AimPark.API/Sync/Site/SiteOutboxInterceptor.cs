@@ -118,6 +118,10 @@ namespace AimPark.API.Sync.Site
                         Add(SyncKinds.IncidentEvidence, e.Id);
                         break;
 
+                    case IncidentFollowUp u:
+                        Add(SyncKinds.IncidentFollowUp, u.Id);
+                        break;
+
                     case GateTapEvent t:
                         Add(SyncKinds.GateTapEvent, t.Id);
                         break;

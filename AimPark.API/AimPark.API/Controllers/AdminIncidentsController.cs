@@ -48,6 +48,22 @@ namespace AimPark.API.Controllers
         public Task<ActionResult<object>> Review(Guid incidentId, [FromBody] ReviewIncidentDto dto, CancellationToken ct)
             => _incidentService.ReviewAsync(incidentId, GetAdminUserId(), dto, ct);
 
+        // Security's side of a report: add what they found out. Notes only -
+        // it cannot change the status, so the decision stays with the admin.
+        [Authorize(Roles = "Security")]
+        [HttpPost("{incidentId:guid}/follow-ups")]
+        [RequestSizeLimit(6 * 1024 * 1024)]
+        [RequestFormLimits(MultipartBodyLengthLimit = 6 * 1024 * 1024)]
+        public Task<ActionResult<object>> AddFollowUp(
+            Guid incidentId, [FromForm] AddIncidentFollowUpDto dto, CancellationToken ct)
+            => _incidentService.AddFollowUpAsync(incidentId, GetAdminUserId(), dto, ct);
+
+        // The admin opened the report, so what Security wrote is no longer new.
+        [Authorize(Roles = "Admin")]
+        [HttpPost("{incidentId:guid}/follow-ups/seen")]
+        public Task<ActionResult<object>> MarkFollowUpsSeen(Guid incidentId, CancellationToken ct)
+            => _incidentService.MarkFollowUpsSeenAsync(incidentId, ct);
+
         private Guid GetAdminUserId()
             => Guid.Parse(User.FindFirst(ClaimTypes.NameIdentifier)!.Value);
     }
