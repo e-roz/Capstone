@@ -44,16 +44,6 @@ namespace AimPark.API.Controllers
         public Task<ActionResult<List<ParkingRateResponse>>> ListRates(CancellationToken ct)
             => _paymentService.ListRatesAsync(ct);
 
-        /// <summary>
-        /// Records a bill settled in cash at the guardhouse, and who took it.
-        /// </summary>
-        [HttpPost("{paymentId:guid}/mark-paid")]
-        public Task<ActionResult<object>> MarkPaid(
-            Guid paymentId,
-            [FromBody] MarkPaidDto dto,
-            CancellationToken ct)
-            => _paymentService.MarkPaidByAdminAsync(paymentId, GetAdminUserId(), dto, ct);
-
         [HttpPut("rates")]
         public Task<ActionResult<object>> UpsertRate([FromBody] UpsertParkingRateDto dto, CancellationToken ct)
             => _paymentService.UpsertRateAsync(dto, ct);
