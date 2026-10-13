@@ -172,7 +172,7 @@ class _RegistrationDetailProviderElement
 }
 
 String _$registrationActionsHash() =>
-    r'cd4f54fcec39b83f3345cf0642aa315c32321dd1';
+    r'9d8d94b0ee9dce881ccb111a639f0c218d5513d0';
 
 /// See also [RegistrationActions].
 @ProviderFor(RegistrationActions)

@@ -44,7 +44,7 @@ namespace AimPark.API.Services
 
         public async Task SendRegistrationRejectedEmailAsync(string email, string fullName, string reason, CancellationToken ct = default)
         {
-            var html = $"<p>Hi {fullName},</p><p>Your AimPark registration was <strong>not approved</strong> for the following reason:</p><blockquote>{reason}</blockquote><p>You may be able to re-apply after the cooldown period shown in the app.</p>";
+            var html = $"<p>Hi {fullName},</p><p>Your AimPark registration was <strong>not approved</strong> for the following reason:</p><blockquote>{reason}</blockquote><p>This email can no longer be used to register. If you think this is a mistake, please contact the administrator.</p>";
             await SendEmailAsync(email, "Your AimPark registration was not approved", html, ct);
         }
 

@@ -148,9 +148,15 @@ class _RegisterProfileScreenState extends ConsumerState<RegisterProfileScreen> {
     final password = _passwordController.text;
     final confirmPassword = _confirmPasswordController.text;
 
+    // A student's name is read off their registration form, so the form does not
+    // ask for it.
+    final needsName = _affiliation != Affiliation.student;
+
     setState(() {
-      _firstNameError = firstName.isEmpty ? 'Enter your first name.' : null;
-      _lastNameError = lastName.isEmpty ? 'Enter your last name.' : null;
+      _firstNameError =
+          needsName && firstName.isEmpty ? 'Enter your first name.' : null;
+      _lastNameError =
+          needsName && lastName.isEmpty ? 'Enter your last name.' : null;
 
       _passwordError = noPassword
           ? null
@@ -190,8 +196,16 @@ class _RegisterProfileScreenState extends ConsumerState<RegisterProfileScreen> {
       final firstName = _firstNameController.text.trim();
       final lastName = _lastNameController.text.trim();
 
+      // Left blank for a student: the server takes the name from the registration
+      // form once it has been read. Google's own name is still sent, because the
+      // form is compared against it before it replaces it.
+      final regState = ref.read(registrationNotifierProvider);
+      final fullName = _affiliation == Affiliation.student
+          ? (regState.isOAuthFlow ? regState.googleDisplayName ?? '' : '')
+          : '$firstName $lastName';
+
       final body = <String, dynamic>{
-        'fullName': '$firstName $lastName',
+        'fullName': fullName,
         'acceptedTerms': _acceptedTerms,
         'affiliation': _affiliation.wireName,
       };
@@ -276,36 +290,6 @@ class _RegisterProfileScreenState extends ConsumerState<RegisterProfileScreen> {
                       'for on the next screen.'
                 : null,
           ),
-          AppTextField(
-            label: 'First Name',
-            controller: _firstNameController,
-            enabled: !_isLoading,
-            textCapitalization: TextCapitalization.words,
-            textInputAction: TextInputAction.next,
-            autofillHints: const [AutofillHints.givenName],
-            errorText: _firstNameError,
-            onChanged: (_) {
-              if (_firstNameError != null) {
-                setState(() => _firstNameError = null);
-              }
-            },
-          ),
-          const SizedBox(height: AppSpacing.md),
-          AppTextField(
-            label: 'Last Name',
-            controller: _lastNameController,
-            enabled: !_isLoading,
-            textCapitalization: TextCapitalization.words,
-            textInputAction: TextInputAction.next,
-            autofillHints: const [AutofillHints.familyName],
-            errorText: _lastNameError,
-            onChanged: (_) {
-              if (_lastNameError != null) {
-                setState(() => _lastNameError = null);
-              }
-            },
-          ),
-          const SizedBox(height: AppSpacing.md),
           // Decides which document proves affiliation at the upload step: a
           // registration form for students, a school ID for everyone else.
           AppChipGroup<Affiliation>(
@@ -317,6 +301,44 @@ class _RegisterProfileScreenState extends ConsumerState<RegisterProfileScreen> {
             enabled: !_isLoading,
             onChanged: (value) => setState(() => _affiliation = value),
           ),
+          if (_affiliation != Affiliation.student) ...[
+            const SizedBox(height: AppSpacing.md),
+            AppTextField(
+              label: 'First Name',
+              controller: _firstNameController,
+              enabled: !_isLoading,
+              textCapitalization: TextCapitalization.words,
+              textInputAction: TextInputAction.next,
+              autofillHints: const [AutofillHints.givenName],
+              errorText: _firstNameError,
+              onChanged: (_) {
+                if (_firstNameError != null) {
+                  setState(() => _firstNameError = null);
+                }
+              },
+            ),
+            const SizedBox(height: AppSpacing.md),
+            AppTextField(
+              label: 'Last Name',
+              controller: _lastNameController,
+              enabled: !_isLoading,
+              textCapitalization: TextCapitalization.words,
+              textInputAction: TextInputAction.next,
+              autofillHints: const [AutofillHints.familyName],
+              errorText: _lastNameError,
+              onChanged: (_) {
+                if (_lastNameError != null) {
+                  setState(() => _lastNameError = null);
+                }
+              },
+            ),
+          ] else ...[
+            const SizedBox(height: AppSpacing.sm),
+            Text(
+              'We will read your name from your registration form.',
+              style: context.text.bodySmall,
+            ),
+          ],
           // Password fields: only on a first pass, and only for a local
           // (non-OAuth) registration. A revisit is not where a password gets
           // changed — the server ignores one sent here, and offering the field

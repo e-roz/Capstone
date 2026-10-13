@@ -1,3 +1,5 @@
+using System.Globalization;
+
 namespace AimPark.API.Helpers
 {
     /// <summary>
@@ -24,6 +26,32 @@ namespace AimPark.API.Helpers
                 return firstMiddle.Length == 0 ? null : firstMiddle;
 
             return firstMiddle.Length == 0 ? trimmedLast : $"{trimmedLast}, {firstMiddle}";
+        }
+
+        /// <summary>
+        /// Turns a "Last, First Middle" reading into the way a person writes their
+        /// own name — "First Middle Last" — for the account's display name.
+        /// </summary>
+        /// <remarks>
+        /// A form printed in capitals comes out in title case; a name that already
+        /// has lower-case letters is left as it was read.
+        /// </remarks>
+        public static string? DisplayName(string? lastFirstMiddle)
+        {
+            if (string.IsNullOrWhiteSpace(lastFirstMiddle))
+                return null;
+
+            var text = lastFirstMiddle.Trim();
+            var comma = text.IndexOf(',');
+
+            var reordered = comma < 0
+                ? text
+                : $"{text[(comma + 1)..].Trim()} {text[..comma].Trim()}".Trim();
+
+            if (reordered == reordered.ToUpperInvariant())
+                reordered = CultureInfo.InvariantCulture.TextInfo.ToTitleCase(reordered.ToLowerInvariant());
+
+            return reordered;
         }
 
         /// <summary>

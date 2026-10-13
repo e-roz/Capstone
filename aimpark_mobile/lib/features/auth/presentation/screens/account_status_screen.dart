@@ -49,7 +49,10 @@ class AccountStatusScreen extends StatelessWidget {
         icon: Icons.cancel_rounded,
         intent: StatusIntent.danger,
         title: 'Registration not approved',
-        body: 'Your registration was reviewed and could not be approved.',
+        body: canReapplyAt == null
+            ? 'Your registration was reviewed and could not be approved. '
+                'This email can no longer be used to register.'
+            : 'Your registration was reviewed and could not be approved.',
       );
     }
 

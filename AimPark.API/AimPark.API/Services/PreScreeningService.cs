@@ -220,6 +220,14 @@ namespace AimPark.API.Services
             Compare(v.ExtractedStudentNumber, v.ConfirmedStudentNumber, "student number", identity: true);
             Compare(v.ExtractedLicenseName, v.ConfirmedLicenseName, "licence name", identity: true);
             Compare(v.ExtractedLicenseNumber, v.ConfirmedLicenseNumber, "licence number", identity: true);
+            Compare(
+                v.ExtractedLicenseExpiry?.ToString("yyyy-MM-dd"),
+                v.ConfirmedLicenseExpiry?.ToString("yyyy-MM-dd"),
+                "licence expiry", identity: true);
+            Compare(
+                v.ExtractedRegistrationExpiry?.ToString("yyyy-MM-dd"),
+                v.ConfirmedRegistrationExpiry?.ToString("yyyy-MM-dd"),
+                "registration expiry", identity: true);
             // Identity-weight now that there is no plate photo to corroborate it —
             // a plate the user typed is the sole evidence behind what the gate
             // matches on, so an edit here deserves the same scrutiny as a changed

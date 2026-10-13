@@ -58,14 +58,13 @@ class RegistrationActions extends _$RegistrationActions {
     }
   }
 
-  Future<String?> reject(
-      String userId, String reason, int cooldownHours) async {
+  Future<String?> reject(String userId, String reason) async {
     state = const AsyncLoading();
     try {
       final dio = ref.read(dioProvider);
       final res = await dio.post(
         ApiEndpoints.rejectRegistration(userId),
-        data: {'reason': reason, 'cooldownHours': cooldownHours},
+        data: {'reason': reason},
       );
       state = const AsyncData(null);
       return (res.data as Map<String, dynamic>)['message']?.toString();

@@ -36,6 +36,14 @@ namespace AimPark.API.Helpers
 
         public const string ClearVerdict = "Clear";
 
+        /// <summary>
+        /// Opening words of the notes <c>RegistrationService</c> writes when the
+        /// applicant changes a vehicle value the receipt gave. Read back here as
+        /// findings, the same way the duplicate-upload note is.
+        /// </summary>
+        public const string VehicleTypeEditMarker = "Vehicle type changed";
+        public const string ColourEditMarker = "Colour changed";
+
         public const string Passed = "Passed";
         public const string ExpiringSoon = "ExpiringSoon";
         public const string Failed = "Failed";
@@ -309,6 +317,10 @@ namespace AimPark.API.Helpers
             Compare(v.ExtractedStudentNumber, v.ConfirmedStudentNumber, "Student number", identity: true);
             Compare(v.ExtractedLicenseName, v.ConfirmedLicenseName, "Licence name", identity: true);
             Compare(v.ExtractedLicenseNumber, v.ConfirmedLicenseNumber, "Licence number", identity: true);
+            // A date typed over the one the document printed decides whether a
+            // lapsed licence passes, so it is weighed like an identity value.
+            Compare(Date(v.ExtractedLicenseExpiry), Date(v.ConfirmedLicenseExpiry), "Licence expiry", identity: true);
+            Compare(Date(v.ExtractedRegistrationExpiry), Date(v.ConfirmedRegistrationExpiry), "Registration expiry", identity: true);
             // Identity-weight, matching PreScreeningService.NoteUserEdits: there is
             // no plate photo left to corroborate the receipt reading, so an edit
             // here is the sole evidence behind what the gate will match on.
@@ -457,6 +469,29 @@ namespace AimPark.API.Helpers
                     Severity = Danger,
                     Title = "Same file as another account",
                     Detail = detail.Length == 0 ? null : char.ToUpperInvariant(detail[0]) + detail[1..]
+                });
+            }
+
+            foreach (var line in (newest.Notes ?? string.Empty).Split('\n'))
+            {
+                var title = line.StartsWith(VehicleTypeEditMarker, StringComparison.Ordinal)
+                    ? "Vehicle type changed by applicant"
+                    : line.StartsWith(ColourEditMarker, StringComparison.Ordinal)
+                        ? "Colour changed by applicant"
+                        : null;
+
+                if (title is null)
+                    continue;
+
+                var detail = line[(line.IndexOf('—') + 1)..].Trim();
+                findings.Add(new FindingResponse
+                {
+                    Key = "Edit." + title.Split(' ')[0] + title.Split(' ')[1],
+                    Category = Edited,
+                    Severity = Warning,
+                    Title = title,
+                    Detail = detail.Length == 0 ? null : char.ToUpperInvariant(detail[0]) + detail[1..],
+                    Document = Receipt
                 });
             }
 
@@ -656,8 +691,8 @@ namespace AimPark.API.Helpers
                     : $"Phone read {Show(edit.Read)}. Applicant submitted {Show(edit.Submitted)}.",
                 Document = edit.Field switch
                 {
-                    "Licence name" or "Licence number" => License,
-                    "Plate number" => Receipt,
+                    "Licence name" or "Licence number" or "Licence expiry" => License,
+                    "Plate number" or "Registration expiry" => Receipt,
                     _ => Raf
                 }
             };

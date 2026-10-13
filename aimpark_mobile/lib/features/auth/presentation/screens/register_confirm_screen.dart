@@ -16,13 +16,12 @@ import '../widgets/scanned_field.dart';
 
 /// The last screen: what was read, plus the two things no document can say.
 ///
-/// Everything here is editable, which is why extraction accuracy is not
-/// load-bearing — a field the rules missed is typed once here rather than
-/// chased through retake after retake, and both readings are kept so a reviewer
-/// can see where the person disagreed with the machine. The plate is no
-/// different: there is no photograph of the physical plate to corroborate it
-/// any more, so a correction here is trusted the same way a corrected name is,
-/// and shown to the reviewer the same way if it was changed.
+/// What the OCR read is locked, and changing it takes a confirmation. Both
+/// readings are kept, so a reviewer can see where the person disagreed with the
+/// machine. A value the server could not read after the allowed retakes is open
+/// to type, and is shown to the reviewer as typed. The plate is no different:
+/// there is no photograph of the physical plate to corroborate it, so a
+/// correction here is shown to the reviewer the same way a corrected name is.
 class RegisterConfirmScreen extends ConsumerStatefulWidget {
   const RegisterConfirmScreen({super.key, required this.result});
 
@@ -60,6 +59,10 @@ class _RegisterConfirmScreenState extends ConsumerState<RegisterConfirmScreen> {
   };
 
   String? _vehicleType;
+
+  /// Whether the type came off the receipt. A read type is changed only after
+  /// the same question every other read value asks.
+  bool _vehicleTypeLocked = false;
   bool _isSubmitting = false;
 
   /// The type chip group is the only input here that a flushbar has to speak
@@ -88,6 +91,7 @@ class _RegisterConfirmScreenState extends ConsumerState<RegisterConfirmScreen> {
     _vehicleType = _vehicleTypes.containsKey(_extracted.vehicleType)
         ? _extracted.vehicleType
         : null;
+    _vehicleTypeLocked = _vehicleType != null;
 
     // The pre-flight compares the two names, and the dates already rebuild this
     // screen through their own onChanged. Without these, correcting a misread
@@ -167,6 +171,21 @@ class _RegisterConfirmScreenState extends ConsumerState<RegisterConfirmScreen> {
     ];
 
     return checks.any((missing) => missing);
+  }
+
+  Future<void> _chooseVehicleType(String value) async {
+    if (value == _vehicleType) return;
+
+    if (_vehicleTypeLocked) {
+      if (!await confirmEditingReadValue(context, 'vehicle type')) return;
+      if (!mounted) return;
+    }
+
+    setState(() {
+      _vehicleType = value;
+      _vehicleTypeLocked = false;
+      _vehicleTypeError = null;
+    });
   }
 
   Future<void> _submit(bool isStudent) async {
@@ -305,9 +324,9 @@ class _RegisterConfirmScreenState extends ConsumerState<RegisterConfirmScreen> {
           AppNotice(
             title: 'Is this right?',
             message:
-                'This is what we read from your documents. Fix anything '
-                'that looks wrong — it goes to the admin exactly as you leave '
-                'it.',
+                'A lock means we read it from your document. If something '
+                'looks wrong, tap it to change it. The admin will see '
+                'anything you change.',
             intent: StatusIntent.info,
           ),
           const SizedBox(height: AppSpacing.lg),
@@ -326,10 +345,7 @@ class _RegisterConfirmScreenState extends ConsumerState<RegisterConfirmScreen> {
             value: _vehicleType,
             enabled: live,
             errorText: _vehicleTypeError,
-            onChanged: (value) => setState(() {
-              _vehicleType = value;
-              _vehicleTypeError = null;
-            }),
+            onChanged: _chooseVehicleType,
           ),
           const SizedBox(height: AppSpacing.md),
           ScannedField(

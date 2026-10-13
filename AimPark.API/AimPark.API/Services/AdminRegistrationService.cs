@@ -13,8 +13,6 @@ namespace AimPark.API.Services
 {
     public class AdminRegistrationService : IAdminRegistrationService
     {
-        private const int DefaultReapplyCooldownHours = 24;
-
         private readonly IRepository<User> _users;
         private readonly IRepository<Vehicle> _vehicles;
         private readonly IRepository<Document> _documents;
@@ -303,15 +301,36 @@ namespace AimPark.API.Services
             if (user is null)
                 return new NotFoundObjectResult(new { message = "User not found." });
 
-            var cooldownHours = dto.CooldownHours ?? DefaultReapplyCooldownHours;
             var oldStatus = user.AccountStatus.ToString();
+            var wasPending = user.AccountStatus == AccountStatus.PendingReview;
+
+            // The vehicle is created when the applicant confirms, before anyone has
+            // approved anything, and a plate belongs to one account at a time. Left in
+            // place, a refused application would keep holding its plate and block the
+            // documents' real owner from registering it.
+            //
+            // Only for an application still waiting on review. An account that was
+            // already active has parking history hanging off its vehicles, which is
+            // not this method's to remove. The readings stay on the verification row,
+            // so the reviewer's record of what was submitted is intact; re-applying
+            // makes the vehicle again from the new receipt.
+            if (wasPending)
+            {
+                var held = await _vehicles.GetAllAsync(v => v.UserId == userId, ct);
+                foreach (var vehicle in held)
+                    _vehicles.Delete(vehicle);
+            }
 
             user.AccountStatus = AccountStatus.Rejected;
             user.RegistrationStep = RegistrationStep.Completed;
             user.VerificationStatus = VerificationStatus.Failed;
             user.RejectionReason = dto.Reason.Trim();
             user.RejectedAt = DateTime.UtcNow;
-            user.CanReapplyAt = DateTime.UtcNow.AddHours(cooldownHours);
+            // A rejection is final: no cooldown, and no way back in for this email.
+            // A fixable problem is a retake request instead, which is why that exists.
+            // Setting CanReapplyAt is what an administrator does to undo a mistaken
+            // rejection (ResetReapplyAsync), and nothing else sets it.
+            user.CanReapplyAt = null;
             user.UpdatedAt = DateTime.UtcNow;
 
             await LogActionAsync(adminUserId, userId, "Reject", oldStatus, user.AccountStatus.ToString(), dto.Reason, ct);
@@ -329,11 +348,7 @@ namespace AimPark.API.Services
                 null,
                 ct);
 
-            return new OkObjectResult(new
-            {
-                message = "User rejected.",
-                canReapplyAt = user.CanReapplyAt
-            });
+            return new OkObjectResult(new { message = "User rejected." });
         }
 
         public async Task<ActionResult<object>> ResetReapplyAsync(Guid userId, Guid adminUserId, CancellationToken ct)
@@ -351,7 +366,7 @@ namespace AimPark.API.Services
             _users.Update(user);
             await _users.SaveAsync(ct);
 
-            return new OkObjectResult(new { message = "Re-apply cooldown reset. User can re-apply now." });
+            return new OkObjectResult(new { message = "Rejection lifted. User can re-apply now." });
         }
 
         /// <summary>

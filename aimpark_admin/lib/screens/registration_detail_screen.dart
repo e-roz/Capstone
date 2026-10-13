@@ -359,11 +359,11 @@ class RegistrationDetailScreen extends ConsumerWidget {
 
   static const _rejectPresets = <String, String>{
     'Blurred document':
-        'One or more of your uploaded documents is too blurry to verify. Please retake the photo in good lighting and re-apply.',
+        'One or more of your uploaded documents is too blurry to verify.',
     'Mismatched information':
-        'The information you provided does not match your uploaded documents. Please review and re-apply with matching details.',
+        'The information you provided does not match your uploaded documents.',
     'Expired ID':
-        'Your uploaded ID/license has expired. Please upload a valid, unexpired document and re-apply.',
+        'Your uploaded ID/license has expired.',
     'Suspicious/altered document':
         'One or more of your uploaded documents appears to be altered or invalid. Please contact the administration office for assistance.',
   };
@@ -412,11 +412,10 @@ class RegistrationDetailScreen extends ConsumerWidget {
 
     final reasonCtrl = TextEditingController(
         text: suggestion == null ? '' : _rejectPresets[suggestion.preset]);
-    final hoursCtrl = TextEditingController(text: '24');
     final formKey = GlobalKey<FormState>();
     String? selectedPreset = suggestion?.preset;
 
-    final result = await showDialog<({String reason, int hours})>(
+    final result = await showDialog<String>(
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setState) => AlertDialog(
@@ -429,6 +428,13 @@ class RegistrationDetailScreen extends ConsumerWidget {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
+                  Text(
+                    'A rejection is final: this email can no longer be used to '
+                    'register. If the problem can be fixed with a new photo, '
+                    'ask for a retake instead.',
+                    style: Theme.of(ctx).textTheme.bodySmall,
+                  ),
+                  const SizedBox(height: AppSpacing.x3),
                   DropdownButtonFormField<String>(
                     initialValue: selectedPreset,
                     decoration: InputDecoration(
@@ -462,21 +468,6 @@ class RegistrationDetailScreen extends ConsumerWidget {
                     validator: (v) =>
                         (v == null || v.isEmpty) ? 'Reason is required' : null,
                   ),
-                  const SizedBox(height: AppSpacing.x3),
-                  TextFormField(
-                    controller: hoursCtrl,
-                    decoration: const InputDecoration(
-                      labelText: 'Cooldown (hours)',
-                      helperText:
-                          'How long before they may submit a new application.',
-                    ),
-                    keyboardType: TextInputType.number,
-                    validator: (v) {
-                      final n = int.tryParse(v ?? '');
-                      if (n == null || n < 0) return 'Enter a valid number';
-                      return null;
-                    },
-                  ),
                 ],
               ),
             ),
@@ -489,10 +480,7 @@ class RegistrationDetailScreen extends ConsumerWidget {
                   backgroundColor: ctx.tokens.status.danger.solid),
               onPressed: () {
                 if (formKey.currentState!.validate()) {
-                  Navigator.pop(ctx, (
-                    reason: reasonCtrl.text.trim(),
-                    hours: int.parse(hoursCtrl.text.trim()),
-                  ));
+                  Navigator.pop(ctx, reasonCtrl.text.trim());
                 }
               },
               child: const Text('Reject'),
@@ -506,7 +494,7 @@ class RegistrationDetailScreen extends ConsumerWidget {
 
     final msg = await ref
         .read(registrationActionsProvider.notifier)
-        .reject(userId, result.reason, result.hours);
+        .reject(userId, result);
 
     if (!context.mounted) return;
 
@@ -1204,7 +1192,7 @@ String _actionLabel(String action) => switch (action) {
       'Reject' => 'Rejected',
       'RequestDocumentRetake' => 'Asked to retake',
       'ResetStep' => 'Step reset',
-      'ResetReapply' => 'Cooldown reset',
+      'ResetReapply' => 'Rejection lifted',
       _ => action,
     };
 
