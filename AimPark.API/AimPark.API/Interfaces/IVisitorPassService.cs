@@ -27,5 +27,11 @@ namespace AimPark.API.Interfaces
         /// side of dual-factor verification.
         /// </summary>
         Task<ActionResult<TagLookupResponse>> LookupTagAsync(string rfidTagId, CancellationToken ct);
+
+        /// <summary>
+        /// Whether a card can be lent as a visitor card right now, without
+        /// saying who holds it if it belongs to a registered user.
+        /// </summary>
+        Task<ActionResult<CardStatusResponse>> CardStatusAsync(string? rfidTagId, CancellationToken ct);
     }
 }

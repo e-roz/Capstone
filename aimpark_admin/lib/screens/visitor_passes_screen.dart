@@ -142,7 +142,7 @@ class VisitorPassesScreen extends ConsumerWidget {
               mainAxisSize: MainAxisSize.min,
               children: [
                 const AppRequiredNote(),
-                RfidScanField(controller: cardCtrl),
+                RfidScanField(controller: cardCtrl, visitorLend: true),
                 const SizedBox(height: AppSpacing.x3),
                 TextFormField(
                   controller: labelCtrl,
@@ -207,7 +207,7 @@ class VisitorPassesScreen extends ConsumerWidget {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   const AppRequiredNote(),
-                  RfidScanField(controller: cardCtrl),
+                  RfidScanField(controller: cardCtrl, visitorLend: true),
                   const SizedBox(height: AppSpacing.x2),
                   Text(
                     'Only a registered visitor card works. Usually you '

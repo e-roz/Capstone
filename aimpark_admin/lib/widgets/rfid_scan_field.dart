@@ -31,7 +31,13 @@ class RfidScanField extends ConsumerStatefulWidget {
     super.key,
     required this.controller,
     this.userId,
+    this.visitorLend = false,
   });
+
+  /// True in the Lend a visitor card dialog. The question there is only "can
+  /// this card be lent right now?", which a guard may ask, so it goes to the
+  /// security endpoint and never needs to name a student or staff member.
+  final bool visitorLend;
 
   /// Filled in when a card is tapped; also what the dialog reads on save.
   final TextEditingController controller;
@@ -73,6 +79,39 @@ class _RfidScanFieldState extends ConsumerState<RfidScanField> {
   /// The USB tap was read but the holder couldn't be looked up.
   bool _lookupFailed = false;
 
+  /// The answer for the Lend dialog, ready to show as written.
+  _CardStatus? _cardStatus;
+
+  /// Asks whether the card just read can be lent. Used by both ways a tap
+  /// arrives, so the answer does not depend on which reader the desk has.
+  Future<void> _checkCardStatus(String tag) async {
+    setState(() {
+      _checking = true;
+      _lookupFailed = false;
+      _cardStatus = null;
+    });
+    try {
+      final res = await ref
+          .read(dioProvider)
+          .get(ApiEndpoints.securityCardStatus, queryParameters: {'tag': tag});
+      final data = res.data as Map<String, dynamic>;
+      if (!mounted) return;
+      setState(() {
+        _checking = false;
+        _cardStatus = _CardStatus(
+          data['state']?.toString() ?? '',
+          data['message']?.toString() ?? '',
+        );
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _checking = false;
+        _lookupFailed = true;
+      });
+    }
+  }
+
   @override
   void initState() {
     super.initState();
@@ -111,7 +150,14 @@ class _RfidScanFieldState extends ConsumerState<RfidScanField> {
       );
       _checking = true;
       _lookupFailed = false;
+      _cardStatus = null;
     });
+
+    if (widget.visitorLend) {
+      unawaited(reader.answer('FREE'));
+      await _checkCardStatus(tag);
+      return;
+    }
 
     try {
       final res = await ref
@@ -171,6 +217,7 @@ class _RfidScanFieldState extends ConsumerState<RfidScanField> {
         _lookupFailed = false;
         widget.controller.text = scan.rfidTagId;
       });
+      if (widget.visitorLend) unawaited(_checkCardStatus(scan.rfidTagId));
     } on DioException {
       if (!mounted) return;
       // A poll failing is not worth a red banner on its own — the field still
@@ -193,6 +240,7 @@ class _RfidScanFieldState extends ConsumerState<RfidScanField> {
           reachable: _readerReachable,
           checking: _checking,
           lookupFailed: _lookupFailed,
+          cardStatus: _cardStatus,
           usbStatus: usb.status,
           usbError: usb.error,
           onConnect: usb.connect,
@@ -213,6 +261,13 @@ class _RfidScanFieldState extends ConsumerState<RfidScanField> {
   }
 }
 
+/// What the server said about a card in the Lend dialog.
+class _CardStatus {
+  const _CardStatus(this.state, this.message);
+  final String state;
+  final String message;
+}
+
 /// The one line above the field that says what the reader is doing.
 class _StatusStrip extends StatelessWidget {
   const _StatusStrip({
@@ -221,6 +276,7 @@ class _StatusStrip extends StatelessWidget {
     required this.reachable,
     required this.checking,
     required this.lookupFailed,
+    required this.cardStatus,
     required this.usbStatus,
     required this.usbError,
     required this.onConnect,
@@ -231,6 +287,7 @@ class _StatusStrip extends StatelessWidget {
   final bool reachable;
   final bool checking;
   final bool lookupFailed;
+  final _CardStatus? cardStatus;
   final UsbReaderStatus usbStatus;
   final String? usbError;
   final VoidCallback onConnect;
@@ -291,6 +348,16 @@ class _StatusStrip extends StatelessWidget {
           Icons.contactless,
           'Read ${s.rfidTagId} — checking whether it is already assigned…',
         );
+      }
+
+      if (cardStatus case final status?) {
+        return status.state == 'Available'
+            ? (StatusIntent.success, Icons.check_circle, status.message)
+            : (
+                StatusIntent.warning,
+                Icons.warning_amber_rounded,
+                status.message,
+              );
       }
 
       if (lookupFailed) {

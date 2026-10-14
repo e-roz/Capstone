@@ -46,6 +46,10 @@ namespace AimPark.API.Controllers
         /// card is genuine, and this tells them which plate ought to be sitting
         /// in front of them so they can check the car matches the card.
         /// </remarks>
+        [HttpGet("card-status")]
+        public Task<ActionResult<CardStatusResponse>> CardStatus([FromQuery] string? tag, CancellationToken ct)
+            => _visitorPasses.CardStatusAsync(tag, ct);
+
         [HttpGet("tags/{rfidTagId}")]
         public Task<ActionResult<TagLookupResponse>> LookupTag(string rfidTagId, CancellationToken ct)
             => _visitorPasses.LookupTagAsync(rfidTagId, ct);
