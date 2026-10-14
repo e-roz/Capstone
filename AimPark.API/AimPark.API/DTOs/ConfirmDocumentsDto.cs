@@ -43,5 +43,11 @@ namespace AimPark.API.DTOs
 
         /// <summary>Chosen from a swatch, for the same reason as the type.</summary>
         public string? Color { get; set; }
+
+        /// <summary>
+        /// "E-bike" was chosen. No vehicle is created here; the admin records the
+        /// e-bike at the in-person inspection.
+        /// </summary>
+        public bool IsEBike { get; set; }
     }
 }

@@ -26,6 +26,28 @@ namespace AimPark.API.Entities
         /// </summary>
         public int? RegistrationRenewalMonth { get; set; }
 
+        /// <summary>
+        /// The <see cref="RegistrationValidThrough"/> the last "expiring soon" push
+        /// was sent for. See <see cref="User.LicenseExpiryReminderSentFor"/>.
+        /// </summary>
+        public DateTime? RegistrationExpiryReminderSentFor { get; set; }
+
+        /// <summary>
+        /// An e-bike: not LTO-registered, so it has no real plate or receipt.
+        /// <see cref="PlateNumber"/> then holds the temporary plate an admin issues
+        /// at the in-person inspection, and <see cref="VehicleType"/> holds the size
+        /// class the admin chose (Motorcycle = fits a motorcycle bay, Car = needs a
+        /// car bay) so slot allocation needs no special case.
+        /// </summary>
+        public bool IsEBike { get; set; }
+
+        /// <summary>Make of an e-bike, noted at inspection. With the colour and marks
+        /// this stands in for the receipt as the e-bike's identity.</summary>
+        public string? Brand { get; set; }
+
+        /// <summary>Anything that tells this e-bike apart, e.g. "red sticker on left fender".</summary>
+        public string? DistinguishingMarks { get; set; }
+
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
         // Foreign key to User. Many vehicles per user: one RFID card covers every

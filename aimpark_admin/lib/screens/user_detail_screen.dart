@@ -9,8 +9,10 @@ import '../providers/registrations_provider.dart';
 import '../providers/users_provider.dart';
 import '../theme/theme.dart';
 import '../widgets/document_viewer.dart';
+import '../widgets/expiry_card.dart';
 import '../widgets/ui/ui.dart';
 import '../widgets/user_actions.dart';
+import '../widgets/user_vehicle_card.dart';
 
 String _date(DateTime dt) => DateFormat('MMM d, yyyy').format(dt.toLocal());
 String _stamp(DateTime dt) =>
@@ -109,46 +111,16 @@ class _UserDetailView extends ConsumerWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
+        // Status, RFID and personal details were three cards holding two or
+        // three fields each. They are one account summary now: the state of the
+        // account as pills first, because that is what is checked first, then
+        // the plain facts under them.
         AppSectionCard(
-          title: 'Status',
-          icon: Icons.verified_outlined,
-          child: AppFieldGrid(
-            fields: [
-              AppField(
-                label: 'Account Status',
-                child: Wrap(
-                  spacing: AppSpacing.controlGap,
-                  runSpacing: AppSpacing.controlGap,
-                  children: [
-                    StatusPill.of(detail.accountStatus,
-                        intent: StatusIntents.user(detail.accountStatus)),
-                    if (detail.isDeleted)
-                      const StatusPill.of('Archived',
-                          intent: StatusIntent.neutral),
-                  ],
-                ),
-              ),
-              AppField(
-                label: 'Verification Status',
-                child: StatusPill.of(detail.verificationStatus,
-                    intent:
-                        StatusIntents.registration(detail.verificationStatus)),
-              ),
-              AppField(label: 'Joined', value: _date(detail.createdAt)),
-              if (detail.rejectionReason case final reason?)
-                AppField(label: 'Rejection Reason', value: reason),
-              if (detail.canReapplyAt case final at?)
-                AppField(label: 'Can Reapply At', value: _stamp(at)),
-            ],
-          ),
-        ),
-        const SizedBox(height: AppSpacing.gutter),
-        // RFID controls live on the RFID card rather than in the page header:
-        // they act on the card, not on the account, and mixing them into the
-        // same row as Archive made a six-button header nobody could scan.
-        AppSectionCard(
-          title: 'RFID Access',
-          icon: Icons.nfc,
+          title: 'Account',
+          icon: Icons.verified_user_outlined,
+          // RFID controls live here rather than in the page header: they act on
+          // the card, not on the account, and mixing them into the same row as
+          // Archive made a six-button header nobody could scan.
           actions: [
             if (!detail.isDeleted)
               Tooltip(
@@ -157,8 +129,8 @@ class _UserDetailView extends ConsumerWidget {
                   label: detail.rfidStatus == 'Revoked'
                       ? 'Assign & reinstate'
                       : detail.rfidTagId == null
-                          ? 'Assign'
-                          : 'Reassign',
+                          ? 'Assign RFID'
+                          : 'Reassign RFID',
                   icon: Icons.nfc,
                   onPressed: cardBlockedReason != null
                       ? null
@@ -173,77 +145,103 @@ class _UserDetailView extends ConsumerWidget {
                 onPressed: () => actions.revokeRfid(context),
               ),
           ],
-          child: AppFieldGrid(
-            fields: [
-              AppField(
-                label: 'Tag ID',
-                value: detail.rfidTagId ?? 'Not assigned',
-                emphasis: detail.rfidTagId != null,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Wrap(
+                spacing: AppSpacing.x2,
+                runSpacing: AppSpacing.x2,
+                children: [
+                  StatusPill(
+                    label: 'Account: ${detail.accountStatus}',
+                    intent: StatusIntents.user(detail.accountStatus),
+                    icon: Icons.person_outline,
+                  ),
+                  StatusPill(
+                    label: 'Verification: ${detail.verificationStatus}',
+                    intent:
+                        StatusIntents.registration(detail.verificationStatus),
+                    icon: Icons.verified_outlined,
+                  ),
+                  StatusPill(
+                    label: 'RFID: ${detail.rfidStatus}',
+                    intent: StatusIntents.rfid(detail.rfidStatus),
+                    icon: Icons.nfc,
+                  ),
+                  if (detail.isDeleted)
+                    const StatusPill(
+                      label: 'Archived',
+                      intent: StatusIntent.neutral,
+                      icon: Icons.archive_outlined,
+                    ),
+                  if (detail.isEBike)
+                    const StatusPill(
+                      label: 'E-bike owner',
+                      intent: StatusIntent.accent,
+                      icon: Icons.pedal_bike_outlined,
+                    ),
+                ],
               ),
-              AppField(
-                label: 'Status',
-                child: StatusPill.of(detail.rfidStatus,
-                    intent: StatusIntents.rfid(detail.rfidStatus)),
+              const SizedBox(height: AppSpacing.x4),
+              AppFieldGrid(
+                fields: [
+                  AppField(label: 'Joined', value: _date(detail.createdAt)),
+                  AppField(label: 'Affiliation', value: detail.affiliation),
+                  if (detail.studentNumber case final number?)
+                    AppField(label: 'Student number', value: number),
+                  if (detail.section case final section?)
+                    AppField(label: 'Section', value: section),
+                  AppField(
+                    label: 'RFID tag',
+                    value: detail.rfidTagId ?? 'Not assigned',
+                    emphasis: detail.rfidTagId != null,
+                  ),
+                  if (detail.rfidStatus == 'Suspended')
+                    AppField(
+                      label: 'Suspended until',
+                      value: detail.rfidSuspendedUntil == null
+                          ? 'Indefinite'
+                          : _stamp(detail.rfidSuspendedUntil!),
+                    ),
+                  if (detail.rejectionReason case final reason?)
+                    AppField(label: 'Rejection reason', value: reason),
+                  if (detail.canReapplyAt case final at?)
+                    AppField(label: 'Can reapply at', value: _stamp(at)),
+                ],
               ),
-              if (detail.rfidStatus == 'Revoked')
-                const AppField(
-                  label: 'Why',
-                  value: 'Revoked after 3 accountable violations. The card '
-                      'went back to the pool. Assigning a card reinstates '
-                      'this user.',
+              if (detail.rfidStatus == 'Revoked') ...[
+                const SizedBox(height: AppSpacing.x3),
+                Text(
+                  'Revoked after 3 accountable violations. The card went back '
+                  'to the pool. Assigning a card reinstates this user.',
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: context.tokens.text.secondary),
                 ),
-              if (detail.rfidStatus == 'Suspended')
-                AppField(
-                  label: 'Suspended Until',
-                  value: detail.rfidSuspendedUntil == null
-                      ? 'Indefinite'
-                      : _stamp(detail.rfidSuspendedUntil!),
-                ),
+              ],
             ],
           ),
         ),
-        const SizedBox(height: AppSpacing.gutter),
-        AppSectionCard(
-          title: 'Personal Information',
-          icon: Icons.person_outline,
-          child: AppFieldGrid(
-            fields: [
-              AppField(label: 'Email', value: detail.email),
-              AppField(label: 'Affiliation', value: detail.affiliation),
-              if (detail.studentNumber case final number?)
-                AppField(label: 'Student Number', value: number),
-              if (detail.section case final section?)
-                AppField(label: 'Section', value: section),
-            ],
-          ),
-        ),
+        // Vehicles come before the dates and photos: the plate is what is looked
+        // up most, and the dates below belong to it.
         for (final (i, vehicle) in detail.vehicles.indexed) ...[
           const SizedBox(height: AppSpacing.gutter),
-          AppSectionCard(
-            title: detail.vehicles.length > 1
-                ? 'Vehicle ${i + 1} of ${detail.vehicles.length}'
-                : 'Vehicle Information',
-            icon: Icons.directions_car_outlined,
-            child: AppFieldGrid(
-              fields: [
-                AppField(
-                  label: 'Plate Number',
-                  value: vehicle.plateNumber ?? '—',
-                  emphasis: true,
-                ),
-                AppField(
-                    label: 'Vehicle Type', value: vehicle.vehicleType ?? '—'),
-                AppField(label: 'Color', value: vehicle.color ?? '—'),
-              ],
-            ),
+          UserVehicleCard(
+            vehicle: vehicle,
+            index: i,
+            count: detail.vehicles.length,
           ),
+        ],
+        if (ExpiryCard.hasData(detail)) ...[
+          const SizedBox(height: AppSpacing.gutter),
+          ExpiryCard(detail: detail),
         ],
         if (detail.documents.isNotEmpty) ...[
           const SizedBox(height: AppSpacing.gutter),
           AppSectionCard(
-            title: 'Uploaded Documents',
+            title: 'Uploaded documents',
+            subtitle: '${detail.documents.length} '
+                '${detail.documents.length == 1 ? 'file' : 'files'}',
             icon: Icons.folder_outlined,
-            padding: EdgeInsets.zero,
             // Sits with the documents rather than up with the account controls:
             // it deletes these files and nothing else, and putting it beside
             // Archive would read as another way of removing the user.
@@ -256,12 +254,7 @@ class _UserDetailView extends ConsumerWidget {
                 onPressed: () => actions.deleteDocuments(context),
               ),
             ],
-            child: Column(
-              children: [
-                for (final doc in detail.documents)
-                  _DocumentTile(doc: doc),
-              ],
-            ),
+            child: _DocumentGrid(documents: detail.documents),
           ),
         ],
       ],
@@ -389,31 +382,98 @@ class _UserActions {
   }
 }
 
-class _DocumentTile extends StatelessWidget {
-  const _DocumentTile({required this.doc});
+/// The uploaded files as thumbnails. An e-bike's photos are its identity, and a
+/// filename like "ebikephoto.jpg" says nothing about which one is which.
+class _DocumentGrid extends StatelessWidget {
+  const _DocumentGrid({required this.documents});
+
+  final List<DocumentInfo> documents;
+
+  @override
+  Widget build(BuildContext context) {
+    // "E-bike photo 1, 2, 3" rather than three identical captions.
+    final totals = <String, int>{};
+    for (final d in documents) {
+      totals[d.type] = (totals[d.type] ?? 0) + 1;
+    }
+    final seen = <String, int>{};
+
+    return Wrap(
+      spacing: AppSpacing.x4,
+      runSpacing: AppSpacing.x4,
+      children: [
+        for (final doc in documents)
+          _DocumentThumb(
+            doc: doc,
+            caption: () {
+              final n = seen[doc.type] = (seen[doc.type] ?? 0) + 1;
+              final label = documentLabel(doc.type);
+              return (totals[doc.type] ?? 1) > 1 ? '$label $n' : label;
+            }(),
+          ),
+      ],
+    );
+  }
+}
+
+class _DocumentThumb extends StatelessWidget {
+  const _DocumentThumb({required this.doc, required this.caption});
 
   final DocumentInfo doc;
+  final String caption;
 
   @override
   Widget build(BuildContext context) {
     final t = context.tokens;
     final text = Theme.of(context).textTheme;
 
-    return ListTile(
-      leading: Icon(Icons.insert_drive_file_outlined, color: t.text.secondary),
-      title: Text(doc.type, style: text.titleSmall),
-      subtitle: Text(
-        doc.fileName,
-        style: text.bodySmall?.copyWith(color: t.text.secondary),
+    final placeholder = Center(
+      child: Icon(
+        isImageDocument(doc.fileName)
+            ? Icons.image_not_supported_outlined
+            : Icons.picture_as_pdf_outlined,
+        color: t.text.secondary,
+        size: AppSizes.iconLg,
       ),
-      trailing: AppRowAction(
-        label: 'View',
-        icon: Icons.visibility_outlined,
-        onPressed: () => viewDocument(
+    );
+
+    return SizedBox(
+      width: 170,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(10),
+        onTap: () => viewDocument(
           context,
-          title: doc.type,
+          title: caption,
           fileName: doc.fileName,
           url: doc.filePath,
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              height: 128,
+              decoration: BoxDecoration(
+                color: t.surface.muted,
+                border: Border.all(color: t.border.subtle),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              clipBehavior: Clip.antiAlias,
+              child: isImageDocument(doc.fileName)
+                  ? Image.network(
+                      doc.filePath,
+                      fit: BoxFit.cover,
+                      width: double.infinity,
+                      errorBuilder: (_, _, _) => placeholder,
+                    )
+                  : placeholder,
+            ),
+            const SizedBox(height: AppSpacing.x2),
+            Text(caption, style: text.titleSmall),
+            Text(
+              _date(doc.uploadedAt),
+              style: text.bodySmall?.copyWith(color: t.text.secondary),
+            ),
+          ],
         ),
       ),
     );

@@ -38,7 +38,8 @@ namespace AimPark.API.Services
                 StudentNumber = user.StudentNumber,
                 Section = user.Section,
                 AccountStatus = user.AccountStatus.ToString(),
-                CreatedAt = user.CreatedAt
+                CreatedAt = user.CreatedAt,
+                LicenseValidThrough = user.LicenseValidThrough
             });
         }
 

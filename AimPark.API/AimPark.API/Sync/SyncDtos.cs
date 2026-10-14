@@ -122,6 +122,7 @@ namespace AimPark.API.Sync
         public RfidStatus RfidStatus { get; set; }
         public DateTime? RfidSuspendedFrom { get; set; }
         public DateTime? RfidSuspendedUntil { get; set; }
+        public DateTime? LicenseValidThrough { get; set; }
     }
 
     public class SyncVehicle
@@ -133,6 +134,9 @@ namespace AimPark.API.Sync
         public string Color { get; set; } = string.Empty;
         public DateTime? RegistrationValidThrough { get; set; }
         public int? RegistrationRenewalMonth { get; set; }
+        public bool IsEBike { get; set; }
+        public string? Brand { get; set; }
+        public string? DistinguishingMarks { get; set; }
         public DateTime CreatedAt { get; set; }
     }
 

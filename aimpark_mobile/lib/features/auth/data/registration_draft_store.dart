@@ -15,6 +15,9 @@ typedef RegistrationDraft = ({
   String? affiliationWireName,
   Map<ScanDocumentType, CapturedDocument> captured,
   Map<ScanDocumentType, int> attempts,
+
+  /// Whether "E-bike" was chosen at the profile step.
+  bool isEBike,
 });
 
 /// Remembers a registration in progress across a restart of the app.
@@ -95,6 +98,7 @@ class RegistrationDraftStore {
         affiliationWireName: json['affiliation'] as String?,
         captured: captured,
         attempts: attempts,
+        isEBike: json['isEBike'] == true,
       );
     } catch (_) {
       // A draft written by an older build, or a half-written one. Neither is
@@ -108,11 +112,13 @@ class RegistrationDraftStore {
     required String? affiliationWireName,
     required Map<ScanDocumentType, CapturedDocument> captured,
     required Map<ScanDocumentType, int> attempts,
+    bool isEBike = false,
   }) {
     // Serialised as JSON here rather than inside the queued closure, so what
     // gets written is the state as it was when the call was made.
     final payload = jsonEncode({
       'affiliation': affiliationWireName,
+      'isEBike': isEBike,
       'captured': {
         for (final entry in captured.entries)
           entry.key.wireName: _photoToJson(entry.value),

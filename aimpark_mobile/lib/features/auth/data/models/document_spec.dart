@@ -68,9 +68,16 @@ class DocumentSpec extends CaptureSpec {
   ///
   /// Students prove enrolment with a registration form; everyone else brings a
   /// school ID, which is filed but not read.
-  static List<DocumentSpec> forAffiliation(Affiliation affiliation) => [
+  ///
+  /// An e-bike has no LTO receipt, so it is not asked for one: the admin sees
+  /// the e-bike itself instead.
+  static List<DocumentSpec> forAffiliation(
+    Affiliation affiliation, {
+    bool isEBike = false,
+  }) =>
+      [
         affiliation == Affiliation.student ? raf : schoolId,
         license,
-        officialReceipt,
+        if (!isEBike) officialReceipt,
       ];
 }

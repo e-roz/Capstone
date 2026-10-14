@@ -6,12 +6,14 @@ import 'package:intl/intl.dart';
 import '../models/pending_registration.dart';
 import '../providers/registrations_provider.dart';
 import '../theme/theme.dart';
+import '../providers/renewals_provider.dart';
 import '../widgets/checks_panel.dart';
+import '../widgets/renewals_panel.dart';
 import '../widgets/ui/ui.dart';
 
 /// The three lists an applicant moves through. Pending is the queue; the
 /// other two are where a decision leaves them.
-const _statuses = ['Pending', 'Approved', 'Rejected'];
+const _statuses = ['Pending', 'Approved', 'Rejected', 'Renewals'];
 
 /// What the checks found, as an admin would say it. "No warnings" is the
 /// applications whose documents agreed with what was typed; "With warnings"
@@ -72,6 +74,8 @@ class _PendingRegistrationsScreenState
       subtitle: switch (_status) {
         'Approved' => 'Applications that became users.',
         'Rejected' => 'Applications that were turned down.',
+        'Renewals' =>
+          'Renewed licences and registrations from approved users, waiting on a decision.',
         _ => 'Applications waiting on a decision.',
       },
       actions: [
@@ -81,6 +85,7 @@ class _PendingRegistrationsScreenState
           onPressed: () {
             ref.invalidate(pendingRegistrationsProvider);
             ref.invalidate(decidedRegistrationsProvider);
+            ref.invalidate(pendingRenewalsProvider);
           },
         ),
       ],
@@ -109,7 +114,9 @@ class _PendingRegistrationsScreenState
             ),
         ],
       ),
-      body: _status != 'Pending' ? _decidedBody(context) : AsyncView(
+      body: _status == 'Renewals'
+          ? RenewalsPanel(search: _search)
+          : _status != 'Pending' ? _decidedBody(context) : AsyncView(
         value: ref.watch(pendingRegistrationsProvider),
         onRetry: () => ref.invalidate(pendingRegistrationsProvider),
         loading: const SkeletonTable(
@@ -173,16 +180,38 @@ class _PendingRegistrationsScreenState
     return DataRow(
       onSelectChanged: (_) => context.go('/pending/${reg.userId}'),
       cells: [
-        DataCell(Text(reg.fullName, style: text.titleSmall)),
+        DataCell(Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Flexible(
+              child: Text(reg.fullName,
+                  style: text.titleSmall, overflow: TextOverflow.ellipsis),
+            ),
+            if (reg.isEBike) ...[
+              const SizedBox(width: AppSpacing.x2),
+              const StatusPill(
+                label: 'E-bike',
+                intent: StatusIntent.accent,
+                dense: true,
+                showDot: false,
+              ),
+            ],
+          ],
+        )),
         // The worst finding in words, not a count: "Name mismatch" says
         // what to look for, "2 need attention" only that something is there.
-        DataCell(TopFindingCell(
-          verdict: reg.checksVerdict,
-          summary: reg.checksSummary,
-          topFinding: reg.topFinding,
-          severity: reg.topFindingSeverity,
-          count: reg.flaggedCount,
-        )),
+        //
+        // An e-bike has nothing to read off paper; what the reviewer is waiting
+        // on is the applicant turning up, so that is what the cell says.
+        DataCell(reg.isEBike
+            ? _EBikeDueCell(deadline: reg.eBikeInspectionDeadline)
+            : TopFindingCell(
+                verdict: reg.checksVerdict,
+                summary: reg.checksSummary,
+                topFinding: reg.topFinding,
+                severity: reg.topFindingSeverity,
+                count: reg.flaggedCount,
+              )),
         DataCell(Text(reg.affiliation)),
         DataCell(Text(reg.email)),
         DataCell(Text(_fmt(reg.createdAt),
@@ -418,6 +447,42 @@ class _StatusChips extends StatelessWidget {
             ),
           ),
       ],
+    );
+  }
+}
+
+/// What an e-bike application is waiting on: the applicant bringing it in.
+class _EBikeDueCell extends StatelessWidget {
+  const _EBikeDueCell({required this.deadline});
+
+  final DateTime? deadline;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = context.tokens;
+    final text = Theme.of(context).textTheme;
+
+    final due = deadline?.toLocal();
+    if (due == null) {
+      return Text('Waiting for inspection',
+          style: text.bodyMedium?.copyWith(color: t.text.secondary));
+    }
+
+    final today = DateTime.now();
+    final days = DateTime(due.year, due.month, due.day)
+        .difference(DateTime(today.year, today.month, today.day))
+        .inDays;
+    final overdue = days < 0;
+
+    return Text(
+      overdue
+          ? 'Inspection overdue by ${-days} ${-days == 1 ? 'day' : 'days'}'
+          : days == 0
+              ? 'Inspection due today'
+              : 'Inspection due in $days ${days == 1 ? 'day' : 'days'}',
+      style: text.bodyMedium?.copyWith(
+        color: overdue ? t.status.danger.fg : t.text.secondary,
+      ),
     );
   }
 }

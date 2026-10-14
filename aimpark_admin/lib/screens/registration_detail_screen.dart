@@ -11,6 +11,7 @@ import '../providers/audit_logs_provider.dart';
 import '../providers/registrations_provider.dart';
 import '../theme/theme.dart';
 import '../widgets/checks_panel.dart';
+import '../widgets/ebike_inspection_dialog.dart';
 import '../widgets/review_documents.dart';
 import '../widgets/ui/ui.dart';
 
@@ -61,10 +62,18 @@ class RegistrationDetailScreen extends ConsumerWidget {
             ),
             onPressed: () => _showRejectDialog(context, ref, detail),
           ),
+          // An e-bike has no receipt to read; it is approved by recording the
+          // in-person inspection, which then approves through the same path.
+          if (detail.isEBike)
+            FilledButton.icon(
+              icon: const Icon(Icons.pedal_bike_outlined, size: AppSizes.iconSm),
+              label: const Text('Inspect e-bike…'),
+              onPressed: () => _inspectEBike(context, ref, detail),
+            )
           // A filled Approve beside a red finding reads as the expected next
           // step. Over anything red or amber it steps down to a secondary
           // button and says what it is.
-          if (detail.checks?.hasSerious ?? false)
+          else if (detail.checks?.hasSerious ?? false)
             OutlinedButton.icon(
               icon: const Icon(Icons.check, size: AppSizes.iconSm),
               label: const Text('Approve anyway…'),
@@ -201,6 +210,16 @@ class RegistrationDetailScreen extends ConsumerWidget {
     ref.invalidate(pendingRegistrationsProvider);
   }
 
+  Future<void> _inspectEBike(
+      BuildContext context, WidgetRef ref, RegistrationDetail detail) async {
+    final message = await showEBikeInspectionDialog(context, detail);
+    if (message == null || !context.mounted) return;
+
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+    ref.invalidate(registrationDetailProvider(userId));
+    ref.invalidate(pendingRegistrationsProvider);
+  }
+
   /// The documents a reviewer can send back, in the order the applicant took
   /// them. Both identity kinds are offered; the server folds whichever is
   /// chosen onto the slot this particular account actually files under.
@@ -253,7 +272,9 @@ class RegistrationDetailScreen extends ConsumerWidget {
                       style: Theme.of(context).textTheme.bodySmall,
                     ),
                     const SizedBox(height: AppSpacing.x4),
-                    for (final entry in _retakeDocuments.entries) ...[
+                    for (final entry in _retakeDocuments.entries.where(
+                        (e) => !(detail.isEBike && e.key == 'OfficialReceipt'),
+                    )) ...[
                       CheckboxListTile(
                         value: selected.contains(entry.key),
                         title: Text(entry.value),
@@ -562,6 +583,10 @@ class _DetailViewState extends State<_DetailView> {
           ),
           const SizedBox(height: AppSpacing.gutter),
         ],
+        if (detail.isEBike && detail.accountStatus == 'PendingReview') ...[
+          _EBikeBanner(deadline: detail.eBikeInspectionDeadline),
+          const SizedBox(height: AppSpacing.gutter),
+        ],
         if (checks != null)
           FindingsSummaryBox(checks: checks)
         else
@@ -596,6 +621,55 @@ class _DetailViewState extends State<_DetailView> {
         const SizedBox(height: AppSpacing.gutter),
         _HistoryCard(userId: detail.userId),
       ],
+    );
+  }
+}
+
+/// Says what an e-bike application is waiting on, and how long it has had.
+class _EBikeBanner extends StatelessWidget {
+  const _EBikeBanner({required this.deadline});
+
+  final DateTime? deadline;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = context.tokens;
+    final text = Theme.of(context).textTheme;
+
+    final due = deadline?.toLocal();
+    var overdue = false;
+    String when = '';
+    if (due != null) {
+      final today = DateTime.now();
+      final days = DateTime(due.year, due.month, due.day)
+          .difference(DateTime(today.year, today.month, today.day))
+          .inDays;
+      overdue = days < 0;
+      when = overdue
+          ? ' Due ${DateFormat('MMM d').format(due)}, overdue by ${-days} ${-days == 1 ? 'day' : 'days'}.'
+          : days == 0
+              ? ' Due today.'
+              : ' Due ${DateFormat('MMM d').format(due)}, $days ${days == 1 ? 'day' : 'days'} left.';
+    }
+
+    return AppCard(
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(Icons.pedal_bike_outlined,
+              size: AppSizes.iconMd,
+              color: overdue ? t.status.danger.fg : t.status.info.fg),
+          const SizedBox(width: AppSpacing.x3),
+          Expanded(
+            child: Text(
+              'E-bike application. There is no receipt to read: the applicant '
+              'brings the e-bike to the office, and you inspect it with Inspect '
+              'e-bike. Their licence and school form are checked below as usual.$when',
+              style: text.bodyMedium,
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

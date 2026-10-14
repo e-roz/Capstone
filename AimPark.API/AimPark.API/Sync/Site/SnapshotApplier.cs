@@ -138,6 +138,7 @@ namespace AimPark.API.Sync.Site
                 user.RfidStatus = source.RfidStatus;
                 user.RfidSuspendedFrom = source.RfidSuspendedFrom;
                 user.RfidSuspendedUntil = source.RfidSuspendedUntil;
+                user.LicenseValidThrough = source.LicenseValidThrough;
             }
 
             await _db.SaveChangesAsync(ct);
@@ -181,6 +182,9 @@ namespace AimPark.API.Sync.Site
                 vehicle.Color = source.Color;
                 vehicle.RegistrationValidThrough = source.RegistrationValidThrough;
                 vehicle.RegistrationRenewalMonth = source.RegistrationRenewalMonth;
+                vehicle.IsEBike = source.IsEBike;
+                vehicle.Brand = source.Brand;
+                vehicle.DistinguishingMarks = source.DistinguishingMarks;
                 vehicle.CreatedAt = source.CreatedAt;
             }
 

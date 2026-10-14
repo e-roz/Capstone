@@ -204,6 +204,60 @@ namespace AimPark.API.Migrations
                     b.ToTable("Documents");
                 });
 
+            modelBuilder.Entity("AimPark.API.Entities.DocumentRenewal", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("DocumentId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("ExtractedExpiry")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("NewExpiry")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("RejectReason")
+                        .HasColumnType("text");
+
+                    b.Property<DateTime?>("ReviewedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("ReviewedByUserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("Type")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("VehicleId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("DocumentId");
+
+                    b.HasIndex("UserId");
+
+                    b.HasIndex("VehicleId");
+
+                    b.HasIndex("Status", "CreatedAt");
+
+                    b.ToTable("DocumentRenewals");
+                });
+
             modelBuilder.Entity("AimPark.API.Entities.DocumentVerification", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1370,6 +1424,9 @@ namespace AimPark.API.Migrations
                     b.Property<string>("DocumentRetakeJson")
                         .HasColumnType("text");
 
+                    b.Property<DateTime?>("EBikeInspectionDeadline")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<string>("Email")
                         .IsRequired()
                         .HasColumnType("text");
@@ -1384,11 +1441,20 @@ namespace AimPark.API.Migrations
                     b.Property<bool>("IsDeleted")
                         .HasColumnType("boolean");
 
+                    b.Property<bool>("IsEBikeApplicant")
+                        .HasColumnType("boolean");
+
                     b.Property<bool>("IsEmailVerified")
                         .HasColumnType("boolean");
 
                     b.Property<bool>("IsFirstLogin")
                         .HasColumnType("boolean");
+
+                    b.Property<DateTime?>("LicenseExpiryReminderSentFor")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("LicenseValidThrough")
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<string>("PasswordHash")
                         .HasColumnType("text");
@@ -1515,6 +1581,9 @@ namespace AimPark.API.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
+                    b.Property<string>("Brand")
+                        .HasColumnType("text");
+
                     b.Property<string>("Color")
                         .IsRequired()
                         .HasColumnType("text");
@@ -1522,9 +1591,18 @@ namespace AimPark.API.Migrations
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<string>("DistinguishingMarks")
+                        .HasColumnType("text");
+
+                    b.Property<bool>("IsEBike")
+                        .HasColumnType("boolean");
+
                     b.Property<string>("PlateNumber")
                         .IsRequired()
                         .HasColumnType("text");
+
+                    b.Property<DateTime?>("RegistrationExpiryReminderSentFor")
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<int?>("RegistrationRenewalMonth")
                         .HasColumnType("integer");
@@ -1863,6 +1941,32 @@ namespace AimPark.API.Migrations
                         .IsRequired();
 
                     b.Navigation("User");
+                });
+
+            modelBuilder.Entity("AimPark.API.Entities.DocumentRenewal", b =>
+                {
+                    b.HasOne("AimPark.API.Entities.Document", "Document")
+                        .WithMany()
+                        .HasForeignKey("DocumentId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("AimPark.API.Entities.User", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("AimPark.API.Entities.Vehicle", "Vehicle")
+                        .WithMany()
+                        .HasForeignKey("VehicleId")
+                        .OnDelete(DeleteBehavior.Cascade);
+
+                    b.Navigation("Document");
+
+                    b.Navigation("User");
+
+                    b.Navigation("Vehicle");
                 });
 
             modelBuilder.Entity("AimPark.API.Entities.DocumentVerification", b =>

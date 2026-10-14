@@ -21,6 +21,15 @@ class ApiEndpoints {
   static String requestRetake(String userId) =>
       '/api/admin/registrations/$userId/request-retake';
 
+  /// Records the in-person inspection of an e-bike and approves its owner.
+  static String inspectEBike(String userId) =>
+      '/api/admin/registrations/$userId/inspect-ebike';
+
+  // Admin – Renewals of licences and registrations after approval
+  static const adminRenewals = '/api/admin/renewals';
+  static String approveRenewal(String id) => '/api/admin/renewals/$id/approve';
+  static String rejectRenewal(String id) => '/api/admin/renewals/$id/reject';
+
   // Admin – Users
   static const users = '/api/admin/users';
   static String archiveUser(String userId) => '/api/admin/users/$userId';

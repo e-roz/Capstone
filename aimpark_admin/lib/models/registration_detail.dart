@@ -26,6 +26,19 @@ class RegistrationDetail {
   final List<VehicleInfo> vehicles;
   final List<DocumentInfo> documents;
 
+  /// The licence expiry on file now. A renewal replaces it.
+  final DateTime? licenseValidThrough;
+
+  /// A licence or registration renewal is waiting for review.
+  final bool hasPendingRenewal;
+
+  /// The applicant chose "E-bike": no receipt, and a visit to the office to
+  /// have the e-bike inspected instead.
+  final bool isEBike;
+
+  /// When they should have come to the office by. Nothing expires on its own.
+  final DateTime? eBikeInspectionDeadline;
+
   /// Null when the applicant has not submitted documents yet. The screen then
   /// shows the record alone, exactly as it did before the panel existed.
   final RegistrationChecks? checks;
@@ -52,6 +65,10 @@ class RegistrationDetail {
     this.rfidSuspendedUntil,
     required this.vehicles,
     required this.documents,
+    this.isEBike = false,
+    this.eBikeInspectionDeadline,
+    this.licenseValidThrough,
+    this.hasPendingRenewal = false,
     this.checks,
   });
 
@@ -88,6 +105,14 @@ class RegistrationDetail {
         documents: (json['documents'] as List<dynamic>? ?? [])
             .map((d) => DocumentInfo.fromJson(d as Map<String, dynamic>))
             .toList(),
+        licenseValidThrough: json['licenseValidThrough'] != null
+            ? DateTime.tryParse(json['licenseValidThrough'].toString())
+            : null,
+        hasPendingRenewal: (json['hasPendingRenewal'] as bool?) ?? false,
+        isEBike: (json['isEBike'] as bool?) ?? false,
+        eBikeInspectionDeadline: json['eBikeInspectionDeadline'] != null
+            ? DateTime.tryParse(json['eBikeInspectionDeadline'].toString())
+            : null,
         checks: json['checks'] == null
             ? null
             : RegistrationChecks.fromJson(json['checks'] as Map<String, dynamic>),
@@ -98,17 +123,33 @@ class VehicleInfo {
   final String? vehicleType;
   final String? plateNumber;
   final String? color;
+  final bool isEBike;
+  final String? brand;
+  final String? distinguishingMarks;
+
+  /// The registration expiry on file now. A renewal replaces it.
+  final DateTime? registrationValidThrough;
 
   const VehicleInfo({
     this.vehicleType,
     this.plateNumber,
     this.color,
+    this.isEBike = false,
+    this.brand,
+    this.distinguishingMarks,
+    this.registrationValidThrough,
   });
 
   factory VehicleInfo.fromJson(Map<String, dynamic> json) => VehicleInfo(
         vehicleType: json['vehicleType']?.toString(),
         plateNumber: json['plateNumber']?.toString(),
         color: json['color']?.toString(),
+        isEBike: (json['isEBike'] as bool?) ?? false,
+        brand: json['brand']?.toString(),
+        distinguishingMarks: json['distinguishingMarks']?.toString(),
+        registrationValidThrough: json['registrationValidThrough'] != null
+            ? DateTime.tryParse(json['registrationValidThrough'].toString())
+            : null,
       );
 }
 

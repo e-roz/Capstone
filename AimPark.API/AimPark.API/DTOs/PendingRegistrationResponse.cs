@@ -42,6 +42,9 @@ namespace AimPark.API.DTOs
         /// <summary>Whole days since the applicant submitted. Nothing else says this.</summary>
         public int WaitingDays { get; set; }
 
+        public bool IsEBike { get; set; }
+        public DateTime? EBikeInspectionDeadline { get; set; }
+
         // ── Only on the Approved and Rejected lists ────────────────────────────
 
         /// <summary>When the applicant was approved or rejected.</summary>

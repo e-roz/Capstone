@@ -6,6 +6,7 @@ using AimPark.API.Helpers;
 using AimPark.API.Interfaces;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 
 namespace AimPark.API.Services
 {
@@ -19,6 +20,8 @@ namespace AimPark.API.Services
         private readonly AppDbContext _db;
         private readonly ISlotSensors _sensors;
         private readonly IEntryDues _entryDues;
+        private readonly bool _enforceExpiredDocuments;
+        private readonly ILogger<ParkingHistoryService>? _logger;
 
         public ParkingHistoryService(
             IRepository<ParkingLog> logs,
@@ -28,8 +31,12 @@ namespace AimPark.API.Services
             INotificationService notificationService,
             AppDbContext db,
             ISlotSensors sensors,
-            IEntryDues? entryDues = null)
+            IEntryDues? entryDues = null,
+            IOptions<GateOptions>? gate = null,
+            ILogger<ParkingHistoryService>? logger = null)
         {
+            _enforceExpiredDocuments = gate?.Value.EnforceExpiredDocuments ?? false;
+            _logger = logger;
             _sensors = sensors;
             _entryDues = entryDues ?? new DbEntryDues(db);
             _logs = logs;
@@ -98,6 +105,38 @@ namespace AimPark.API.Services
                 Page = page,
                 PageSize = pageSize
             });
+        }
+
+        /// <summary>
+        /// Turns away a driver whose licence or registration has expired, when
+        /// <see cref="GateOptions.EnforceExpiredDocuments"/> is on. Otherwise only
+        /// says so in the log and returns null, so the caller carries on.
+        /// </summary>
+        private async Task<BadRequestObjectResult?> RefuseExpiredDocumentAsync(
+            User user, LogParkingEntryDto dto, Guid? loggedByDeviceId,
+            string result, string gateMessage, string notice, CancellationToken ct)
+        {
+            if (!_enforceExpiredDocuments)
+            {
+                _logger?.LogInformation(
+                    "Would have refused {UserId} at the gate: {Result}. Gate:EnforceExpiredDocuments is off.",
+                    user.Id, result);
+                return null;
+            }
+
+            // Only from the reader. An admin trying it by hand already knows.
+            if (loggedByDeviceId is not null)
+            {
+                await _notificationService.NotifyUserAsync(
+                    user.Id,
+                    NotificationType.Parking,
+                    "Your card was refused",
+                    $"{(dto.Gate is int g ? $"Gate {g}: y" : "Y")}our {notice}",
+                    new Dictionary<string, string> { ["screen"] = "documents" },
+                    ct);
+            }
+
+            return new BadRequestObjectResult(new { result, message = gateMessage });
         }
 
         /// <summary>
@@ -289,6 +328,22 @@ namespace AimPark.API.Services
                 });
             }
 
+            // An expired licence stops the driver whichever vehicle they bring. Entry
+            // only, like everything below: a driver already inside can still leave.
+            var today = PhilippineTime.Today();
+
+            if (DocumentExpiry.IsExpired(user.LicenseValidThrough, today))
+            {
+                var expiredLicence = await RefuseExpiredDocumentAsync(
+                    user, dto, loggedByDeviceId,
+                    AllocationResult.LicenseExpired,
+                    "Licence expired. Renew it in the app to enter.",
+                    "driver's licence has expired. Renew it and upload the new one in the app to enter.",
+                    ct);
+
+                if (expiredLicence is not null) return expiredLicence;
+            }
+
             // Owes money. Entry only: LogExitAsync never looks at this, so a
             // blocked driver who is already inside can still leave.
             var owed = await _entryDues.GetOwedAsync(user.Id, ct);
@@ -331,7 +386,7 @@ namespace AimPark.API.Services
 
             var registered = await _db.Set<Vehicle>().AsNoTracking()
                 .Where(v => v.UserId == user.Id)
-                .Select(v => new { v.PlateNumber, v.VehicleType })
+                .Select(v => new { v.PlateNumber, v.VehicleType, v.IsEBike, v.RegistrationValidThrough })
                 .ToListAsync(ct);
 
             var alprCheck = await CheckAlprAsync(
@@ -339,6 +394,27 @@ namespace AimPark.API.Services
                 userId: user.Id, visitorPassId: null, loggedByDeviceId, nowUtc, ct);
 
             if (alprCheck.Denial is not null) return alprCheck.Denial;
+
+            // An expired registration stops the vehicle it belongs to, not the
+            // driver's others: the plate the camera matched says which one is at
+            // the barrier, and with only one vehicle there is nothing to choose
+            // between. With two and no read, the card alone cannot say, so this
+            // is skipped rather than guessed at. An e-bike has no registration.
+            var driven = registered.FirstOrDefault(v => v.PlateNumber == alprCheck.Matched?.PlateNumber)
+                         ?? (registered.Count == 1 ? registered[0] : null);
+
+            if (driven is { IsEBike: false }
+                && DocumentExpiry.IsExpired(driven.RegistrationValidThrough, today))
+            {
+                var expiredRegistration = await RefuseExpiredDocumentAsync(
+                    user, dto, loggedByDeviceId,
+                    AllocationResult.RegistrationExpired,
+                    $"Registration for {driven.PlateNumber} expired. Renew it in the app to enter.",
+                    $"registration for {driven.PlateNumber} has expired. Renew it and upload the new one in the app to enter.",
+                    ct);
+
+                if (expiredRegistration is not null) return expiredRegistration;
+            }
 
             // One card can cover a car and a motorcycle, so the card alone
             // does not say which one is at the barrier. The plate the camera

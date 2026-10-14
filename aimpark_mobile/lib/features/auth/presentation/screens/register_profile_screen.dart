@@ -31,6 +31,10 @@ class _RegisterProfileScreenState extends ConsumerState<RegisterProfileScreen> {
   bool _acceptedTerms = false;
   Affiliation _affiliation = Affiliation.student;
 
+  /// Motor vehicle or e-bike. An e-bike has no plate or receipt, so choosing it
+  /// changes which documents are asked for and how registration ends.
+  bool _isEBike = false;
+
   /// True when this step is being revisited from the document step rather than
   /// reached on the way to it — the account already exists, and this form now
   /// edits it instead of creating it.
@@ -104,6 +108,8 @@ class _RegisterProfileScreenState extends ConsumerState<RegisterProfileScreen> {
         _affiliation =
             Affiliation.fromWire(data['affiliation']?.toString()) ??
             ref.read(registrationNotifierProvider).affiliation;
+        _isEBike = data['isEBike'] == true ||
+            ref.read(registrationNotifierProvider).isEBike;
         // Accepted once already, and the server has the timestamp. Shown ticked
         // rather than hidden so the link to read them again stays where it was.
         _acceptedTerms = true;
@@ -216,6 +222,7 @@ class _RegisterProfileScreenState extends ConsumerState<RegisterProfileScreen> {
       ref
           .read(registrationNotifierProvider.notifier)
           .setAffiliation(_affiliation);
+      ref.read(registrationNotifierProvider.notifier).setIsEBike(_isEBike);
 
       final repo = ref.read(authRepositoryProvider);
       final response = await repo.completeProfile(body);
@@ -301,6 +308,28 @@ class _RegisterProfileScreenState extends ConsumerState<RegisterProfileScreen> {
             enabled: !_isLoading,
             onChanged: (value) => setState(() => _affiliation = value),
           ),
+          const SizedBox(height: AppSpacing.md),
+          // Decides whether a receipt is asked for. An e-bike is not registered
+          // with the LTO, so it has neither a plate nor a receipt.
+          AppChipGroup<bool>(
+            label: "I'm registering a…",
+            options: const {false: 'Motor vehicle', true: 'E-bike'},
+            icons: const {
+              false: Icons.directions_car_rounded,
+              true: Icons.pedal_bike_rounded,
+            },
+            value: _isEBike,
+            enabled: !_isLoading,
+            onChanged: (value) => setState(() => _isEBike = value),
+          ),
+          if (_isEBike) ...[
+            const SizedBox(height: AppSpacing.sm),
+            Text(
+              'E-bikes have no LTO plate or receipt. You will send your licence '
+              'here, then bring your e-bike to the admin office to finish.',
+              style: context.text.bodySmall,
+            ),
+          ],
           if (_affiliation != Affiliation.student) ...[
             const SizedBox(height: AppSpacing.md),
             AppTextField(

@@ -15,5 +15,8 @@ namespace AimPark.API.DTOs
 
         public string AccountStatus { get; set; } = string.Empty;
         public DateTime CreatedAt { get; set; }
+
+        /// <summary>When the driver's licence on file runs out. Null if never read.</summary>
+        public DateTime? LicenseValidThrough { get; set; }
     }
 }

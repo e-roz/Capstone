@@ -6,6 +6,7 @@ class Vehicle {
     required this.vehicleType,
     required this.color,
     this.registrationValidThrough,
+    this.isEBike = false,
     required this.createdAt,
   });
 
@@ -27,6 +28,10 @@ class Vehicle {
   /// Null when no receipt has been read for this vehicle yet.
   final DateTime? registrationValidThrough;
 
+  /// An e-bike is not registered with the LTO, so it has no registration to
+  /// run out and nothing to renew.
+  final bool isEBike;
+
   final DateTime createdAt;
 
   /// True once the registration this vehicle was admitted on has run out.
@@ -47,6 +52,7 @@ class Vehicle {
         color: json['color']?.toString() ?? '',
         registrationValidThrough:
             DateTime.tryParse(json['registrationValidThrough']?.toString() ?? ''),
+        isEBike: json['isEBike'] as bool? ?? false,
         createdAt:
             DateTime.tryParse(json['createdAt']?.toString() ?? '') ??
                 DateTime.now(),

@@ -228,6 +228,7 @@ class _GoogleAuthButtonState extends ConsumerState<GoogleAuthButton> {
           canReapplyAt: canReapplyRaw == null
               ? null
               : DateTime.tryParse(canReapplyRaw.toString()),
+          isEBike: status is Map && status['isEBike'] == true,
         ),
       ),
     );

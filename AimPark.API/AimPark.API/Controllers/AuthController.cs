@@ -448,6 +448,8 @@ namespace AimPark.API.Controllers
             CanReapplyAt = user.CanReapplyAt,
             FullName = user.FullName,
             Affiliation = user.Affiliation.ToString(),
+            IsEBike = user.IsEBikeApplicant,
+            EBikeInspectionDeadline = user.EBikeInspectionDeadline,
             DocumentsToRetake = DocumentRetakes.Read(user.DocumentRetakeJson)
         };
     }

@@ -188,7 +188,11 @@ class _RegisterDocumentStepScreenState
         return;
       }
 
-      final fields = <String, dynamic>{};
+      final fields = <String, dynamic>{
+        // The server also remembers this on the account, so a retake asked for
+        // later still skips the receipt.
+        if (ref.read(registrationNotifierProvider).isEBike) 'IsEBike': 'true',
+      };
       for (final spec in specs) {
         final photo = captured[spec.type]!;
         final field = _fieldFor(spec.type);
@@ -285,6 +289,7 @@ class _RegisterDocumentStepScreenState
     final specs = agenda.valueOrNull?.specs ??
         DocumentSpec.forAffiliation(
           ref.read(registrationNotifierProvider).affiliation,
+          isEBike: ref.read(registrationNotifierProvider).isEBike,
         );
 
     // A retake list is shorter than the full set, and the route's index survives

@@ -18,6 +18,7 @@ namespace AimPark.API.Services
         private readonly IRepository<Document> _documents;
         private readonly IRepository<DocumentVerification> _verifications;
         private readonly IRepository<AdminAuditLog> _auditLogs;
+        private readonly IRepository<DocumentRenewal> _renewals;
         private readonly IFileStorageService _fileStorage;
         private readonly IEmailService _emailService;
         private readonly INotificationService _notificationService;
@@ -28,6 +29,7 @@ namespace AimPark.API.Services
             IRepository<Document> documents,
             IRepository<DocumentVerification> verifications,
             IRepository<AdminAuditLog> auditLogs,
+            IRepository<DocumentRenewal> renewals,
             IFileStorageService fileStorage,
             IEmailService emailService,
             INotificationService notificationService)
@@ -37,6 +39,7 @@ namespace AimPark.API.Services
             _documents = documents;
             _verifications = verifications;
             _auditLogs = auditLogs;
+            _renewals = renewals;
             _fileStorage = fileStorage;
             _emailService = emailService;
             _notificationService = notificationService;
@@ -130,7 +133,9 @@ namespace AimPark.API.Services
                         Affiliation = u.Affiliation.ToString(),
                         CreatedAt = u.CreatedAt,
                         UpdatedAt = u.UpdatedAt,
-                        WaitingDays = Math.Max(0, (now.Date - u.UpdatedAt.Date).Days)
+                        WaitingDays = Math.Max(0, (now.Date - u.UpdatedAt.Date).Days),
+                        IsEBike = u.IsEBikeApplicant,
+                        EBikeInspectionDeadline = u.EBikeInspectionDeadline
                     };
 
                     if (queue != "Pending")
@@ -247,6 +252,11 @@ namespace AimPark.API.Services
                 IsDeleted = user.IsDeleted,
                 CreatedAt = user.CreatedAt,
                 WaitingDays = Math.Max(0, (DateTime.UtcNow.Date - user.UpdatedAt.Date).Days),
+                IsEBike = user.IsEBikeApplicant,
+                EBikeInspectionDeadline = user.EBikeInspectionDeadline,
+                LicenseValidThrough = user.LicenseValidThrough,
+                HasPendingRenewal = await _renewals.ExistsAsync(
+                    r => r.UserId == userId && r.Status == RenewalStatus.Pending, ct),
                 RfidTagId = user.RfidTagId,
                 RfidStatus = user.RfidStatus.ToString(),
                 RfidSuspendedUntil = user.RfidSuspendedUntil,
@@ -254,7 +264,11 @@ namespace AimPark.API.Services
                 {
                     PlateNumber = v.PlateNumber,
                     VehicleType = v.VehicleType.ToString(),
-                    Color = v.Color
+                    Color = v.Color,
+                    IsEBike = v.IsEBike,
+                    RegistrationValidThrough = v.RegistrationValidThrough,
+                    Brand = v.Brand,
+                    DistinguishingMarks = v.DistinguishingMarks
                 }).ToList(),
                 Documents = documentResponses,
                 Checks = RegistrationChecks.Build(user, verifications, vehicles, DateTime.UtcNow)
@@ -323,6 +337,7 @@ namespace AimPark.API.Services
             {
                 user.StudentNumber = studentNumber;
                 user.Section = latest.ConfirmedSection ?? latest.ExtractedSection;
+                user.LicenseValidThrough = latest.ConfirmedLicenseExpiry ?? latest.ExtractedLicenseExpiry;
 
                 // Only the most recent submission is marked. A reviewer approving
                 // sees the checks for that submission, and that note is what their
@@ -358,6 +373,158 @@ namespace AimPark.API.Services
 
             return new OkObjectResult(new { message = "User approved." });
         }
+
+        /// <summary>
+        /// The e-bike counterpart of the document review: the applicant has brought
+        /// the e-bike to the office, and the admin records what they saw.
+        /// </summary>
+        /// <remarks>
+        /// An e-bike has no LTO plate or receipt, so what identifies it is what the
+        /// admin records here (photos, brand, colour, marks) plus the temporary
+        /// plate issued from this method. The size class goes in
+        /// <see cref="Vehicle.VehicleType"/>, which is what lets slot allocation,
+        /// rates and the gate treat an e-bike like any other vehicle with no special
+        /// case.
+        ///
+        /// Approval is performed by <see cref="ApproveAsync"/> after the vehicle is
+        /// saved, so an e-bike is approved by exactly the same code as everything
+        /// else. If that refuses (checks need a note, student number clash), the
+        /// vehicle stays, and a retry updates it rather than issuing a second plate.
+        /// </remarks>
+        public async Task<ActionResult<object>> InspectEBikeAsync(
+            Guid userId, Guid adminUserId, EBikeInspectionDto dto, CancellationToken ct)
+        {
+            var user = await _users.FindAsync(u => u.Id == userId, ct);
+            if (user is null)
+                return new NotFoundObjectResult(new { message = "User not found." });
+
+            if (!user.IsEBikeApplicant)
+                return new BadRequestObjectResult(new { message = "This applicant did not register an e-bike." });
+
+            if (user.AccountStatus != AccountStatus.PendingReview || user.RegistrationStep != RegistrationStep.Completed)
+                return new BadRequestObjectResult(new { message = "This application is not waiting for an inspection." });
+
+            if (!(dto.LicenseMatchesPerson && dto.SeenInPerson && dto.NoLtoPlate))
+                return new BadRequestObjectResult(new { message = "Finish the checklist before approving." });
+
+            if (string.IsNullOrWhiteSpace(dto.Brand))
+                return new BadRequestObjectResult(new { message = "Enter the e-bike's brand." });
+
+            if (string.IsNullOrWhiteSpace(dto.Color))
+                return new BadRequestObjectResult(new { message = "Enter the e-bike's colour." });
+
+            if (!Enum.TryParse<VehicleType>(dto.SizeClass, true, out var sizeClass) || !Enum.IsDefined(sizeClass))
+                return new BadRequestObjectResult(new { message = "Choose the e-bike's size class." });
+
+            var photos = dto.Photos.Where(f => f is { Length: > 0 }).ToList();
+            if (photos.Count < 3)
+                return new BadRequestObjectResult(new { message = "Take at least three photos: front, side and back." });
+            if (photos.Count > 6)
+                return new BadRequestObjectResult(new { message = "Send six photos at most." });
+
+            var allowed = new[] { ".jpg", ".jpeg", ".png" };
+            foreach (var photo in photos)
+            {
+                if (!allowed.Contains(Path.GetExtension(photo.FileName).ToLowerInvariant()))
+                    return new BadRequestObjectResult(new { message = "Photos must be JPG or PNG." });
+                if (photo.Length > 8 * 1024 * 1024)
+                    return new BadRequestObjectResult(new { message = "Each photo must not exceed 8MB." });
+            }
+
+            var vehicle = (await _vehicles.GetAllAsync(v => v.UserId == userId && v.IsEBike, ct)).FirstOrDefault();
+            var isNew = vehicle is null;
+
+            if (vehicle is null)
+            {
+                vehicle = new Vehicle
+                {
+                    UserId = userId,
+                    IsEBike = true,
+                    PlateNumber = await NextTemporaryPlateAsync(ct)
+                };
+            }
+
+            vehicle.VehicleType = sizeClass;
+            vehicle.Color = dto.Color.Trim();
+            vehicle.Brand = dto.Brand.Trim();
+            vehicle.DistinguishingMarks = string.IsNullOrWhiteSpace(dto.DistinguishingMarks)
+                ? null
+                : dto.DistinguishingMarks.Trim();
+
+            if (isNew)
+                await _vehicles.AddAsync(vehicle, ct);
+            else
+                _vehicles.Update(vehicle);
+
+            // Each inspection replaces the photo set, so the file holds the photos the
+            // admin settled on rather than every attempt.
+            var oldPhotos = await _documents.GetAllAsync(
+                d => d.UserId == userId && d.Type == DocumentType.EBikePhoto, ct);
+            foreach (var old in oldPhotos)
+                _documents.Delete(old);
+
+            var photoDocs = new List<Document>();
+            foreach (var photo in photos)
+            {
+                var path = await _fileStorage.SaveFileAsync(userId, DocumentType.EBikePhoto.ToString(), photo, ct);
+                photoDocs.Add(new Document
+                {
+                    Type = DocumentType.EBikePhoto,
+                    FileName = Path.GetFileName(path),
+                    FilePath = path,
+                    UserId = userId
+                });
+            }
+            await _documents.AddRangeAsync(photoDocs, ct);
+
+            await LogActionAsync(
+                adminUserId, userId, "EBikeInspection", null,
+                vehicle.PlateNumber, $"{vehicle.Brand}, {vehicle.Color}, size {sizeClass}", ct);
+
+            await _users.SaveAsync(ct);
+
+            var approved = await ApproveAsync(
+                userId, adminUserId, new ApproveRegistrationDto { OverrideNote = dto.OverrideNote }, ct);
+
+            if (approved.Result is not OkObjectResult)
+                return approved;
+
+            await _notificationService.NotifyUserAsync(
+                user.Id,
+                NotificationType.Account,
+                "E-bike registered",
+                $"Your e-bike's temporary plate is {FormatTemporaryPlate(vehicle.PlateNumber)}. Display it on your e-bike.",
+                null,
+                ct);
+
+            return new OkObjectResult(new
+            {
+                message = "E-bike inspected and approved.",
+                plateNumber = vehicle.PlateNumber
+            });
+        }
+
+        private const string TemporaryPlatePrefix = "EB";
+
+        /// <summary>The next free temporary plate: EB0001, EB0002 and so on.</summary>
+        private async Task<string> NextTemporaryPlateAsync(CancellationToken ct)
+        {
+            var issued = await _vehicles.GetAllAsync(
+                v => v.IsEBike && v.PlateNumber.StartsWith(TemporaryPlatePrefix), ct);
+
+            var highest = issued
+                .Select(v => int.TryParse(v.PlateNumber[TemporaryPlatePrefix.Length..], out var n) ? n : 0)
+                .DefaultIfEmpty(0)
+                .Max();
+
+            return $"{TemporaryPlatePrefix}{highest + 1:D4}";
+        }
+
+        /// <summary>Plates are stored without punctuation; the one people read has a dash.</summary>
+        private static string FormatTemporaryPlate(string plate) =>
+            plate.StartsWith(TemporaryPlatePrefix) && plate.Length > TemporaryPlatePrefix.Length
+                ? $"{TemporaryPlatePrefix}-{plate[TemporaryPlatePrefix.Length..]}"
+                : plate;
 
         public async Task<ActionResult<object>> RejectAsync(Guid userId, Guid adminUserId, RejectRegistrationDto dto, CancellationToken ct)
         {
@@ -523,6 +690,7 @@ namespace AimPark.API.Services
             nameof(DocumentType.SchoolId) => "School ID",
             nameof(DocumentType.License) => "Driver's licence",
             nameof(DocumentType.OfficialReceipt) => "Official receipt",
+            nameof(DocumentType.EBikePhoto) => "E-bike photo",
             _ => type
         };
 

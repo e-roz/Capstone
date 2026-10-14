@@ -4,6 +4,7 @@ import 'package:riverpod_annotation/riverpod_annotation.dart';
 
 import '../core/constants/api_endpoints.dart';
 import '../core/network/dio_client.dart';
+import '../core/utils/browser_files.dart';
 import '../models/pending_registration.dart';
 import '../models/registration_detail.dart';
 
@@ -73,6 +74,64 @@ class RegistrationActions extends _$RegistrationActions {
       return _errorMessage(e);
     }
   }
+
+  /// Records the inspection of an e-bike and approves its owner.
+  ///
+  /// Returns whether it went through and a sentence for the admin either way,
+  /// because the inspection dialog stays open on a refusal and shows the
+  /// reason in place.
+  Future<({bool ok, String message})> inspectEBike(
+    String userId, {
+    required String brand,
+    required String color,
+    String? marks,
+    required String sizeClass,
+    required List<PickedFile> photos,
+    String? overrideNote,
+  }) async {
+    state = const AsyncLoading();
+    try {
+      final dio = ref.read(dioProvider);
+      final form = FormData.fromMap({
+        'Brand': brand,
+        'Color': color,
+        if (marks != null && marks.trim().isNotEmpty)
+          'DistinguishingMarks': marks.trim(),
+        'SizeClass': sizeClass,
+        // The checklist is enforced on the server too, so the dialog sends what
+        // the admin ticked rather than the server assuming it.
+        'LicenseMatchesPerson': 'true',
+        'SeenInPerson': 'true',
+        'NoLtoPlate': 'true',
+        if (overrideNote != null && overrideNote.trim().isNotEmpty)
+          'OverrideNote': overrideNote.trim(),
+      });
+      for (final photo in photos) {
+        form.files.add(MapEntry(
+          'Photos',
+          MultipartFile.fromBytes(photo.bytes, filename: photo.name),
+        ));
+      }
+      final res = await dio.post(ApiEndpoints.inspectEBike(userId), data: form);
+      state = const AsyncData(null);
+      final data = res.data as Map<String, dynamic>;
+      final plate = data['plateNumber']?.toString();
+      return (
+        ok: true,
+        message: plate == null
+            ? 'E-bike approved.'
+            : 'E-bike approved. Temporary plate ${_dashed(plate)}.',
+      );
+    } on DioException catch (e) {
+      state = const AsyncData(null);
+      return (ok: false, message: _errorMessage(e));
+    }
+  }
+
+  /// EB0007 as people write it: EB-0007.
+  static String _dashed(String plate) => plate.startsWith('EB') && plate.length > 2
+      ? 'EB-${plate.substring(2)}'
+      : plate;
 
   Future<String?> reject(String userId, String reason) async {
     state = const AsyncLoading();

@@ -12,9 +12,20 @@ namespace AimPark.API.Services
             var notes = new List<string>();
 
             verification.NameMatch = CheckName(verification, user, notes);
-            verification.PlateMatch = CheckPlate(verification, vehicle, notes);
             verification.LicenseValidity = CheckLicenseValidity(verification, notes);
-            verification.RegistrationValidity = CheckRegistrationValidity(verification, notes);
+
+            // An e-bike has no plate and no receipt to read. The admin issues the plate
+            // at inspection, so there is nothing here to check and nothing to note.
+            if (user.IsEBikeApplicant)
+            {
+                verification.PlateMatch = CheckResult.NotChecked;
+                verification.RegistrationValidity = CheckResult.NotChecked;
+            }
+            else
+            {
+                verification.PlateMatch = CheckPlate(verification, vehicle, notes);
+                verification.RegistrationValidity = CheckRegistrationValidity(verification, notes);
+            }
             verification.EnrollmentValidity = CheckEnrollment(verification, user, notes);
 
             NoteUserEdits(verification, notes);
