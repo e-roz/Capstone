@@ -25,7 +25,6 @@ import '../screens/reports_screen.dart';
 import '../screens/rfid_cards_screen.dart';
 import '../screens/user_detail_screen.dart';
 import '../screens/user_management_screen.dart';
-import '../screens/security_gate_screen.dart';
 import '../screens/security_overview_screen.dart';
 import '../screens/violations_screen.dart';
 import '../screens/visitor_passes_screen.dart';
@@ -75,10 +74,6 @@ GoRouter appRouter(Ref ref) {
             // on the Reports endpoints, which a Security account is refused -
             // so they get their own rather than a screen of permission errors.
             builder: (context, state) => const RoleOverview(),
-          ),
-          GoRoute(
-            path: '/gate',
-            builder: (context, state) => const SecurityGateScreen(),
           ),
           GoRoute(
             path: '/visitors',
