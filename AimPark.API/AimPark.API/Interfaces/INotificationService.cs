@@ -26,6 +26,12 @@ namespace AimPark.API.Interfaces
             CancellationToken ct);
 
         Task<ActionResult<NotificationListResponse>> ListAllAsync(int page, int pageSize, CancellationToken ct);
+        /// <summary>
+        /// The latest notifications the system raised on its own (a violation,
+        /// a refused card, a due bill), newest first, optionally within a
+        /// window. Not a broadcast log: <see cref="ListAllAsync"/> is that.
+        /// </summary>
+        Task<ActionResult<NotificationListResponse>> ListSystemAsync(DateTime? from, DateTime? to, int take, CancellationToken ct);
         Task<ActionResult<NotificationListResponse>> ListForUserAsync(Guid userId, UserRole role, int page, int pageSize, CancellationToken ct);
         Task<ActionResult<object>> MarkReadAsync(Guid userId, Guid notificationId, CancellationToken ct);
 

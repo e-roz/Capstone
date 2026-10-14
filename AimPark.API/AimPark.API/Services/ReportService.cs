@@ -113,8 +113,29 @@ namespace AimPark.API.Services
                     && !t.Opened && t.PersonKind != GateTapPersonKind.Manual
                     && (t.PersonKind == GateTapPersonKind.Unknown || t.PlateMatches == false), ct);
 
+            // The stretch just before, of the same length, for "up 12%". Not
+            // for all time: there is nothing before the first record.
+            PreviousPeriodTotals? previous = null;
+            if (!query.AllTime)
+            {
+                var before = new ReportPeriod(period.First.AddDays(-period.Days), period.First.AddDays(-1));
+                var prevPaid = await _db.Set<PaymentTransaction>().AsNoTracking()
+                    .Where(p => p.Status == PaymentStatus.Paid && p.PaidAt != null
+                             && p.PaidAt >= before.StartUtc && p.PaidAt < before.EndUtc)
+                    .SumAsync(p => (decimal?)p.AmountDue, ct) ?? 0m;
+                previous = new PreviousPeriodTotals
+                {
+                    SessionsInPeriod = await _db.Set<ParkingLog>()
+                        .CountAsync(l => l.EntryTime >= before.StartUtc && l.EntryTime < before.EndUtc, ct),
+                    RevenueCollected = prevPaid,
+                    ViolationsIssued = await _db.Set<Violation>()
+                        .CountAsync(v => v.CreatedAt >= before.StartUtc && v.CreatedAt < before.EndUtc, ct)
+                };
+            }
+
             return new OkObjectResult(new ReportsSummaryResponse
             {
+                Previous = previous,
                 TotalUsers = totalUsers,
                 ActiveUsers = activeUsers,
                 TotalSlots = bays.Count,
@@ -230,6 +251,92 @@ namespace AimPark.API.Services
                 TotalExits = points.Sum(p => p.Exits),
                 TotalVisitorEntries = points.Sum(p => p.VisitorEntries),
                 StillOpen = stillOpen
+            });
+        }
+
+        // GET /api/admin/reports/gate-outcomes?days=14 | from=&to= | allTime=true
+        public async Task<ActionResult<GateOutcomesResponse>> GetGateOutcomesAsync(
+            ReportQuery query, CancellationToken ct)
+        {
+            var period = await ResolveAsync(query, ct);
+
+            // Same split as the Gate Taps page: a card nobody holds, or a plate
+            // that is not the holder's, is serious; anything else refused is routine.
+            var counts = await _db.Set<GateTapEvent>().AsNoTracking()
+                .Where(t => t.At >= period.StartUtc && t.At < period.EndUtc
+                         && t.PersonKind != GateTapPersonKind.Manual)
+                .GroupBy(_ => 1)
+                .Select(g => new
+                {
+                    Entered = g.Count(t => t.Opened && t.Direction == "IN"),
+                    Exited = g.Count(t => t.Opened && t.Direction == "OUT"),
+                    Mismatch = g.Count(t => !t.Opened && t.PersonKind != GateTapPersonKind.Unknown
+                        && t.PlateMatches == false),
+                    Unknown = g.Count(t => !t.Opened && t.PersonKind == GateTapPersonKind.Unknown),
+                    Routine = g.Count(t => !t.Opened && t.PersonKind != GateTapPersonKind.Unknown
+                        && (t.PlateMatches == null || t.PlateMatches == true))
+                })
+                .FirstOrDefaultAsync(ct);
+
+            return new OkObjectResult(new GateOutcomesResponse
+            {
+                Period = Info(period),
+                Entered = counts?.Entered ?? 0,
+                Exited = counts?.Exited ?? 0,
+                PlateMismatch = counts?.Mismatch ?? 0,
+                UnknownCard = counts?.Unknown ?? 0,
+                RoutineRefusals = counts?.Routine ?? 0
+            });
+        }
+
+        // GET /api/admin/reports/peak-occupancy?days=14 | from=&to= | allTime=true
+        public async Task<ActionResult<PeakOccupancyResponse>> GetPeakOccupancyAsync(
+            ReportQuery query, CancellationToken ct)
+        {
+            var period = await ResolveAsync(query, ct);
+
+            var sessions = await _db.Set<ParkingLog>().AsNoTracking()
+                .Where(l => l.EntryTime < period.EndUtc
+                         && (l.ExitTime == null || l.ExitTime >= period.StartUtc))
+                .Select(l => new { l.EntryTime, l.ExitTime })
+                .ToListAsync(ct);
+
+            // Sweep the period: +1 when a car comes in (or at the start, if it
+            // was already inside), -1 when it leaves. A car still inside counts
+            // until the period ends. At the same moment, leaving goes first, so
+            // a car leaving as another arrives is not counted twice.
+            var events = new List<(DateTime At, int Delta)>(sessions.Count * 2);
+            foreach (var s in sessions)
+            {
+                var start = s.EntryTime < period.StartUtc ? period.StartUtc : s.EntryTime;
+                events.Add((start, +1));
+                if (s.ExitTime is DateTime exit && exit < period.EndUtc)
+                    events.Add((exit, -1));
+            }
+
+            var inside = 0;
+            var peak = 0;
+            DateTime? peakAt = null;
+            foreach (var e in events.OrderBy(e => e.At).ThenBy(e => e.Delta))
+            {
+                inside += e.Delta;
+                if (inside > peak)
+                {
+                    peak = inside;
+                    peakAt = e.At;
+                }
+            }
+
+            var capacity = await _db.Set<ParkingSlot>().AsNoTracking()
+                .CountAsync(s => s.Status != ParkingSlotStatus.OutOfService
+                              && s.Status != ParkingSlotStatus.NoSignal, ct);
+
+            return new OkObjectResult(new PeakOccupancyResponse
+            {
+                Period = Info(period),
+                Peak = peak,
+                At = peakAt,
+                Capacity = capacity
             });
         }
 

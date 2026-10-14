@@ -630,3 +630,155 @@ class _RingPainter extends CustomPainter {
       old.colorEnd != colorEnd ||
       old.track != track;
 }
+
+
+/// One named series for [AppSeriesBarChart].
+@immutable
+class AppSeries {
+  const AppSeries({required this.label, required this.values, required this.color});
+
+  final String label;
+
+  /// One value per category, in the order of the chart's labels.
+  final List<double> values;
+  final Color color;
+}
+
+/// Several series on one shared scale: side by side (in against out), or
+/// stacked into one bar (fees on top of fines).
+///
+/// Unlike [AppDualBarChart] the series are never rescaled, so bar heights can
+/// be compared directly. That is the point of putting two series together.
+class AppSeriesBarChart extends StatelessWidget {
+  const AppSeriesBarChart({
+    super.key,
+    required this.labels,
+    required this.series,
+    this.stacked = false,
+    this.valueLabel,
+    this.height = 240,
+  });
+
+  final List<String> labels;
+  final List<AppSeries> series;
+  final bool stacked;
+  final String Function(double value)? valueLabel;
+  final double height;
+
+  @override
+  Widget build(BuildContext context) {
+    final chrome = _ChartChrome(context);
+    final t = chrome.t;
+    final format = valueLabel ?? (v) => v.round().toString();
+
+    double at(AppSeries s, int i) => i < s.values.length ? s.values[i] : 0;
+    double total(int i) => series.fold(0.0, (sum, s) => sum + at(s, i));
+
+    final highest = labels.isEmpty
+        ? 0.0
+        : [
+            for (var i = 0; i < labels.length; i++)
+              stacked
+                  ? total(i)
+                  : series.map((s) => at(s, i)).fold(0.0, math.max),
+          ].reduce(math.max);
+
+    // A chart of nothing is a row of grey stumps with an axis that reads
+    // 1, 2, 3: it looks broken. Say so instead.
+    if (highest <= 0) {
+      return SizedBox(
+        height: height,
+        child: Center(
+          child: Text(
+            'Nothing recorded in this period',
+            style: chrome.text.bodySmall?.copyWith(color: t.text.tertiary),
+          ),
+        ),
+      );
+    }
+
+    final maxY = _niceMax(highest);
+    final interval = maxY / 4;
+    final categories = [
+      for (final l in labels) AppChartDatum(label: l, value: 0),
+    ];
+    final barWidth = labels.length > 20
+        ? 6.0
+        : stacked
+            ? 18.0
+            : labels.length > 10
+                ? 8.0
+                : 12.0;
+
+    return SizedBox(
+      height: height,
+      child: BarChart(
+        BarChartData(
+          maxY: maxY,
+          minY: 0,
+          alignment: BarChartAlignment.spaceAround,
+          groupsSpace: 2,
+          gridData: chrome.grid(interval),
+          borderData: FlBorderData(show: false),
+          titlesData: FlTitlesData(
+            leftTitles: chrome.valueAxis(interval, format),
+            bottomTitles: chrome.categoryAxis(categories, _labelEvery(labels.length)),
+            topTitles: _ChartChrome.hidden,
+            rightTitles: _ChartChrome.hidden,
+          ),
+          barTouchData: BarTouchData(
+            touchTooltipData: BarTouchTooltipData(
+              getTooltipColor: (_) => t.surface.inverse,
+              tooltipBorderRadius: AppRadii.smAll,
+              getTooltipItem: (group, groupIndex, rod, rodIndex) => BarTooltipItem(
+                [
+                  labels[groupIndex],
+                  for (final s in series) '${s.label} ${format(at(s, groupIndex))}',
+                ].join(' · '),
+                chrome.text.bodySmall!.copyWith(color: t.text.inverse),
+              ),
+            ),
+          ),
+          barGroups: [
+            for (var i = 0; i < labels.length; i++)
+              BarChartGroupData(
+                x: i,
+                barsSpace: 2,
+                barRods: stacked
+                    ? [
+                        () {
+                          var from = 0.0;
+                          final items = <BarChartRodStackItem>[];
+                          for (final s in series) {
+                            final to = from + at(s, i);
+                            items.add(BarChartRodStackItem(from, to, s.color));
+                            from = to;
+                          }
+                          return BarChartRodData(
+                            toY: from,
+                            width: barWidth,
+                            rodStackItems: items,
+                            borderRadius: const BorderRadius.vertical(
+                              top: Radius.circular(3),
+                            ),
+                          );
+                        }(),
+                      ]
+                    : [
+                        for (final s in series)
+                          BarChartRodData(
+                            toY: at(s, i),
+                            color: s.color,
+                            width: barWidth,
+                            borderRadius: const BorderRadius.vertical(
+                              top: Radius.circular(3),
+                            ),
+                          ),
+                      ],
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}

@@ -12,5 +12,7 @@ namespace AimPark.API.Interfaces
         Task<ActionResult<EntryExitReportResponse>> GetEntryExitReportAsync(ReportQuery query, CancellationToken ct);
         Task<ActionResult<ViolationBreakdownResponse>> GetViolationBreakdownAsync(ReportQuery? query, CancellationToken ct);
         Task<ActionResult<RevenueTrendResponse>> GetRevenueTrendAsync(ReportQuery query, CancellationToken ct);
+        Task<ActionResult<GateOutcomesResponse>> GetGateOutcomesAsync(ReportQuery query, CancellationToken ct);
+        Task<ActionResult<PeakOccupancyResponse>> GetPeakOccupancyAsync(ReportQuery query, CancellationToken ct);
     }
 }

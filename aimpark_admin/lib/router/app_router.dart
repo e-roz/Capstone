@@ -1,3 +1,4 @@
+import 'package:flutter/widgets.dart' show ValueKey;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:go_router/go_router.dart';
@@ -135,7 +136,15 @@ GoRouter appRouter(Ref ref) {
           ),
           GoRoute(
             path: '/gate-taps',
-            builder: (context, state) => const GateTapsScreen(),
+            // `?search=` opens it already filtered, which is how the
+            // investigation panel shows all of one card's or plate's taps.
+            builder: (context, state) {
+              final search = state.uri.queryParameters['search'];
+              return GateTapsScreen(
+                key: ValueKey(search),
+                initialSearch: search,
+              );
+            },
           ),
           GoRoute(
             path: '/payments',

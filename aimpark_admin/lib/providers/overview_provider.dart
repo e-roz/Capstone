@@ -8,6 +8,7 @@ import '../core/network/dio_client.dart';
 import '../core/utils/ph_time.dart';
 import '../models/gate_tap_event.dart';
 import '../models/incident.dart';
+import '../models/notification.dart';
 import '../models/report.dart';
 import '../models/violation.dart';
 
@@ -173,6 +174,8 @@ class FeedItem {
     required this.title,
     required this.detail,
     required this.route,
+    this.tap,
+    this.userId,
   });
 
   final FeedKind kind;
@@ -182,6 +185,13 @@ class FeedItem {
 
   /// Where the full list lives.
   final String route;
+
+  /// The refused tap, for a denial: the investigation panel opens on it.
+  final GateTapEvent? tap;
+
+  /// Whose violation it is. An incident has none to give: it records who
+  /// filed it, not whom it is about, so its row still goes to the list.
+  final String? userId;
 }
 
 /// How many things the feed shows. It is a nudge to go and look, not a log.
@@ -236,6 +246,7 @@ final overviewFeedProvider =
             ? '${t.cameraPlate ?? 'A plate'} on the card of ${t.personName ?? 'its holder'}'
             : t.rfidTagId ?? 'No card id',
         route: '/gate-taps',
+        tap: t,
       ),
     for (final i in incidents)
       if (period.contains(i.createdAt))
@@ -254,6 +265,7 @@ final overviewFeedProvider =
           title: 'Violation issued: ${v.policyRuleTitle}',
           detail: '${v.userFullName} · ${_words(v.status)}',
           route: '/violations',
+          userId: v.userId,
         ),
   ]..sort((a, b) => b.at.compareTo(a.at));
 
@@ -264,3 +276,22 @@ final overviewFeedProvider =
 String _words(String pascal) => pascal
     .replaceAllMapped(RegExp(r'(?<=[a-z])(?=[A-Z])'), (_) => ' ')
     .toLowerCase();
+
+
+/// The latest pushes the system raised on its own in the period: a violation
+/// issued, a card refused, a bill due. Titles are enough here; the full text
+/// is on the Notifications page.
+final overviewNotificationsProvider =
+    FutureProvider.autoDispose<List<NotificationItem>>((ref) async {
+  final period = ref.watch(overviewPeriodProvider);
+  final response = await ref.watch(dioProvider).get(
+    ApiEndpoints.systemNotifications,
+    queryParameters: {
+      'take': 8,
+      'from': ?period.fromUtc?.toIso8601String(),
+      'to': ?period.toUtc?.toIso8601String(),
+    },
+  );
+  return NotificationListPage.fromJson(response.data as Map<String, dynamic>)
+      .notifications;
+});

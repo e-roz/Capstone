@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
 import '../core/utils/ph_time.dart';
+import '../models/notification.dart';
 import '../models/parking_slot.dart';
 import '../models/report.dart';
 import '../providers/overview_provider.dart';
@@ -14,6 +15,10 @@ import '../theme/theme.dart';
 import '../widgets/parking/gate_status.dart';
 import '../widgets/ui/ui.dart';
 import '../models/site_link.dart';
+import '../models/investigation.dart';
+import '../widgets/investigation_panel.dart';
+import '../widgets/overview_search.dart';
+import '../widgets/period_picker.dart';
 
 final _money = NumberFormat.currency(symbol: '₱', decimalDigits: 0);
 final _clock = DateFormat('h:mm a');
@@ -41,6 +46,8 @@ class DashboardScreen extends ConsumerWidget {
       scrollable: true,
       badge: const _GuardPostBadge(),
       actions: [
+        const OverviewSearch(),
+        const SizedBox(width: AppSpacing.x2),
         IconButton(
           icon: const Icon(Icons.refresh),
           tooltip: 'Refresh',
@@ -48,12 +55,13 @@ class DashboardScreen extends ConsumerWidget {
             ref.invalidate(overviewSummaryProvider);
             ref.invalidate(overviewHoursProvider);
             ref.invalidate(overviewFeedProvider);
+            ref.invalidate(overviewNotificationsProvider);
             ref.invalidate(pendingRegistrationsProvider);
             ref.invalidate(activeParkingSessionsProvider);
           },
         ),
         const SizedBox(width: AppSpacing.x2),
-        const _PeriodPicker(),
+        PeriodPicker(provider: overviewPeriodProvider),
       ],
       body: AsyncView(
         value: ref.watch(overviewSummaryProvider),
@@ -75,9 +83,11 @@ class DashboardScreen extends ConsumerWidget {
               leftFlex: 5,
               rightFlex: 4,
               matchHeights: false,
-              left: const _ActiveSessionsCard(),
-              right: _PeriodCard(summary: summary),
+              left: const _FixedHeight(child: _ActiveSessionsCard()),
+              right: const _FixedHeight(child: _NotificationsCard()),
             ),
+            const SizedBox(height: AppSpacing.gutter),
+            _PeriodCard(summary: summary),
           ],
         ),
       ),
@@ -155,95 +165,6 @@ class _GuardPostBadge extends ConsumerWidget {
   }
 }
 
-/// One control for the whole history side of the page: a few shortcuts, a
-/// single day, or any range.
-class _PeriodPicker extends ConsumerWidget {
-  const _PeriodPicker();
-
-  static final _shortcuts = <(String, OverviewPeriod)>[
-    ('Today', OverviewPeriod.today),
-    ('Yesterday', const OverviewPeriod(OverviewPreset.yesterday)),
-    ('Last 7 days', const OverviewPeriod(OverviewPreset.last7)),
-    ('Last 30 days', const OverviewPeriod(OverviewPreset.last30)),
-    ('All time', const OverviewPeriod(OverviewPreset.allTime)),
-  ];
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final period = ref.watch(overviewPeriodProvider);
-    void set(OverviewPeriod p) => ref.read(overviewPeriodProvider.notifier).state = p;
-
-    return MenuAnchor(
-      menuChildren: [
-        for (final (label, p) in _shortcuts)
-          MenuItemButton(
-            leadingIcon: Icon(
-              p == period ? Icons.check : null,
-              size: AppSizes.iconSm,
-            ),
-            onPressed: () => set(p),
-            child: Text(label),
-          ),
-        const Divider(height: 1),
-        MenuItemButton(
-          leadingIcon: const Icon(Icons.today_outlined, size: AppSizes.iconSm),
-          onPressed: () async {
-            final day = await _pickDay(context, period);
-            if (day != null) {
-              set(OverviewPeriod(OverviewPreset.day, from: day, to: day));
-            }
-          },
-          child: const Text('Pick a day…'),
-        ),
-        MenuItemButton(
-          leadingIcon: const Icon(Icons.date_range_outlined, size: AppSizes.iconSm),
-          onPressed: () async {
-            final range = await _pickRange(context, period);
-            if (range != null) {
-              set(OverviewPeriod(OverviewPreset.range,
-                  from: range.start, to: range.end));
-            }
-          },
-          child: const Text('Custom range…'),
-        ),
-      ],
-      builder: (context, controller, _) => OutlinedButton.icon(
-        icon: const Icon(Icons.calendar_today_outlined, size: AppSizes.iconSm),
-        label: Text(period.label),
-        onPressed: () => controller.isOpen ? controller.close() : controller.open(),
-      ),
-    );
-  }
-
-  static DateTime get _today {
-    final m = manilaNow();
-    return DateTime(m.year, m.month, m.day);
-  }
-
-  static Future<DateTime?> _pickDay(BuildContext context, OverviewPeriod current) {
-    final today = _today;
-    final shown = current.days?.from ?? today;
-    return showDatePicker(
-      context: context,
-      initialDate: shown.isAfter(today) ? today : shown,
-      firstDate: DateTime(today.year - 5),
-      // A day that has not happened has nothing in it.
-      lastDate: today,
-    );
-  }
-
-  static Future<DateTimeRange?> _pickRange(BuildContext context, OverviewPeriod current) {
-    final today = _today;
-    final d = current.days;
-    return showDateRangePicker(
-      context: context,
-      firstDate: DateTime(today.year - 5),
-      lastDate: today,
-      initialDateRange: d == null ? null : DateTimeRange(start: d.from, end: d.to),
-    );
-  }
-}
-
 // ── Needs attention ──────────────────────────────────────────────────────────
 
 class _AttentionSection extends ConsumerWidget {
@@ -260,32 +181,41 @@ class _AttentionSection extends ConsumerWidget {
     final tiles = <_AttentionTile>[
       _AttentionTile(
         label: 'Registrations to review',
+        hint: 'Waiting on you',
+        icon: Icons.how_to_reg_outlined,
         value: pending == null ? '—' : '$pending',
         intent: (pending ?? 0) > 0 ? StatusIntent.warning : null,
         route: '/pending',
       ),
       _AttentionTile(
         label: 'Open incidents',
+        hint: 'Reports not yet closed',
+        icon: Icons.report_problem_outlined,
         value: '${summary.openIncidents}',
         intent: summary.openIncidents > 0 ? StatusIntent.danger : null,
         route: '/incidents',
       ),
       _AttentionTile(
-        label: 'Unpaid fees, total',
+        label: 'Unpaid fees',
+        hint: 'Parking fees owed',
+        icon: Icons.receipt_long_outlined,
         value: _money.format(summary.feesPending),
-        intent: summary.feesPending > 0 ? StatusIntent.info : null,
+        intent: summary.feesPending > 0 ? StatusIntent.accent : null,
         route: '/payments',
       ),
       _AttentionTile(
-        label: 'Unpaid fines, total',
+        label: 'Unpaid fines',
+        hint: 'Violation penalties owed',
+        icon: Icons.gavel_outlined,
         value: _money.format(summary.finesPending),
-        intent: summary.finesPending > 0 ? StatusIntent.info : null,
+        intent: summary.finesPending > 0 ? StatusIntent.warning : null,
         route: '/payments',
       ),
       _AttentionTile(
         label: 'Serious denials today',
         value: '${summary.seriousDenialsToday}',
-        hint: 'Unknown card or plate mismatch',
+        hint: 'Unknown card or wrong plate',
+        icon: Icons.block,
         intent: summary.seriousDenialsToday > 0 ? StatusIntent.danger : null,
         route: '/gate-taps',
       ),
@@ -296,28 +226,35 @@ class _AttentionSection extends ConsumerWidget {
       children: [
         Row(
           children: [
-            Text('NEEDS ATTENTION',
-                style: text.labelSmall?.copyWith(color: t.text.secondary)),
+            Text(
+              'NEEDS ATTENTION',
+              style: text.labelSmall?.copyWith(color: t.text.secondary),
+            ),
             const Spacer(),
-            Text('Live, not affected by the date',
-                style: text.labelSmall?.copyWith(color: t.text.tertiary)),
+            Text(
+              'Live, not affected by the date',
+              style: text.labelSmall?.copyWith(color: t.text.tertiary),
+            ),
           ],
         ),
         const SizedBox(height: AppSpacing.x2),
-        LayoutBuilder(builder: (context, constraints) {
-          final columns = constraints.maxWidth > 1100
-              ? 5
-              : constraints.maxWidth > 760
-                  ? 3
-                  : 2;
-          final width =
-              (constraints.maxWidth - AppSpacing.gutter * (columns - 1)) / columns;
-          return Wrap(
-            spacing: AppSpacing.gutter,
-            runSpacing: AppSpacing.gutter,
-            children: [for (final tile in tiles) tile.sized(width)],
-          );
-        }),
+        LayoutBuilder(
+          builder: (context, constraints) {
+            final columns = constraints.maxWidth > 1100
+                ? 5
+                : constraints.maxWidth > 760
+                ? 3
+                : 2;
+            final width =
+                (constraints.maxWidth - AppSpacing.gutter * (columns - 1)) /
+                columns;
+            return Wrap(
+              spacing: AppSpacing.gutter,
+              runSpacing: AppSpacing.gutter,
+              children: [for (final tile in tiles) tile.sized(width)],
+            );
+          },
+        ),
       ],
     );
   }
@@ -328,7 +265,8 @@ class _AttentionTile extends StatelessWidget {
     required this.label,
     required this.value,
     required this.route,
-    this.hint,
+    required this.hint,
+    required this.icon,
     this.intent,
     this.width,
   });
@@ -336,70 +274,86 @@ class _AttentionTile extends StatelessWidget {
   final String label;
   final String value;
   final String route;
-  final String? hint;
+  final String hint;
+  final IconData icon;
 
-  /// Null when there is nothing to do: the tile stays quiet.
+  /// Null when there is nothing to do: the tile turns green.
   final StatusIntent? intent;
   final double? width;
 
   _AttentionTile sized(double w) => _AttentionTile(
-        label: label,
-        value: value,
-        route: route,
-        hint: hint,
-        intent: intent,
-        width: w,
-      );
+    label: label,
+    value: value,
+    route: route,
+    hint: hint,
+    icon: icon,
+    intent: intent,
+    width: w,
+  );
 
   @override
   Widget build(BuildContext context) {
     final t = context.tokens;
     final text = Theme.of(context).textTheme;
-    final colors = intent == null ? null : t.status.of(intent!);
+    final active = intent != null;
+    // Nothing to do reads as good news, not as a blank.
+    final colors = t.status.of(intent ?? StatusIntent.success);
 
     return AppCard(
       width: width,
       onTap: () => context.go(route),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Container(
-                width: 8,
-                height: 8,
-                decoration: BoxDecoration(
-                  color: colors?.solid ?? t.border.strong,
-                  shape: BoxShape.circle,
-                ),
+      selected: active,
+      accentColor: colors.border,
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(minHeight: 72),
+        child: Row(
+          children: [
+            Container(
+              width: 44,
+              height: 44,
+              decoration: BoxDecoration(
+                color: colors.bg,
+                borderRadius: AppRadii.smAll,
+                border: Border.all(color: colors.border),
               ),
-              const SizedBox(width: AppSpacing.x2),
-              Expanded(
-                child: Text(
-                  label,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: text.bodySmall?.copyWith(color: t.text.secondary),
-                ),
+              child: Icon(active ? icon : Icons.check, color: colors.fg),
+            ),
+            const SizedBox(width: AppSpacing.x3),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: text.bodySmall?.copyWith(color: t.text.secondary),
+                  ),
+                  Text(
+                    value,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: AppTypography.tabular(
+                      text.headlineSmall!,
+                    ).copyWith(color: active ? colors.fg : t.text.primary),
+                  ),
+                  Text(
+                    hint,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: text.labelSmall?.copyWith(color: t.text.tertiary),
+                  ),
+                ],
               ),
-              Icon(Icons.chevron_right,
-                  size: AppSizes.iconMd, color: t.text.tertiary),
-            ],
-          ),
-          const SizedBox(height: AppSpacing.x2),
-          Text(
-            value,
-            style: AppTypography.tabular(text.headlineSmall!)
-                .copyWith(color: colors?.fg ?? t.text.primary),
-          ),
-          if (hint != null) ...[
-            const SizedBox(height: 2),
-            Text(hint!,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: text.labelSmall?.copyWith(color: t.text.tertiary)),
+            ),
+            Icon(
+              Icons.chevron_right,
+              size: AppSizes.iconMd,
+              color: t.text.tertiary,
+            ),
           ],
-        ],
+        ),
       ),
     );
   }
@@ -426,8 +380,10 @@ class _LiveBaysCard extends ConsumerWidget {
     final fourWheelUsed = summary.usableFourWheel - summary.freeFourWheel;
     final motorcycleUsed = summary.usableMotorcycle - summary.freeMotorcycle;
     final noteParts = [
-      if (summary.noSignalSlots > 0) '${summary.noSignalSlots} with no sensor signal',
-      if (summary.outOfServiceSlots > 0) '${summary.outOfServiceSlots} out of service',
+      if (summary.noSignalSlots > 0)
+        '${summary.noSignalSlots} with no sensor signal',
+      if (summary.outOfServiceSlots > 0)
+        '${summary.outOfServiceSlots} out of service',
     ];
 
     return AppCard(
@@ -439,10 +395,16 @@ class _LiveBaysCard extends ConsumerWidget {
               Text('Live bays', style: text.titleMedium),
               const Spacer(),
               if (stale)
-                StatusPill.of('Last known', intent: StatusIntent.warning, dense: true)
+                StatusPill.of(
+                  'Last known',
+                  intent: StatusIntent.warning,
+                  dense: true,
+                )
               else if (heard != null)
-                Text('Updated ${_clock.format(manila(heard))}',
-                    style: text.labelSmall?.copyWith(color: t.text.tertiary)),
+                Text(
+                  'Updated ${_clock.format(manila(heard))}',
+                  style: text.labelSmall?.copyWith(color: t.text.tertiary),
+                ),
             ],
           ),
           const SizedBox(height: AppSpacing.x3),
@@ -451,8 +413,9 @@ class _LiveBaysCard extends ConsumerWidget {
               children: [
                 TextSpan(
                   text: '${summary.availableSlots}',
-                  style: AppTypography.tabular(text.displaySmall!)
-                      .copyWith(color: stale ? t.text.tertiary : t.text.primary),
+                  style: AppTypography.tabular(text.displaySmall!).copyWith(
+                    color: stale ? t.text.tertiary : t.status.success.fg,
+                  ),
                 ),
                 TextSpan(
                   text: '  free · ${summary.occupiedSlots} occupied',
@@ -480,8 +443,10 @@ class _LiveBaysCard extends ConsumerWidget {
             ),
           if (noteParts.isNotEmpty) ...[
             const SizedBox(height: AppSpacing.x3),
-            Text(noteParts.join(' · '),
-                style: text.labelSmall?.copyWith(color: t.text.tertiary)),
+            Text(
+              noteParts.join(' · '),
+              style: text.labelSmall?.copyWith(color: t.text.tertiary),
+            ),
           ],
           if (link != null && link.devices.isNotEmpty) ...[
             const SizedBox(height: AppSpacing.x4),
@@ -527,11 +492,17 @@ class _BayBar extends StatelessWidget {
       children: [
         Row(
           children: [
-            Text(label, style: text.bodySmall?.copyWith(color: t.text.secondary)),
+            Text(
+              label,
+              style: text.bodySmall?.copyWith(color: t.text.secondary),
+            ),
             const Spacer(),
-            Text('$free free · $used occupied',
-                style: AppTypography.tabular(text.bodySmall!)
-                    .copyWith(color: t.text.secondary)),
+            Text(
+              '$free free · $used occupied',
+              style: AppTypography.tabular(
+                text.bodySmall!,
+              ).copyWith(color: t.text.secondary),
+            ),
           ],
         ),
         const SizedBox(height: 4),
@@ -541,7 +512,14 @@ class _BayBar extends StatelessWidget {
             value: ratio,
             minHeight: 8,
             backgroundColor: t.surface.muted,
-            color: muted ? t.text.tertiary : t.chart.series(0),
+            // The bar is how full the lot is: it warms up as it fills.
+            color: muted
+                ? t.text.tertiary
+                : ratio >= 0.9
+                ? t.status.danger.solid
+                : ratio >= 0.7
+                ? t.status.warning.solid
+                : t.brand.primary,
           ),
         ),
       ],
@@ -566,8 +544,10 @@ class _GateRow extends StatelessWidget {
       padding: const EdgeInsets.only(bottom: AppSpacing.x1),
       child: Row(
         children: [
-          Text('Gate $gate',
-              style: text.bodySmall?.copyWith(color: t.text.secondary)),
+          Text(
+            'Gate $gate',
+            style: text.bodySmall?.copyWith(color: t.text.secondary),
+          ),
           const Spacer(),
           _DeviceDot(label: 'Reader', ok: status.reader),
           const SizedBox(width: AppSpacing.x3),
@@ -630,8 +610,10 @@ class _ActivityCard extends ConsumerWidget {
             children: [
               Text('Recent activity', style: text.titleMedium),
               const SizedBox(width: AppSpacing.x2),
-              Text(period.label,
-                  style: text.labelSmall?.copyWith(color: t.text.tertiary)),
+              Text(
+                period.label,
+                style: text.labelSmall?.copyWith(color: t.text.tertiary),
+              ),
               const Spacer(),
               TextButton(
                 onPressed: () => context.go('/gate-taps'),
@@ -645,14 +627,11 @@ class _ActivityCard extends ConsumerWidget {
             onRetry: () => ref.invalidate(overviewFeedProvider),
             loading: const SkeletonList(count: 4),
             isEmpty: (items) => items.isEmpty,
-            empty: const Padding(
-              padding: EdgeInsets.symmetric(vertical: AppSpacing.x6),
-              child: AppEmptyState(
-                icon: Icons.check_circle_outline,
-                title: 'Nothing needs a look',
-                message:
-                    'Serious denials, new incidents and new violations in this period show up here.',
-              ),
+            empty: const _QuietEmpty(
+              icon: Icons.check_circle_outline,
+              title: 'Nothing needs a look',
+              message:
+                  'Serious denials, new incidents and new violations in this period show up here.',
             ),
             data: (items) => Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -670,14 +649,41 @@ class _FeedRow extends StatelessWidget {
 
   final FeedItem item;
 
+  /// A refused tap or a violation opens the panel on whoever it concerns. An
+  /// incident has nobody to open, so it goes to its list.
+  void _open(BuildContext context) {
+    final tap = item.tap;
+    final userId = item.userId;
+    if (tap != null) {
+      showInvestigationPanel(
+        context,
+        tap: tap,
+        subject: InvestigationSubject.ofTap(tap),
+      );
+    } else if (userId != null) {
+      showInvestigationPanel(
+        context,
+        subject: InvestigationSubject(userId: userId),
+        title: item.detail.split(' · ').first,
+      );
+    } else {
+      context.go(item.route);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final t = context.tokens;
     final text = Theme.of(context).textTheme;
-    final color = switch (item.kind) {
-      FeedKind.denial => t.status.danger.solid,
-      FeedKind.incident || FeedKind.violation => t.status.warning.solid,
+    final (intent, icon) = switch (item.kind) {
+      FeedKind.denial => (StatusIntent.danger, Icons.block),
+      FeedKind.incident => (
+        StatusIntent.warning,
+        Icons.report_problem_outlined,
+      ),
+      FeedKind.violation => (StatusIntent.accent, Icons.gavel_outlined),
     };
+    final c = t.status.of(intent);
 
     final at = manila(item.at);
     final now = manilaNow();
@@ -685,7 +691,7 @@ class _FeedRow extends StatelessWidget {
         at.year == now.year && at.month == now.month && at.day == now.day;
 
     return InkWell(
-      onTap: () => context.go(item.route),
+      onTap: () => _open(context),
       borderRadius: AppRadii.smAll,
       child: Container(
         padding: const EdgeInsets.symmetric(vertical: AppSpacing.x3),
@@ -696,10 +702,14 @@ class _FeedRow extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Container(
-              width: 8,
-              height: 8,
-              margin: const EdgeInsets.only(top: 6),
-              decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+              width: 32,
+              height: 32,
+              decoration: BoxDecoration(
+                color: c.bg,
+                shape: BoxShape.circle,
+                border: Border.all(color: c.border),
+              ),
+              child: Icon(icon, size: AppSizes.iconSm, color: c.fg),
             ),
             const SizedBox(width: AppSpacing.x3),
             Expanded(
@@ -707,10 +717,12 @@ class _FeedRow extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(item.title, style: text.bodyMedium),
-                  Text(item.detail,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: text.bodySmall?.copyWith(color: t.text.secondary)),
+                  Text(
+                    item.detail,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: text.bodySmall?.copyWith(color: t.text.secondary),
+                  ),
                 ],
               ),
             ),
@@ -746,8 +758,10 @@ class _ActiveSessionsCard extends ConsumerWidget {
               Text('Active sessions', style: text.titleMedium),
               const SizedBox(width: AppSpacing.x2),
               if (async.valueOrNull != null)
-                Text('${async.valueOrNull!.length} on site',
-                    style: text.labelSmall?.copyWith(color: t.text.tertiary)),
+                Text(
+                  '${async.valueOrNull!.length} on site',
+                  style: text.labelSmall?.copyWith(color: t.text.tertiary),
+                ),
               const Spacer(),
               TextButton(
                 onPressed: () => context.go('/parking-logs'),
@@ -756,24 +770,25 @@ class _ActiveSessionsCard extends ConsumerWidget {
             ],
           ),
           const SizedBox(height: AppSpacing.x2),
-          AsyncView(
-            value: async,
-            onRetry: () => ref.invalidate(activeParkingSessionsProvider),
-            loading: const SkeletonList(count: 4),
-            isEmpty: (sessions) => sessions.isEmpty,
-            empty: const Padding(
-              padding: EdgeInsets.symmetric(vertical: AppSpacing.x6),
-              child: AppEmptyState(
-                icon: Icons.local_parking_outlined,
-                title: 'No vehicles on site',
-                message: 'Vehicles that are inside right now appear here.',
+          Expanded(
+            child: SingleChildScrollView(
+              child: AsyncView(
+                value: async,
+                onRetry: () => ref.invalidate(activeParkingSessionsProvider),
+                loading: const SkeletonList(count: 4),
+                isEmpty: (sessions) => sessions.isEmpty,
+                empty: const _QuietEmpty(
+                  icon: Icons.local_parking_outlined,
+                  title: 'No vehicles on site',
+                  message: 'Vehicles that are inside right now appear here.',
+                ),
+                data: (sessions) => Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    for (final s in sessions.take(6)) _SessionRow(session: s),
+                  ],
+                ),
               ),
-            ),
-            data: (sessions) => Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                for (final s in sessions.take(6)) _SessionRow(session: s),
-              ],
             ),
           ),
         ],
@@ -804,20 +819,152 @@ class _SessionRow extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(session.plateNumber ?? '—', style: text.bodyMedium),
-                Text(session.userName,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: text.bodySmall?.copyWith(color: t.text.secondary)),
+                Text(
+                  session.userName,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: text.bodySmall?.copyWith(color: t.text.secondary),
+                ),
               ],
             ),
           ),
-          Text('Entered ${_clock.format(manila(session.entryTime))}',
-              style: text.labelSmall?.copyWith(color: t.text.tertiary)),
+          Text(
+            'Entered ${_clock.format(manila(session.entryTime))}',
+            style: text.labelSmall?.copyWith(color: t.text.tertiary),
+          ),
           const SizedBox(width: AppSpacing.x3),
           StatusPill.of(
             session.isVisitor ? 'Visitor' : 'Resident',
             intent: session.isVisitor ? StatusIntent.accent : StatusIntent.info,
             dense: true,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ── Notifications ────────────────────────────────────────────────────────────
+
+/// What the system has pushed on its own, newest first: a violation issued, a
+/// card refused, a bill due. Titles only. It follows the period like the feed
+/// does, and says plainly when the system has sent nothing.
+class _NotificationsCard extends ConsumerWidget {
+  const _NotificationsCard();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final t = context.tokens;
+    final text = Theme.of(context).textTheme;
+    final period = ref.watch(overviewPeriodProvider);
+
+    return AppCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              Text('Notifications', style: text.titleMedium),
+              const SizedBox(width: AppSpacing.x2),
+              Text(period.label,
+                  style: text.labelSmall?.copyWith(color: t.text.tertiary)),
+              const Spacer(),
+              TextButton(
+                onPressed: () => context.go('/notifications'),
+                child: const Text('Open'),
+              ),
+            ],
+          ),
+          const SizedBox(height: AppSpacing.x2),
+          Expanded(
+            child: SingleChildScrollView(
+              child: AsyncView(
+                value: ref.watch(overviewNotificationsProvider),
+                onRetry: () => ref.invalidate(overviewNotificationsProvider),
+                loading: const SkeletonList(count: 4),
+                isEmpty: (items) => items.isEmpty,
+                empty: const _QuietEmpty(
+                  icon: Icons.notifications_none,
+                  title: 'No pushes sent',
+                  message: 'Violations, refused cards and reminders the system pushes show up here.',
+                ),
+                data: (items) => Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [for (final n in items) _NotificationRow(item: n)],
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _NotificationRow extends StatelessWidget {
+  const _NotificationRow({required this.item});
+
+  final NotificationItem item;
+
+  /// Each kind of push has its own colour and icon, so the list can be scanned
+  /// by colour before it is read.
+  static (StatusIntent, IconData, String) _look(String type) => switch (type) {
+        'Violation' => (StatusIntent.warning, Icons.gavel_outlined, 'Violation'),
+        'Payment' => (StatusIntent.success, Icons.payments_outlined, 'Payment'),
+        'Parking' => (StatusIntent.info, Icons.local_parking_outlined, 'Parking'),
+        'Incident' => (StatusIntent.danger, Icons.report_problem_outlined, 'Incident'),
+        'Reminder' => (StatusIntent.accent, Icons.schedule, 'Reminder'),
+        'Account' => (StatusIntent.info, Icons.person_outline, 'Account'),
+        'ParkingAvailability' => (StatusIntent.success, Icons.local_parking_outlined, 'Availability'),
+        'PolicyUpdate' => (StatusIntent.accent, Icons.rule, 'Policy'),
+        'System' => (StatusIntent.warning, Icons.settings_outlined, 'System'),
+        _ => (StatusIntent.neutral, Icons.notifications_none, 'Notice'),
+      };
+
+  @override
+  Widget build(BuildContext context) {
+    final t = context.tokens;
+    final text = Theme.of(context).textTheme;
+    final (intent, icon, label) = _look(item.type);
+    final c = t.status.of(intent);
+
+    final at = manila(item.createdAt);
+    final now = manilaNow();
+    final sameDay =
+        at.year == now.year && at.month == now.month && at.day == now.day;
+
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: AppSpacing.x2),
+      decoration: BoxDecoration(
+        border: Border(top: BorderSide(color: t.border.subtle)),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 32,
+            height: 32,
+            decoration: BoxDecoration(
+              color: c.bg,
+              shape: BoxShape.circle,
+              border: Border.all(color: c.border),
+            ),
+            child: Icon(icon, size: AppSizes.iconSm, color: c.fg),
+          ),
+          const SizedBox(width: AppSpacing.x3),
+          Expanded(
+            child: Text(
+              item.title,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: text.bodyMedium,
+            ),
+          ),
+          const SizedBox(width: AppSpacing.x2),
+          StatusPill.of(label, intent: intent, dense: true, showDot: false),
+          const SizedBox(width: AppSpacing.x2),
+          Text(
+            sameDay ? _clock.format(at) : _dayAndClock.format(at),
+            style: text.labelSmall?.copyWith(color: t.text.tertiary),
           ),
         ],
       ),
@@ -848,8 +995,10 @@ class _PeriodCard extends ConsumerWidget {
             children: [
               Text('This period', style: text.titleMedium),
               const Spacer(),
-              Text(period.label,
-                  style: text.labelSmall?.copyWith(color: t.text.tertiary)),
+              Text(
+                period.label,
+                style: text.labelSmall?.copyWith(color: t.text.tertiary),
+              ),
             ],
           ),
           const SizedBox(height: AppSpacing.x3),
@@ -857,25 +1006,37 @@ class _PeriodCard extends ConsumerWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Expanded(
-                child: _Stat(label: 'Sessions', value: '${summary.sessionsInPeriod}'),
+                child: _Stat(
+                  label: 'Sessions',
+                  value: '${summary.sessionsInPeriod}',
+                  tone: StatusIntent.info,
+                ),
               ),
               Expanded(
                 child: _Stat(
                   label: 'Collected',
                   value: _money.format(summary.revenueCollected),
+                  tone: StatusIntent.success,
                   caption:
                       'fees ${_money.format(summary.feesCollected)} · fines ${_money.format(summary.finesCollected)}',
                 ),
               ),
               Expanded(
                 child: _Stat(
-                    label: 'Violations issued', value: '${summary.violationsIssued}'),
+                  label: 'Violations issued',
+                  value: '${summary.violationsIssued}',
+                  tone: summary.violationsIssued > 0
+                      ? StatusIntent.warning
+                      : StatusIntent.neutral,
+                ),
               ),
             ],
           ),
           const SizedBox(height: AppSpacing.x4),
-          Text('ENTRIES BY HOUR',
-              style: text.labelSmall?.copyWith(color: t.text.secondary)),
+          Text(
+            'ENTRIES BY HOUR',
+            style: text.labelSmall?.copyWith(color: t.text.secondary),
+          ),
           const SizedBox(height: AppSpacing.x2),
           AsyncView(
             value: ref.watch(overviewHoursProvider),
@@ -905,21 +1066,27 @@ class _PeriodCard extends ConsumerWidget {
   static String _hourLabel(int h) => h == 0
       ? '12a'
       : h < 12
-          ? '${h}a'
-          : h == 12
-              ? '12p'
-              : '${h - 12}p';
+      ? '${h}a'
+      : h == 12
+      ? '12p'
+      : '${h - 12}p';
 
   static String _hourFull(int h) =>
       DateFormat('h:00 a').format(DateTime(2000, 1, 1, h));
 }
 
 class _Stat extends StatelessWidget {
-  const _Stat({required this.label, required this.value, this.caption});
+  const _Stat({
+    required this.label,
+    required this.value,
+    required this.tone,
+    this.caption,
+  });
 
   final String label;
   final String value;
   final String? caption;
+  final StatusIntent tone;
 
   @override
   Widget build(BuildContext context) {
@@ -931,11 +1098,81 @@ class _Stat extends StatelessWidget {
       children: [
         Text(label, style: text.bodySmall?.copyWith(color: t.text.secondary)),
         const SizedBox(height: 2),
-        Text(value, style: AppTypography.tabular(text.titleLarge!)),
+        Text(
+          value,
+          style: AppTypography.tabular(text.titleLarge!).copyWith(
+            color: tone == StatusIntent.neutral
+                ? t.text.primary
+                : t.status.of(tone).fg,
+          ),
+        ),
         if (caption != null)
-          Text(caption!,
-              style: text.labelSmall?.copyWith(color: t.text.tertiary)),
+          Text(
+            caption!,
+            style: text.labelSmall?.copyWith(color: t.text.tertiary),
+          ),
       ],
+    );
+  }
+}
+
+/// Gives the bottom two cards one height. They hold a list and a chart, which
+/// cannot be stretched to match (see [_TwoUp.matchHeights]), so both are simply
+/// the same size.
+class _FixedHeight extends StatelessWidget {
+  const _FixedHeight({required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) => SizedBox(height: 400, child: child);
+}
+
+/// The empty state for a card. A plain column on purpose: the shared
+/// [AppEmptyState] centres itself, which an [IntrinsicHeight] row measures too
+/// small, and the card overflowed.
+class _QuietEmpty extends StatelessWidget {
+  const _QuietEmpty({
+    required this.icon,
+    required this.title,
+    required this.message,
+  });
+
+  final IconData icon;
+  final String title;
+  final String message;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = context.tokens;
+    final text = Theme.of(context).textTheme;
+    final c = t.status.success;
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: AppSpacing.x6),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 52,
+            height: 52,
+            decoration: BoxDecoration(
+              color: c.bg,
+              shape: BoxShape.circle,
+              border: Border.all(color: c.border),
+            ),
+            child: Icon(icon, color: c.fg),
+          ),
+          const SizedBox(height: AppSpacing.x3),
+          Text(title, style: text.titleSmall),
+          const SizedBox(height: AppSpacing.x1),
+          Text(
+            message,
+            textAlign: TextAlign.center,
+            style: text.bodySmall?.copyWith(color: t.text.secondary),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -978,8 +1215,9 @@ class _TwoUp extends StatelessWidget {
           );
         }
         final row = Row(
-          crossAxisAlignment:
-              matchHeights ? CrossAxisAlignment.stretch : CrossAxisAlignment.start,
+          crossAxisAlignment: matchHeights
+              ? CrossAxisAlignment.stretch
+              : CrossAxisAlignment.start,
           children: [
             Expanded(flex: leftFlex, child: left),
             const SizedBox(width: AppSpacing.gutter),

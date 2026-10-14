@@ -62,6 +62,54 @@ namespace AimPark.API.DTOs
         /// taps are routine and not counted.
         /// </summary>
         public int SeriousDenialsToday { get; set; }
+
+        /// <summary>
+        /// The same figures for the stretch of days just before this one, of
+        /// equal length, so a number can say whether it went up. Null for all
+        /// time: there is nothing before it.
+        /// </summary>
+        public PreviousPeriodTotals? Previous { get; set; }
+    }
+
+    public class PreviousPeriodTotals
+    {
+        public int SessionsInPeriod { get; set; }
+        public decimal RevenueCollected { get; set; }
+        public int ViolationsIssued { get; set; }
+    }
+
+    /// <summary>
+    /// What happened at the gate readers over a period. Manual opens are left
+    /// out: a guard opening the barrier is neither the reader working nor
+    /// failing.
+    /// </summary>
+    public class GateOutcomesResponse
+    {
+        public ReportPeriodInfo Period { get; set; } = new();
+        public int Entered { get; set; }
+        public int Exited { get; set; }
+
+        /// <summary>Refused: the camera read a plate that is not the card holder's.</summary>
+        public int PlateMismatch { get; set; }
+
+        /// <summary>Refused: a card nobody holds.</summary>
+        public int UnknownCard { get; set; }
+
+        /// <summary>Refused for a reason that needs no look: a full lot, a double tap, no camera reading.</summary>
+        public int RoutineRefusals { get; set; }
+    }
+
+    /// <summary>The most cars inside at once over a period, and when.</summary>
+    public class PeakOccupancyResponse
+    {
+        public ReportPeriodInfo Period { get; set; } = new();
+        public int Peak { get; set; }
+
+        /// <summary>When the peak was first reached, in UTC. Null when nothing was parked.</summary>
+        public DateTime? At { get; set; }
+
+        /// <summary>Bays a car could use right now, for "n of capacity".</summary>
+        public int Capacity { get; set; }
     }
 
     /// <summary>The Philippine days a report covers, and how it was cut.</summary>

@@ -58,6 +58,23 @@ namespace AimPark.API.Controllers
             [FromQuery] bool allTime = false, CancellationToken ct = default)
             => _reportService.GetPeakHoursAsync(new ReportQuery(days, from, to, allTime), ct);
 
+        /// <summary>
+        /// Entered, exited and turned away at the gate readers, with the refusals
+        /// split by whether they need a look.
+        /// </summary>
+        [HttpGet("gate-outcomes")]
+        public Task<ActionResult<GateOutcomesResponse>> GetGateOutcomes(
+            [FromQuery] int days = 14, [FromQuery] DateOnly? from = null, [FromQuery] DateOnly? to = null,
+            [FromQuery] bool allTime = false, CancellationToken ct = default)
+            => _reportService.GetGateOutcomesAsync(new ReportQuery(days, from, to, allTime), ct);
+
+        /// <summary>The most cars inside at once over the period, and when.</summary>
+        [HttpGet("peak-occupancy")]
+        public Task<ActionResult<PeakOccupancyResponse>> GetPeakOccupancy(
+            [FromQuery] int days = 14, [FromQuery] DateOnly? from = null, [FromQuery] DateOnly? to = null,
+            [FromQuery] bool allTime = false, CancellationToken ct = default)
+            => _reportService.GetPeakOccupancyAsync(new ReportQuery(days, from, to, allTime), ct);
+
         [HttpGet("violations-breakdown")]
         public Task<ActionResult<ViolationBreakdownResponse>> GetViolationsBreakdown(
             [FromQuery] int? days, [FromQuery] DateOnly? from, [FromQuery] DateOnly? to,

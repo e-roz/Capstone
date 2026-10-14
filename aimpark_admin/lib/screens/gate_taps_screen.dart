@@ -45,7 +45,10 @@ const _plateChecks = [
 /// For Security it is live, the same way Parking Logs is: today refreshes
 /// itself and a new tap is lit for a moment; an earlier day does not.
 class GateTapsScreen extends ConsumerStatefulWidget {
-  const GateTapsScreen({super.key});
+  const GateTapsScreen({super.key, this.initialSearch});
+
+  /// Starts the search box with this, e.g. a card or plate from the Overview.
+  final String? initialSearch;
 
   @override
   ConsumerState<GateTapsScreen> createState() => _GateTapsScreenState();
@@ -53,6 +56,19 @@ class GateTapsScreen extends ConsumerStatefulWidget {
 
 class _GateTapsScreenState extends ConsumerState<GateTapsScreen>
     with FreshRows {
+  @override
+  void initState() {
+    super.initState();
+    final search = widget.initialSearch;
+    if (search != null && search.isNotEmpty) {
+      Future.microtask(() {
+        if (mounted) {
+          ref.read(gateTapsQueryNotifierProvider.notifier).setSearch(search);
+        }
+      });
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final query = ref.watch(gateTapsQueryNotifierProvider);
@@ -102,7 +118,7 @@ class _GateTapsScreenState extends ConsumerState<GateTapsScreen>
         toolbar: AppToolbar(
           search: AppSearchField(
             hint: 'Search name, card or plate',
-            initialValue: query.search,
+            initialValue: query.search ?? widget.initialSearch,
             onChanged: notifier.setSearch,
           ),
           filters: [

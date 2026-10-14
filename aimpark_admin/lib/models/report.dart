@@ -40,6 +40,10 @@ class ReportsSummary {
   /// Refusals today that need a look: an unknown card or a plate mismatch.
   final int seriousDenialsToday;
 
+  /// The stretch just before the period, of the same length. Null for all
+  /// time, where there is nothing before it.
+  final PreviousTotals? previous;
+
   const ReportsSummary({
     required this.totalUsers,
     required this.activeUsers,
@@ -64,6 +68,7 @@ class ReportsSummary {
     required this.violationsIssued,
     required this.openIncidents,
     this.seriousDenialsToday = 0,
+    this.previous,
   });
 
   /// Bays that could actually take a car right now — the denominator for any
@@ -102,7 +107,89 @@ class ReportsSummary {
         openIncidents: (json['openIncidents'] as num?)?.toInt() ?? 0,
         seriousDenialsToday:
             (json['seriousDenialsToday'] as num?)?.toInt() ?? 0,
+        previous: json['previous'] == null
+            ? null
+            : PreviousTotals.fromJson(json['previous'] as Map<String, dynamic>),
       );
+}
+
+/// What the period before looked like, so a figure can say whether it moved.
+class PreviousTotals {
+  final int sessionsInPeriod;
+  final double revenueCollected;
+  final int violationsIssued;
+
+  const PreviousTotals({
+    required this.sessionsInPeriod,
+    required this.revenueCollected,
+    required this.violationsIssued,
+  });
+
+  factory PreviousTotals.fromJson(Map<String, dynamic> json) => PreviousTotals(
+        sessionsInPeriod: (json['sessionsInPeriod'] as num?)?.toInt() ?? 0,
+        revenueCollected: (json['revenueCollected'] as num?)?.toDouble() ?? 0,
+        violationsIssued: (json['violationsIssued'] as num?)?.toInt() ?? 0,
+      );
+}
+
+/// What happened at the gate readers over a period. Manual opens are left out.
+class GateOutcomes {
+  final int entered;
+  final int exited;
+
+  /// Refused: the camera read a plate that is not the card holder's.
+  final int plateMismatch;
+
+  /// Refused: a card nobody holds.
+  final int unknownCard;
+
+  /// Refused for a reason that needs no look: a full lot, a double tap, no
+  /// camera reading.
+  final int routineRefusals;
+
+  const GateOutcomes({
+    required this.entered,
+    required this.exited,
+    required this.plateMismatch,
+    required this.unknownCard,
+    required this.routineRefusals,
+  });
+
+  /// The refusals worth a look. The Overview's "serious denials".
+  int get serious => plateMismatch + unknownCard;
+
+  factory GateOutcomes.fromJson(Map<String, dynamic> json) => GateOutcomes(
+        entered: (json['entered'] as num?)?.toInt() ?? 0,
+        exited: (json['exited'] as num?)?.toInt() ?? 0,
+        plateMismatch: (json['plateMismatch'] as num?)?.toInt() ?? 0,
+        unknownCard: (json['unknownCard'] as num?)?.toInt() ?? 0,
+        routineRefusals: (json['routineRefusals'] as num?)?.toInt() ?? 0,
+      );
+}
+
+/// The most cars inside at once over a period, and when (UTC).
+class PeakOccupancy {
+  final int peak;
+  final DateTime? at;
+
+  /// Bays a car could use right now.
+  final int capacity;
+
+  const PeakOccupancy({required this.peak, required this.at, required this.capacity});
+
+  factory PeakOccupancy.fromJson(Map<String, dynamic> json) => PeakOccupancy(
+        peak: (json['peak'] as num?)?.toInt() ?? 0,
+        at: json['at'] == null ? null : DateTime.parse(json['at'].toString()),
+        capacity: (json['capacity'] as num?)?.toInt() ?? 0,
+      );
+}
+
+/// A series of points and how finely it was cut: "day", "week" or "month".
+class ReportSeries<T> {
+  final String granularity;
+  final List<T> points;
+
+  const ReportSeries({required this.granularity, required this.points});
 }
 
 class DailyCountPoint {
@@ -153,7 +240,11 @@ class EntryExitReport {
   /// cars still parked. A lot means the exit side of the gate is not being used.
   final int stillOpen;
 
+  /// "day", "week" or "month": what one point stands for.
+  final String granularity;
+
   const EntryExitReport({
+    this.granularity = 'day',
     required this.points,
     required this.totalEntries,
     required this.totalExits,
@@ -163,6 +254,8 @@ class EntryExitReport {
 
   factory EntryExitReport.fromJson(Map<String, dynamic> json) =>
       EntryExitReport(
+        granularity:
+            (json['period'] as Map?)?['granularity']?.toString() ?? 'day',
         points: (json['points'] as List<dynamic>? ?? [])
             .map((p) => EntryExitPoint.fromJson(p as Map<String, dynamic>))
             .toList(),

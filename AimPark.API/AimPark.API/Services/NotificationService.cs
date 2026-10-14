@@ -122,6 +122,43 @@ namespace AimPark.API.Services
         }
 
         // GET /api/admin/notifications
+        public async Task<ActionResult<NotificationListResponse>> ListSystemAsync(
+            DateTime? from, DateTime? to, int take, CancellationToken ct)
+        {
+            take = Math.Clamp(take, 1, 50);
+
+            // What the system raised itself: CreatedByUserId is Guid.Empty.
+            var query = _db.Set<Notification>().AsNoTracking()
+                .Where(n => n.CreatedByUserId == Guid.Empty);
+            if (from is DateTime f) query = query.Where(n => n.CreatedAt >= f);
+            if (to is DateTime t) query = query.Where(n => n.CreatedAt <= t);
+
+            var totalCount = await query.CountAsync(ct);
+            var notifications = await query
+                .OrderByDescending(n => n.CreatedAt)
+                .Take(take)
+                .Select(n => new NotificationResponse
+                {
+                    NotificationId = n.Id,
+                    Title = n.Title,
+                    Message = n.Message,
+                    Type = n.Type.ToString(),
+                    TargetRole = n.TargetRole == null ? null : n.TargetRole.ToString(),
+                    CreatedAt = n.CreatedAt,
+                    IsRead = false
+                })
+                .ToListAsync(ct);
+
+            return new OkObjectResult(new NotificationListResponse
+            {
+                Notifications = notifications,
+                TotalCount = totalCount,
+                Page = 1,
+                PageSize = take,
+                UnreadCount = 0
+            });
+        }
+
         public async Task<ActionResult<NotificationListResponse>> ListAllAsync(int page, int pageSize, CancellationToken ct)
         {
             page = Math.Max(1, page);
