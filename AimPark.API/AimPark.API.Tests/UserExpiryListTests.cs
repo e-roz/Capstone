@@ -23,18 +23,26 @@ public class UserExpiryListTests
     // ── The classification ─────────────────────────────────────────────────
 
     [Fact]
-    public void NothingCloseMeansNothingToSay()
+    public void EverythingFarOffIsValidAndNamesTheNearestDate()
     {
-        var worst = DocumentExpiry.Worst(In(200), [("ABC1234", In(300))], Today);
+        var worst = DocumentExpiry.Worst(In(200), [("ABC1234", In(300))], Today)!;
 
-        Assert.Null(worst);
+        Assert.Equal("Valid", worst.State);
+        Assert.Equal("Licence", worst.What);
     }
 
     [Fact]
-    public void SixtyDaysOutIsStillExpiringAndSixtyOneIsNot()
+    public void NoDatesAtAllMeansNothingToReturn()
+    {
+        Assert.Null(DocumentExpiry.Worst(null, [], Today));
+        Assert.Null(DocumentExpiry.Worst(null, [("ABC1234", null)], Today));
+    }
+
+    [Fact]
+    public void SixtyDaysOutIsStillExpiringAndSixtyOneIsValid()
     {
         Assert.Equal("Expiring", DocumentExpiry.Worst(In(60), [], Today)!.State);
-        Assert.Null(DocumentExpiry.Worst(In(61), [], Today));
+        Assert.Equal("Valid", DocumentExpiry.Worst(In(61), [], Today)!.State);
     }
 
     [Fact]
@@ -181,9 +189,26 @@ public class UserExpiryListTests
         Assert.Equal("Licence", users["ExpiredLicence"].ExpiryWhat);
         Assert.Equal("Registration AAA111", users["ExpiredOr"].ExpiryWhat);
         Assert.Equal("Expiring", users["SoonOr"].ExpiryState);
-        Assert.Null(users["AllFine"].ExpiryState);
+        Assert.Equal("Valid", users["AllFine"].ExpiryState);
         // The expired registration outranks the licence that is merely close.
         Assert.Equal("Registration CCC333", users["SoonLicenceExpiredOr"].ExpiryWhat);
+    }
+
+    [Fact]
+    public async Task StaffAndArchivedAccountsHaveNoStateAtAll()
+    {
+        var db = NewDb();
+        Person(db, "Archived", Real(-5), archived: true);
+        db.Add(new User
+        {
+            Id = Guid.NewGuid(), FullName = "Guard", Email = "g@x.test", Role = UserRole.Security,
+            AccountStatus = AccountStatus.Active, RegistrationStep = RegistrationStep.Completed
+        });
+        await db.SaveChangesAsync();
+
+        var rows = (await ListAsync(db, null)).Users;
+
+        Assert.All(rows, r => Assert.Null(r.ExpiryState));
     }
 
     [Fact]

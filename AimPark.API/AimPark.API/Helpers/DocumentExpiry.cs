@@ -26,21 +26,27 @@ namespace AimPark.API.Helpers
         public const string ExpiredState = "Expired";
         public const string ExpiringState = "Expiring";
 
+        /// <summary>Has a date, and it is comfortably in the future.</summary>
+        public const string ValidState = "Valid";
+
+
         public static bool IsExpired(DateTime? expiry, DateOnly today) =>
             expiry is DateTime date && DateOnly.FromDateTime(date) < today;
 
-        /// <summary>The worst thing about a user's documents, for the Users list.</summary>
+        /// <summary>The most pressing thing about a user's documents, for the Users list.</summary>
         public sealed record Finding(string State, string What, DateTime Date);
 
         /// <summary>
-        /// The most pressing of a user's licence and vehicle registrations, or
-        /// null when nothing is expired or within <see cref="AdminWarningDays"/>.
+        /// The most pressing of a user's licence and vehicle registrations, or null
+        /// when none of them has a date.
         /// </summary>
         /// <remarks>
-        /// Anything expired outranks anything merely close, and among either the
-        /// earliest date wins: the one that has been wrong the longest, or will be
-        /// wrong first. Vehicles with no date are skipped, since there is nothing to
-        /// be late about. Pass only registrations that have one: an e-bike has none.
+        /// Expired outranks expiring (within <see cref="AdminWarningDays"/>), which
+        /// outranks valid, and among equals the earliest date wins: the one that has
+        /// been wrong the longest, or will be wrong first. When everything is fine
+        /// the result is still the nearest date, so the list can say when. Vehicles
+        /// with no date are skipped. Pass only registrations that have one: an
+        /// e-bike has none.
         /// </remarks>
         public static Finding? Worst(
             DateTime? licence,
@@ -64,13 +70,12 @@ namespace AimPark.API.Helpers
                     var days = DateOnly.FromDateTime(c.Date).DayNumber - today.DayNumber;
                     var state = days < 0
                         ? ExpiredState
-                        : days <= AdminWarningDays ? ExpiringState : null;
+                        : days <= AdminWarningDays ? ExpiringState : ValidState;
                     return (c.What, c.Date, State: state);
                 })
-                .Where(c => c.State is not null)
-                .OrderBy(c => c.State == ExpiredState ? 0 : 1)
+                .OrderBy(c => c.State == ExpiredState ? 0 : c.State == ExpiringState ? 1 : 2)
                 .ThenBy(c => c.Date)
-                .Select(c => new Finding(c.State!, c.What, c.Date))
+                .Select(c => new Finding(c.State, c.What, c.Date))
                 .FirstOrDefault();
         }
     }
