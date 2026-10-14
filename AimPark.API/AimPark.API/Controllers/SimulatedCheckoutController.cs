@@ -71,7 +71,7 @@ namespace AimPark.API.Controllers
             var open = bills.Where(p => p.Status != PaymentStatus.Paid).ToList();
             if (open.Count == 0)
             {
-                return Redirect($"/api/payments/return?status=paid&payment={bills[0].Id}");
+                return Redirect(ReturnUrl("paid", bills.Select(b => b.Id).ToList()));
             }
 
             var what = open.Count > 1
@@ -113,12 +113,9 @@ namespace AimPark.API.Controllers
 
             await _payments.HandleGatewayCallbackAsync(body, headers, ct);
 
-            var paymentId = await _db.Set<PaymentTransaction>().AsNoTracking()
-                .Where(p => p.ProviderPaymentId == checkoutId)
-                .Select(p => (Guid?)p.Id)
-                .FirstOrDefaultAsync(ct);
+            var ids = await BillIdsAsync(checkoutId, ct);
 
-            return Redirect($"/api/payments/return?status=paid&payment={paymentId}");
+            return Redirect(ReturnUrl("paid", ids));
         }
 
         [HttpPost("{checkoutId}/cancel")]
@@ -126,15 +123,27 @@ namespace AimPark.API.Controllers
         {
             if (!IsEnabled) return NotFound();
 
-            var paymentId = await _db.Set<PaymentTransaction>().AsNoTracking()
-                .Where(p => p.ProviderPaymentId == checkoutId)
-                .Select(p => (Guid?)p.Id)
-                .FirstOrDefaultAsync(ct);
+            var ids = await BillIdsAsync(checkoutId, ct);
 
             // The bill stays as it is. Nothing was charged, and the app is free
             // to open a fresh checkout on it whenever the payer tries again.
-            return Redirect($"/api/payments/return?status=cancelled&payment={paymentId}");
+            return Redirect(ReturnUrl("cancelled", ids));
         }
+
+        private Task<List<Guid>> BillIdsAsync(string checkoutId, CancellationToken ct) =>
+            _db.Set<PaymentTransaction>().AsNoTracking()
+                .Where(p => p.ProviderPaymentId == checkoutId)
+                .OrderBy(p => p.CreatedAt)
+                .Select(p => p.Id)
+                .ToListAsync(ct);
+
+        // One bill sends the payer back to that bill. A "Pay all" covers several,
+        // and landing on just one of them showed its amount for a payment that
+        // was the sum — so the lot goes back to the list instead.
+        private static string ReturnUrl(string status, IReadOnlyList<Guid> ids) =>
+            ids.Count == 1
+                ? $"/api/payments/return?status={status}&payment={ids[0]}"
+                : $"/api/payments/return?status={status}";
 
         private static string CheckoutPage(string checkoutId, string what, decimal amount) =>
             "<!doctype html><html><head><meta charset=\"utf-8\">"

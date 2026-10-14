@@ -65,8 +65,8 @@ namespace AimPark.API.Services.Payments
                 ct);
 
         // One session, one line item per bill, so the payer's statement shows what
-        // the total is made of. The first bill's id stands in for the lot on the
-        // return page, which opens that bill in the app.
+        // the total is made of. With several bills the return page opens the
+        // payments list; a lone bill opens that bill.
         public Task<GatewayCheckout> CreateBundleCheckoutAsync(
             IReadOnlyList<PaymentTransaction> payments,
             CancellationToken ct = default)
@@ -77,15 +77,18 @@ namespace AimPark.API.Services.Payments
                         ? "AimPark parking fee"
                         : "AimPark violation penalty"))],
                 "AimPark parking fees and fines",
-                payments[0].Id,
+                payments.Count == 1 ? payments[0].Id : null,
                 ct);
+
+        private static string BillQuery(Guid? billId) =>
+            billId is { } id ? $"&payment={id}" : string.Empty;
 
         private sealed record SessionLine(int Amount, string Name);
 
         private async Task<GatewayCheckout> OpenSessionAsync(
             IReadOnlyList<SessionLine> lines,
             string description,
-            Guid referenceId,
+            Guid? billId,
             CancellationToken ct)
         {
             var secretKey = _config["Payments:PayMongo:SecretKey"]
@@ -114,11 +117,11 @@ namespace AimPark.API.Services.Payments
                         description,
                         // Ours, not theirs: it comes back on the callback and is
                         // the second way to find the row if an id ever gets lost.
-                        reference_number = referenceId.ToString(),
+                        reference_number = (billId ?? Guid.NewGuid()).ToString(),
                         // The bill's id rides along so the page the payer lands
                         // on can send them back to that exact bill in the app.
-                        success_url = $"{baseUrl}/api/payments/return?status=paid&payment={referenceId}",
-                        cancel_url = $"{baseUrl}/api/payments/return?status=cancelled&payment={referenceId}"
+                        success_url = $"{baseUrl}/api/payments/return?status=paid{BillQuery(billId)}",
+                        cancel_url = $"{baseUrl}/api/payments/return?status=cancelled{BillQuery(billId)}"
                     }
                 }
             };
