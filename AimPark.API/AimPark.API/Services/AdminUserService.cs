@@ -15,17 +15,20 @@ namespace AimPark.API.Services
         private readonly IRepository<AdminAuditLog> _auditLogs;
         private readonly AppDbContext _db;
         private readonly IFileStorageService _storage;
+        private readonly INotificationService _notificationService;
 
         public AdminUserService(
             IRepository<User> users,
             IRepository<AdminAuditLog> auditLogs,
             AppDbContext db,
-            IFileStorageService storage)
+            IFileStorageService storage,
+            INotificationService notificationService)
         {
             _users = users;
             _auditLogs = auditLogs;
             _db = db;
             _storage = storage;
+            _notificationService = notificationService;
         }
 
         // GET /api/admin/users?page=1&pageSize=20&status=Revoked&search=cruz&role=User&card=none (includes archived users)
@@ -260,6 +263,16 @@ namespace AimPark.API.Services
 
             _users.Update(user);
             await _users.SaveAsync(ct);
+
+            // The card is the thing they were waiting on, and nothing else tells
+            // them it is in their hands. Best-effort: never fails the assignment.
+            await _notificationService.NotifyUserAsync(
+                user.Id,
+                NotificationType.Account,
+                "RFID card assigned",
+                "Your RFID card is now active. You can use it to enter the parking area.",
+                null,
+                ct);
 
             return new OkObjectResult(new
             {
