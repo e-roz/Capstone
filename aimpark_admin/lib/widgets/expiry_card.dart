@@ -91,8 +91,15 @@ class ExpiryCard extends StatelessWidget {
 
   final RegistrationDetail detail;
 
-  /// Nothing to show for an applicant who never submitted documents.
-  static bool hasData(RegistrationDetail detail) => detail.checks != null;
+  /// Shown whenever there is something to say about a date: the checks from the
+  /// original documents, the licence date on file, or a vehicle that has a
+  /// registration. Not only when verification rows exist: those are deleted with
+  /// the user's document images, and an account made without them would
+  /// otherwise lose a card whose dates are on the account and its vehicles.
+  static bool hasData(RegistrationDetail detail) =>
+      detail.checks != null ||
+      detail.licenseValidThrough != null ||
+      detail.vehicles.any((v) => !v.isEBike);
 
   static String _plate(String? plate) =>
       (plate ?? '').replaceAll(RegExp('[^A-Za-z0-9]'), '').toUpperCase();
@@ -101,7 +108,7 @@ class ExpiryCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final t = context.tokens;
     final text = Theme.of(context).textTheme;
-    final facts = detail.checks!.facts;
+    final facts = detail.checks?.facts;
 
     final rows = <_ExpiryRowData>[
       _ExpiryRowData(
@@ -109,14 +116,14 @@ class ExpiryCard extends StatelessWidget {
         label: "Driver's licence",
         // What is on file now, which a renewal replaces. The reading from the
         // original documents is only the fallback for an account that has none.
-        date: detail.licenseValidThrough ?? facts.licenseExpiry,
+        date: detail.licenseValidThrough ?? facts?.licenseExpiry,
       ),
       for (final vehicle in detail.vehicles.where((v) => !v.isEBike))
         _ExpiryRowData(
           icon: Icons.description_outlined,
           label: 'Registration (OR) · ${vehicle.plateNumber ?? 'no plate'}',
           date: vehicle.registrationValidThrough ??
-              facts.vehicles
+              facts?.vehicles
                   .where((f) =>
                       _plate(f.plateNumber) == _plate(vehicle.plateNumber))
                   .map((f) => f.registrationExpiry)
