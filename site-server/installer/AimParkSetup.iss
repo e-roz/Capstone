@@ -78,6 +78,10 @@ Name: "{commondesktop}\AimPark Guard Panel"; Filename: "{code:BrowserPath}"; Par
 Name: "{commondesktop}\AimPark Camera"; Filename: "{app}\Camera\AimParkALPR.exe"; WorkingDir: "{app}\Camera"
 ; The camera app starts with Windows, for whoever signs in.
 Name: "{commonstartup}\AimPark Camera"; Filename: "{app}\Camera\AimParkALPR.exe"; WorkingDir: "{app}\Camera"
+; A second camera on this same PC keeps its own saved setup (its own device
+; key and gate) under the "gate2" profile. It asks for that key on first run.
+Name: "{commondesktop}\AimPark Camera 2"; Filename: "{app}\Camera\AimParkALPR.exe"; Parameters: "--profile gate2"; WorkingDir: "{app}\Camera"
+Name: "{commonstartup}\AimPark Camera 2"; Filename: "{app}\Camera\AimParkALPR.exe"; Parameters: "--profile gate2"; WorkingDir: "{app}\Camera"
 #endif
 
 [Run]
