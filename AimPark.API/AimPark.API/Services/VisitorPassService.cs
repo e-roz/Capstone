@@ -229,6 +229,42 @@ namespace AimPark.API.Services
             }
         }
 
+        public async Task<ActionResult<CardStatusResponse>> CardStatusAsync(string? rfidTagId, CancellationToken ct)
+        {
+            var tag = RfidTag.Normalize(rfidTagId);
+            if (!RfidTag.LooksValid(tag))
+                return new BadRequestObjectResult(new { message = "That does not look like a card number." });
+
+            CardStatusResponse Answer(string state, string message) =>
+                new() { RfidTagId = tag, State = state, Message = message };
+
+            var userHasIt = await _db.Set<User>().AsNoTracking()
+                .AnyAsync(u => u.RfidTagId == tag && !u.IsDeleted, ct);
+            if (userHasIt)
+                return new OkObjectResult(Answer("UserCard",
+                    "This card already belongs to a registered user. It cannot be lent as a visitor card."));
+
+            var card = await _db.Set<VisitorCard>().AsNoTracking()
+                .FirstOrDefaultAsync(c => c.RfidTagId == tag, ct);
+            if (card is null)
+                return new OkObjectResult(Answer("NotRegistered",
+                    "This card is not registered as a visitor card. Add it under Visitor cards first."));
+
+            // Returned is the only status that frees a card; Active and Expired
+            // both mean it is still out with somebody.
+            var openPass = await _db.Set<VisitorPass>().AsNoTracking()
+                .Where(p => p.RfidTagId == tag && p.Status != VisitorPassStatus.Returned)
+                .OrderByDescending(p => p.IssuedAt)
+                .FirstOrDefaultAsync(ct);
+            if (openPass is not null)
+                return new OkObjectResult(Answer("Lent",
+                    $"Visitor card {card.Label} is still lent to {openPass.VisitorName}. "
+                    + "Mark it returned before lending it again."));
+
+            return new OkObjectResult(Answer("Available",
+                $"Visitor card {card.Label} is free. Ready to lend."));
+        }
+
         public async Task<ActionResult<TagLookupResponse>> LookupTagAsync(string rfidTagId, CancellationToken ct)
         {
             var tag = RfidTag.Normalize(rfidTagId);

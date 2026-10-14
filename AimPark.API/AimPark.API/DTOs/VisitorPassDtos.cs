@@ -68,6 +68,21 @@ namespace AimPark.API.DTOs
     /// <see cref="PendingAlert"/>), or because they are doing the whole check
     /// by eye, same as before ALPR existed.
     /// </remarks>
+    /// <summary>
+    /// The one question the Lend dialog asks about a card: can it be lent right
+    /// now, and if not, why. Carries no student or staff name.
+    /// </summary>
+    public class CardStatusResponse
+    {
+        public string RfidTagId { get; set; } = string.Empty;
+
+        /// <summary>"Available", "Lent", "UserCard" or "NotRegistered".</summary>
+        public string State { get; set; } = "NotRegistered";
+
+        /// <summary>Plain wording for the guard, ready to show as it is.</summary>
+        public string Message { get; set; } = string.Empty;
+    }
+
     public class TagLookupResponse
     {
         /// <summary>"User", "Visitor", or "Unknown".</summary>

@@ -75,6 +75,7 @@ class ApiEndpoints {
   // paths into one table is how they drift.
   static String securityTagLookup(String rfidTagId) =>
       '/api/security/tags/$rfidTagId';
+  static const securityCardStatus = '/api/security/card-status';
   static const visitorPasses = '/api/security/visitor-passes';
   static String returnVisitorPass(String passId) =>
       '/api/security/visitor-passes/$passId/return';
