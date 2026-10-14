@@ -252,6 +252,7 @@ builder.Services.AddScoped<IViolationService, ViolationService>();
 builder.Services.AddScoped<IVisitorPassService, VisitorPassService>();
 builder.Services.AddScoped<IVisitorCardService, VisitorCardService>();
 builder.Services.AddScoped<IReportService, ReportService>();
+builder.Services.AddScoped<IInvestigationService, InvestigationService>();
 builder.Services.AddScoped<IBackupService, BackupService>();
 builder.Services.AddScoped<IDeviceTokenService, DeviceTokenService>();
 // The site server hands pushes to the cloud instead of calling Firebase itself
