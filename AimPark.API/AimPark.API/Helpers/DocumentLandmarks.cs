@@ -47,10 +47,9 @@ namespace AimPark.API.Helpers
         /// accident, whereas a four-character one allows none and fails on ordinary
         /// OCR damage.
         ///
-        /// Two document types are absent on purpose. A school ID has no national
-        /// layout and is not parsed at all — the reviewer looks at it. A plate photo
-        /// carries no labels by definition; it is checked instead by whether the
-        /// plate the receipt named appears on it.
+        /// One document type is absent on purpose: a plate photo carries no labels
+        /// by definition; it is checked instead by whether the plate the receipt
+        /// named appears on it.
         /// </remarks>
         private static readonly Dictionary<DocumentType, string[]> Expected = new()
         {

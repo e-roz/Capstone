@@ -39,14 +39,6 @@ class DocumentSpec extends CaptureSpec {
     aspectRatio: 1 / 1.414,
   );
 
-  static const schoolId = DocumentSpec(
-    type: ScanDocumentType.schoolId,
-    label: 'School ID',
-    purpose: 'Shows that you work at the school.',
-    instruction: 'Front of your school ID, filling the frame.',
-    aspectRatio: 1.586,
-  );
-
   static const license = DocumentSpec(
     type: ScanDocumentType.license,
     label: "Driver's licence",
@@ -66,8 +58,8 @@ class DocumentSpec extends CaptureSpec {
 
   /// The documents registration asks for, in the order it asks for them.
   ///
-  /// Students prove enrolment with a registration form; everyone else brings a
-  /// school ID, which is filed but not read.
+  /// Students prove enrolment with a registration form. Faculty and staff send
+  /// only their licence and receipt: no ID is asked for.
   ///
   /// An e-bike has no LTO receipt, so it is not asked for one: the admin sees
   /// the e-bike itself instead.
@@ -76,7 +68,7 @@ class DocumentSpec extends CaptureSpec {
     bool isEBike = false,
   }) =>
       [
-        affiliation == Affiliation.student ? raf : schoolId,
+        if (affiliation == Affiliation.student) raf,
         license,
         if (!isEBike) officialReceipt,
       ];

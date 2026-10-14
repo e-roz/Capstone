@@ -81,7 +81,7 @@ namespace AimPark.API.DTOs
 
         public string? Detail { get; set; }
 
-        /// <summary>The document to look at: Raf, SchoolId, License, or OfficialReceipt.</summary>
+        /// <summary>The document to look at: Raf, License, or OfficialReceipt.</summary>
         public string? Document { get; set; }
     }
 
@@ -123,7 +123,7 @@ namespace AimPark.API.DTOs
     /// <summary>What the phone read off one document, next to what was submitted.</summary>
     public class DocumentReadingResponse
     {
-        /// <summary>Raf, SchoolId, License, or OfficialReceipt.</summary>
+        /// <summary>Raf, License, or OfficialReceipt.</summary>
         public string Document { get; set; } = string.Empty;
 
         public List<ReadingValueResponse> Values { get; set; } = [];

@@ -138,7 +138,7 @@ class _RegisterDocumentStepScreenState
 
   /// Names each photo the way the server's multipart form expects.
   String _fieldFor(ScanDocumentType type) => switch (type) {
-        ScanDocumentType.raf || ScanDocumentType.schoolId => 'IdentityDocument',
+        ScanDocumentType.raf => 'IdentityDocument',
         ScanDocumentType.license => 'License',
         ScanDocumentType.officialReceipt => 'OfficialReceipt',
       };
@@ -237,16 +237,7 @@ class _RegisterDocumentStepScreenState
     for (var i = 0; i < specs.length; i++) {
       final spec = specs[i];
 
-      // The server reports the identity slot under whichever kind the account
-      // files under, decided from the affiliation on record rather than the one
-      // this flow guessed — so accept either name there.
-      final isIdentity = spec.type == ScanDocumentType.raf ||
-          spec.type == ScanDocumentType.schoolId;
-
-      final diagnosis = isIdentity
-          ? byType[ScanDocumentType.raf.wireName] ??
-              byType[ScanDocumentType.schoolId.wireName]
-          : byType[spec.type.wireName];
+      final diagnosis = byType[spec.type.wireName];
 
       if (diagnosis == null) continue;
 

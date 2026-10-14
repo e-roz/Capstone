@@ -41,10 +41,9 @@ String documentIssueMessage(DocumentIssue issue, String label) =>
 
 /// Printing that a genuine copy of each document always carries.
 ///
-/// Two document types are deliberately absent. A school ID has no national
-/// layout and is never parsed — the reviewer looks at it by eye. A plate photo
-/// carries no labels at all; it is checked instead by whether the plate the
-/// receipt named turns up on it, which only the server can do.
+/// One document type is deliberately absent: a plate photo carries no labels at
+/// all; it is checked instead by whether the plate the receipt named turns up on
+/// it, which only the server can do.
 ///
 /// Kept in step with `DocumentLandmarks.cs` by hand. The server's copy is the
 /// one that decides; this one only decides how soon the user hears about it, so

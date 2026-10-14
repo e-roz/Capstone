@@ -256,7 +256,7 @@ class Finding {
   final String title;
   final String? detail;
 
-  /// `Raf`, `SchoolId`, `License` or `OfficialReceipt`: which tab to open.
+  /// `Raf`, `License` or `OfficialReceipt`: which tab to open.
   final String? document;
 
   const Finding({
@@ -363,7 +363,7 @@ DateTime? _date(Object? raw) =>
 class DocumentReading {
   final String document;
 
-  /// Empty for a school ID, which the phone does not read.
+  /// Empty when the phone read nothing from the document.
   final List<ReadingValue> values;
 
   const DocumentReading({required this.document, required this.values});

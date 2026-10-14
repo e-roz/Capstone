@@ -21,9 +21,8 @@ namespace AimPark.API.DTOs
     public class DocumentUploadDTO
     {
         /// <summary>
-        /// Proof of school affiliation: a RAF for students, a school ID for faculty
-        /// and staff. One slot rather than two, because exactly one is ever sent and
-        /// the user's affiliation already says which.
+        /// Proof of enrolment: the RAF. Only students send one; faculty and staff
+        /// send just the licence and the receipt.
         /// </summary>
         public IFormFile? IdentityDocument { get; set; }
 

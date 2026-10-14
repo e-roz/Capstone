@@ -81,31 +81,18 @@ Future<DocumentAgenda> documentAgenda(Ref ref) async {
 
     if (!status.hasRetakes) return DocumentAgenda(specs: full);
 
-    // Matched against the affiliation's own slots, so a reviewer naming the RAF
-    // on a staff account still resolves to the school ID that account files
-    // under — the same folding the server does.
+    // Matched against this account's own documents, so a request for the
+    // registration form on a faculty or staff account, who send none, asks for
+    // nothing — the same as the server.
     final wanted = {for (final r in status.documentsToRetake) r.type: r.reason};
-    final identity = full.first.type;
 
-    final specs = full.where((spec) {
-      if (wanted.containsKey(spec.type)) return true;
-      final isIdentity = spec.type == identity;
-      return isIdentity &&
-          (wanted.containsKey(ScanDocumentType.raf) ||
-              wanted.containsKey(ScanDocumentType.schoolId));
-    }).toList();
+    final specs = full.where((spec) => wanted.containsKey(spec.type)).toList();
 
     if (specs.isEmpty) return DocumentAgenda(specs: full);
 
     return DocumentAgenda(
       specs: specs,
-      reasons: {
-        for (final spec in specs)
-          spec.type: wanted[spec.type] ??
-              wanted[ScanDocumentType.raf] ??
-              wanted[ScanDocumentType.schoolId] ??
-              '',
-      },
+      reasons: {for (final spec in specs) spec.type: wanted[spec.type] ?? ''},
     );
   } catch (_) {
     return DocumentAgenda(specs: full);
@@ -129,7 +116,7 @@ class RegistrationState {
   final String? email;
 
   /// Decides which proof of affiliation the document step asks for: a
-  /// registration form from students, a school ID from everyone else.
+  /// registration form from students and nothing extra from everyone else.
   ///
   /// Kept only to label the capture screen correctly. The server files the
   /// document under the affiliation it has on record, so a stale value here

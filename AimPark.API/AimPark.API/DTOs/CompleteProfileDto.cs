@@ -7,8 +7,8 @@ namespace AimPark.API.DTOs
 
         /// <summary>
         /// Student, Faculty, or Staff. Decides which documents the upload step asks
-        /// for — a RAF for students, a school ID for everyone else. Defaults to
-        /// Student when absent.
+        /// for — a RAF for students, and nothing extra for faculty and staff, who
+        /// send only their licence and receipt. Defaults to Student when absent.
         /// </summary>
         public string? Affiliation { get; set; }
 

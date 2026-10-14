@@ -138,10 +138,10 @@ namespace AimPark.API.Helpers
         {
             var checks = new List<CheckItemResponse>();
 
-            // Faculty and staff submit a school ID these rules do not read, so
-            // there is no school-form name to show them — but the licence is
-            // still checked against their account name, so the row is still
-            // worth showing, just with one fewer piece of evidence.
+            // Faculty and staff send no school document, so there is no school-form
+            // name to show them — but the licence is still checked against their
+            // account name, so the row is still worth showing, just with one fewer
+            // piece of evidence.
             var schoolName = user.Affiliation == Affiliation.Student
                 ? v.ConfirmedStudentName ?? v.ExtractedStudentName
                 : null;
@@ -402,7 +402,6 @@ namespace AimPark.API.Helpers
         public const string Neutral = "Neutral";
 
         private const string Raf = nameof(DocumentType.Raf);
-        private const string SchoolId = nameof(DocumentType.SchoolId);
         private const string License = nameof(DocumentType.License);
         private const string Receipt = nameof(DocumentType.OfficialReceipt);
 
@@ -740,8 +739,8 @@ namespace AimPark.API.Helpers
         }
 
         /// <summary>
-        /// What the phone read off each document. A school ID gets an entry with no
-        /// values: the phone does not read it, and saying so beats an empty panel.
+        /// What the phone read off each document. Only students have a school
+        /// document, their RAF; faculty and staff have the licence and receipt.
         /// </summary>
         private static List<DocumentReadingResponse> BuildReadings(
             DocumentVerification v, User user, IReadOnlyList<Vehicle> vehicles, List<DocumentVerification> newestFirst)
@@ -761,10 +760,6 @@ namespace AimPark.API.Helpers
                         Reading("Term", v.ExtractedSemester, v.ConfirmedSemester)
                     ]
                 });
-            }
-            else
-            {
-                readings.Add(new DocumentReadingResponse { Document = SchoolId });
             }
 
             readings.Add(new DocumentReadingResponse

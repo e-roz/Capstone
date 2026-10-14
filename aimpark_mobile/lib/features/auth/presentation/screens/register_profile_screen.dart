@@ -298,7 +298,7 @@ class _RegisterProfileScreenState extends ConsumerState<RegisterProfileScreen> {
                 : null,
           ),
           // Decides which document proves affiliation at the upload step: a
-          // registration form for students, a school ID for everyone else.
+          // registration form for students and nothing extra for everyone else.
           AppChipGroup<Affiliation>(
             label: 'I am a…',
             options: {

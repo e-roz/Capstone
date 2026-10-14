@@ -221,11 +221,10 @@ class RegistrationDetailScreen extends ConsumerWidget {
   }
 
   /// The documents a reviewer can send back, in the order the applicant took
-  /// them. Both identity kinds are offered; the server folds whichever is
-  /// chosen onto the slot this particular account actually files under.
+  /// them. The registration form is offered only for a student: faculty and
+  /// staff never send one.
   static const _retakeDocuments = <String, String>{
     'Raf': 'Registration form',
-    'SchoolId': 'School ID',
     'License': "Driver's licence",
     'OfficialReceipt': 'Official receipt',
   };
@@ -273,7 +272,9 @@ class RegistrationDetailScreen extends ConsumerWidget {
                     ),
                     const SizedBox(height: AppSpacing.x4),
                     for (final entry in _retakeDocuments.entries.where(
-                        (e) => !(detail.isEBike && e.key == 'OfficialReceipt'),
+                        (e) =>
+                            !(detail.isEBike && e.key == 'OfficialReceipt') &&
+                            !(detail.affiliation != 'Student' && e.key == 'Raf'),
                     )) ...[
                       CheckboxListTile(
                         value: selected.contains(entry.key),
@@ -866,12 +867,6 @@ class _KeyFacts extends StatelessWidget {
               : _FactStatus.of('Confirm it yourself', FindingSeverity.neutral),
         ),
       ] else ...[
-        _FactCell(
-          label: 'School ID',
-          value: 'Check the image',
-          note: 'Faculty and staff have no student number',
-          status: _FactStatus.of('Phone does not read it', FindingSeverity.neutral),
-        ),
         _FactCell(
           label: 'Affiliation',
           value: detail.affiliation,
