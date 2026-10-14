@@ -32,7 +32,7 @@ namespace AimPark.API.Services
         }
 
         // GET /api/admin/users?page=1&pageSize=20&status=Revoked&search=cruz&role=User&card=none (includes archived users)
-        public async Task<ActionResult<UserListResponse>> ListAsync(int page, int pageSize, string? status, string? search, string? role, string? card, CancellationToken ct)
+        public async Task<ActionResult<UserListResponse>> ListAsync(int page, int pageSize, string? status, string? search, string? role, string? card, string? expiry, CancellationToken ct)
         {
             // Clamp to sane defaults
             page = Math.Max(1, page);
@@ -84,6 +84,44 @@ namespace AimPark.API.Services
                     && u.RfidTagId != null && u.RfidTagId != "");
             }
 
+            // Documents that have run out, or are about to. Only people who can be at
+            // the gate: an archived or unapproved account has nothing to warn about.
+            // Done here and not in the browser for the same reason as the card filter,
+            // and so the Overview can count them with a page size of one.
+            var wantExpired = string.Equals(expiry, "expired", StringComparison.OrdinalIgnoreCase);
+            var wantExpiring = string.Equals(expiry, "expiring", StringComparison.OrdinalIgnoreCase);
+
+            if (wantExpired || wantExpiring)
+            {
+                var todayStart = DateTime.SpecifyKind(
+                    PhilippineTime.Today().ToDateTime(TimeOnly.MinValue), DateTimeKind.Utc);
+                var soonEnd = todayStart.AddDays(DocumentExpiry.AdminWarningDays + 1);
+
+                query = query.Where(u => u.Role == UserRole.User
+                    && u.AccountStatus == AccountStatus.Active
+                    && !u.IsDeleted);
+
+                if (wantExpired)
+                {
+                    query = query.Where(u =>
+                        (u.LicenseValidThrough != null && u.LicenseValidThrough < todayStart)
+                        || _db.Set<Vehicle>().Any(v => v.UserId == u.Id && !v.IsEBike
+                            && v.RegistrationValidThrough != null && v.RegistrationValidThrough < todayStart));
+                }
+                else
+                {
+                    // Close, and nothing already past: someone with one expired
+                    // document belongs to Expired, not to both lists.
+                    query = query.Where(u =>
+                        !((u.LicenseValidThrough != null && u.LicenseValidThrough < todayStart)
+                          || _db.Set<Vehicle>().Any(v => v.UserId == u.Id && !v.IsEBike
+                              && v.RegistrationValidThrough != null && v.RegistrationValidThrough < todayStart))
+                        && ((u.LicenseValidThrough != null && u.LicenseValidThrough < soonEnd)
+                            || _db.Set<Vehicle>().Any(v => v.UserId == u.Id && !v.IsEBike
+                                && v.RegistrationValidThrough != null && v.RegistrationValidThrough < soonEnd)));
+                }
+            }
+
             if (!string.IsNullOrWhiteSpace(search))
             {
                 var term = search.Trim().ToLower();
@@ -112,6 +150,45 @@ namespace AimPark.API.Services
                     CreatedAt    = u.CreatedAt
                 })
                 .ToListAsync(ct);
+
+            // What is wrong with each row's documents, if anything. Two small queries
+            // for the page rather than a join per row, and only for people the gate
+            // would actually act on.
+            var ids = users
+                .Where(u => u.Role == nameof(UserRole.User)
+                    && u.AccountStatus == nameof(AccountStatus.Active) && !u.IsDeleted)
+                .Select(u => u.UserId)
+                .ToList();
+
+            if (ids.Count > 0)
+            {
+                var licences = await _db.Set<User>().AsNoTracking()
+                    .Where(u => ids.Contains(u.Id))
+                    .Select(u => new { u.Id, u.LicenseValidThrough })
+                    .ToDictionaryAsync(u => u.Id, u => u.LicenseValidThrough, ct);
+
+                var registrations = (await _db.Set<Vehicle>().AsNoTracking()
+                        .Where(v => ids.Contains(v.UserId) && !v.IsEBike && v.RegistrationValidThrough != null)
+                        .Select(v => new { v.UserId, v.PlateNumber, v.RegistrationValidThrough })
+                        .ToListAsync(ct))
+                    .ToLookup(v => v.UserId);
+
+                var today = PhilippineTime.Today();
+                foreach (var user in users.Where(u => ids.Contains(u.UserId)))
+                {
+                    var finding = DocumentExpiry.Worst(
+                        licences.GetValueOrDefault(user.UserId),
+                        registrations[user.UserId].Select(v => (v.PlateNumber, v.RegistrationValidThrough)),
+                        today);
+
+                    if (finding is null)
+                        continue;
+
+                    user.ExpiryState = finding.State;
+                    user.ExpiryWhat = finding.What;
+                    user.ExpiryDate = finding.Date;
+                }
+            }
 
             return new OkObjectResult(new UserListResponse
             {

@@ -17,6 +17,7 @@ class UsersQuery {
   final String? status; // null = all
   final String? role; // null = all
   final String? card; // null = all, 'none' = no card, 'has' = has a card
+  final String? expiry; // null = all, 'expired', 'expiring'
   final String? search; // null/empty = no search filter
 
   const UsersQuery({
@@ -25,6 +26,7 @@ class UsersQuery {
     this.status,
     this.role,
     this.card,
+    this.expiry,
     this.search,
   });
 
@@ -32,6 +34,7 @@ class UsersQuery {
       status != null ||
       role != null ||
       card != null ||
+      expiry != null ||
       (search?.isNotEmpty ?? false);
 
   UsersQuery copyWith(
@@ -43,6 +46,8 @@ class UsersQuery {
           bool clearRole = false,
           String? card,
           bool clearCard = false,
+          String? expiry,
+          bool clearExpiry = false,
           String? search,
           bool clearSearch = false}) =>
       UsersQuery(
@@ -51,6 +56,7 @@ class UsersQuery {
         status: clearStatus ? null : (status ?? this.status),
         role: clearRole ? null : (role ?? this.role),
         card: clearCard ? null : (card ?? this.card),
+        expiry: clearExpiry ? null : (expiry ?? this.expiry),
         search: clearSearch ? null : (search ?? this.search),
       );
 }
@@ -67,6 +73,8 @@ class UsersQueryNotifier extends _$UsersQueryNotifier {
       state = state.copyWith(role: role, clearRole: role == null, page: 1);
   void setCard(String? card) =>
       state = state.copyWith(card: card, clearCard: card == null, page: 1);
+  void setExpiry(String? expiry) =>
+      state = state.copyWith(expiry: expiry, clearExpiry: expiry == null, page: 1);
   void setSearch(String? search) => state = state.copyWith(
       search: search,
       clearSearch: search == null || search.isEmpty,
@@ -87,6 +95,7 @@ Future<UserListPage> userList(Ref ref) async {
     if (query.status != null) 'status': query.status,
     if (query.role != null) 'role': query.role,
     if (query.card != null) 'card': query.card,
+    if (query.expiry != null) 'expiry': query.expiry,
     if (query.search != null && query.search!.isNotEmpty) 'search': query.search,
   };
 
