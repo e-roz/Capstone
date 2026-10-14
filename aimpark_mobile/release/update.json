@@ -1,14 +1,14 @@
 {
-  "version": "1.0.8",
-  "build": 9,
-  "apk_url": "https://github.com/e-roz/Capstone/releases/download/v1.0.8/app-release.apk",
-  "apk_sha256": "53f66a774e2fb34d6b6433f007a6d99c1cf89a79241e9a636d0cd9c7484b1adb",
-  "apk_size_bytes": 94185677,
+  "version": "1.0.9",
+  "build": 10,
+  "apk_url": "https://github.com/e-roz/Capstone/releases/download/v1.0.9/app-release.apk",
+  "apk_sha256": "0b83668a8f6763481f19f0affab26f0a9be90b897212eeb1b8d504b43ffd4d19",
+  "apk_size_bytes": 94300685,
   "mandatory": false,
   "release_notes": [
-    "New: registration locks the values read from your ID and asks you to retake the photo until it reads",
-    "New: a revoked account is final, and Suspended is gone",
-    "Changed: the bay shown at the gate is only a recommendation, so you can park in any bay",
-    "Changed: updated policy rules with the new categories"
+    "New: register an e-bike. You send your licence, then visit the admin office to finish",
+    "New: Documents shows when your licence and each vehicle's registration expire",
+    "New: a countdown on Home and a reminder 30 days before something expires",
+    "New: upload a renewed licence or registration for an admin to review"
   ]
 }
