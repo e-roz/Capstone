@@ -25,6 +25,12 @@ class GateTapEvent {
   /// the holder's. Decided by the API so the rows and the summary agree.
   final bool serious;
 
+  /// The bay an accepted entry was recommended. Only the live log sends it.
+  final String? recommendedSlot;
+
+  /// 'Car' or 'Motorcycle' for an accepted entry. Only the live log sends it.
+  final String? vehicleType;
+
   const GateTapEvent({
     required this.id,
     required this.at,
@@ -41,6 +47,8 @@ class GateTapEvent {
     required this.plateMatches,
     required this.hasPhoto,
     required this.serious,
+    this.recommendedSlot,
+    this.vehicleType,
   });
 
   bool get isManual => personKind == 'Manual';
@@ -83,6 +91,8 @@ class GateTapEvent {
     plateMatches: json['plateMatches'] as bool?,
     hasPhoto: json['hasPhoto'] as bool? ?? false,
     serious: json['serious'] as bool? ?? false,
+    recommendedSlot: json['recommendedSlot'] as String?,
+    vehicleType: json['vehicleType'] as String?,
   );
 }
 

@@ -8,6 +8,7 @@ import 'package:intl/intl.dart';
 
 import '../../core/network/dio_client.dart';
 import '../../core/utils/ph_time.dart';
+import '../../core/utils/responsive.dart';
 import '../../models/device_health.dart';
 import '../../models/parking_slot.dart';
 import '../../models/site_link.dart';
@@ -51,10 +52,19 @@ class LiveParkingMapCard extends ConsumerStatefulWidget {
     super.key,
     this.compact = false,
     this.onBayTap,
+    this.showWrongBayAlerts = true,
+    this.header,
   });
 
   /// Smaller bays and no plate on them; for the overview screens.
   final bool compact;
+
+  /// The wrong-bay rows above the map. A guard has them in the Overview's
+  /// Alerts box instead; the bays themselves are still marked on the map.
+  final bool showWrongBayAlerts;
+
+  /// Shown first, above everything else in the card, e.g. the gate banners.
+  final Widget? header;
 
   /// Called when a bay is clicked, e.g. to change its status. Null = read-only.
   final void Function(ParkingSlot slot)? onBayTap;
@@ -158,8 +168,12 @@ class _LiveParkingMapCardState extends ConsumerState<LiveParkingMapCard> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                if (wrongBays.isNotEmpty) ...[
-                  _WrongBayAlerts(flags: wrongBays),
+                if (widget.header case final header?) ...[
+                  header,
+                  const SizedBox(height: AppSpacing.x3),
+                ],
+                if (widget.showWrongBayAlerts && wrongBays.isNotEmpty) ...[
+                  WrongBayAlerts(flags: wrongBays),
                   const SizedBox(height: AppSpacing.x3),
                 ],
                 if (stale) ...[
@@ -2064,24 +2078,32 @@ class _WrongBays extends InheritedWidget {
       old.flags.entries.any((e) => flags[e.key]?.status != e.value.status);
 }
 
-/// "Bay C3 may hold the wrong kind of vehicle", one row per bay, above the
-/// map. The sensor can't say who parked, so the row names the bay and asks
-/// a guard to go and look; what they find is recorded here. Once confirmed,
-/// an administrator can issue a violation from the same row.
-class _WrongBayAlerts extends ConsumerWidget {
-  const _WrongBayAlerts({required this.flags});
+/// "Bay C3 may hold the wrong kind of vehicle", one row per bay. The sensor
+/// can't say who parked, so the row names the bay and asks a guard to go and
+/// look; what they find is recorded here, with a report on a confirm. Once
+/// confirmed, the row is done for the guard and goes; an administrator still
+/// sees it, with the guard's report, and decides on a violation.
+///
+/// Above the map for an administrator; in the Overview's Alerts box for a guard.
+class WrongBayAlerts extends ConsumerWidget {
+  const WrongBayAlerts({super.key, required this.flags});
 
   final List<WrongBayFlag> flags;
+
+  /// The rows this role still has to act on.
+  static List<WrongBayFlag> forRole(List<WrongBayFlag> flags, {required bool isAdmin}) =>
+      isAdmin ? flags : flags.where((f) => !f.isConfirmed).toList();
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final isAdmin = ref.watch(staffRoleProvider) != StaffRole.security;
+    final shown = forRole(flags, isAdmin: isAdmin);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        for (var i = 0; i < flags.length; i++) ...[
+        for (var i = 0; i < shown.length; i++) ...[
           if (i > 0) const SizedBox(height: AppSpacing.x2),
-          _WrongBayRow(flag: flags[i], isAdmin: isAdmin),
+          _WrongBayRow(flag: shown[i], isAdmin: isAdmin),
         ],
       ],
     );
@@ -2101,13 +2123,62 @@ class _WrongBayRow extends ConsumerStatefulWidget {
 class _WrongBayRowState extends ConsumerState<_WrongBayRow> {
   bool _busy = false;
 
-  Future<void> _review(String outcome) async {
+  Future<void> _review(String outcome, {String? note}) async {
     setState(() => _busy = true);
-    final msg = await ref.read(parkingActionsProvider.notifier).reviewWrongBay(widget.flag.flagId, outcome);
+    final msg = await ref
+        .read(parkingActionsProvider.notifier)
+        .reviewWrongBay(widget.flag.flagId, outcome, note: note);
     if (!mounted) return;
     setState(() => _busy = false);
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg ?? 'Saved.')));
     ref.invalidate(wrongBayFlagsProvider);
+  }
+
+  /// Confirm, with an optional report of what the guard saw for the
+  /// administrator who decides on a violation.
+  Future<void> _confirm() async {
+    final f = widget.flag;
+    final note = TextEditingController();
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('Confirm bay ${_shortCode(f.slotCode)}'),
+        content: SizedBox(
+          width: ctx.dialogWidth(420),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'The wrong kind of vehicle is in this ${f.bayKind} bay. '
+                'An administrator will decide whether to issue a violation.',
+                style: Theme.of(ctx).textTheme.bodySmall,
+              ),
+              const SizedBox(height: AppSpacing.x3),
+              TextField(
+                controller: note,
+                autofocus: true,
+                maxLines: 4,
+                maxLength: 1000,
+                decoration: const InputDecoration(
+                  labelText: 'Follow-up report (optional)',
+                  hintText: 'A red car, plate ABC 1234, no driver around.',
+                  alignLabelWithHint: true,
+                ),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Confirm')),
+        ],
+      ),
+    );
+    final text = note.text.trim();
+    note.dispose();
+    if (ok != true || !mounted) return;
+    await _review('Confirmed', note: text.isEmpty ? null : text);
   }
 
   Future<void> _issue() async {
@@ -2128,8 +2199,11 @@ class _WrongBayRowState extends ConsumerState<_WrongBayRow> {
     final c = t.status.warning;
 
     final detail = f.isConfirmed
-        ? 'Confirmed${f.reviewedByName == null ? '' : ' by ${f.reviewedByName}'}. '
-            'Issue a violation once you know whose vehicle it is.'
+        ? [
+            'Confirmed by ${f.reviewedByName ?? 'security'}. '
+                'Issue a violation once you know whose vehicle it is.',
+            if (f.reviewNote != null) 'Report: ${f.reviewNote}',
+          ].join('\n')
         : 'This is a ${f.bayKind} bay, and the wrong kind of vehicle may be parked in it. '
             'Go and check. Since ${_clock.format(manila(f.detectedAt))}.';
 
@@ -2140,7 +2214,7 @@ class _WrongBayRowState extends ConsumerState<_WrongBayRow> {
           child: const Text('False alarm'),
         ),
         FilledButton.tonal(
-          onPressed: _busy ? null : () => _review('Confirmed'),
+          onPressed: _busy ? null : _confirm,
           child: const Text('Confirm'),
         ),
       ] else if (widget.isAdmin)

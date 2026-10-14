@@ -184,7 +184,31 @@ namespace AimPark.API.Services
         }
 
         // POST /api/admin/parking/log-entry — manual stand-in for the RFID gate hardware
+        /// <summary>
+        /// One entry at a time. Room is counted from open parking logs, and a
+        /// bay with a sensor is only recommended, never marked, so two taps a
+        /// moment apart at the last free bay would both see room and both be
+        /// let in. Holding this from the room check to the saved log makes the
+        /// second tap see the first car inside. Entries take milliseconds, and
+        /// the site server is a single process, so a static lock is enough.
+        /// </summary>
+        private static readonly SemaphoreSlim EntryLock = new(1, 1);
+
         public async Task<ActionResult<object>> LogEntryAsync(
+            LogParkingEntryDto dto, Guid? loggedByUserId, Guid? loggedByDeviceId, CancellationToken ct)
+        {
+            await EntryLock.WaitAsync(ct);
+            try
+            {
+                return await LogEntryUnlockedAsync(dto, loggedByUserId, loggedByDeviceId, ct);
+            }
+            finally
+            {
+                EntryLock.Release();
+            }
+        }
+
+        private async Task<ActionResult<object>> LogEntryUnlockedAsync(
             LogParkingEntryDto dto, Guid? loggedByUserId, Guid? loggedByDeviceId, CancellationToken ct)
         {
             User? user = null;

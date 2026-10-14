@@ -28,6 +28,12 @@ namespace AimPark.API.Entities
         public Guid? ReviewedByUserId { get; set; }
         public DateTime? ReviewedAt { get; set; }
 
+        /// <summary>
+        /// What the guard found, written when they confirm, for the administrator
+        /// who decides whether to issue a violation. Optional.
+        /// </summary>
+        public string? ReviewNote { get; set; }
+
         /// <summary>When the bay read empty again. The warning stops showing then.</summary>
         public DateTime? BayClearedAt { get; set; }
 

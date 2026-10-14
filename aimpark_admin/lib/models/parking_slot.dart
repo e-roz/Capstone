@@ -42,6 +42,9 @@ class WrongBayFlag {
   final DateTime detectedAt;
   final String? reviewedByName;
 
+  /// What the guard found, written when they confirmed. For the administrator.
+  final String? reviewNote;
+
   const WrongBayFlag({
     required this.flagId,
     required this.slotId,
@@ -51,6 +54,7 @@ class WrongBayFlag {
     required this.status,
     required this.detectedAt,
     required this.reviewedByName,
+    this.reviewNote,
   });
 
   bool get isConfirmed => status == 'Confirmed';
@@ -67,6 +71,7 @@ class WrongBayFlag {
         status: json['status']?.toString() ?? 'Open',
         detectedAt: DateTime.parse(json['detectedAt'].toString()),
         reviewedByName: json['reviewedByName']?.toString(),
+        reviewNote: json['reviewNote']?.toString(),
       );
 }
 

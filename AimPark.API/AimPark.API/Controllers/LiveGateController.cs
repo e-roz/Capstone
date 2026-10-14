@@ -59,12 +59,37 @@ namespace AimPark.API.Controllers
                 ? s.ToUniversalTime()
                 : startOfToday;
 
-            var taps = await _db.Set<GateTapEvent>().AsNoTracking()
+            var events = await _db.Set<GateTapEvent>().AsNoTracking()
                 .Where(t => t.At > from)
                 .OrderByDescending(t => t.At)
                 .Take(LiveCount)
-                .Select(AsRow)
                 .ToListAsync(ct);
+
+            // The bay each entry was recommended, for the Parking page's gate
+            // banners. Only entries: an exit's log is the same one it came in
+            // on, and its bay is no news.
+            var entryLogs = events
+                .Where(e => e.Opened && e.Direction == "IN" && e.ParkingLogId is not null)
+                .Select(e => e.ParkingLogId!.Value)
+                .ToList();
+
+            var given = await _db.Set<ParkingLog>().AsNoTracking()
+                .Where(l => entryLogs.Contains(l.Id))
+                .Select(l => new
+                {
+                    l.Id,
+                    SlotCode = l.Slot == null ? null : l.Slot.SlotCode,
+                    VehicleType = l.VehicleType ?? (l.Slot == null ? null : l.Slot.VehicleType)
+                })
+                .ToDictionaryAsync(l => l.Id, ct);
+
+            var taps = events.Select(e =>
+            {
+                var row = ToRow(e);
+                return e.ParkingLogId is Guid id && given.TryGetValue(id, out var log)
+                    ? row with { RecommendedSlot = log.SlotCode, VehicleType = log.VehicleType?.ToString() }
+                    : row;
+            }).ToList();
 
             return Ok(new { taps });
         }
@@ -197,11 +222,21 @@ namespace AimPark.API.Controllers
             !t.Opened && t.PersonKind != GateTapPersonKind.Manual
                 && (t.PersonKind == GateTapPersonKind.Unknown || t.PlateMatches == false));
 
+        // After AsRow: static fields are initialised in the order they are written.
+        private static readonly Func<GateTapEvent, GateTapRow> ToRow = AsRow.Compile();
+
         public record GateTapRow(
             Guid Id, DateTime At, int Gate, string? ReaderName, string Direction, bool Opened,
             string Message, string? RfidTagId, string? PersonName, string PersonKind,
             string? CameraPlate, string? RegisteredPlates, bool? PlateMatches, bool HasPhoto,
-            bool Serious);
+            bool Serious)
+        {
+            /// <summary>The bay an accepted entry was recommended. Live log only.</summary>
+            public string? RecommendedSlot { get; init; }
+
+            /// <summary>Car or Motorcycle, for an accepted entry. Live log only.</summary>
+            public string? VehicleType { get; init; }
+        }
 
         [HttpGet("taps/{id:guid}/photo")]
         public async Task<IActionResult> Photo(Guid id, CancellationToken ct)

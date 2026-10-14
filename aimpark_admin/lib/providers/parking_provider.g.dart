@@ -65,7 +65,7 @@ final wrongBayFlagsProvider =
 @Deprecated('Will be removed in 3.0. Use Ref instead')
 // ignore: unused_element
 typedef WrongBayFlagsRef = AutoDisposeFutureProviderRef<List<WrongBayFlag>>;
-String _$parkingActionsHash() => r'fa0471e16613b6b83d791c7d71efd0203a792ede';
+String _$parkingActionsHash() => r'567056f475f05503ce9014e712cd499efabcf3d9';
 
 /// See also [ParkingActions].
 @ProviderFor(ParkingActions)
