@@ -81,6 +81,18 @@ namespace AimPark.API.Services
             Table<GateDevice>("GateDevices"),
             Table<VisitorPass>("VisitorPasses"),
             Table<ParkingLog>("ParkingLogs"),
+            // These point at Users, Vehicles, Documents, ParkingSlots,
+            // VisitorPasses and ParkingLogs, all of which are above.
+            Table<DocumentRenewal>("DocumentRenewals"),
+            Table<GateAccessAttempt>("GateAccessAttempts"),
+            Table<WrongBayFlag>("WrongBayFlags"),
+            Table<SlotWatch>("SlotWatches"),
+            // No foreign keys, so the position is free.
+            Table<RfidCard>("RfidCards"),
+            Table<VisitorCard>("VisitorCards"),
+            Table<AlprReading>("AlprReadings"),
+            Table<GateTapEvent>("GateTapEvents"),
+            Table<SyncOutboxEntry>("SyncOutbox"),
             Table<DocumentVerification>("DocumentVerifications"),
             Table<ParkingRate>("ParkingRates"),
             Table<PolicyRule>("PolicyRules"),
