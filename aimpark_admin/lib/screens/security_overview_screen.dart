@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -113,7 +115,7 @@ class SecurityOverviewScreen extends ConsumerWidget {
           const SizedBox(height: AppSpacing.gutter),
           const _ActionBar(),
           const SizedBox(height: AppSpacing.gutter),
-          const _GateCameras(),
+          const _AlertsAndCameras(),
           const SizedBox(height: AppSpacing.gutter),
           const ParkingSummaryCard(),
           const SizedBox(height: AppSpacing.sectionGap),
@@ -144,37 +146,102 @@ class SecurityOverviewScreen extends ConsumerWidget {
   }
 }
 
-/// Both gates' cameras at once, side by side; stacked on a narrow screen.
-class _GateCameras extends StatelessWidget {
-  const _GateCameras();
+/// The Alerts box, which gets the room, beside both gates' cameras stacked
+/// small. Alerts first, then cameras, on a narrow screen.
+class _AlertsAndCameras extends StatelessWidget {
+  const _AlertsAndCameras();
 
   static const _gates = [1, 2];
 
   @override
   Widget build(BuildContext context) {
+    final cameras = [
+      for (final gate in _gates) ...[
+        if (gate != _gates.first) const SizedBox(height: AppSpacing.gutter),
+        LiveCameraView(gate: gate),
+      ],
+    ];
+
     return LayoutBuilder(
       builder: (context, box) {
-        if (box.maxWidth < 700) {
+        if (box.maxWidth < 900) {
           return Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              for (final gate in _gates) ...[
-                if (gate != _gates.first) const SizedBox(height: AppSpacing.gutter),
-                LiveCameraView(gate: gate),
-              ],
+              const _AlertsBox(),
+              const SizedBox(height: AppSpacing.gutter),
+              ...cameras,
             ],
           );
         }
         return Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            for (final gate in _gates) ...[
-              if (gate != _gates.first) const SizedBox(width: AppSpacing.gutter),
-              Expanded(child: LiveCameraView(gate: gate)),
-            ],
+            const Expanded(flex: 2, child: _AlertsBox()),
+            const SizedBox(width: AppSpacing.gutter),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: cameras,
+              ),
+            ),
           ],
         );
       },
+    );
+  }
+}
+
+/// Everything waiting on the guard, highlighted, and nothing else: today the
+/// wrong-bay warnings. A row goes when the guard marks it a false alarm or
+/// confirms it; a confirm can carry a report for the administrator.
+class _AlertsBox extends ConsumerStatefulWidget {
+  const _AlertsBox();
+
+  @override
+  ConsumerState<_AlertsBox> createState() => _AlertsBoxState();
+}
+
+class _AlertsBoxState extends ConsumerState<_AlertsBox> {
+  // The parking map refreshes these on the Parking page; here the box does.
+  static const _refreshEvery = Duration(seconds: 3);
+  Timer? _timer;
+
+  @override
+  void initState() {
+    super.initState();
+    _timer = Timer.periodic(_refreshEvery, (_) {
+      if (!ref.read(wrongBayFlagsProvider).isLoading) ref.invalidate(wrongBayFlagsProvider);
+    });
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final t = context.tokens;
+    // A server too old to know about warnings answers 404: no warnings.
+    final all = ref.watch(wrongBayFlagsProvider).valueOrNull ?? const <WrongBayFlag>[];
+    final open = WrongBayAlerts.forRole(all, isAdmin: false);
+
+    return AppSectionCard(
+      title: 'Alerts',
+      subtitle: 'Things to check in the lot. Each stays until you confirm it or mark it a false alarm.',
+      icon: Icons.notifications_active_outlined,
+      actions: [
+        if (open.isNotEmpty)
+          StatusPill.of('${open.length} to check', intent: StatusIntent.warning, dense: true),
+      ],
+      child: open.isEmpty
+          ? Text(
+              'Nothing to check right now.',
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(color: t.text.secondary),
+            )
+          : WrongBayAlerts(flags: open),
     );
   }
 }
@@ -319,7 +386,6 @@ class _ActionBar extends StatelessWidget {
 
     const openGate = SizedBox(height: _height, child: OpenGateButton());
     final shortcuts = [
-      shortcut(Icons.badge_outlined, 'Gate check', '/gate'),
       shortcut(
         Icons.person_add_alt_outlined,
         'Issue visitor card',

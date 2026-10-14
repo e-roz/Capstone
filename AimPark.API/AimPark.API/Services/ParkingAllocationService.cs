@@ -2,25 +2,25 @@ using AimPark.API.Data;
 using AimPark.API.DTOs;
 using AimPark.API.Entities;
 using AimPark.API.Enums;
+using AimPark.API.Helpers;
 using AimPark.API.Interfaces;
 using Microsoft.EntityFrameworkCore;
 
 namespace AimPark.API.Services
 {
     /// <summary>
-    /// Smart slot allocation.
+    /// Smart slot allocation: the nearest free bay of the vehicle's own kind.
     ///
-    /// The facility is two gates of ten slots each — 2 four-wheel and 8
-    /// motorcycle per gate. Within a gate the bays are metres apart, so ranking
-    /// by proximity would be false precision; the decision that carries real
-    /// value is <em>which gate</em>, because sending a rider to the gate with
-    /// spare capacity saves them queueing at a full one.
-    ///
-    /// So the pick is two stages rather than a weighted score: choose the gate
-    /// with the most free compatible slots, then take the lowest slot code
-    /// within it. That is also the point of the design — it can be explained in
-    /// one sentence, which a tuned scoring function or an ML model over twenty
+    /// The lot is one drive lane with a gate at each end (see
+    /// <see cref="LotLayout"/>). A vehicle that taps in at a gate is given the
+    /// free bay closest to that gate, whichever column it is in; bays the same
+    /// distance away go to the lower slot number. That can be explained in one
+    /// sentence, which a tuned scoring function or an ML model over eighteen
     /// slots and no training data could not be.
+    ///
+    /// The app has no gate to measure from, so it runs the same rule from the
+    /// gate whose nearest free bay is closest, and tells the driver to enter
+    /// there.
     ///
     /// There is no reservation concept. Slots are claimed at the barrier when
     /// the RFID is scanned; the in-app answer is advice only and writes nothing.
@@ -59,14 +59,14 @@ namespace AimPark.API.Services
                     continue;
 
                 // No gate context — the driver has not committed to a barrier
-                // yet, so steering them to the emptier gate is the whole point.
-                var ranked = await RankCandidatesAsync(userId, tier, atGate: null, ct);
+                // yet, so the ranking picks the gate to send them to.
+                var (ranked, gate) = await RankCandidatesAsync(userId, tier, atGate: null, ct);
                 if (ranked.Count == 0)
                     continue;
 
                 var pick = ranked[0];
-                return Assigned(pick, Alternatives(ranked, pick.Id),
-                    BuildReason(pick, ranked, vehicleType.Value, tier, atGate: null));
+                return Assigned(pick, gate, Alternatives(ranked, pick.Id),
+                    BuildReason(pick, gate, atGate: null));
             }
 
             return LotFull(vehicleType.Value);
@@ -114,7 +114,7 @@ namespace AimPark.API.Services
                 // "gate you used last" and falls through to spare capacity —
                 // which is the right answer for somebody who has never been
                 // here before.
-                var ranked = await RankCandidatesAsync(
+                var (ranked, gate) = await RankCandidatesAsync(
                     userId ?? Guid.Empty, tier, atGate, ct);
 
                 if (ranked.Count == 0)
@@ -128,8 +128,8 @@ namespace AimPark.API.Services
                     if (!await TryClaimAsync(candidate.Id, ct))
                         continue; // Another vehicle took it between the read and the write.
 
-                    return Assigned(candidate, Alternatives(ranked, candidate.Id),
-                        BuildReason(candidate, ranked, vehicleType, tier, atGate));
+                    return Assigned(candidate, gate, Alternatives(ranked, candidate.Id),
+                        BuildReason(candidate, gate, atGate));
                 }
             }
 
@@ -154,18 +154,17 @@ namespace AimPark.API.Services
                 .FirstOrDefaultAsync(ct);
 
         /// <summary>
-        /// Free slots of the given types, best first.
+        /// Free slots of the given types, best first, and the gate they were
+        /// measured from.
         ///
         /// When <paramref name="atGate"/> is set the vehicle is already at that
-        /// barrier, so its bays come first and the other gate is only a fallback
-        /// for when this one is full. When it is null the driver has not
-        /// committed to a gate, and the ranking steers them to the emptier one.
+        /// barrier, so distance is measured from it. When it is null the driver
+        /// has not committed to a gate, and <see cref="EntryGateFor"/> picks one.
         /// </summary>
-        private async Task<List<ParkingSlot>> RankCandidatesAsync(
+        private async Task<(List<ParkingSlot> Ranked, int Gate)> RankCandidatesAsync(
             Guid userId, VehicleType[] tier, int? atGate, CancellationToken ct)
         {
             var acceptable = tier.Select(t => (VehicleType?)t).ToArray();
-            var now = DateTime.UtcNow;
 
             // A bay given to a car still inside is never offered again, even
             // while its sensor sees it empty.
@@ -178,30 +177,42 @@ namespace AimPark.API.Services
                 .ToListAsync(ct);
 
             if (free.Count == 0)
-                return [];
+                return ([], atGate ?? 1);
 
-            var lastGate = await _db.Set<ParkingLog>().AsNoTracking()
-                .Where(l => l.UserId == userId && l.Slot != null)
-                .OrderByDescending(l => l.EntryTime)
-                .Select(l => (int?)l.Slot!.Gate)
-                .FirstOrDefaultAsync(ct);
-
-            // Stage 1: the gate the vehicle is standing at, if we know it —
-            // otherwise the gate with the most spare capacity, breaking ties
-            // toward the gate the driver used last.
-            // Stage 2: within a gate, lowest slot code — deterministic and
-            // demonstrable. Slots vacated seconds ago sort last but stay usable,
-            // so a busy lot never strands someone on a technicality.
-            return [.. free
-                .GroupBy(s => s.Gate)
-                .OrderBy(g => g.Key == atGate ? 0 : 1)
-                .ThenByDescending(g => g.Count())
-                .ThenBy(g => g.Key == lastGate ? 0 : 1)
-                .ThenBy(g => g.Key)
-                .SelectMany(g => g
-                    .OrderBy(s => WasJustVacated(s, now) ? 1 : 0)
-                    .ThenBy(s => s.SlotCode))];
+            var gate = atGate ?? EntryGateFor(free, await LastGateAsync(userId, ct));
+            return (Rank(free, gate, DateTime.UtcNow), gate);
         }
+
+        /// <summary>
+        /// Nearest to <paramref name="gate"/> first; bays the same distance away
+        /// go to the lower slot number (M7 before M10). Slots vacated seconds ago
+        /// sort last but stay usable, so a busy lot never strands someone on a
+        /// technicality.
+        /// </summary>
+        public static List<ParkingSlot> Rank(IEnumerable<ParkingSlot> free, int gate, DateTime now) =>
+            [.. free
+                .OrderBy(s => WasJustVacated(s, now) ? 1 : 0)
+                .ThenBy(s => LotLayout.DistanceFrom(gate, s.SlotCode))
+                .ThenBy(s => LotLayout.NumberOf(s.SlotCode))
+                .ThenBy(s => s.SlotCode, StringComparer.OrdinalIgnoreCase)];
+
+        /// <summary>
+        /// For a driver with no gate yet: the gate whose nearest free bay is
+        /// closest. A tie goes to the gate they used last, then to Gate 1.
+        /// </summary>
+        public static int EntryGateFor(IReadOnlyCollection<ParkingSlot> free, int? lastGate) =>
+            new[] { 1, 2 }
+                .OrderBy(g => free.Min(s => LotLayout.DistanceFrom(g, s.SlotCode)))
+                .ThenBy(g => g == lastGate ? 0 : 1)
+                .ThenBy(g => g)
+                .First();
+
+        private Task<int?> LastGateAsync(Guid userId, CancellationToken ct) =>
+            _db.Set<ParkingLog>().AsNoTracking()
+                .Where(l => l.UserId == userId && l.Gate != null)
+                .OrderByDescending(l => l.EntryTime)
+                .Select(l => l.Gate)
+                .FirstOrDefaultAsync(ct);
 
         /// <summary>
         /// Conditional update: the row only changes if it is still available at
@@ -240,13 +251,14 @@ namespace AimPark.API.Services
                     Gate = s.Gate
                 })];
 
+        /// <param name="gate">The gate to enter by, which may not be the one whose column the bay is in.</param>
         private static SlotRecommendationResponse Assigned(
-            ParkingSlot slot, List<SlotOptionResponse> alternatives, string reason) => new()
+            ParkingSlot slot, int gate, List<SlotOptionResponse> alternatives, string reason) => new()
             {
                 Result = AllocationResult.Assigned,
                 SlotId = slot.Id,
                 SlotCode = slot.SlotCode,
-                Gate = slot.Gate,
+                Gate = gate,
                 Alternatives = alternatives,
                 Reason = reason
             };
@@ -271,25 +283,9 @@ namespace AimPark.API.Services
                 : "All motorcycle slots are taken."
         };
 
-        private static string BuildReason(
-            ParkingSlot chosen, List<ParkingSlot> ranked, VehicleType vehicleType,
-            VehicleType[] tier, int? atGate)
-        {
-            var here = ranked.Count(s => s.Gate == chosen.Gate);
-            var elsewhere = ranked.Count - here;
-
-            // Diverted: the driver is at one barrier and is being sent to the
-            // other. This is the one case they must not miss, so it leads.
-            if (atGate is not null && chosen.Gate != atGate)
-                return $"Gate {atGate} is full for your vehicle — proceed to Gate {chosen.Gate}.";
-
-            if (atGate is not null)
-                return $"Gate {chosen.Gate} has {here} free slot(s) for your vehicle.";
-
-            if (elsewhere == 0)
-                return $"Gate {chosen.Gate} is the only gate with space for your vehicle.";
-
-            return $"Gate {chosen.Gate} has {here} free slot(s) for your vehicle versus {elsewhere} at the other gate.";
-        }
+        private static string BuildReason(ParkingSlot chosen, int gate, int? atGate) =>
+            atGate is not null
+                ? $"{chosen.SlotCode} is the nearest free slot to Gate {gate} for your vehicle."
+                : $"Enter at Gate {gate}: {chosen.SlotCode} is the nearest free slot for your vehicle.";
     }
 }

@@ -124,11 +124,12 @@ class ParkingActions extends _$ParkingActions {
   }
 
   /// A guard's verdict after going to look: 'Confirmed' or 'FalseAlarm'.
-  Future<String?> reviewWrongBay(String flagId, String outcome) async {
+  /// [note] is the follow-up report for the administrator, kept on a confirm.
+  Future<String?> reviewWrongBay(String flagId, String outcome, {String? note}) async {
     return _run(() async {
       final dio = ref.read(dioProvider);
       final res = await dio.post(ApiEndpoints.reviewWrongBayFlag(flagId),
-          data: {'outcome': outcome});
+          data: {'outcome': outcome, 'note': ?note});
       return (res.data as Map<String, dynamic>)['message']?.toString();
     });
   }

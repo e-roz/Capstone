@@ -462,6 +462,8 @@ namespace AimPark.API.Data
                 entity.Property(f => f.Status)
                       .HasConversion<string>();
 
+                entity.Property(f => f.ReviewNote).HasMaxLength(1000);
+
                 entity.HasOne(f => f.Slot)
                       .WithMany()
                       .HasForeignKey(f => f.SlotId)

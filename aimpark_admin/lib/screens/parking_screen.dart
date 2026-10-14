@@ -9,6 +9,7 @@ import '../providers/parking_provider.dart';
 import '../router/destinations.dart';
 import '../theme/theme.dart';
 import '../widgets/ui/ui.dart';
+import '../widgets/parking/gate_entry_banners.dart';
 import '../widgets/parking/live_parking_map.dart';
 import '../widgets/user_picker.dart';
 
@@ -55,8 +56,12 @@ class ParkingScreen extends ConsumerWidget {
           },
         ),
       ],
+      // A guard gets the gate banners on top, for the screen the page is
+      // projected on, and has the wrong-bay alerts on the Overview instead.
       body: LiveParkingMapCard(
         onBayTap: isAdmin ? (slot) => _changeStatus(context, ref, slot) : null,
+        showWrongBayAlerts: isAdmin,
+        header: isAdmin ? null : const GateEntryBanners(),
       ),
     );
   }
@@ -226,8 +231,8 @@ class ParkingScreen extends ConsumerWidget {
                 if (slotId == null) ...[
                   const SizedBox(height: AppSpacing.x2),
                   _DialogNote(
-                    'The system will pick a bay at this gate, or send the '
-                    'driver to the other gate if this one is full.',
+                    'The system will recommend the free bay nearest this '
+                    'gate for the vehicle.',
                   ),
                 ],
                 if (slots.isEmpty) ...[

@@ -130,6 +130,7 @@ namespace AimPark.API.Services
                     Status = f.Status.ToString(),
                     DetectedAt = f.DetectedAt,
                     ReviewedAt = f.ReviewedAt,
+                    ReviewNote = f.ReviewNote,
                     ReviewedByName = _db.Set<User>()
                         .Where(u => u.Id == f.ReviewedByUserId)
                         .Select(u => u.FullName)
@@ -151,10 +152,19 @@ namespace AimPark.API.Services
             if (flag is null)
                 return new NotFoundObjectResult(new { message = "Warning not found." });
 
+            // The report is for the administrator deciding on a violation, so
+            // only a confirm keeps one.
+            var note = dto.Note?.Trim();
+            if (outcome != WrongBayFlagStatus.Confirmed || string.IsNullOrEmpty(note))
+                note = null;
+            else if (note.Length > 1000)
+                return new BadRequestObjectResult(new { message = "Keep the report under 1000 characters." });
+
             var now = DateTime.UtcNow;
             flag.Status = outcome;
             flag.ReviewedByUserId = reviewerUserId;
             flag.ReviewedAt = now;
+            flag.ReviewNote = note;
             flag.UpdatedAt = now;
             await _db.SaveChangesAsync(ct);
 
