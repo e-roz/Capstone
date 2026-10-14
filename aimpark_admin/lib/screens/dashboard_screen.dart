@@ -7,6 +7,7 @@ import '../core/utils/ph_time.dart';
 import '../models/notification.dart';
 import '../models/parking_slot.dart';
 import '../models/report.dart';
+import '../providers/expiry_counts_provider.dart';
 import '../providers/overview_provider.dart';
 import '../providers/parking_provider.dart';
 import '../providers/registrations_provider.dart';
@@ -177,6 +178,8 @@ class _AttentionSection extends ConsumerWidget {
     final t = context.tokens;
     final text = Theme.of(context).textTheme;
     final pending = ref.watch(pendingRegistrationsProvider).valueOrNull?.length;
+    final expired = ref.watch(expiredUsersCountProvider).valueOrNull;
+    final expiring = ref.watch(expiringUsersCountProvider).valueOrNull;
 
     final tiles = <_AttentionTile>[
       _AttentionTile(
@@ -211,6 +214,29 @@ class _AttentionSection extends ConsumerWidget {
         intent: summary.finesPending > 0 ? StatusIntent.warning : null,
         route: '/payments',
       ),
+      // One tile for documents. Anything already expired is the urgent figure;
+      // with none, it counts what is about to be. Either way it opens the Users
+      // list on the same filter, so the number and the list cannot disagree.
+      if ((expired ?? 0) > 0)
+        _AttentionTile(
+          label: 'Expired documents',
+          hint: (expiring ?? 0) > 0
+              ? '$expiring more expiring in 60 days'
+              : 'Licence or registration',
+          icon: Icons.event_busy_outlined,
+          value: '$expired',
+          intent: StatusIntent.danger,
+          route: '/users?expiry=expired',
+        )
+      else
+        _AttentionTile(
+          label: 'Documents expiring',
+          hint: 'Within 60 days',
+          icon: Icons.event_outlined,
+          value: expiring == null ? '—' : '$expiring',
+          intent: (expiring ?? 0) > 0 ? StatusIntent.warning : null,
+          route: '/users?expiry=expiring',
+        ),
       _AttentionTile(
         label: 'Serious denials today',
         value: '${summary.seriousDenialsToday}',
@@ -240,8 +266,8 @@ class _AttentionSection extends ConsumerWidget {
         const SizedBox(height: AppSpacing.x2),
         LayoutBuilder(
           builder: (context, constraints) {
-            final columns = constraints.maxWidth > 1100
-                ? 5
+            final columns = constraints.maxWidth > 1500
+                ? 6
                 : constraints.maxWidth > 760
                 ? 3
                 : 2;

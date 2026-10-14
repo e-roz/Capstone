@@ -24,7 +24,9 @@ namespace AimPark.API.Controllers
         /// Query params: page (default 1), pageSize (default 20),
         /// status (optional — either an AccountStatus value, or "Archived" to filter to archived accounts),
         /// search (optional, matches full name, email, or plate number),
-        /// card (optional — "none" or "has"; limits the list to ordinary users with or without a card).
+        /// card (optional — "none" or "has"; limits the list to ordinary users with or without a card),
+        /// expiry (optional — "expired" or "expiring"; active users whose licence or a vehicle's
+        /// registration has run out, or runs out within 60 days).
         /// </summary>
         [HttpGet]
         public Task<ActionResult<UserListResponse>> List(
@@ -34,8 +36,9 @@ namespace AimPark.API.Controllers
             [FromQuery] string? search = null,
             [FromQuery] string? role = null,
             [FromQuery] string? card = null,
+            [FromQuery] string? expiry = null,
             CancellationToken ct = default)
-            => _adminUserService.ListAsync(page, pageSize, status, search, role, card, ct);
+            => _adminUserService.ListAsync(page, pageSize, status, search, role, card, expiry, ct);
 
         /// <summary>
         /// Archives a user account (soft delete). Sets IsDeleted=true and DeletedAt=now.

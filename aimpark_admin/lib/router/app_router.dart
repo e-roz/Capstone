@@ -105,7 +105,9 @@ GoRouter appRouter(Ref ref) {
           ),
           GoRoute(
             path: '/users',
-            builder: (context, state) => const UserManagementScreen(),
+            builder: (context, state) => UserManagementScreen(
+              initialExpiry: state.uri.queryParameters['expiry'],
+            ),
           ),
           GoRoute(
             path: '/users/:userId',

@@ -34,10 +34,19 @@ const _cardOptions = [
   AppFilterOption('none', 'No card'),
 ];
 
+const _expiryOptions = [
+  AppFilterOption('expired', 'Expired'),
+  AppFilterOption('expiring', 'Expiring in 60 days'),
+];
+
 final _joined = DateFormat('MMM d, yyyy');
 
 class UserManagementScreen extends ConsumerStatefulWidget {
-  const UserManagementScreen({super.key});
+  const UserManagementScreen({super.key, this.initialExpiry});
+
+  /// `expired` or `expiring`, when the Overview sends someone here from its
+  /// documents tile. Applied once, on arrival.
+  final String? initialExpiry;
 
   @override
   ConsumerState<UserManagementScreen> createState() =>
@@ -49,6 +58,22 @@ class _UserManagementScreenState extends ConsumerState<UserManagementScreen> {
   /// to be rebuilt to empty it; keying it on the search value itself would
   /// rebuild it (and drop focus) on every debounced keystroke.
   int _searchGeneration = 0;
+
+  @override
+  void initState() {
+    super.initState();
+
+    // Set after the first frame: a provider cannot be changed while the widget
+    // tree is still being built.
+    final expiry = widget.initialExpiry;
+    if (expiry != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          ref.read(usersQueryNotifierProvider.notifier).setExpiry(expiry);
+        }
+      });
+    }
+  }
 
   void _clearFilters() {
     ref.read(usersQueryNotifierProvider.notifier).clearFilters();
@@ -99,14 +124,21 @@ class _UserManagementScreenState extends ConsumerState<UserManagementScreen> {
             allLabel: 'All',
             onChanged: notifier.setCard,
           ),
+          AppFilterDropdown<String>(
+            label: 'Documents',
+            value: query.expiry,
+            options: _expiryOptions,
+            allLabel: 'All',
+            onChanged: notifier.setExpiry,
+          ),
         ],
       ),
       body: AsyncView(
         value: ref.watch(userListProvider),
         onRetry: () => ref.invalidate(userListProvider),
         loading: const SkeletonTable(
-          columns: 5,
-          columnWidths: [260, 110, 130, 110, 40],
+          columns: 6,
+          columnWidths: [260, 110, 130, 220, 110, 40],
         ),
         isEmpty: (page) => page.users.isEmpty,
         empty: AppEmptyState(
@@ -123,11 +155,12 @@ class _UserManagementScreenState extends ConsumerState<UserManagementScreen> {
               : null,
         ),
         data: (page) => AppDataTable(
-          minWidth: 760,
+          minWidth: 980,
           columns: const [
             DataColumn(label: Text('Name')),
             DataColumn(label: Text('Status')),
             DataColumn(label: Text('Card')),
+            DataColumn(label: Text('Documents')),
             DataColumn(label: Text('Joined')),
             // The row menu. No header text: the "⋯" button names itself.
             DataColumn(label: SizedBox.shrink()),
@@ -173,6 +206,7 @@ class _UserManagementScreenState extends ConsumerState<UserManagementScreen> {
           ),
         ),
         DataCell(_CardCell(user: user)),
+        DataCell(_DocumentsCell(user: user)),
         DataCell(
           Text(
             _joined.format(user.createdAt.toLocal()),
@@ -719,6 +753,52 @@ class _UserPickerDialogState extends State<_UserPickerDialog> {
               ? null
               : () => Navigator.pop(context, _selected),
           child: Text('Continue (${_selected.length})'),
+        ),
+      ],
+    );
+  }
+}
+
+/// What is wrong with a user's licence or registrations, if anything.
+///
+/// Says which document and when, so an admin does not have to open the user to
+/// find out what the pill is about. Blank for staff, applicants and anyone whose
+/// documents are all comfortably in date.
+class _DocumentsCell extends StatelessWidget {
+  const _DocumentsCell({required this.user});
+
+  final AdminUser user;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = context.tokens;
+    final text = Theme.of(context).textTheme;
+
+    final state = user.expiryState;
+    if (state == null) {
+      return Text('—', style: text.bodySmall?.copyWith(color: t.text.tertiary));
+    }
+
+    final expired = state == 'Expired';
+    final date = user.expiryDate?.toLocal();
+
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        StatusPill(
+          label: expired ? 'Expired' : 'Expiring',
+          intent: expired ? StatusIntent.danger : StatusIntent.warning,
+          dense: true,
+        ),
+        const SizedBox(width: AppSpacing.x2),
+        Flexible(
+          child: Text(
+            date == null
+                ? (user.expiryWhat ?? '')
+                : '${user.expiryWhat} · ${DateFormat('MMM d').format(date)}',
+            overflow: TextOverflow.ellipsis,
+            style: text.bodySmall?.copyWith(color: t.text.secondary),
+          ),
         ),
       ],
     );

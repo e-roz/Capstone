@@ -21,5 +21,14 @@ namespace AimPark.API.DTOs
         public string? RfidTagId { get; set; }
         public bool IsDeleted { get; set; }
         public DateTime CreatedAt { get; set; }
+
+        /// <summary>"Expired", "Expiring", or null. See DocumentExpiry.Worst.</summary>
+        public string? ExpiryState { get; set; }
+
+        /// <summary>What it is about: "Licence" or "Registration ABC1234".</summary>
+        public string? ExpiryWhat { get; set; }
+
+        /// <summary>The date it is about.</summary>
+        public DateTime? ExpiryDate { get; set; }
     }
 }

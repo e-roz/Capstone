@@ -11,6 +11,14 @@ class AdminUser {
   final bool isDeleted;
   final DateTime createdAt;
 
+  /// `Expired`, `Expiring`, or null. The most pressing of the licence and the
+  /// vehicles' registrations, worked out by the API.
+  final String? expiryState;
+
+  /// What it is about: "Licence" or "Registration ABC1234".
+  final String? expiryWhat;
+  final DateTime? expiryDate;
+
   const AdminUser({
     required this.userId,
     required this.fullName,
@@ -21,6 +29,9 @@ class AdminUser {
     this.rfidTagId,
     required this.isDeleted,
     required this.createdAt,
+    this.expiryState,
+    this.expiryWhat,
+    this.expiryDate,
   });
 
   factory AdminUser.fromJson(Map<String, dynamic> json) => AdminUser(
@@ -33,6 +44,11 @@ class AdminUser {
     rfidTagId: json['rfidTagId']?.toString(),
     isDeleted: (json['isDeleted'] as bool?) ?? false,
     createdAt: DateTime.parse(json['createdAt'].toString()),
+    expiryState: json['expiryState']?.toString(),
+    expiryWhat: json['expiryWhat']?.toString(),
+    expiryDate: json['expiryDate'] == null
+        ? null
+        : DateTime.tryParse(json['expiryDate'].toString()),
   );
 
   /// The status the list shows. Archived is the separate IsDeleted flag on the
