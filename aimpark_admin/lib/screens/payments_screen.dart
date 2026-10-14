@@ -138,12 +138,6 @@ class PaymentsScreen extends ConsumerWidget {
       DataCell(Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          if (p.paidAt == null && p.status != 'Waived')
-            AppRowAction(
-              icon: Icons.payments_outlined,
-              label: 'Mark paid',
-              onPressed: () => _markPaid(context, ref, p),
-            ),
           AppRowAction(
             icon: Icons.receipt_long,
             label: 'Receipt',
@@ -221,82 +215,6 @@ class PaymentsScreen extends ConsumerWidget {
         ),
       ),
     );
-  }
-
-  /// Records money handed over in person.
-  ///
-  /// The counterpart of a provider callback, and the reason the transaction
-  /// carries who confirmed it: online money arrives with a record attached, and
-  /// cash arrives in somebody's hand. Whoever presses this is the answer to
-  /// "who took it", so the confirmation says as much before it is pressed.
-  Future<void> _markPaid(
-      BuildContext context, WidgetRef ref, PaymentTransaction p) async {
-    final referenceCtrl = TextEditingController();
-    var method = 'Cash';
-
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setLocal) => AlertDialog(
-          title: const Text('Mark as paid'),
-          content: SizedBox(
-            width: context.dialogWidth(420),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Record ${_money.format(p.amountDue)} as received. Your name '
-                  'is saved against this payment as the one who took it.',
-                ),
-                const SizedBox(height: AppSpacing.x4),
-                DropdownButtonFormField<String>(
-                  initialValue: method,
-                  decoration: const InputDecoration(labelText: 'Method'),
-                  items: const [
-                    DropdownMenuItem(value: 'Cash', child: Text('Cash')),
-                    DropdownMenuItem(value: 'GCash', child: Text('GCash')),
-                    DropdownMenuItem(value: 'Maya', child: Text('Maya')),
-                    DropdownMenuItem(value: 'Card', child: Text('Card')),
-                  ],
-                  onChanged: (v) => setLocal(() => method = v ?? 'Cash'),
-                ),
-                const SizedBox(height: AppSpacing.x3),
-                TextField(
-                  controller: referenceCtrl,
-                  decoration: const InputDecoration(
-                    labelText: 'Reference or OR number (optional)',
-                  ),
-                ),
-              ],
-            ),
-          ),
-          actions: [
-            TextButton(
-                onPressed: () => Navigator.pop(ctx, false),
-                child: const Text('Cancel')),
-            FilledButton(
-              onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('Mark paid'),
-            ),
-          ],
-        ),
-      ),
-    );
-
-    if (confirmed != true || !context.mounted) return;
-
-    final reference = referenceCtrl.text.trim();
-    final msg = await ref.read(paymentActionsProvider.notifier).markPaid(
-          p.paymentId,
-          method: method,
-          referenceNumber: reference.isEmpty ? null : reference,
-        );
-
-    if (!context.mounted) return;
-    ScaffoldMessenger.of(context)
-        .showSnackBar(SnackBar(content: Text(msg ?? 'Payment recorded.')));
-    ref.invalidate(paymentListProvider);
   }
 
   Future<void> _showRates(

@@ -53,10 +53,6 @@ namespace AimPark.API.Interfaces
         /// </summary>
         Task<bool> HandleGatewayCallbackAsync(string rawBody, IDictionary<string, string> headers, CancellationToken ct);
 
-        /// <summary>
-        /// Records a bill settled in cash, and who took it.
-        /// </summary>
-        Task<ActionResult<object>> MarkPaidByAdminAsync(Guid paymentId, Guid adminUserId, MarkPaidDto dto, CancellationToken ct);
         Task<ActionResult<PaymentListResponse>> ListAllAsync(string? status, DateTime? from, DateTime? to, int page, int pageSize, CancellationToken ct);
 
         /// <summary>

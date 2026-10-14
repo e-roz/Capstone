@@ -23,8 +23,6 @@ class ApiEndpoints {
 
   // Admin – Users
   static const users = '/api/admin/users';
-  static String markPaymentPaid(String paymentId) =>
-      '/api/admin/payments/$paymentId/mark-paid';
   static String archiveUser(String userId) => '/api/admin/users/$userId';
   static String deleteUserDocuments(String userId) =>
       '/api/admin/users/$userId/documents';
