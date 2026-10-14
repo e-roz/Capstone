@@ -13,6 +13,7 @@ import '../../../payments/data/models/payment.dart';
 import '../../../payments/presentation/providers/payments_provider.dart';
 import '../../../violations/data/models/violation.dart';
 import '../../../violations/presentation/providers/violations_provider.dart';
+import '../../../renewals/presentation/widgets/document_expiry_rows.dart';
 import '../../data/models/my_profile.dart';
 import '../providers/account_provider.dart';
 import '../widgets/access_status_card.dart';
@@ -163,6 +164,17 @@ class AccountScreen extends ConsumerWidget {
                 ),
               ],
             ),
+            const SizedBox(height: AppSpacing.lg),
+
+            AppSectionHeader(
+              title: 'Documents',
+              action: AppTextLink(
+                label: 'See all',
+                semanticLabel: 'See all documents',
+                onTap: () => context.push('/home/user/documents'),
+              ),
+            ),
+            const DocumentExpiryRows(),
             const SizedBox(height: AppSpacing.lg),
 
             const AppSectionHeader(title: 'My account'),

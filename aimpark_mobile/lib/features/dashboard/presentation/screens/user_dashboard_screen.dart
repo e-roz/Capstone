@@ -18,6 +18,7 @@ import '../../../vehicles/data/models/vehicle.dart';
 import '../../../vehicles/presentation/providers/vehicles_provider.dart';
 import '../../../violations/data/models/violation.dart';
 import '../../../violations/presentation/providers/violations_provider.dart';
+import '../../../renewals/presentation/widgets/expiry_banner.dart';
 import '../widgets/home_attention_cards.dart';
 import '../widgets/home_header.dart';
 import '../widgets/vehicle_status_card.dart';
@@ -168,6 +169,10 @@ class UserDashboardScreen extends ConsumerWidget {
                 AccessStatusCard(onGoToPayments: onNavigateToPayments),
                 gap,
               ],
+
+              // A licence or registration close to running out, or a renewal
+              // waiting on an admin. Draws nothing when there is nothing to say.
+              const ExpiryBanner(),
 
               _hero(context, ref, availabilityAsync, vehicles),
 

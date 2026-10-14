@@ -32,6 +32,12 @@ namespace AimPark.API.DTOs
         /// <summary>LTO Official Receipt — the source of the plate number.</summary>
         public IFormFile? OfficialReceipt { get; set; }
 
+        /// <summary>
+        /// The applicant chose "E-bike". No receipt is collected: an e-bike has none,
+        /// and the admin issues a temporary plate at inspection.
+        /// </summary>
+        public bool IsEBike { get; set; }
+
         // Serialised OcrPayloadDto, one per image. Optional: a phone that cannot run
         // text recognition still submits, and the whole thing falls to manual review
         // rather than blocking the applicant.

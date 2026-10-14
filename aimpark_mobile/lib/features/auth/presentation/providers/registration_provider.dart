@@ -70,7 +70,9 @@ class DocumentAgenda {
 Future<DocumentAgenda> documentAgenda(Ref ref) async {
   final affiliation =
       ref.watch(registrationNotifierProvider.select((s) => s.affiliation));
-  final full = DocumentSpec.forAffiliation(affiliation);
+  final isEBike =
+      ref.watch(registrationNotifierProvider.select((s) => s.isEBike));
+  final full = DocumentSpec.forAffiliation(affiliation, isEBike: isEBike);
 
   try {
     final response = await ref.read(authRepositoryProvider).registrationStatus();
@@ -117,6 +119,7 @@ class RegistrationState {
     this.isOAuthFlow = false,
     this.googleDisplayName,
     this.affiliation = Affiliation.student,
+    this.isEBike = false,
     this.captured = const {},
     this.captureAttempts = const {},
     this.hydrated = false,
@@ -132,6 +135,11 @@ class RegistrationState {
   /// document under the affiliation it has on record, so a stale value here
   /// mislabels a button but never stores the wrong kind of document.
   final Affiliation affiliation;
+
+  /// "E-bike" was chosen rather than "Motor vehicle". An e-bike has no LTO plate
+  /// or receipt, so the document step skips the receipt and the applicant ends
+  /// the flow by visiting the admin office.
+  final bool isEBike;
 
   /// True when the current registration was initiated via Google Sign-In.
   /// Used by [RegisterProfileScreen] to hide password fields and pre-fill name.
@@ -175,6 +183,7 @@ class RegistrationState {
     bool? isOAuthFlow,
     String? googleDisplayName,
     Affiliation? affiliation,
+    bool? isEBike,
     Map<ScanDocumentType, CapturedDocument>? captured,
     Map<ScanDocumentType, int>? captureAttempts,
     bool? hydrated,
@@ -188,6 +197,7 @@ class RegistrationState {
       googleDisplayName:
           clearSession ? null : googleDisplayName ?? this.googleDisplayName,
       affiliation: affiliation ?? this.affiliation,
+      isEBike: isEBike ?? this.isEBike,
       captured: captured ?? this.captured,
       captureAttempts: captureAttempts ?? this.captureAttempts,
       hydrated: hydrated ?? this.hydrated,
@@ -224,6 +234,7 @@ class RegistrationNotifier extends _$RegistrationNotifier {
 
     state = state.copyWith(
       affiliation: Affiliation.fromWire(draft?.affiliationWireName),
+      isEBike: draft?.isEBike,
       captured: draft?.captured,
       captureAttempts: draft?.attempts,
       hydrated: true,
@@ -241,6 +252,7 @@ class RegistrationNotifier extends _$RegistrationNotifier {
         affiliationWireName: state.affiliation.wireName,
         captured: state.captured,
         attempts: state.captureAttempts,
+        isEBike: state.isEBike,
       ),
     );
   }
@@ -263,6 +275,7 @@ class RegistrationNotifier extends _$RegistrationNotifier {
     _touched = true;
     state = state.copyWith(
       affiliation: Affiliation.student,
+      isEBike: false,
       captured: const {},
       captureAttempts: const {},
       hydrated: true,
@@ -288,6 +301,12 @@ class RegistrationNotifier extends _$RegistrationNotifier {
   void setAffiliation(Affiliation affiliation) {
     _touched = true;
     state = state.copyWith(affiliation: affiliation);
+    _persist();
+  }
+
+  void setIsEBike(bool isEBike) {
+    _touched = true;
+    state = state.copyWith(isEBike: isEBike);
     _persist();
   }
 

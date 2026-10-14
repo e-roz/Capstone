@@ -30,7 +30,8 @@ class ReviewDocumentTab {
   /// tab so its absence is visible rather than silently skipped.
   static List<ReviewDocumentTab> forDetail(RegistrationDetail detail) {
     final identity = detail.affiliation == 'Student' ? 'Raf' : 'SchoolId';
-    final expected = [identity, 'License', 'OfficialReceipt'];
+    // An e-bike has no receipt, so no tab for one to be missing from.
+    final expected = [identity, 'License', if (!detail.isEBike) 'OfficialReceipt'];
     final readings = detail.checks?.readings ?? const <DocumentReading>[];
 
     final types = <String>{

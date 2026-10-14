@@ -7,6 +7,7 @@ class MyProfile {
     required this.accountStatus,
     required this.createdAt,
     this.phoneNumber,
+    this.licenseValidThrough,
   });
 
   final String userId;
@@ -17,6 +18,9 @@ class MyProfile {
   final String accountStatus;
   final DateTime createdAt;
 
+  /// When the driver's licence on file runs out. Null if it was never read.
+  final DateTime? licenseValidThrough;
+
   factory MyProfile.fromJson(Map<String, dynamic> json) {
     return MyProfile(
       userId: json['userId'] as String,
@@ -26,6 +30,8 @@ class MyProfile {
       role: json['role'] as String,
       accountStatus: json['accountStatus'] as String,
       createdAt: DateTime.parse(json['createdAt'] as String),
+      licenseValidThrough:
+          DateTime.tryParse(json['licenseValidThrough']?.toString() ?? ''),
     );
   }
 }

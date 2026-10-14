@@ -87,8 +87,102 @@ namespace AimPark.API.Services
             await NoticeOverdueAsync(db, notifications, now, ct);
             await NoticeSuspensionStartedAsync(db, notifications, now, ct);
             await NoticeAccessRestoredAsync(db, notifications, now, ct);
+            await RemindExpiringDocumentsAsync(db, notifications, now, ct);
             await PruneDeviceTokensAsync(db, now, ct);
         }
+
+        /// <summary>How many days before a licence or registration runs out the user is told.</summary>
+        private const int ExpiryWarningDays = 30;
+
+        /// <summary>
+        /// A licence or registration that is about to run out, or just did.
+        /// </summary>
+        /// <remarks>
+        /// Each notice records the expiry it was sent for, not when it was sent. A
+        /// renewed document has a new expiry, so it is warned about in its turn
+        /// without anything having to reset the stamp.
+        ///
+        /// The same <see cref="CatchUpWindow"/> applies as to an overdue bill: an
+        /// account whose licence lapsed months ago, before this existed, is not
+        /// sent a notice for it on the first pass after deploying.
+        /// </remarks>
+        private static async Task RemindExpiringDocumentsAsync(
+            AppDbContext db, INotificationService notifications, DateTime now, CancellationToken ct)
+        {
+            var horizon = now.Date.AddDays(ExpiryWarningDays);
+            var floor = now - CatchUpWindow;
+
+            var users = await db.Set<User>()
+                .Where(u => u.Role == UserRole.User
+                         && u.AccountStatus == AccountStatus.Active
+                         && !u.IsDeleted
+                         && u.LicenseValidThrough != null
+                         && u.LicenseValidThrough <= horizon
+                         && u.LicenseValidThrough > floor
+                         && u.LicenseExpiryReminderSentFor != u.LicenseValidThrough)
+                .ToListAsync(ct);
+
+            foreach (var user in users)
+            {
+                var expiry = user.LicenseValidThrough!.Value;
+                user.LicenseExpiryReminderSentFor = expiry;
+                await db.SaveChangesAsync(ct);
+
+                await notifications.NotifyUserAsync(
+                    user.Id,
+                    NotificationType.Reminder,
+                    ExpiryTitle("licence", expiry, now),
+                    ExpiryBody("licence", expiry, now),
+                    new Dictionary<string, string> { ["screen"] = "profile" },
+                    ct);
+            }
+
+            // E-bikes have no registration, so there is nothing of theirs to warn about.
+            var vehicles = await db.Set<Vehicle>()
+                .Include(v => v.User)
+                .Where(v => !v.IsEBike
+                         && v.User.Role == UserRole.User
+                         && v.User.AccountStatus == AccountStatus.Active
+                         && !v.User.IsDeleted
+                         && v.RegistrationValidThrough != null
+                         && v.RegistrationValidThrough <= horizon
+                         && v.RegistrationValidThrough > floor
+                         && v.RegistrationExpiryReminderSentFor != v.RegistrationValidThrough)
+                .ToListAsync(ct);
+
+            foreach (var vehicle in vehicles)
+            {
+                var expiry = vehicle.RegistrationValidThrough!.Value;
+                vehicle.RegistrationExpiryReminderSentFor = expiry;
+                await db.SaveChangesAsync(ct);
+
+                var what = $"registration for {vehicle.PlateNumber}";
+                await notifications.NotifyUserAsync(
+                    vehicle.UserId,
+                    NotificationType.Reminder,
+                    ExpiryTitle(what, expiry, now),
+                    ExpiryBody(what, expiry, now),
+                    new Dictionary<string, string> { ["screen"] = "profile" },
+                    ct);
+            }
+        }
+
+        private static int DaysLeft(DateTime expiry, DateTime now) => (expiry.Date - now.Date).Days;
+
+        private static string ExpiryTitle(string what, DateTime expiry, DateTime now)
+        {
+            var days = DaysLeft(expiry, now);
+            return days < 0
+                ? $"Your {what} has expired"
+                : days == 0
+                    ? $"Your {what} expires today"
+                    : $"Your {what} expires in {days} {(days == 1 ? "day" : "days")}";
+        }
+
+        private static string ExpiryBody(string what, DateTime expiry, DateTime now) =>
+            DaysLeft(expiry, now) < 0
+                ? $"Renew your {what} and upload the new one in the app to keep using the gate."
+                : $"Renew your {what} and upload the new one in the app before {expiry:MMMM d}.";
 
         private static IQueryable<PaymentTransaction> Unpaid(AppDbContext db) =>
             db.Set<PaymentTransaction>()

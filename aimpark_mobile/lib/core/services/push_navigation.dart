@@ -25,6 +25,8 @@ String routeForPush(Map<String, String> data) {
     'parking-slots' => '/home/user/parking-slots',
     'parking-history' => '/home/user/parking-history',
     'violations' => '/home/user/violations',
+    // "Your licence expires in 30 days" and the like.
+    'profile' || 'documents' => '/home/user/documents',
     _ => '/home/user/notifications',
   };
 }

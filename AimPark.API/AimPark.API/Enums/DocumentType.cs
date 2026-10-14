@@ -37,6 +37,9 @@ namespace AimPark.API.Enums
         /// removing it would renumber nothing after it (it's last), but deleting a
         /// member some rows still reference is never done in this codebase.
         /// </summary>
-        PlatePhoto
+        PlatePhoto,
+
+        /// <summary>A photo of an e-bike taken by the admin at the in-person inspection.</summary>
+        EBikePhoto
     }
 }

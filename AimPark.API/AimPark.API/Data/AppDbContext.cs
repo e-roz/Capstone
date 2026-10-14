@@ -12,6 +12,7 @@ namespace AimPark.API.Data
         public DbSet<Vehicle> vehicles { get; set; }
         public DbSet<Document> Documents { get; set; }
         public DbSet<DocumentVerification> DocumentVerifications { get; set; }
+        public DbSet<DocumentRenewal> DocumentRenewals { get; set; }
         public DbSet<RegistrationSession> RegistrationSessions { get; set; }
         public DbSet<AdminAuditLog> AdminAuditLogs { get; set; }
         public DbSet<ParkingSlot> ParkingSlots { get; set; }
@@ -184,6 +185,35 @@ namespace AimPark.API.Data
                 entity.HasOne(d => d.User)
                       .WithMany()
                       .HasForeignKey(d => d.UserId)
+                      .OnDelete(DeleteBehavior.Cascade);
+            });
+
+            modelBuilder.Entity<DocumentRenewal>(entity =>
+            {
+                entity.HasKey(r => r.Id);
+
+                // The admin queue lists one status at a time, oldest first.
+                entity.HasIndex(r => new { r.Status, r.CreatedAt });
+                entity.HasIndex(r => r.UserId);
+
+                entity.Property(r => r.Type).HasConversion<string>();
+                entity.Property(r => r.Status).HasConversion<string>();
+
+                entity.HasOne(r => r.User)
+                      .WithMany()
+                      .HasForeignKey(r => r.UserId)
+                      .OnDelete(DeleteBehavior.Cascade);
+
+                // A vehicle that is removed takes its pending registration renewals
+                // with it; there is nothing left for them to renew.
+                entity.HasOne(r => r.Vehicle)
+                      .WithMany()
+                      .HasForeignKey(r => r.VehicleId)
+                      .OnDelete(DeleteBehavior.Cascade);
+
+                entity.HasOne(r => r.Document)
+                      .WithMany()
+                      .HasForeignKey(r => r.DocumentId)
                       .OnDelete(DeleteBehavior.Cascade);
             });
 

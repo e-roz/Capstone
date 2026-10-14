@@ -83,7 +83,12 @@ namespace AimPark.API.Helpers
                 Edits = BuildEdits(personRow)
             };
 
-            if (vehicles.Count > 0)
+            if (user.IsEBikeApplicant)
+            {
+                // An e-bike has no receipt, so there is no receipt to check. The admin
+                // inspects the e-bike in person instead of reading it off paper.
+            }
+            else if (vehicles.Count > 0)
             {
                 for (var i = 0; i < vehicles.Count; i++)
                 {
@@ -721,7 +726,7 @@ namespace AimPark.API.Helpers
                 LicenseExpiry = (v.ConfirmedLicenseExpiry ?? v.ExtractedLicenseExpiry)?.Date
             };
 
-            foreach (var row in ReceiptRows(vehicles, newestFirst))
+            foreach (var row in ReceiptRows(vehicles, newestFirst, user.IsEBikeApplicant))
             {
                 facts.Vehicles.Add(new VehicleFactsResponse
                 {
@@ -773,7 +778,7 @@ namespace AimPark.API.Helpers
                 ]
             });
 
-            foreach (var row in ReceiptRows(vehicles, newestFirst))
+            foreach (var row in ReceiptRows(vehicles, newestFirst, user.IsEBikeApplicant))
             {
                 readings.Add(new DocumentReadingResponse
                 {
@@ -795,8 +800,11 @@ namespace AimPark.API.Helpers
         /// <see cref="Build"/> uses — or the newest row alone when no vehicle exists yet.
         /// </summary>
         private static IEnumerable<(Vehicle? Vehicle, DocumentVerification Row)> ReceiptRows(
-            IReadOnlyList<Vehicle> vehicles, List<DocumentVerification> newestFirst)
+            IReadOnlyList<Vehicle> vehicles, List<DocumentVerification> newestFirst, bool eBike)
         {
+            if (eBike)
+                yield break;
+
             if (vehicles.Count == 0)
             {
                 yield return (null, newestFirst[0]);

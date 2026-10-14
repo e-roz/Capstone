@@ -115,6 +115,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
           canReapplyAt: canReapplyRaw == null
               ? null
               : DateTime.tryParse(canReapplyRaw.toString()),
+          isEBike: status is Map && status['isEBike'] == true,
         ),
       ),
     );

@@ -18,5 +18,11 @@ namespace AimPark.API.Interfaces
         /// their submission — and their place in the queue — intact.
         /// </summary>
         Task<ActionResult<object>> RequestDocumentRetakeAsync(Guid userId, Guid adminUserId, RequestDocumentRetakeDto dto, CancellationToken ct);
+
+        /// <summary>
+        /// Records the in-person inspection of an e-bike (photos, identity, size
+        /// class, temporary plate) and approves the applicant.
+        /// </summary>
+        Task<ActionResult<object>> InspectEBikeAsync(Guid userId, Guid adminUserId, EBikeInspectionDto dto, CancellationToken ct);
     }
 }

@@ -62,6 +62,34 @@ namespace AimPark.API.Entities
         /// </remarks>
         public string? DocumentRetakeJson { get; set; }
 
+        /// <summary>
+        /// The applicant chose "E-bike" at registration. E-bikes have no LTO plate or
+        /// receipt, so they send only their registration form and licence and then
+        /// bring the e-bike to the admin office for inspection.
+        /// </summary>
+        public bool IsEBikeApplicant { get; set; }
+
+        /// <summary>
+        /// When the applicant should have come to the office by. Shown to the admin;
+        /// nothing expires on its own.
+        /// </summary>
+        public DateTime? EBikeInspectionDeadline { get; set; }
+
+        /// <summary>
+        /// When the driver's licence on file runs out. Set when registration is
+        /// approved, and replaced when an admin approves a renewal. The reading
+        /// itself stays on <see cref="DocumentVerification"/> as evidence; this is
+        /// the value the app, the admin page and the gate act on.
+        /// </summary>
+        public DateTime? LicenseValidThrough { get; set; }
+
+        /// <summary>
+        /// The <see cref="LicenseValidThrough"/> the last "expiring soon" push was
+        /// sent for. Storing the date rather than a sent-at stamp means a renewed
+        /// licence, which has a different date, earns its own warning.
+        /// </summary>
+        public DateTime? LicenseExpiryReminderSentFor { get; set; }
+
         public bool IsFirstLogin { get; set; } = true;
 
         // When this user accepted the terms and conditions. Recorded rather than

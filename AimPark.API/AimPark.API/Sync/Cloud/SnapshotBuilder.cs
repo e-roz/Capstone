@@ -43,7 +43,8 @@ namespace AimPark.API.Sync.Cloud
                     RfidTagId = u.RfidTagId,
                     RfidStatus = u.RfidStatus,
                     RfidSuspendedFrom = u.RfidSuspendedFrom,
-                    RfidSuspendedUntil = u.RfidSuspendedUntil
+                    RfidSuspendedUntil = u.RfidSuspendedUntil,
+                    LicenseValidThrough = u.LicenseValidThrough
                 })
                 .ToListAsync(ct);
 
@@ -57,6 +58,9 @@ namespace AimPark.API.Sync.Cloud
                     Color = v.Color,
                     RegistrationValidThrough = v.RegistrationValidThrough,
                     RegistrationRenewalMonth = v.RegistrationRenewalMonth,
+                    IsEBike = v.IsEBike,
+                    Brand = v.Brand,
+                    DistinguishingMarks = v.DistinguishingMarks,
                     CreatedAt = v.CreatedAt
                 })
                 .ToListAsync(ct);

@@ -20,6 +20,9 @@ namespace AimPark.API.Services
         // let them type the values and move on.
         private const int MaxScanAttempts = 3;
 
+        /// <summary>How long an e-bike applicant has to bring the e-bike to the office.</summary>
+        public const int EBikeInspectionDays = 7;
+
         private readonly IRepository<User> _users;
         private readonly IRepository<Vehicle> _vehicles;
         private readonly IRepository<Document> _documents;
@@ -387,12 +390,21 @@ namespace AimPark.API.Services
                 ? DocumentType.Raf
                 : DocumentType.SchoolId;
 
-            var slots = new[]
+            // An e-bike has no LTO receipt, so it is never asked for or kept. The
+            // account flag covers a reviewer-requested retake, where the app may not
+            // repeat the choice the applicant made at the start.
+            var isEBike = dto.IsEBike || user.IsEBikeApplicant;
+
+            var allSlots = new[]
             {
                 (File: dto.IdentityDocument, Type: identityType, Ocr: dto.IdentityDocumentOcr),
                 (File: dto.License, Type: DocumentType.License, Ocr: dto.LicenseOcr),
                 (File: dto.OfficialReceipt, Type: DocumentType.OfficialReceipt, Ocr: dto.OfficialReceiptOcr)
             };
+
+            var slots = isEBike
+                ? allSlots.Where(s => s.Type != DocumentType.OfficialReceipt).ToArray()
+                : allSlots;
 
             // What this submission has to contain. A reviewer who asked for one
             // document gets one document; everyone else sends the full set.
@@ -606,14 +618,23 @@ namespace AimPark.API.Services
             if (verification is null)
                 return new NotFoundObjectResult(new { message = "That submission was not found. Please scan your documents again." });
 
-            if (string.IsNullOrWhiteSpace(dto.VehicleType))
-                return new BadRequestObjectResult(new { message = "Please choose whether this is a car or a motorcycle." });
+            var isEBike = dto.IsEBike || user.IsEBikeApplicant;
 
-            if (!Enum.TryParse<VehicleType>(dto.VehicleType, true, out var vehicleType))
-                return new BadRequestObjectResult(new { message = "Invalid vehicle type." });
+            // An e-bike's type and colour are recorded by the admin at inspection,
+            // with the e-bike in front of them, so nothing about the vehicle is asked
+            // for here.
+            var vehicleType = VehicleType.Motorcycle;
+            if (!isEBike)
+            {
+                if (string.IsNullOrWhiteSpace(dto.VehicleType))
+                    return new BadRequestObjectResult(new { message = "Please choose whether this is a car or a motorcycle." });
 
-            if (string.IsNullOrWhiteSpace(dto.Color))
-                return new BadRequestObjectResult(new { message = "Please choose the vehicle's colour." });
+                if (!Enum.TryParse<VehicleType>(dto.VehicleType, true, out vehicleType))
+                    return new BadRequestObjectResult(new { message = "Invalid vehicle type." });
+
+                if (string.IsNullOrWhiteSpace(dto.Color))
+                    return new BadRequestObjectResult(new { message = "Please choose the vehicle's colour." });
+            }
 
             verification.ConfirmedStudentNumber = FuzzyText.TrimValue(dto.StudentNumber);
             verification.ConfirmedStudentName = FuzzyText.TrimValue(dto.StudentName);
@@ -651,8 +672,20 @@ namespace AimPark.API.Services
             // is never going to read, go on without it".
             var attempts = (await _verifications.GetAllAsync(v => v.UserId == userId, ct)).Count;
 
-            var (vehicle, vehicleNote, refusal) = await UpsertVehicleFromReceiptAsync(
-                verification, dto, vehicleType, userId, attempts, ct);
+            Vehicle? vehicle = null;
+            string? vehicleNote = null;
+            string? refusal = null;
+
+            if (!isEBike)
+            {
+                (vehicle, vehicleNote, refusal) = await UpsertVehicleFromReceiptAsync(
+                    verification, dto, vehicleType, userId, attempts, ct);
+            }
+            else
+            {
+                // Set before the checks run, so they know there is no receipt to read.
+                user.IsEBikeApplicant = true;
+            }
 
             // Nothing has been saved yet, so returning here leaves the applicant on
             // the confirmation screen with their submission intact.
@@ -696,6 +729,23 @@ namespace AimPark.API.Services
             // flow on their next sign-in, being asked for a photograph they had
             // just taken.
             user.DocumentRetakeJson = null;
+
+            if (isEBike)
+            {
+                user.EBikeInspectionDeadline = DateTime.UtcNow.AddDays(EBikeInspectionDays);
+                user.UpdatedAt = DateTime.UtcNow;
+                _users.Update(user);
+                await _users.SaveAsync(ct);
+
+                return new OkObjectResult(new
+                {
+                    message = "Registration submitted. Bring your e-bike and your documents to the admin office "
+                              + $"within {EBikeInspectionDays} days to finish.",
+                    approved = false,
+                    isEBike = true,
+                    inspectionDeadline = user.EBikeInspectionDeadline
+                });
+            }
 
             var approved = TryAutoApprove(user, verification, vehicle);
 
@@ -756,6 +806,7 @@ namespace AimPark.API.Services
             user.CanReapplyAt = null;
             user.StudentNumber = studentNumber;
             user.Section = verification.ConfirmedSection ?? verification.ExtractedSection;
+            user.LicenseValidThrough = verification.ConfirmedLicenseExpiry ?? verification.ExtractedLicenseExpiry;
 
             verification.Result = VerificationStatus.Passed;
             _verifications.Update(verification);
@@ -1417,6 +1468,8 @@ namespace AimPark.API.Services
             CanReapplyAt = user.CanReapplyAt,
             FullName = user.FullName,
             Affiliation = user.Affiliation.ToString(),
+            IsEBike = user.IsEBikeApplicant,
+            EBikeInspectionDeadline = user.EBikeInspectionDeadline,
             DocumentsToRetake = DocumentRetakes.Read(user.DocumentRetakeJson)
         };
 

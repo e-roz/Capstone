@@ -72,6 +72,8 @@ class _RegisterConfirmScreenState extends ConsumerState<RegisterConfirmScreen> {
 
   ExtractedValues get _extracted => widget.result.extracted;
 
+  bool get _isEBike => ref.read(registrationNotifierProvider).isEBike;
+
   @override
   void initState() {
     super.initState();
@@ -124,7 +126,7 @@ class _RegisterConfirmScreenState extends ConsumerState<RegisterConfirmScreen> {
   /// outstanding — the button never checked, only the eye did. This runs the
   /// same [fieldStillMissing] predicate over the fields that matter for this
   /// affiliation right before the request goes out.
-  bool _hasUnresolvedFlags(bool isStudent) {
+  bool _hasUnresolvedFlags(bool isStudent, bool isEBike) {
     final checks = [
       fieldStillMissing(
         _extracted.flagFor('StudentName'),
@@ -142,18 +144,21 @@ class _RegisterConfirmScreenState extends ConsumerState<RegisterConfirmScreen> {
         _extracted.flagFor('LicenseExpiry'),
         _licenseExpiry == null,
       ),
-      fieldStillMissing(
-        _extracted.flagFor('RegistrationExpiry'),
-        _registrationExpiry == null,
-      ),
-      fieldStillMissing(
-        _extracted.flagFor('PlateNumber'),
-        _plateNumber.text.trim().isEmpty,
-      ),
-      fieldStillMissing(
-        _extracted.flagFor('Color'),
-        _color.text.trim().isEmpty,
-      ),
+      // An e-bike has no receipt, so none of the receipt's fields exist.
+      if (!isEBike) ...[
+        fieldStillMissing(
+          _extracted.flagFor('RegistrationExpiry'),
+          _registrationExpiry == null,
+        ),
+        fieldStillMissing(
+          _extracted.flagFor('PlateNumber'),
+          _plateNumber.text.trim().isEmpty,
+        ),
+        fieldStillMissing(
+          _extracted.flagFor('Color'),
+          _color.text.trim().isEmpty,
+        ),
+      ],
       if (isStudent) ...[
         fieldStillMissing(
           _extracted.flagFor('StudentNumber'),
@@ -188,13 +193,14 @@ class _RegisterConfirmScreenState extends ConsumerState<RegisterConfirmScreen> {
     });
   }
 
-  Future<void> _submit(bool isStudent) async {
+  Future<void> _submit(bool isStudent, bool isEBike) async {
+    // An e-bike's type is decided by the admin who inspects it.
     setState(() {
-      _vehicleTypeError = _vehicleType == null ? 'Choose one.' : null;
+      _vehicleTypeError = !isEBike && _vehicleType == null ? 'Choose one.' : null;
     });
     if (_vehicleTypeError != null) return;
 
-    if (_hasUnresolvedFlags(isStudent)) {
+    if (_hasUnresolvedFlags(isStudent, isEBike)) {
       showAppMessage(
         context,
         'Fill in the fields marked in red before submitting.',
@@ -215,10 +221,14 @@ class _RegisterConfirmScreenState extends ConsumerState<RegisterConfirmScreen> {
         'licenseName': _licenseName.text.trim(),
         'licenseNumber': _licenseNumber.text.trim(),
         'licenseExpiry': _licenseExpiry?.toIso8601String(),
-        'plateNumber': _plateNumber.text.trim(),
-        'registrationExpiry': _registrationExpiry?.toIso8601String(),
-        'vehicleType': _vehicleType,
-        'color': _color.text.trim(),
+        if (isEBike)
+          'isEBike': true
+        else ...{
+          'plateNumber': _plateNumber.text.trim(),
+          'registrationExpiry': _registrationExpiry?.toIso8601String(),
+          'vehicleType': _vehicleType,
+          'color': _color.text.trim(),
+        },
       });
 
       // The server approves a clean application on the spot. Everything else
@@ -261,7 +271,8 @@ class _RegisterConfirmScreenState extends ConsumerState<RegisterConfirmScreen> {
               : _studentName.text.trim(),
           email: ref.read(registrationNotifierProvider).email,
           affiliation: ref.read(registrationNotifierProvider).affiliation.label,
-          plateNumber: _plateNumber.text.trim(),
+          plateNumber: isEBike ? null : _plateNumber.text.trim(),
+          isEBike: isEBike,
           approved: approved,
         ),
       );
@@ -283,7 +294,7 @@ class _RegisterConfirmScreenState extends ConsumerState<RegisterConfirmScreen> {
   List<Widget> _preflightNotices() {
     final findings = registrationPreflight(
       licenseExpiry: _licenseExpiry,
-      registrationExpiry: _registrationExpiry,
+      registrationExpiry: _isEBike ? null : _registrationExpiry,
       documentName: _studentName.text,
       licenseName: _licenseName.text,
     );
@@ -312,6 +323,8 @@ class _RegisterConfirmScreenState extends ConsumerState<RegisterConfirmScreen> {
     final isStudent =
         ref.watch(registrationNotifierProvider.select((s) => s.affiliation)) ==
         Affiliation.student;
+    final isEBike =
+        ref.watch(registrationNotifierProvider.select((s) => s.isEBike));
     final live = !_isSubmitting;
 
     return RegistrationStepScaffold(
@@ -331,30 +344,42 @@ class _RegisterConfirmScreenState extends ConsumerState<RegisterConfirmScreen> {
           ),
           const SizedBox(height: AppSpacing.lg),
 
-          AppSectionHeader(
-            title: 'Your vehicle',
-            subtitle:
-                'Read from your receipt — check they match before you '
-                'submit.',
-            padding: const EdgeInsets.only(bottom: AppSpacing.md),
-          ),
-          AppChipGroup<String>(
-            label: 'Type',
-            options: _vehicleTypes,
-            icons: _vehicleIcons,
-            value: _vehicleType,
-            enabled: live,
-            errorText: _vehicleTypeError,
-            onChanged: _chooseVehicleType,
-          ),
-          const SizedBox(height: AppSpacing.md),
-          ScannedField(
-            label: 'Colour',
-            controller: _color,
-            flag: _extracted.flagFor('Color'),
-            enabled: live,
-          ),
-          const SizedBox(height: AppSpacing.lg),
+          if (isEBike) ...[
+            const AppNotice(
+              title: 'One more step after this',
+              message:
+                  'Your e-bike has no plate or receipt, so an admin has to see '
+                  'it in person. After you submit, bring your e-bike and your '
+                  'documents to the admin office within 7 days.',
+              intent: StatusIntent.warning,
+            ),
+            const SizedBox(height: AppSpacing.lg),
+          ] else ...[
+            AppSectionHeader(
+              title: 'Your vehicle',
+              subtitle:
+                  'Read from your receipt — check they match before you '
+                  'submit.',
+              padding: const EdgeInsets.only(bottom: AppSpacing.md),
+            ),
+            AppChipGroup<String>(
+              label: 'Type',
+              options: _vehicleTypes,
+              icons: _vehicleIcons,
+              value: _vehicleType,
+              enabled: live,
+              errorText: _vehicleTypeError,
+              onChanged: _chooseVehicleType,
+            ),
+            const SizedBox(height: AppSpacing.md),
+            ScannedField(
+              label: 'Colour',
+              controller: _color,
+              flag: _extracted.flagFor('Color'),
+              enabled: live,
+            ),
+            const SizedBox(height: AppSpacing.lg),
+          ],
 
           if (isStudent) ...[
             const AppSectionHeader(title: 'From your registration form'),
@@ -416,21 +441,23 @@ class _RegisterConfirmScreenState extends ConsumerState<RegisterConfirmScreen> {
             onChanged: (d) => setState(() => _licenseExpiry = d),
           ),
 
-          const AppSectionHeader(title: 'From your receipt'),
-          ScannedField(
-            label: 'Plate number',
-            controller: _plateNumber,
-            flag: _extracted.flagFor('PlateNumber'),
-            enabled: live,
-            textCapitalization: TextCapitalization.characters,
-          ),
-          ScannedDateField(
-            label: 'Registration expiry',
-            value: _registrationExpiry,
-            flag: _extracted.flagFor('RegistrationExpiry'),
-            enabled: live,
-            onChanged: (d) => setState(() => _registrationExpiry = d),
-          ),
+          if (!isEBike) ...[
+            const AppSectionHeader(title: 'From your receipt'),
+            ScannedField(
+              label: 'Plate number',
+              controller: _plateNumber,
+              flag: _extracted.flagFor('PlateNumber'),
+              enabled: live,
+              textCapitalization: TextCapitalization.characters,
+            ),
+            ScannedDateField(
+              label: 'Registration expiry',
+              value: _registrationExpiry,
+              flag: _extracted.flagFor('RegistrationExpiry'),
+              enabled: live,
+              onChanged: (d) => setState(() => _registrationExpiry = d),
+            ),
+          ],
 
           // Sits immediately above the button rather than at the top of the
           // screen: these are read against the values as they finally stand, and
@@ -441,7 +468,7 @@ class _RegisterConfirmScreenState extends ConsumerState<RegisterConfirmScreen> {
           AppButton(
             label: 'Submit registration',
             isLoading: _isSubmitting,
-            onPressed: live ? () => _submit(isStudent) : null,
+            onPressed: live ? () => _submit(isStudent, isEBike) : null,
           ),
         ],
       ),

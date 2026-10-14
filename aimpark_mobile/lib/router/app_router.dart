@@ -32,6 +32,9 @@ import '../features/violations/presentation/screens/appeal_sent_screen.dart';
 import '../features/violations/presentation/screens/policy_screen.dart';
 import '../features/payments/presentation/screens/payment_detail_screen.dart';
 import '../features/payments/presentation/screens/payments_list_screen.dart';
+import '../features/renewals/data/renewal.dart';
+import '../features/renewals/presentation/screens/documents_screen.dart';
+import '../features/renewals/presentation/screens/renew_document_screen.dart';
 import '../features/vehicles/presentation/screens/add_vehicle_screen.dart';
 import '../features/vehicles/presentation/screens/vehicles_screen.dart';
 import '../features/violations/presentation/screens/violation_detail_screen.dart';
@@ -232,6 +235,20 @@ GoRouter appRouter(Ref ref) {
       GoRoute(
         path: '/home/user/vehicles/add',
         builder: (context, state) => const AddVehicleScreen(),
+      ),
+      // Licence and registration expiry, and renewing them.
+      GoRoute(
+        path: '/home/user/documents',
+        builder: (context, state) => const DocumentsScreen(),
+      ),
+      // The thing being renewed travels as `extra`: a plate is personal data,
+      // and personal data does not belong in an address.
+      GoRoute(
+        path: '/home/user/renew',
+        redirect: (context, state) =>
+            state.extra is RenewalTarget ? null : '/home/user/documents',
+        builder: (context, state) =>
+            RenewDocumentScreen(target: state.extra! as RenewalTarget),
       ),
       GoRoute(
         path: '/home/user/violations',

@@ -36,6 +36,13 @@ class PendingRegistration {
   /// Flagged findings, [topFinding] included.
   final int flaggedCount;
 
+  /// An e-bike application, which waits for an in-person inspection rather
+  /// than a document review.
+  final bool isEBike;
+
+  /// When they should have come to the office by.
+  final DateTime? eBikeInspectionDeadline;
+
   /// Approved and Rejected lists only. When the applicant was decided on.
   final DateTime? decidedAt;
 
@@ -63,6 +70,8 @@ class PendingRegistration {
     this.topFinding,
     this.topFindingSeverity,
     this.flaggedCount = 0,
+    this.isEBike = false,
+    this.eBikeInspectionDeadline,
     this.decidedAt,
     this.decidedByName,
     this.rejectionReason,
@@ -104,6 +113,10 @@ class PendingRegistration {
             ? null
             : findingSeverity(json['topFindingSeverity'].toString()),
         flaggedCount: (json['flaggedCount'] as num?)?.toInt() ?? 0,
+        isEBike: (json['isEBike'] as bool?) ?? false,
+        eBikeInspectionDeadline: json['eBikeInspectionDeadline'] == null
+            ? null
+            : DateTime.tryParse(json['eBikeInspectionDeadline'].toString()),
         decidedAt: json['decidedAt'] == null
             ? null
             : DateTime.tryParse(json['decidedAt'].toString()),

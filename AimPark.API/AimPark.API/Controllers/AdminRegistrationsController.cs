@@ -47,6 +47,14 @@ namespace AimPark.API.Controllers
         public Task<ActionResult<object>> RequestRetake(Guid userId, [FromBody] RequestDocumentRetakeDto dto, CancellationToken ct)
             => _adminRegistrationService.RequestDocumentRetakeAsync(userId, GetAdminUserId(), dto, ct);
 
+        /// <summary>
+        /// Records the in-person inspection of an e-bike and approves its owner.
+        /// </summary>
+        [HttpPost("{userId:guid}/inspect-ebike")]
+        [Consumes("multipart/form-data")]
+        public Task<ActionResult<object>> InspectEBike(Guid userId, [FromForm] EBikeInspectionDto dto, CancellationToken ct)
+            => _adminRegistrationService.InspectEBikeAsync(userId, GetAdminUserId(), dto, ct);
+
         [HttpPost("{userId:guid}/reset-step")]
         public Task<ActionResult<object>> ResetStep(Guid userId, [FromBody] ResetRegistrationStepDto dto, CancellationToken ct)
             => _adminRegistrationService.ResetStepAsync(userId, GetAdminUserId(), dto, ct);

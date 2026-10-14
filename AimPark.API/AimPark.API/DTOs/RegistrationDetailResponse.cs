@@ -26,6 +26,14 @@ namespace AimPark.API.DTOs
         public DateTime? RfidSuspendedUntil { get; set; }
         // A user may register several vehicles against one RFID card, so the reviewer
         // has to see all of them — a single slot would silently hide the rest.
+        public bool IsEBike { get; set; }
+        public DateTime? EBikeInspectionDeadline { get; set; }
+
+        /// <summary>The licence expiry on file now, which a renewal replaces.</summary>
+        public DateTime? LicenseValidThrough { get; set; }
+
+        /// <summary>A licence or registration renewal is waiting for review.</summary>
+        public bool HasPendingRenewal { get; set; }
         public List<VehicleDTO> Vehicles { get; set; } = [];
         public List<DocumentDetailResponse> Documents { get; set; } = [];
 

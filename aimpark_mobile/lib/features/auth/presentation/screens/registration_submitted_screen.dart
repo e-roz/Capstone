@@ -16,6 +16,7 @@ class RegistrationSummary {
     this.email,
     this.affiliation,
     this.plateNumber,
+    this.isEBike = false,
     this.approved = false,
   });
 
@@ -23,6 +24,10 @@ class RegistrationSummary {
   final String? email;
   final String? affiliation;
   final String? plateNumber;
+
+  /// An e-bike application: not approved from paper, but by an admin who sees
+  /// the e-bike in person.
+  final bool isEBike;
 
   /// The server approved this application without a reviewer. Everything else
   /// is still waiting, and the screen must not say otherwise.
@@ -51,6 +56,7 @@ class RegistrationSubmittedScreen extends StatelessWidget {
     final t = context.tokens;
     final s = summary;
     final approved = s?.approved ?? false;
+    final isEBike = s?.isEBike ?? false;
 
     final facts = <AppFact>[
       if (s?.name != null && s!.name!.isNotEmpty) AppFact('Name', s.name!),
@@ -59,6 +65,7 @@ class RegistrationSubmittedScreen extends StatelessWidget {
         AppFact('Affiliation', s.affiliation!),
       if (s?.plateNumber != null && s!.plateNumber!.isNotEmpty)
         AppFact('Vehicle', s.plateNumber!),
+      if (isEBike) const AppFact('Vehicle', 'E-bike (plate given at the office)'),
     ];
 
     return AppScreen(
@@ -89,8 +96,10 @@ class RegistrationSubmittedScreen extends StatelessWidget {
           Text(
             approved
                 ? 'Everything checked out, so no review was needed.'
-                : 'That is everything we need from you. The parking office '
-                    'reviews it next.',
+                : isEBike
+                    ? 'One more step: bring your e-bike to the admin office.'
+                    : 'That is everything we need from you. The parking office '
+                        'reviews it next.',
             textAlign: TextAlign.center,
             style: context.text.bodyMedium?.copyWith(color: t.text.secondary),
           ),
@@ -119,9 +128,15 @@ class RegistrationSubmittedScreen extends StatelessWidget {
                   approved
                       ? 'Sign in to start using your account. The parking office '
                           'will give you your RFID card.'
-                      : 'Your account is pending review, so you cannot park yet. '
-                          'Sign in any time to check the status — we will tell you '
-                          'as soon as a decision is recorded.',
+                      : isEBike
+                          ? 'Go to the admin office within 7 days with your '
+                              'e-bike, your driver\'s licence and your school '
+                              'form. An admin checks the e-bike in person and '
+                              'gives it a temporary plate. You cannot park until '
+                              'that is done.'
+                          : 'Your account is pending review, so you cannot park yet. '
+                              'Sign in any time to check the status — we will tell you '
+                              'as soon as a decision is recorded.',
                   style: context.text.bodyMedium,
                 ),
               ],

@@ -29,7 +29,7 @@ final documentScannerProvider = Provider<DocumentScanner>.internal(
 @Deprecated('Will be removed in 3.0. Use Ref instead')
 // ignore: unused_element
 typedef DocumentScannerRef = ProviderRef<DocumentScanner>;
-String _$documentAgendaHash() => r'a192f740daaf3c10e6b00b167228288fc3209efe';
+String _$documentAgendaHash() => r'c95fe3b728fba455b1228ff0adfcbe1baeb7d5df';
 
 /// Which documents to ask for: all three, or only the ones sent back.
 ///
@@ -57,7 +57,7 @@ final documentAgendaProvider =
 // ignore: unused_element
 typedef DocumentAgendaRef = AutoDisposeFutureProviderRef<DocumentAgenda>;
 String _$registrationNotifierHash() =>
-    r'351cabd372c6390edf12888ff3224177b1911f6f';
+    r'1405cb80d947e24d82d2c8070b65d17779ab818b';
 
 /// See also [RegistrationNotifier].
 @ProviderFor(RegistrationNotifier)

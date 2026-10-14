@@ -52,6 +52,11 @@ namespace AimPark.API.DTOs
         /// capture screen it belongs to, so the applicant retakes one photograph
         /// knowing what was wrong with it rather than all four knowing nothing.
         /// </remarks>
+        /// <summary>True for an e-bike applicant, whose last step is visiting the admin office.</summary>
+        public bool IsEBike { get; set; }
+
+        public DateTime? EBikeInspectionDeadline { get; set; }
+
         public List<DocumentRetakeItemDto> DocumentsToRetake { get; set; } = [];
     }
 }

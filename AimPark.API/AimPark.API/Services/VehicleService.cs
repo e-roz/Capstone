@@ -274,6 +274,7 @@ namespace AimPark.API.Services
             VehicleType = v.VehicleType.ToString(),
             Color = v.Color,
             RegistrationValidThrough = v.RegistrationValidThrough,
+            IsEBike = v.IsEBike,
             CreatedAt = v.CreatedAt
         };
     }

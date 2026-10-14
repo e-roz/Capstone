@@ -25,6 +25,12 @@ namespace AimPark.API.DTOs
         // driver can always leave the lot.
         public const string UnpaidBalance = "UNPAID_BALANCE";
 
+        // An expired licence stops every vehicle of that driver; an expired
+        // registration stops only the vehicle it belongs to. Entry only, like
+        // the balance above. Only returned while Gate:EnforceExpiredDocuments is on.
+        public const string LicenseExpired = "LICENSE_EXPIRED";
+        public const string RegistrationExpired = "REGISTRATION_EXPIRED";
+
         // RFID passed, but the camera check on the automatic gate path did not.
         // Only ever returned from the device path — a guard at Gate Check has
         // already looked at the car themselves, so these never apply to them.

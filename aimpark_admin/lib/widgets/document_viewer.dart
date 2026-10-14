@@ -17,6 +17,7 @@ String documentLabel(String type) => switch (type) {
       'SchoolId' => 'School ID',
       'License' => "Driver's licence",
       'OfficialReceipt' => 'Official receipt',
+      'EBikePhoto' => 'E-bike photo',
       _ => type,
     };
 

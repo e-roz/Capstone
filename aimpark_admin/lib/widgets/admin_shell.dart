@@ -9,6 +9,7 @@ import '../providers/auth_provider.dart';
 import '../providers/incidents_provider.dart';
 import '../providers/notifications_provider.dart';
 import '../providers/registrations_provider.dart';
+import '../providers/renewals_provider.dart';
 import '../providers/security_provider.dart';
 import '../providers/theme_provider.dart';
 import '../providers/violations_provider.dart';
@@ -221,7 +222,9 @@ int? _navBadge(String route, WidgetRef ref) => switch (route) {
       // would fire a request that comes back 403, on every screen, because the
       // sidebar is always mounted.
       '/violations' => ref.watch(pendingAppealCountProvider).valueOrNull,
-      '/pending' => ref.watch(pendingRegistrationsProvider).valueOrNull?.length,
+      // Renewals are reviewed on the same page, so they are counted with it.
+      '/pending' => (ref.watch(pendingRegistrationsProvider).valueOrNull?.length ?? 0) +
+          (ref.watch(pendingRenewalsProvider).valueOrNull?.length ?? 0),
       '/visitors' => ref.watch(visitorsOnSiteCountProvider).valueOrNull,
       '/notifications' => ref.watch(unreadInboxCountProvider).valueOrNull,
       _ => null,

@@ -16,6 +16,7 @@ class AccountStatusScreen extends StatelessWidget {
     this.message,
     this.rejectionReason,
     this.canReapplyAt,
+    this.isEBike = false,
   });
 
   /// `PendingReview`, `Rejected`, `Revoked` — as returned by the API.
@@ -23,6 +24,10 @@ class AccountStatusScreen extends StatelessWidget {
   final String? message;
   final String? rejectionReason;
   final DateTime? canReapplyAt;
+
+  /// An e-bike application waits on the applicant, not on a reviewer: the admin
+  /// has to see the e-bike in person.
+  final bool isEBike;
 
   bool get _isPending => accountStatus == 'PendingReview';
   bool get _isRejected => accountStatus == 'Rejected';
@@ -33,6 +38,17 @@ class AccountStatusScreen extends StatelessWidget {
   /// follows without this screen knowing about it.
   ({IconData icon, StatusIntent intent, String title, String body})
       get _presentation {
+    if (_isPending && isEBike) {
+      return (
+        icon: Icons.pedal_bike_rounded,
+        intent: StatusIntent.warning,
+        title: 'Visit the admin office',
+        body: 'Bring your e-bike, your driver\'s licence and your school form '
+            'to the admin office. An admin checks the e-bike in person and '
+            'gives it a temporary plate. You cannot park until then.',
+      );
+    }
+
     if (_isPending) {
       return (
         icon: Icons.hourglass_top_rounded,
