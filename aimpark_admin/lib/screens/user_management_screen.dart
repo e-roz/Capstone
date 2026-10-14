@@ -36,7 +36,7 @@ const _cardOptions = [
 
 const _expiryOptions = [
   AppFilterOption('expired', 'Expired'),
-  AppFilterOption('expiring', 'Expiring in 60 days'),
+  AppFilterOption('expiring', 'Near expiry (60 days)'),
 ];
 
 final _joined = DateFormat('MMM d, yyyy');
@@ -125,7 +125,7 @@ class _UserManagementScreenState extends ConsumerState<UserManagementScreen> {
             onChanged: notifier.setCard,
           ),
           AppFilterDropdown<String>(
-            label: 'Documents',
+            label: 'Licence / OR',
             value: query.expiry,
             options: _expiryOptions,
             allLabel: 'All',
@@ -160,7 +160,7 @@ class _UserManagementScreenState extends ConsumerState<UserManagementScreen> {
             DataColumn(label: Text('Name')),
             DataColumn(label: Text('Status')),
             DataColumn(label: Text('Card')),
-            DataColumn(label: Text('Documents')),
+            DataColumn(label: Text('Licence / OR')),
             DataColumn(label: Text('Joined')),
             // The row menu. No header text: the "⋯" button names itself.
             DataColumn(label: SizedBox.shrink()),
@@ -759,11 +759,13 @@ class _UserPickerDialogState extends State<_UserPickerDialog> {
   }
 }
 
-/// What is wrong with a user's licence or registrations, if anything.
+/// The state of a user's licence and registrations, in a word and a colour:
+/// Good, Near expiry or Expired.
 ///
 /// Says which document and when, so an admin does not have to open the user to
-/// find out what the pill is about. Blank for staff, applicants and anyone whose
-/// documents are all comfortably in date.
+/// find out what the pill is about. A dash only for people it does not apply to:
+/// staff, applicants and archived accounts. Every real account has its dates, so
+/// there is no "no date" state: registration will not submit without them.
 class _DocumentsCell extends StatelessWidget {
   const _DocumentsCell({required this.user});
 
@@ -779,23 +781,23 @@ class _DocumentsCell extends StatelessWidget {
       return Text('—', style: text.bodySmall?.copyWith(color: t.text.tertiary));
     }
 
-    final expired = state == 'Expired';
+    final (label, intent) = switch (state) {
+      'Expired' => ('Expired', StatusIntent.danger),
+      'Expiring' => ('Near expiry', StatusIntent.warning),
+      _ => ('Good', StatusIntent.success),
+    };
     final date = user.expiryDate?.toLocal();
 
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        StatusPill(
-          label: expired ? 'Expired' : 'Expiring',
-          intent: expired ? StatusIntent.danger : StatusIntent.warning,
-          dense: true,
-        ),
+        StatusPill(label: label, intent: intent, dense: true),
         const SizedBox(width: AppSpacing.x2),
         Flexible(
           child: Text(
             date == null
                 ? (user.expiryWhat ?? '')
-                : '${user.expiryWhat} · ${DateFormat('MMM d').format(date)}',
+                : '${user.expiryWhat} · ${DateFormat('MMM d, yyyy').format(date)}',
             overflow: TextOverflow.ellipsis,
             style: text.bodySmall?.copyWith(color: t.text.secondary),
           ),

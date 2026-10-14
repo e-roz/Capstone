@@ -22,7 +22,10 @@ namespace AimPark.API.DTOs
         public bool IsDeleted { get; set; }
         public DateTime CreatedAt { get; set; }
 
-        /// <summary>"Expired", "Expiring", or null. See DocumentExpiry.Worst.</summary>
+        /// <summary>
+        /// "Expired", "Expiring" or "Valid", or null when it does not apply: staff,
+        /// applicants, archived accounts.
+        /// </summary>
         public string? ExpiryState { get; set; }
 
         /// <summary>What it is about: "Licence" or "Registration ABC1234".</summary>

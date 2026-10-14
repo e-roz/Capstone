@@ -11,8 +11,9 @@ class AdminUser {
   final bool isDeleted;
   final DateTime createdAt;
 
-  /// `Expired`, `Expiring`, or null. The most pressing of the licence and the
-  /// vehicles' registrations, worked out by the API.
+  /// `Expired`, `Expiring` or `Valid`, or null when it does not apply (staff,
+  /// applicants, archived). The most pressing of the
+  /// licence and the vehicles' registrations, worked out by the API.
   final String? expiryState;
 
   /// What it is about: "Licence" or "Registration ABC1234".
