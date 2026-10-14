@@ -149,6 +149,10 @@ class ApiEndpoints {
   static const liveGateCameras = '/api/site/live-gate/cameras';
   static String liveGateCamera(int gate) => '/api/site/live-gate/camera/$gate';
 
+  // Admin – the Overview's search box and the profile it opens.
+  static const adminSearch = '/api/admin/search';
+  static const adminSearchProfile = '/api/admin/search/profile';
+
   // Admin – Payments
   static const payments = '/api/admin/payments';
   static const paymentsExport = '/api/admin/payments/export';
@@ -186,6 +190,10 @@ class ApiEndpoints {
   // Admin – Notifications
   static const notifications = '/api/admin/notifications';
 
+  // What the system itself pushed (a violation, a refused card, a due bill),
+  // newest first. Distinct from the broadcast log above.
+  static const systemNotifications = '/api/admin/notifications/system';
+
   // The staff member's own inbox, not the broadcast log above. Same endpoint
   // the mobile app reads, because a notification addressed to a Security
   // account is the same row as one addressed to a driver.
@@ -212,4 +220,6 @@ class ApiEndpoints {
   static const reportsViolationsBreakdown =
       '/api/admin/reports/violations-breakdown';
   static const reportsRevenueTrend = '/api/admin/reports/revenue-trend';
+  static const reportsGateOutcomes = '/api/admin/reports/gate-outcomes';
+  static const reportsPeakOccupancy = '/api/admin/reports/peak-occupancy';
 }

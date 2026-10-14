@@ -5,8 +5,29 @@ namespace AimPark.API.DTOs
         public int TotalUsers { get; set; }
         public int ActiveUsers { get; set; }
         public int TotalSlots { get; set; }
+
+        /// <summary>
+        /// Bays a car could use: not out of service and not without a sensor
+        /// signal. Free and occupied below are both counted against this, so
+        /// <c>AvailableSlots + OccupiedSlots == UsableSlots</c> always.
+        /// </summary>
+        public int UsableSlots { get; set; }
         public int OccupiedSlots { get; set; }
+
+        /// <summary>
+        /// Free bays by the rule the gates use (<see cref="Services.ParkingCapacity"/>):
+        /// working bays minus the cars that have tapped in. Every screen reads
+        /// this one number.
+        /// </summary>
         public int AvailableSlots { get; set; }
+
+        public int UsableFourWheel { get; set; }
+        public int FreeFourWheel { get; set; }
+        public int UsableMotorcycle { get; set; }
+        public int FreeMotorcycle { get; set; }
+
+        /// <summary>Bays whose sensor has stopped reading.</summary>
+        public int NoSignalSlots { get; set; }
 
         /// <summary>
         /// Bays that exist but cannot be parked in. Reported separately so the
@@ -14,11 +35,91 @@ namespace AimPark.API.DTOs
         /// free space.
         /// </summary>
         public int OutOfServiceSlots { get; set; }
+
+        /// <summary>The period the figures below that follow it were counted over.</summary>
+        public ReportPeriodInfo Period { get; set; } = new();
+
+        /// <summary>Sessions that started today, the Philippine day.</summary>
         public int SessionsToday { get; set; }
+        public int SessionsInPeriod { get; set; }
+
+        /// <summary>Paid in the period: parking fees and violation penalties together.</summary>
         public decimal RevenueCollected { get; set; }
+        public decimal FeesCollected { get; set; }
+        public decimal FinesCollected { get; set; }
+
+        /// <summary>Owed right now, whatever the period: not yet paid, or checkout started and not finished.</summary>
         public decimal RevenuePending { get; set; }
+        public decimal FeesPending { get; set; }
+        public decimal FinesPending { get; set; }
+
         public int ViolationsIssued { get; set; }
         public int OpenIncidents { get; set; }
+
+        /// <summary>
+        /// Taps refused today that need a look: a card nobody holds, or a plate
+        /// that is not the card holder's. Camera failures, a full lot and double
+        /// taps are routine and not counted.
+        /// </summary>
+        public int SeriousDenialsToday { get; set; }
+
+        /// <summary>
+        /// The same figures for the stretch of days just before this one, of
+        /// equal length, so a number can say whether it went up. Null for all
+        /// time: there is nothing before it.
+        /// </summary>
+        public PreviousPeriodTotals? Previous { get; set; }
+    }
+
+    public class PreviousPeriodTotals
+    {
+        public int SessionsInPeriod { get; set; }
+        public decimal RevenueCollected { get; set; }
+        public int ViolationsIssued { get; set; }
+    }
+
+    /// <summary>
+    /// What happened at the gate readers over a period. Manual opens are left
+    /// out: a guard opening the barrier is neither the reader working nor
+    /// failing.
+    /// </summary>
+    public class GateOutcomesResponse
+    {
+        public ReportPeriodInfo Period { get; set; } = new();
+        public int Entered { get; set; }
+        public int Exited { get; set; }
+
+        /// <summary>Refused: the camera read a plate that is not the card holder's.</summary>
+        public int PlateMismatch { get; set; }
+
+        /// <summary>Refused: a card nobody holds.</summary>
+        public int UnknownCard { get; set; }
+
+        /// <summary>Refused for a reason that needs no look: a full lot, a double tap, no camera reading.</summary>
+        public int RoutineRefusals { get; set; }
+    }
+
+    /// <summary>The most cars inside at once over a period, and when.</summary>
+    public class PeakOccupancyResponse
+    {
+        public ReportPeriodInfo Period { get; set; } = new();
+        public int Peak { get; set; }
+
+        /// <summary>When the peak was first reached, in UTC. Null when nothing was parked.</summary>
+        public DateTime? At { get; set; }
+
+        /// <summary>Bays a car could use right now, for "n of capacity".</summary>
+        public int Capacity { get; set; }
+    }
+
+    /// <summary>The Philippine days a report covers, and how it was cut.</summary>
+    public class ReportPeriodInfo
+    {
+        public DateOnly From { get; set; }
+        public DateOnly To { get; set; }
+
+        /// <summary>"day", "week" or "month": what one point on a trend stands for.</summary>
+        public string Granularity { get; set; } = "day";
     }
 
     public class DailyCountPoint
@@ -29,6 +130,7 @@ namespace AimPark.API.DTOs
 
     public class OccupancyTrendResponse
     {
+        public ReportPeriodInfo Period { get; set; } = new();
         public List<DailyCountPoint> Points { get; set; } = [];
     }
 
@@ -52,6 +154,7 @@ namespace AimPark.API.DTOs
 
     public class EntryExitReportResponse
     {
+        public ReportPeriodInfo Period { get; set; } = new();
         public List<EntryExitPoint> Points { get; set; } = [];
 
         public int TotalEntries { get; set; }
@@ -74,6 +177,9 @@ namespace AimPark.API.DTOs
 
     public class PeakHoursResponse
     {
+        public ReportPeriodInfo Period { get; set; } = new();
+
+        /// <summary>Hours are the Philippine hour of the day.</summary>
         public List<PeakHourPoint> Points { get; set; } = [];
     }
 
@@ -98,11 +204,16 @@ namespace AimPark.API.DTOs
     public class RevenuePoint
     {
         public DateTime Date { get; set; }
+
+        /// <summary>Fees plus fines.</summary>
         public decimal Amount { get; set; }
+        public decimal Fees { get; set; }
+        public decimal Fines { get; set; }
     }
 
     public class RevenueTrendResponse
     {
+        public ReportPeriodInfo Period { get; set; } = new();
         public List<RevenuePoint> Points { get; set; } = [];
     }
 }

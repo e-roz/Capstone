@@ -3,265 +3,255 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
-import '../core/utils/csv_export.dart';
+import '../core/utils/ph_time.dart';
+import '../models/notification.dart';
+import '../models/parking_slot.dart';
 import '../models/report.dart';
-import '../providers/auth_provider.dart';
-import '../providers/device_health_provider.dart';
-import '../providers/gate_device_provider.dart';
+import '../providers/overview_provider.dart';
 import '../providers/parking_provider.dart';
 import '../providers/registrations_provider.dart';
-import '../providers/reports_provider.dart';
-import '../router/destinations.dart';
+import '../providers/site_link_provider.dart';
 import '../theme/theme.dart';
-import '../widgets/device_health_list.dart';
-import '../widgets/parking/live_parking_map.dart';
+import '../widgets/parking/gate_status.dart';
 import '../widgets/ui/ui.dart';
+import '../models/site_link.dart';
+import '../models/investigation.dart';
+import '../widgets/investigation_panel.dart';
+import '../widgets/overview_search.dart';
+import '../widgets/period_picker.dart';
 
 final _money = NumberFormat.currency(symbol: '₱', decimalDigits: 0);
-final _moneyExact = NumberFormat.currency(symbol: '₱', decimalDigits: 2);
-final _dayLabel = DateFormat('M/d');
-final _timeLabel = DateFormat('h:mm a');
+final _clock = DateFormat('h:mm a');
+final _dayAndClock = DateFormat('MMM d, h:mm a');
 
-/// The range every trend on this page reads through — one control, so
-/// "7 days" means the same thing to the KPI deltas, the dual chart and the
-/// peak-hours rose at once, the way the reference dashboard's top-of-page
-/// pills govern its whole "Fleet overview".
-final _dashboardRangeProvider = StateProvider<int>((ref) => 14);
-
-/// The panel's front door.
+/// The administrator's front door.
 ///
-/// Every other screen answers "show me the list of X". This one answers "is
-/// anything wrong right now, and how busy are we" — which is the question an
-/// administrator actually opens the tool with, and the reason a work queue was
-/// the wrong thing to land on.
+/// It answers three questions in the order they get asked: what needs me
+/// (Needs attention), how are we doing right now (Live bays, who is inside),
+/// and what has gone on that I should look at (Recent activity, the period's
+/// totals). The sidebar already lists every module, so this does not.
 ///
-/// It adds no endpoints. Every number here already had a provider built for
-/// Reports; the difference is that Reports is where you go to *study* the data
-/// and this is where you go to *notice* it.
+/// "Right now" and "history" are kept apart on purpose. The date picker moves
+/// the history: the activity feed, the period's totals and the hourly chart.
+/// Free bays, who is on site and what is waiting never follow it.
 class DashboardScreen extends ConsumerWidget {
   const DashboardScreen({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final range = ref.watch(_dashboardRangeProvider);
-
     return AppPage(
       title: 'Overview',
       eyebrow: 'STI BALIUAG · PARKING OPERATIONS',
-      subtitle: 'STI Baliuag parking, as it stands right now.',
+      subtitle: 'What needs you, how the lot stands, and what to look at.',
       scrollable: true,
+      badge: const _GuardPostBadge(),
       actions: [
+        const OverviewSearch(),
+        const SizedBox(width: AppSpacing.x2),
         IconButton(
           icon: const Icon(Icons.refresh),
           tooltip: 'Refresh',
           onPressed: () {
-            ref.invalidate(reportsSummaryProvider);
-            ref.invalidate(occupancyTrendProvider);
-            ref.invalidate(revenueTrendProvider);
-            ref.invalidate(peakHoursProvider);
+            ref.invalidate(overviewSummaryProvider);
+            ref.invalidate(overviewHoursProvider);
+            ref.invalidate(overviewFeedProvider);
+            ref.invalidate(overviewNotificationsProvider);
             ref.invalidate(pendingRegistrationsProvider);
-            ref.invalidate(parkingSlotsProvider);
-            ref.invalidate(gateDeviceListProvider);
             ref.invalidate(activeParkingSessionsProvider);
           },
         ),
         const SizedBox(width: AppSpacing.x2),
-        _RangePills(
-          value: range,
-          onChanged: (v) => ref.read(_dashboardRangeProvider.notifier).state = v,
-        ),
-        const SizedBox(width: AppSpacing.x2),
-        _ExportButton(range: range),
+        PeriodPicker(provider: overviewPeriodProvider),
       ],
-      body: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          AsyncView(
-            value: ref.watch(reportsSummaryProvider),
-            onRetry: () => ref.invalidate(reportsSummaryProvider),
-            loading: const Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                SkeletonMetricRow(),
-                SizedBox(height: AppSpacing.gutter),
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Expanded(child: SkeletonBlock(height: 340)),
-                    SizedBox(width: AppSpacing.gutter),
-                    Expanded(child: SkeletonBlock(height: 340)),
-                  ],
-                ),
-              ],
+      body: AsyncView(
+        value: ref.watch(overviewSummaryProvider),
+        onRetry: () => ref.invalidate(overviewSummaryProvider),
+        loading: const _OverviewSkeleton(),
+        data: (summary) => Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            _AttentionSection(summary: summary),
+            const SizedBox(height: AppSpacing.gutter),
+            _TwoUp(
+              leftFlex: 4,
+              rightFlex: 5,
+              left: _LiveBaysCard(summary: summary),
+              right: const _ActivityCard(),
             ),
-            data: (summary) => Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                _MetricRow(summary: summary, range: range),
-                const SizedBox(height: AppSpacing.gutter),
-                const ParkingSummaryCard(),
-                const SizedBox(height: AppSpacing.gutter),
-                _TwoUp(
-                  leftFlex: 5,
-                  rightFlex: 4,
-                  left: const _GateHeroCard(),
-                  right: _ChartPanel(
-                    title: 'Sessions vs revenue',
-                    caption: 'Last $range days',
-                    child: _SessionsRevenueChart(range: range),
-                  ),
-                ),
-                const SizedBox(height: AppSpacing.gutter),
-                _BottomRow(summary: summary, range: range),
-                const SizedBox(height: AppSpacing.gutter),
-                _TwoUp(
-                  left: const _ActiveSessionsCard(),
-                  right: _AttentionCard(summary: summary),
-                ),
-              ],
+            const SizedBox(height: AppSpacing.gutter),
+            _TwoUp(
+              leftFlex: 5,
+              rightFlex: 4,
+              matchHeights: false,
+              left: const _FixedHeight(child: _ActiveSessionsCard()),
+              right: const _FixedHeight(child: _NotificationsCard()),
             ),
-          ),
-          const SizedBox(height: AppSpacing.sectionGap),
-          const _ModuleShortcuts(),
-        ],
+            const SizedBox(height: AppSpacing.gutter),
+            _PeriodCard(summary: summary),
+          ],
+        ),
       ),
     );
   }
 }
 
-// ── Header controls ──────────────────────────────────────────────────────────
-
-class _RangePills extends StatelessWidget {
-  const _RangePills({required this.value, required this.onChanged});
-
-  final int value;
-  final ValueChanged<int> onChanged;
-
-  static const _options = [7, 14, 30];
+class _OverviewSkeleton extends StatelessWidget {
+  const _OverviewSkeleton();
 
   @override
   Widget build(BuildContext context) {
-    final t = context.tokens;
-    final text = Theme.of(context).textTheme;
-
-    return Container(
-      padding: const EdgeInsets.all(3),
-      decoration: BoxDecoration(color: t.surface.muted, borderRadius: AppRadii.fullAll),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          for (final days in _options)
-            GestureDetector(
-              onTap: () => onChanged(days),
-              child: AnimatedContainer(
-                duration: AppMotion.fast,
-                padding: const EdgeInsets.symmetric(
-                    horizontal: AppSpacing.x3, vertical: AppSpacing.x1 + 2),
-                decoration: BoxDecoration(
-                  color: value == days ? t.surface.card : Colors.transparent,
-                  borderRadius: AppRadii.fullAll,
-                  boxShadow: value == days ? AppElevation.sm : null,
-                ),
-                child: Text(
-                  '${days}d',
-                  style: text.labelMedium?.copyWith(
-                    color: value == days ? t.text.primary : t.text.secondary,
-                  ),
-                ),
-              ),
-            ),
-        ],
-      ),
-    );
-  }
-}
-
-class _ExportButton extends ConsumerWidget {
-  const _ExportButton({required this.range});
-
-  final int range;
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    return FilledButton.icon(
-      icon: const Icon(Icons.ios_share, size: AppSizes.iconSm),
-      label: const Text('Export'),
-      onPressed: () async {
-        final summary = await ref.read(reportsSummaryProvider.future);
-        final revenue = await ref.read(revenueTrendProvider(days: range).future);
-        final sessions = await ref.read(occupancyTrendProvider(days: range).future);
-        CsvExport.save(
-          fileName: 'aimpark_overview.csv',
-          headers: const ['Date', 'Sessions', 'Revenue'],
-          rows: [
-            for (var i = 0; i < revenue.length; i++)
-              [
-                _dayLabel.format(revenue[i].date.toLocal()),
-                i < sessions.length ? sessions[i].count : '',
-                revenue[i].amount,
-              ],
+    return const Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        SkeletonMetricRow(count: 5, width: 200),
+        SizedBox(height: AppSpacing.gutter),
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Expanded(flex: 4, child: SkeletonBlock(height: 280)),
+            SizedBox(width: AppSpacing.gutter),
+            Expanded(flex: 5, child: SkeletonBlock(height: 280)),
           ],
-        );
-        if (context.mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Exported ${summary.sessionsToday} sessions today · '
-                '${revenue.length} days of history.')),
-          );
-        }
-      },
+        ),
+        SizedBox(height: AppSpacing.gutter),
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Expanded(flex: 5, child: SkeletonBlock(height: 260)),
+            SizedBox(width: AppSpacing.gutter),
+            Expanded(flex: 4, child: SkeletonBlock(height: 260)),
+          ],
+        ),
+      ],
     );
   }
 }
 
-// ── Module shortcuts ─────────────────────────────────────────────────────────
+// ── Header ───────────────────────────────────────────────────────────────────
 
-/// A tile per module, which is what the capstone document means by the
-/// dashboard's job: "see and navigate tools and see different modules".
-class _ModuleShortcuts extends ConsumerWidget {
-  const _ModuleShortcuts();
+/// Whether the guard post is talking to the cloud, and when it last did.
+///
+/// The bays on this page come from the cloud, which only knows what the guard
+/// post last sent. Saying "live" over data that stopped changing when the
+/// guard post lost its internet would be worse than saying nothing.
+class _GuardPostBadge extends ConsumerWidget {
+  const _GuardPostBadge();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final link = ref.watch(siteLinkProvider).valueOrNull;
+    // The cloud could not say (an older cloud): claim nothing.
+    if (link == null) return const SizedBox.shrink();
+
+    if (link.stale) {
+      final since = link.staleSince;
+      return StatusPill.of(
+        since == null
+            ? 'Guard post offline'
+            : 'Guard post offline · last confirmed ${_clock.format(manila(since))}',
+        intent: StatusIntent.warning,
+        dense: true,
+      );
+    }
+
+    final heard = link.lastContact;
+    return StatusPill.of(
+      heard == null
+          ? 'Guard post live'
+          : 'Guard post live · synced ${_clock.format(manila(heard))}',
+      intent: StatusIntent.success,
+      dense: true,
+    );
+  }
+}
+
+// ── Needs attention ──────────────────────────────────────────────────────────
+
+class _AttentionSection extends ConsumerWidget {
+  const _AttentionSection({required this.summary});
+
+  final ReportsSummary summary;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final t = context.tokens;
     final text = Theme.of(context).textTheme;
-    final shortcuts = moduleShortcutsFor(
-      ref.watch(staffRoleProvider) ?? StaffRole.admin,
-    );
+    final pending = ref.watch(pendingRegistrationsProvider).valueOrNull?.length;
+
+    final tiles = <_AttentionTile>[
+      _AttentionTile(
+        label: 'Registrations to review',
+        hint: 'Waiting on you',
+        icon: Icons.how_to_reg_outlined,
+        value: pending == null ? '—' : '$pending',
+        intent: (pending ?? 0) > 0 ? StatusIntent.warning : null,
+        route: '/pending',
+      ),
+      _AttentionTile(
+        label: 'Open incidents',
+        hint: 'Reports not yet closed',
+        icon: Icons.report_problem_outlined,
+        value: '${summary.openIncidents}',
+        intent: summary.openIncidents > 0 ? StatusIntent.danger : null,
+        route: '/incidents',
+      ),
+      _AttentionTile(
+        label: 'Unpaid fees',
+        hint: 'Parking fees owed',
+        icon: Icons.receipt_long_outlined,
+        value: _money.format(summary.feesPending),
+        intent: summary.feesPending > 0 ? StatusIntent.accent : null,
+        route: '/payments',
+      ),
+      _AttentionTile(
+        label: 'Unpaid fines',
+        hint: 'Violation penalties owed',
+        icon: Icons.gavel_outlined,
+        value: _money.format(summary.finesPending),
+        intent: summary.finesPending > 0 ? StatusIntent.warning : null,
+        route: '/payments',
+      ),
+      _AttentionTile(
+        label: 'Serious denials today',
+        value: '${summary.seriousDenialsToday}',
+        hint: 'Unknown card or wrong plate',
+        icon: Icons.block,
+        intent: summary.seriousDenialsToday > 0 ? StatusIntent.danger : null,
+        route: '/gate-taps',
+      ),
+    ];
 
     return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Text('Modules', style: text.titleMedium),
-        const SizedBox(height: AppSpacing.labelGap),
-        Text(
-          'Every tool in the administrator panel.',
-          style: text.bodySmall?.copyWith(color: t.text.secondary),
+        Row(
+          children: [
+            Text(
+              'NEEDS ATTENTION',
+              style: text.labelSmall?.copyWith(color: t.text.secondary),
+            ),
+            const Spacer(),
+            Text(
+              'Live, not affected by the date',
+              style: text.labelSmall?.copyWith(color: t.text.tertiary),
+            ),
+          ],
         ),
-        const SizedBox(height: AppSpacing.headingGap),
+        const SizedBox(height: AppSpacing.x2),
         LayoutBuilder(
           builder: (context, constraints) {
-            final columns = switch (constraints.maxWidth) {
-              > 1380 => 5,
-              > 1200 => 4,
-              > 860 => 3,
-              > 520 => 2,
-              _ => 1,
-            };
+            final columns = constraints.maxWidth > 1100
+                ? 5
+                : constraints.maxWidth > 760
+                ? 3
+                : 2;
             final width =
                 (constraints.maxWidth - AppSpacing.gutter * (columns - 1)) /
                 columns;
-
             return Wrap(
               spacing: AppSpacing.gutter,
               runSpacing: AppSpacing.gutter,
-              children: [
-                for (final item in shortcuts)
-                  _ModuleTile(
-                    item: item,
-                    width: width,
-                    emphasized: _dailyDriverRoutes.contains(item.route),
-                  ),
-              ],
+              children: [for (final tile in tiles) tile.sized(width)],
             );
           },
         ),
@@ -270,409 +260,98 @@ class _ModuleShortcuts extends ConsumerWidget {
   }
 }
 
-const _dailyDriverRoutes = {'/pending', '/parking', '/payments', '/violations'};
-
-class _ModuleTile extends StatelessWidget {
-  const _ModuleTile({
-    required this.item,
-    required this.width,
-    required this.emphasized,
+class _AttentionTile extends StatelessWidget {
+  const _AttentionTile({
+    required this.label,
+    required this.value,
+    required this.route,
+    required this.hint,
+    required this.icon,
+    this.intent,
+    this.width,
   });
 
-  final NavItem item;
-  final double width;
-  final bool emphasized;
+  final String label;
+  final String value;
+  final String route;
+  final String hint;
+  final IconData icon;
+
+  /// Null when there is nothing to do: the tile turns green.
+  final StatusIntent? intent;
+  final double? width;
+
+  _AttentionTile sized(double w) => _AttentionTile(
+    label: label,
+    value: value,
+    route: route,
+    hint: hint,
+    icon: icon,
+    intent: intent,
+    width: w,
+  );
 
   @override
   Widget build(BuildContext context) {
     final t = context.tokens;
     final text = Theme.of(context).textTheme;
-    final accent = _categoryColor(item, t);
-    final chipStart = Color.lerp(accent, Colors.white, emphasized ? 0.1 : 0.75)!;
+    final active = intent != null;
+    // Nothing to do reads as good news, not as a blank.
+    final colors = t.status.of(intent ?? StatusIntent.success);
 
     return AppCard(
       width: width,
-      padding: EdgeInsets.zero,
-      onTap: () => context.go(item.route),
-      selected: emphasized,
-      accentColor: accent,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          // A category stripe rather than a uniform blue chip everywhere —
-          // Gate, Operations, Enforcement and System each keep their own hue
-          // from the top nav all the way down into this grid.
-          Container(height: 3, color: accent),
-          Padding(
-            padding: const EdgeInsets.all(AppSpacing.cardPadding),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Row(
-                  children: [
-                    Container(
-                      width: 34,
-                      height: 34,
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          begin: Alignment.topLeft,
-                          end: Alignment.bottomRight,
-                          colors: [chipStart, accent],
-                        ),
-                        borderRadius: AppRadii.mdAll,
-                      ),
-                      child: Icon(
-                        item.icon,
-                        size: AppSizes.iconMd,
-                        color: emphasized ? t.text.onBrand : Color.lerp(accent, Colors.black, 0.25),
-                      ),
-                    ),
-                    const SizedBox(width: AppSpacing.x3),
-                    Expanded(
-                      child: Text(
-                        item.displayLabel,
-                        style: text.titleSmall,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: AppSpacing.x3),
-                Text(
-                  item.description,
-                  style: text.bodySmall?.copyWith(color: t.text.secondary),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-/// Each destination's colour follows the group it belongs to, so the
-/// Modules grid reads as an extension of the top nav's own groups rather than
-/// a wall of identically-styled tiles.
-Color _categoryColor(NavItem item, AppTokens t) {
-  for (final group in navGroups) {
-    if (!group.items.contains(item)) continue;
-    return switch (group.label) {
-      'Gate' => t.chart.series(0),
-      'Operations' => t.chart.series(4),
-      'Enforcement' => t.chart.series(1),
-      'System' => t.chart.series(2),
-      _ => t.brand.primary,
-    };
-  }
-  return t.brand.primary;
-}
-
-// ── Metric row ───────────────────────────────────────────────────────────────
-
-class _MetricRow extends ConsumerWidget {
-  const _MetricRow({required this.summary, required this.range});
-
-  final ReportsSummary summary;
-  final int range;
-
-  /// A real period-over-period change from a trend series, or null when there
-  /// isn't enough history to say anything — no fabricated percentage stands
-  /// in for a number the API never gave us.
-  String? _delta(List<double> series, {required void Function(bool up) report}) {
-    if (series.length < 2) return null;
-    final last = series.last;
-    final prev = series[series.length - 2];
-    if (prev == 0) return null;
-    final change = (last - prev) / prev * 100;
-    report(change >= 0);
-    final sign = change >= 0 ? '+' : '';
-    return '$sign${change.toStringAsFixed(1)}%';
-  }
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final t = context.tokens;
-    final revenue = ref.watch(revenueTrendProvider(days: range)).valueOrNull;
-    final sessions = ref.watch(occupancyTrendProvider(days: range)).valueOrNull;
-
-    var revenueUp = true;
-    var sessionsUp = true;
-    final revenueDelta = revenue == null
-        ? null
-        : _delta(
-            [for (final p in revenue) p.amount],
-            report: (up) => revenueUp = up,
-          );
-    final sessionsDelta = sessions == null
-        ? null
-        : _delta(
-            [for (final p in sessions) p.count.toDouble()],
-            report: (up) => sessionsUp = up,
-          );
-
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final columns = constraints.maxWidth > 1000
-            ? 4
-            : constraints.maxWidth > 560
-            ? 2
-            : 1;
-        final width =
-            (constraints.maxWidth - AppSpacing.gutter * (columns - 1)) /
-            columns;
-
-        return Wrap(
-          spacing: AppSpacing.gutter,
-          runSpacing: AppSpacing.gutter,
-          children: [
-            MetricCard(
-              width: width,
-              label: 'Sessions today',
-              value: '${summary.sessionsToday}',
-              icon: Icons.directions_car_outlined,
-              dotColor: t.chart.series(0),
-              delta: sessionsDelta,
-              deltaPositive: sessionsUp,
-              caption: '${summary.activeUsers} active accounts',
-            ),
-            MetricCard(
-              width: width,
-              label: 'Revenue collected',
-              value: _money.format(summary.revenueCollected),
-              icon: Icons.payments_outlined,
-              dotColor: t.chart.series(4),
-              delta: revenueDelta,
-              deltaPositive: revenueUp,
-              caption: summary.revenuePending > 0
-                  ? '${_money.format(summary.revenuePending)} still outstanding'
-                  : 'Nothing outstanding',
-            ),
-            MetricCard(
-              width: width,
-              label: 'Slots available',
-              value: '${summary.availableSlots}',
-              icon: Icons.local_parking_outlined,
-              intent: summary.availableSlots == 0
-                  ? StatusIntent.danger
-                  : StatusIntent.accent,
-              dotColor: summary.availableSlots == 0 ? null : t.chart.series(5),
-              caption: summary.outOfServiceSlots > 0
-                  ? 'of ${summary.usableSlots} usable'
-                  : 'of ${summary.totalSlots} total',
-            ),
-            MetricCard(
-              width: width,
-              label: 'Open incidents',
-              value: '${summary.openIncidents}',
-              icon: Icons.report_outlined,
-              intent: summary.openIncidents > 0
-                  ? StatusIntent.warning
-                  : StatusIntent.success,
-              dotColor: summary.openIncidents > 0 ? null : t.chart.series(1),
-              caption: '${summary.violationsIssued} violations issued',
-            ),
-          ],
-        );
-      },
-    );
-  }
-}
-
-// ── Gate hero card ───────────────────────────────────────────────────────────
-
-/// The page's featured panel: a tinted, hatched band (the reference
-/// dashboard's live-camera treatment, given to a real live figure instead)
-/// with a floating status card over it, a gate switcher, and the two-tile
-/// footer the reference uses under its turbine reading.
-class _GateHeroCard extends ConsumerStatefulWidget {
-  const _GateHeroCard();
-
-  @override
-  ConsumerState<_GateHeroCard> createState() => _GateHeroCardState();
-}
-
-class _GateHeroCardState extends ConsumerState<_GateHeroCard> {
-  int? _gate;
-
-  @override
-  Widget build(BuildContext context) {
-    final t = context.tokens;
-    final text = Theme.of(context).textTheme;
-    final slotsAsync = ref.watch(parkingSlotsProvider);
-    final devicesAsync = ref.watch(gateDeviceListProvider);
-    final accent = t.chart.series(0);
-
-    return AppCard(
-      padding: EdgeInsets.zero,
-      child: slotsAsync.when(
-        loading: () => const SizedBox(height: 340, child: Center(child: CircularProgressIndicator())),
-        error: (e, _) => SizedBox(
-          height: 340,
-          child: Center(
-            child: Text('Could not load gate status',
-                style: text.bodySmall?.copyWith(color: t.text.tertiary)),
-          ),
-        ),
-        data: (availability) {
-          final gates = availability.slots.map((s) => s.gate).toSet().toList()..sort();
-          final gate = _gate != null && gates.contains(_gate) ? _gate! : (gates.isEmpty ? 1 : gates.first);
-          final slots = availability.slots.where((s) => s.gate == gate).toList();
-          final total = slots.length;
-          final occupied = slots.where((s) => s.status == 'Occupied').length;
-          final free = total - occupied;
-          final ratio = total == 0 ? 0.0 : occupied / total;
-
-          final devices = devicesAsync.valueOrNull?.where((d) => d.gate == gate).toList() ?? [];
-          final activeDevices = devices.where((d) => !d.isRevoked).length;
-          final lastSeen = devices
-              .map((d) => d.lastSeenAt)
-              .whereType<DateTime>()
-              .fold<DateTime?>(null, (a, b) => a == null || b.isAfter(a) ? b : a);
-
-          return Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              SizedBox(
-                height: 172,
-                child: Stack(
-                  fit: StackFit.expand,
-                  children: [
-                    Container(color: accent.withValues(alpha: 0.07)),
-                    AppHatchPattern(color: accent.withValues(alpha: 0.16)),
-                    Positioned(
-                      left: AppSpacing.cardPadding,
-                      top: AppSpacing.x3,
-                      child: _GatePicker(
-                        gates: gates,
-                        selected: gate,
-                        onChanged: (g) => setState(() => _gate = g),
-                      ),
-                    ),
-                    Positioned(
-                      right: AppSpacing.cardPadding,
-                      top: AppSpacing.x3,
-                      child: const StatusPill(
-                          label: 'LIVE', intent: StatusIntent.success, dense: true),
-                    ),
-                    Center(
-                      child: AppArcGauge(
-                        value: ratio,
-                        size: 130,
-                        strokeWidth: 12,
-                        color: accent,
-                        minLabel: '0',
-                        maxLabel: '$total',
-                        center: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Text('$occupied',
-                                style: AppTypography.tabular(text.headlineSmall!)),
-                            Text('occupied',
-                                style: text.bodySmall?.copyWith(color: t.text.secondary)),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              Transform.translate(
-                offset: const Offset(0, -16),
-                child: Container(
-                  margin: const EdgeInsets.symmetric(horizontal: AppSpacing.gutter),
-                  padding: const EdgeInsets.all(AppSpacing.cardPadding),
-                  decoration: BoxDecoration(
-                    color: t.surface.card,
-                    borderRadius: AppRadii.lgAll,
-                    border: Border.all(color: t.border.normal),
-                    boxShadow: AppElevation.md,
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      Row(
-                        children: [
-                          Text('Status', style: text.titleMedium),
-                          const Spacer(),
-                          StatusPill.of(
-                            activeDevices > 0 ? 'Active' : 'No devices',
-                            intent: activeDevices > 0
-                                ? StatusIntent.success
-                                : StatusIntent.neutral,
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: AppSpacing.x3),
-                      _FieldRow(label: 'Slots free', value: '$free'),
-                      _FieldRow(
-                          label: 'Devices online',
-                          value: '$activeDevices of ${devices.length}'),
-                      _FieldRow(
-                        label: 'Last device sync',
-                        value: lastSeen == null ? '—' : _timeLabel.format(lastSeen.toLocal()),
-                      ),
-                      const Divider(height: AppSpacing.x6),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: _StatTile(label: 'Free bays', value: '$free'),
-                          ),
-                          Container(width: 1, height: 32, color: t.border.subtle),
-                          Expanded(
-                            child: _StatTile(label: 'Total bays', value: '$total'),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-              const SizedBox(height: AppSpacing.x2),
-            ],
-          );
-        },
-      ),
-    );
-  }
-}
-
-class _GatePicker extends StatelessWidget {
-  const _GatePicker({required this.gates, required this.selected, required this.onChanged});
-
-  final List<int> gates;
-  final int selected;
-  final ValueChanged<int> onChanged;
-
-  @override
-  Widget build(BuildContext context) {
-    final t = context.tokens;
-    final text = Theme.of(context).textTheme;
-
-    return PopupMenuButton<int>(
-      tooltip: 'Choose gate',
-      onSelected: onChanged,
-      color: t.surface.overlay,
-      itemBuilder: (context) => [
-        for (final g in gates)
-          PopupMenuItem(value: g, child: Text('Gate $g')),
-      ],
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: AppSpacing.x3, vertical: AppSpacing.x1 + 2),
-        decoration: BoxDecoration(
-          color: t.surface.card,
-          borderRadius: AppRadii.fullAll,
-          boxShadow: AppElevation.sm,
-        ),
+      onTap: () => context.go(route),
+      selected: active,
+      accentColor: colors.border,
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(minHeight: 72),
         child: Row(
-          mainAxisSize: MainAxisSize.min,
           children: [
-            Text('Gate $selected', style: text.labelLarge),
-            const SizedBox(width: AppSpacing.x1),
-            Icon(Icons.expand_more, size: AppSizes.iconSm, color: t.text.secondary),
+            Container(
+              width: 44,
+              height: 44,
+              decoration: BoxDecoration(
+                color: colors.bg,
+                borderRadius: AppRadii.smAll,
+                border: Border.all(color: colors.border),
+              ),
+              child: Icon(active ? icon : Icons.check, color: colors.fg),
+            ),
+            const SizedBox(width: AppSpacing.x3),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: text.bodySmall?.copyWith(color: t.text.secondary),
+                  ),
+                  Text(
+                    value,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: AppTypography.tabular(
+                      text.headlineSmall!,
+                    ).copyWith(color: active ? colors.fg : t.text.primary),
+                  ),
+                  Text(
+                    hint,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: text.labelSmall?.copyWith(color: t.text.tertiary),
+                  ),
+                ],
+              ),
+            ),
+            Icon(
+              Icons.chevron_right,
+              size: AppSizes.iconMd,
+              color: t.text.tertiary,
+            ),
           ],
         ),
       ),
@@ -680,138 +359,32 @@ class _GatePicker extends StatelessWidget {
   }
 }
 
-class _FieldRow extends StatelessWidget {
-  const _FieldRow({required this.label, required this.value});
+// ── Live bays ────────────────────────────────────────────────────────────────
 
-  final String label;
-  final String value;
-
-  @override
-  Widget build(BuildContext context) {
-    final t = context.tokens;
-    final text = Theme.of(context).textTheme;
-
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: AppSpacing.x1 + 1),
-      child: Row(
-        children: [
-          Expanded(
-            child: Text(label, style: text.bodySmall?.copyWith(color: t.text.secondary)),
-          ),
-          Text(value, style: AppTypography.tabular(text.titleSmall!)),
-        ],
-      ),
-    );
-  }
-}
-
-class _StatTile extends StatelessWidget {
-  const _StatTile({required this.label, required this.value});
-
-  final String label;
-  final String value;
-
-  @override
-  Widget build(BuildContext context) {
-    final t = context.tokens;
-    final text = Theme.of(context).textTheme;
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(label, style: text.labelSmall?.copyWith(color: t.text.tertiary)),
-        const SizedBox(height: 2),
-        Text(value, style: AppTypography.tabular(text.titleMedium!)),
-      ],
-    );
-  }
-}
-
-// ── Sessions vs revenue chart ────────────────────────────────────────────────
-
-class _SessionsRevenueChart extends ConsumerWidget {
-  const _SessionsRevenueChart({required this.range});
-
-  final int range;
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final sessions = ref.watch(occupancyTrendProvider(days: range));
-    final revenue = ref.watch(revenueTrendProvider(days: range));
-
-    if (sessions.isLoading || revenue.isLoading) {
-      return const SkeletonBlock();
-    }
-    final s = sessions.valueOrNull ?? [];
-    final r = revenue.valueOrNull ?? [];
-    final n = s.length < r.length ? s.length : r.length;
-
-    return AppDualBarChart(
-      labelA: 'Sessions',
-      labelB: 'Revenue',
-      formatB: _money.format,
-      dataA: [
-        for (var i = 0; i < n; i++)
-          AppChartDatum(
-            label: _dayLabel.format(s[i].date.toLocal()),
-            value: s[i].count.toDouble(),
-            tooltip: '${_dayLabel.format(s[i].date.toLocal())} · ${s[i].count} sessions',
-          ),
-      ],
-      dataB: [
-        for (var i = 0; i < n; i++)
-          AppChartDatum(
-            label: _dayLabel.format(r[i].date.toLocal()),
-            value: r[i].amount,
-            tooltip: '${_dayLabel.format(r[i].date.toLocal())} · ${_moneyExact.format(r[i].amount)}',
-          ),
-      ],
-    );
-  }
-}
-
-// ── Bottom row: gate levels, peak-hour rose, device health ──────────────────
-
-class _BottomRow extends StatelessWidget {
-  const _BottomRow({required this.summary, required this.range});
+/// Free and occupied bays, one number from the API and the same one the gates
+/// use. When the guard post has gone quiet the card says so and shows the
+/// figures as last known.
+class _LiveBaysCard extends ConsumerWidget {
+  const _LiveBaysCard({required this.summary});
 
   final ReportsSummary summary;
-  final int range;
-
-  @override
-  Widget build(BuildContext context) {
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final columns = constraints.maxWidth > 1100
-            ? 3
-            : constraints.maxWidth > 700
-            ? 2
-            : 1;
-        final width =
-            (constraints.maxWidth - AppSpacing.gutter * (columns - 1)) / columns;
-
-        return Wrap(
-          spacing: AppSpacing.gutter,
-          runSpacing: AppSpacing.gutter,
-          children: [
-            SizedBox(width: width, child: const _GateLevelsCard()),
-            SizedBox(width: width, child: _PeakHoursCard(range: range)),
-            SizedBox(width: width, child: const _DeviceHealthCard()),
-          ],
-        );
-      },
-    );
-  }
-}
-
-class _GateLevelsCard extends ConsumerWidget {
-  const _GateLevelsCard();
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final t = context.tokens;
     final text = Theme.of(context).textTheme;
-    final availability = ref.watch(parkingSlotsProvider).valueOrNull;
+    final link = ref.watch(siteLinkProvider).valueOrNull;
+    final stale = link?.stale ?? false;
+
+    final heard = stale ? link?.staleSince : link?.lastContact;
+    final fourWheelUsed = summary.usableFourWheel - summary.freeFourWheel;
+    final motorcycleUsed = summary.usableMotorcycle - summary.freeMotorcycle;
+    final noteParts = [
+      if (summary.noSignalSlots > 0)
+        '${summary.noSignalSlots} with no sensor signal',
+      if (summary.outOfServiceSlots > 0)
+        '${summary.outOfServiceSlots} out of service',
+    ];
 
     return AppCard(
       child: Column(
@@ -819,215 +392,251 @@ class _GateLevelsCard extends ConsumerWidget {
         children: [
           Row(
             children: [
-              Text('Gate fill level', style: text.titleMedium),
+              Text('Live bays', style: text.titleMedium),
               const Spacer(),
-              Icon(Icons.more_horiz, size: AppSizes.iconMd, color: t.text.tertiary),
+              if (stale)
+                StatusPill.of(
+                  'Last known',
+                  intent: StatusIntent.warning,
+                  dense: true,
+                )
+              else if (heard != null)
+                Text(
+                  'Updated ${_clock.format(manila(heard))}',
+                  style: text.labelSmall?.copyWith(color: t.text.tertiary),
+                ),
             ],
+          ),
+          const SizedBox(height: AppSpacing.x3),
+          Text.rich(
+            TextSpan(
+              children: [
+                TextSpan(
+                  text: '${summary.availableSlots}',
+                  style: AppTypography.tabular(text.displaySmall!).copyWith(
+                    color: stale ? t.text.tertiary : t.status.success.fg,
+                  ),
+                ),
+                TextSpan(
+                  text: '  free · ${summary.occupiedSlots} occupied',
+                  style: text.bodyMedium?.copyWith(color: t.text.secondary),
+                ),
+              ],
+            ),
           ),
           const SizedBox(height: AppSpacing.x4),
-          if (availability == null)
-            const SizedBox(height: 110)
-          else
-            Builder(builder: (context) {
-              final gates = availability.slots.map((s) => s.gate).toSet().toList()..sort();
-              final data = <AppLevelDatum>[];
-              String? warning;
-              for (final g in gates) {
-                final slots = availability.slots.where((s) => s.gate == g).toList();
-                final occupied = slots.where((s) => s.status == 'Occupied').length;
-                final total = slots.length;
-                final ratio = total == 0 ? 0.0 : occupied / total;
-                if (ratio >= 0.9) warning = 'Gate $g is nearly full.';
-                data.add(AppLevelDatum(
-                  label: 'Gate $g',
-                  valueLabel: '$occupied/$total',
-                  ratio: ratio,
-                  color: t.chart.series(gates.indexOf(g)),
-                ));
-              }
-              return Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  AppLevelBars(data: data),
-                  if (warning != null) ...[
-                    const SizedBox(height: AppSpacing.x4),
-                    Container(
-                      padding: const EdgeInsets.all(AppSpacing.x3),
-                      decoration: BoxDecoration(
-                        color: t.status.warning.bg,
-                        borderRadius: AppRadii.mdAll,
-                      ),
-                      child: Row(
-                        children: [
-                          Icon(Icons.warning_amber_rounded,
-                              size: AppSizes.iconSm, color: t.status.warning.fg),
-                          const SizedBox(width: AppSpacing.x2),
-                          Expanded(
-                            child: Text(warning,
-                                style: text.bodySmall?.copyWith(color: t.status.warning.fg)),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ],
-              );
-            }),
+          if (summary.usableFourWheel > 0)
+            _BayBar(
+              label: 'Four-wheel',
+              free: summary.freeFourWheel,
+              used: fourWheelUsed,
+              muted: stale,
+            ),
+          if (summary.usableFourWheel > 0 && summary.usableMotorcycle > 0)
+            const SizedBox(height: AppSpacing.x3),
+          if (summary.usableMotorcycle > 0)
+            _BayBar(
+              label: 'Motorcycle',
+              free: summary.freeMotorcycle,
+              used: motorcycleUsed,
+              muted: stale,
+            ),
+          if (noteParts.isNotEmpty) ...[
+            const SizedBox(height: AppSpacing.x3),
+            Text(
+              noteParts.join(' · '),
+              style: text.labelSmall?.copyWith(color: t.text.tertiary),
+            ),
+          ],
+          if (link != null && link.devices.isNotEmpty) ...[
+            const SizedBox(height: AppSpacing.x4),
+            Divider(height: 1, color: t.border.subtle),
+            const SizedBox(height: AppSpacing.x3),
+            for (final gate in const [1, 2]) _GateRow(gate: gate, link: link),
+          ],
+          if (stale) ...[
+            const SizedBox(height: AppSpacing.x3),
+            Text(
+              'Bays may have changed since. Gate decisions still run on the guard post.',
+              style: text.bodySmall?.copyWith(color: t.status.warning.fg),
+            ),
+          ],
         ],
       ),
     );
   }
 }
 
-class _PeakHoursCard extends ConsumerWidget {
-  const _PeakHoursCard({required this.range});
+class _BayBar extends StatelessWidget {
+  const _BayBar({
+    required this.label,
+    required this.free,
+    required this.used,
+    required this.muted,
+  });
 
-  final int range;
+  final String label;
+  final int free;
+  final int used;
+  final bool muted;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = context.tokens;
+    final text = Theme.of(context).textTheme;
+    final total = free + used;
+    final ratio = total == 0 ? 0.0 : used / total;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Row(
+          children: [
+            Text(
+              label,
+              style: text.bodySmall?.copyWith(color: t.text.secondary),
+            ),
+            const Spacer(),
+            Text(
+              '$free free · $used occupied',
+              style: AppTypography.tabular(
+                text.bodySmall!,
+              ).copyWith(color: t.text.secondary),
+            ),
+          ],
+        ),
+        const SizedBox(height: 4),
+        ClipRRect(
+          borderRadius: AppRadii.smAll,
+          child: LinearProgressIndicator(
+            value: ratio,
+            minHeight: 8,
+            backgroundColor: t.surface.muted,
+            // The bar is how full the lot is: it warms up as it fills.
+            color: muted
+                ? t.text.tertiary
+                : ratio >= 0.9
+                ? t.status.danger.solid
+                : ratio >= 0.7
+                ? t.status.warning.solid
+                : t.brand.primary,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// "Gate 1   ● Reader  ● Camera", from the device list the guard post relays.
+class _GateRow extends StatelessWidget {
+  const _GateRow({required this.gate, required this.link});
+
+  final int gate;
+  final SiteLink link;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = context.tokens;
+    final text = Theme.of(context).textTheme;
+    final status = GateStatus.fromRelayed(gate, link.devices);
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: AppSpacing.x1),
+      child: Row(
+        children: [
+          Text(
+            'Gate $gate',
+            style: text.bodySmall?.copyWith(color: t.text.secondary),
+          ),
+          const Spacer(),
+          _DeviceDot(label: 'Reader', ok: status.reader),
+          const SizedBox(width: AppSpacing.x3),
+          _DeviceDot(label: 'Camera', ok: status.camera),
+        ],
+      ),
+    );
+  }
+}
+
+class _DeviceDot extends StatelessWidget {
+  const _DeviceDot({required this.label, required this.ok});
+
+  final String label;
+
+  /// Null when nothing is known: grey, never red.
+  final bool? ok;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = context.tokens;
+    final text = Theme.of(context).textTheme;
+    final color = switch (ok) {
+      true => t.status.success.solid,
+      false => t.status.danger.solid,
+      null => t.border.strong,
+    };
+
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          width: 8,
+          height: 8,
+          decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+        ),
+        const SizedBox(width: 6),
+        Text(label, style: text.labelSmall?.copyWith(color: t.text.secondary)),
+      ],
+    );
+  }
+}
+
+// ── Recent activity ──────────────────────────────────────────────────────────
+
+class _ActivityCard extends ConsumerWidget {
+  const _ActivityCard();
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final t = context.tokens;
     final text = Theme.of(context).textTheme;
-    final points = ref.watch(peakHoursProvider(days: range)).valueOrNull;
-
-    final byHour = <int, int>{for (var h = 0; h < 24; h++) h: 0};
-    for (final p in points ?? <PeakHourPoint>[]) {
-      byHour[p.hour] = p.count;
-    }
-    final busiest = byHour.entries.isEmpty
-        ? null
-        : byHour.entries.reduce((a, b) => a.value >= b.value ? a : b);
-    final total = byHour.values.fold(0, (a, b) => a + b);
+    final period = ref.watch(overviewPeriodProvider);
 
     return AppCard(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Text('Peak hours', style: text.titleMedium),
-              const Spacer(),
-              Text('Last $range days',
-                  style: text.labelSmall?.copyWith(color: t.text.secondary)),
-            ],
-          ),
-          const SizedBox(height: AppSpacing.x3),
-          Center(
-            child: AppPolarBarChart(
-              size: 176,
-              lowColor: t.chart.series(4),
-              highColor: t.chart.series(3),
-              data: [
-                for (final e in byHour.entries)
-                  AppPolarDatum(label: '${e.key}', value: e.value.toDouble()),
-              ],
-            ),
-          ),
-          const SizedBox(height: AppSpacing.x3),
-          Row(
-            children: [
-              Expanded(
-                child: _StatTile(
-                  label: 'Busiest hour',
-                  value: busiest == null || busiest.value == 0
-                      ? '—'
-                      : _hour(busiest.key),
-                ),
-              ),
-              Expanded(child: _StatTile(label: 'Total entries', value: '$total')),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  static String _hour(int hour) {
-    final suffix = hour < 12 ? 'am' : 'pm';
-    final display = hour % 12 == 0 ? 12 : hour % 12;
-    return '$display$suffix';
-  }
-}
-
-/// Every device at the guard post, one row each, from the site server's own
-/// view of them — not the keys issued in Gate Devices, which say nothing
-/// about whether a board is actually answering.
-///
-/// The ring is the share of linked devices that are up right now. Opened
-/// from the cloud panel there is nothing to ask, and the card says so.
-class _DeviceHealthCard extends ConsumerWidget {
-  const _DeviceHealthCard();
-
-  /// Past this the list scrolls, so the card doesn't outgrow its row.
-  static const double _listMaxHeight = 320;
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final t = context.tokens;
-    final text = Theme.of(context).textTheme;
-    final report = ref.watch(deviceHealthProvider).report;
-
-    final linked = report?.devices.where((d) => d.bound).toList() ?? const [];
-    final up = linked.where((d) => d.online).length;
-    final ratio = linked.isEmpty ? 0.0 : up / linked.length;
-    final percent = (ratio * 100).round();
-    final accent = up == linked.length ? t.chart.series(4) : t.status.danger.solid;
-
-    return Container(
-      padding: const EdgeInsets.all(AppSpacing.cardPadding),
-      decoration: BoxDecoration(
-        color: t.surface.inverse,
-        borderRadius: AppRadii.lgAll,
-      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Row(
             children: [
-              Text('Device health',
-                  style: text.titleMedium?.copyWith(color: t.text.inverse)),
+              Text('Recent activity', style: text.titleMedium),
+              const SizedBox(width: AppSpacing.x2),
+              Text(
+                period.label,
+                style: text.labelSmall?.copyWith(color: t.text.tertiary),
+              ),
               const Spacer(),
-              IconButton(
-                tooltip: 'Check now',
-                visualDensity: VisualDensity.compact,
-                icon: Icon(Icons.refresh, size: AppSizes.iconMd, color: t.text.inverseMuted),
-                onPressed: () => ref.read(deviceHealthProvider.notifier).refresh(),
+              TextButton(
+                onPressed: () => context.go('/gate-taps'),
+                child: const Text('Show all taps'),
               ),
             ],
           ),
-          if (report != null) ...[
-            const SizedBox(height: AppSpacing.x3),
-            Center(
-              child: AppProgressRing(
-                value: ratio,
-                size: 112,
-                strokeWidth: 12,
-                color: accent,
-                center: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text('ONLINE',
-                        style: text.labelSmall?.copyWith(
-                            color: t.text.inverseMuted, letterSpacing: 0.6)),
-                    Text(linked.isEmpty ? '—' : '$percent%',
-                        style: AppTypography.tabular(text.headlineSmall!)
-                            .copyWith(color: t.text.inverse)),
-                  ],
-                ),
-              ),
+          const SizedBox(height: AppSpacing.x2),
+          AsyncView(
+            value: ref.watch(overviewFeedProvider),
+            onRetry: () => ref.invalidate(overviewFeedProvider),
+            loading: const SkeletonList(count: 4),
+            isEmpty: (items) => items.isEmpty,
+            empty: const _QuietEmpty(
+              icon: Icons.check_circle_outline,
+              title: 'Nothing needs a look',
+              message:
+                  'Serious denials, new incidents and new violations in this period show up here.',
             ),
-            const SizedBox(height: AppSpacing.x2),
-            Center(
-              child: Text('$up of ${linked.length} linked devices up',
-                  style: text.bodySmall?.copyWith(color: t.text.inverseMuted)),
+            data: (items) => Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [for (final item in items) _FeedRow(item: item)],
             ),
-            const SizedBox(height: AppSpacing.x3),
-            Divider(height: 1, color: t.text.inverseMuted.withValues(alpha: 0.16)),
-          ],
-          const SizedBox(height: AppSpacing.x1),
-          ConstrainedBox(
-            constraints: const BoxConstraints(maxHeight: _listMaxHeight),
-            child: const SingleChildScrollView(child: DeviceHealthList(dark: true)),
           ),
         ],
       ),
@@ -1035,7 +644,101 @@ class _DeviceHealthCard extends ConsumerWidget {
   }
 }
 
-// ── Active sessions + attention ──────────────────────────────────────────────
+class _FeedRow extends StatelessWidget {
+  const _FeedRow({required this.item});
+
+  final FeedItem item;
+
+  /// A refused tap or a violation opens the panel on whoever it concerns. An
+  /// incident has nobody to open, so it goes to its list.
+  void _open(BuildContext context) {
+    final tap = item.tap;
+    final userId = item.userId;
+    if (tap != null) {
+      showInvestigationPanel(
+        context,
+        tap: tap,
+        subject: InvestigationSubject.ofTap(tap),
+      );
+    } else if (userId != null) {
+      showInvestigationPanel(
+        context,
+        subject: InvestigationSubject(userId: userId),
+        title: item.detail.split(' · ').first,
+      );
+    } else {
+      context.go(item.route);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final t = context.tokens;
+    final text = Theme.of(context).textTheme;
+    final (intent, icon) = switch (item.kind) {
+      FeedKind.denial => (StatusIntent.danger, Icons.block),
+      FeedKind.incident => (
+        StatusIntent.warning,
+        Icons.report_problem_outlined,
+      ),
+      FeedKind.violation => (StatusIntent.accent, Icons.gavel_outlined),
+    };
+    final c = t.status.of(intent);
+
+    final at = manila(item.at);
+    final now = manilaNow();
+    final sameDay =
+        at.year == now.year && at.month == now.month && at.day == now.day;
+
+    return InkWell(
+      onTap: () => _open(context),
+      borderRadius: AppRadii.smAll,
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: AppSpacing.x3),
+        decoration: BoxDecoration(
+          border: Border(top: BorderSide(color: t.border.subtle)),
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              width: 32,
+              height: 32,
+              decoration: BoxDecoration(
+                color: c.bg,
+                shape: BoxShape.circle,
+                border: Border.all(color: c.border),
+              ),
+              child: Icon(icon, size: AppSizes.iconSm, color: c.fg),
+            ),
+            const SizedBox(width: AppSpacing.x3),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(item.title, style: text.bodyMedium),
+                  Text(
+                    item.detail,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: text.bodySmall?.copyWith(color: t.text.secondary),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: AppSpacing.x3),
+            Text(
+              sameDay ? _clock.format(at) : _dayAndClock.format(at),
+              style: text.labelSmall?.copyWith(color: t.text.tertiary),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ── Who is on site ───────────────────────────────────────────────────────────
 
 class _ActiveSessionsCard extends ConsumerWidget {
   const _ActiveSessionsCard();
@@ -1047,68 +750,45 @@ class _ActiveSessionsCard extends ConsumerWidget {
     final async = ref.watch(activeParkingSessionsProvider);
 
     return AppCard(
-      padding: EdgeInsets.zero,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(AppSpacing.cardPadding,
-                AppSpacing.x3, AppSpacing.cardPadding, AppSpacing.x3),
-            child: Row(
-              children: [
-                Text('Active sessions', style: text.titleMedium),
-                const SizedBox(width: AppSpacing.x2),
+          Row(
+            children: [
+              Text('Active sessions', style: text.titleMedium),
+              const SizedBox(width: AppSpacing.x2),
+              if (async.valueOrNull != null)
                 Text(
-                  async.valueOrNull == null ? '' : '${async.valueOrNull!.length} on site',
+                  '${async.valueOrNull!.length} on site',
                   style: text.labelSmall?.copyWith(color: t.text.tertiary),
                 ),
-                const Spacer(),
-                TextButton(
-                  onPressed: () => context.go('/parking'),
-                  child: const Text('View all'),
-                ),
-              ],
-            ),
-          ),
-          SizedBox(
-            height: 280,
-            child: async.when(
-              loading: () => const Center(child: CircularProgressIndicator()),
-              error: (e, _) => Center(
-                child: Text('Could not load sessions',
-                    style: text.bodySmall?.copyWith(color: t.text.tertiary)),
+              const Spacer(),
+              TextButton(
+                onPressed: () => context.go('/parking-logs'),
+                child: const Text('View all'),
               ),
-              data: (sessions) {
-                if (sessions.isEmpty) {
-                  return Center(
-                    child: Text('No vehicles on site right now.',
-                        style: text.bodySmall?.copyWith(color: t.text.tertiary)),
-                  );
-                }
-                final rows = sessions.take(6).toList();
-                return AppDataTable(
-                  columns: const [
-                    DataColumn(label: Text('Plate')),
-                    DataColumn(label: Text('Entered')),
-                    DataColumn(label: Text('Type')),
+            ],
+          ),
+          const SizedBox(height: AppSpacing.x2),
+          Expanded(
+            child: SingleChildScrollView(
+              child: AsyncView(
+                value: async,
+                onRetry: () => ref.invalidate(activeParkingSessionsProvider),
+                loading: const SkeletonList(count: 4),
+                isEmpty: (sessions) => sessions.isEmpty,
+                empty: const _QuietEmpty(
+                  icon: Icons.local_parking_outlined,
+                  title: 'No vehicles on site',
+                  message: 'Vehicles that are inside right now appear here.',
+                ),
+                data: (sessions) => Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    for (final s in sessions.take(6)) _SessionRow(session: s),
                   ],
-                  rows: [
-                    for (final s in rows)
-                      DataRow(cells: [
-                        DataCell(AppPrimaryCell(
-                          title: s.plateNumber ?? '—',
-                          subtitle: s.userName,
-                        )),
-                        DataCell(Text(_timeLabel.format(s.entryTime.toLocal()))),
-                        DataCell(StatusPill.of(
-                          s.isVisitor ? 'Visitor' : 'Resident',
-                          intent: s.isVisitor ? StatusIntent.accent : StatusIntent.info,
-                          dense: true,
-                        )),
-                      ]),
-                  ],
-                );
-              },
+                ),
+              ),
             ),
           ),
         ],
@@ -1117,229 +797,387 @@ class _ActiveSessionsCard extends ConsumerWidget {
   }
 }
 
-class _AttentionCard extends ConsumerWidget {
-  const _AttentionCard({required this.summary});
+class _SessionRow extends StatelessWidget {
+  const _SessionRow({required this.session});
+
+  final ActiveParkingSession session;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = context.tokens;
+    final text = Theme.of(context).textTheme;
+
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: AppSpacing.x3),
+      decoration: BoxDecoration(
+        border: Border(top: BorderSide(color: t.border.subtle)),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(session.plateNumber ?? '—', style: text.bodyMedium),
+                Text(
+                  session.userName,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: text.bodySmall?.copyWith(color: t.text.secondary),
+                ),
+              ],
+            ),
+          ),
+          Text(
+            'Entered ${_clock.format(manila(session.entryTime))}',
+            style: text.labelSmall?.copyWith(color: t.text.tertiary),
+          ),
+          const SizedBox(width: AppSpacing.x3),
+          StatusPill.of(
+            session.isVisitor ? 'Visitor' : 'Resident',
+            intent: session.isVisitor ? StatusIntent.accent : StatusIntent.info,
+            dense: true,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ── Notifications ────────────────────────────────────────────────────────────
+
+/// What the system has pushed on its own, newest first: a violation issued, a
+/// card refused, a bill due. Titles only. It follows the period like the feed
+/// does, and says plainly when the system has sent nothing.
+class _NotificationsCard extends ConsumerWidget {
+  const _NotificationsCard();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final t = context.tokens;
+    final text = Theme.of(context).textTheme;
+    final period = ref.watch(overviewPeriodProvider);
+
+    return AppCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              Text('Notifications', style: text.titleMedium),
+              const SizedBox(width: AppSpacing.x2),
+              Text(period.label,
+                  style: text.labelSmall?.copyWith(color: t.text.tertiary)),
+              const Spacer(),
+              TextButton(
+                onPressed: () => context.go('/notifications'),
+                child: const Text('Open'),
+              ),
+            ],
+          ),
+          const SizedBox(height: AppSpacing.x2),
+          Expanded(
+            child: SingleChildScrollView(
+              child: AsyncView(
+                value: ref.watch(overviewNotificationsProvider),
+                onRetry: () => ref.invalidate(overviewNotificationsProvider),
+                loading: const SkeletonList(count: 4),
+                isEmpty: (items) => items.isEmpty,
+                empty: const _QuietEmpty(
+                  icon: Icons.notifications_none,
+                  title: 'No pushes sent',
+                  message: 'Violations, refused cards and reminders the system pushes show up here.',
+                ),
+                data: (items) => Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [for (final n in items) _NotificationRow(item: n)],
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _NotificationRow extends StatelessWidget {
+  const _NotificationRow({required this.item});
+
+  final NotificationItem item;
+
+  /// Each kind of push has its own colour and icon, so the list can be scanned
+  /// by colour before it is read.
+  static (StatusIntent, IconData, String) _look(String type) => switch (type) {
+        'Violation' => (StatusIntent.warning, Icons.gavel_outlined, 'Violation'),
+        'Payment' => (StatusIntent.success, Icons.payments_outlined, 'Payment'),
+        'Parking' => (StatusIntent.info, Icons.local_parking_outlined, 'Parking'),
+        'Incident' => (StatusIntent.danger, Icons.report_problem_outlined, 'Incident'),
+        'Reminder' => (StatusIntent.accent, Icons.schedule, 'Reminder'),
+        'Account' => (StatusIntent.info, Icons.person_outline, 'Account'),
+        'ParkingAvailability' => (StatusIntent.success, Icons.local_parking_outlined, 'Availability'),
+        'PolicyUpdate' => (StatusIntent.accent, Icons.rule, 'Policy'),
+        'System' => (StatusIntent.warning, Icons.settings_outlined, 'System'),
+        _ => (StatusIntent.neutral, Icons.notifications_none, 'Notice'),
+      };
+
+  @override
+  Widget build(BuildContext context) {
+    final t = context.tokens;
+    final text = Theme.of(context).textTheme;
+    final (intent, icon, label) = _look(item.type);
+    final c = t.status.of(intent);
+
+    final at = manila(item.createdAt);
+    final now = manilaNow();
+    final sameDay =
+        at.year == now.year && at.month == now.month && at.day == now.day;
+
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: AppSpacing.x2),
+      decoration: BoxDecoration(
+        border: Border(top: BorderSide(color: t.border.subtle)),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 32,
+            height: 32,
+            decoration: BoxDecoration(
+              color: c.bg,
+              shape: BoxShape.circle,
+              border: Border.all(color: c.border),
+            ),
+            child: Icon(icon, size: AppSizes.iconSm, color: c.fg),
+          ),
+          const SizedBox(width: AppSpacing.x3),
+          Expanded(
+            child: Text(
+              item.title,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: text.bodyMedium,
+            ),
+          ),
+          const SizedBox(width: AppSpacing.x2),
+          StatusPill.of(label, intent: intent, dense: true, showDot: false),
+          const SizedBox(width: AppSpacing.x2),
+          Text(
+            sameDay ? _clock.format(at) : _dayAndClock.format(at),
+            style: text.labelSmall?.copyWith(color: t.text.tertiary),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ── The period ───────────────────────────────────────────────────────────────
+
+/// The period's totals and when entries happen. This is the one place the
+/// date picker's choice shows as numbers.
+class _PeriodCard extends ConsumerWidget {
+  const _PeriodCard({required this.summary});
 
   final ReportsSummary summary;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final pending = ref.watch(pendingRegistrationsProvider).valueOrNull?.length;
-
-    final items = <_AttentionRow>[
-      _AttentionRow(
-        icon: Icons.pending_actions_outlined,
-        label: 'Registrations awaiting review',
-        description: 'Review submitted documents and approve or reject accounts.',
-        count: pending,
-        intent: (pending ?? 0) > 0 ? StatusIntent.warning : null,
-        route: '/pending',
-      ),
-      _AttentionRow(
-        icon: Icons.report_outlined,
-        label: 'Incidents still open',
-        description: 'Review reported incidents and decide each one.',
-        count: summary.openIncidents,
-        intent: summary.openIncidents > 0 ? StatusIntent.danger : null,
-        route: '/incidents',
-      ),
-      _AttentionRow(
-        icon: Icons.payments_outlined,
-        label: 'Payments outstanding',
-        description: 'Track transactions, collected fees and outstanding balances.',
-        valueOverride: _money.format(summary.revenuePending),
-        intent: summary.revenuePending > 0 ? StatusIntent.info : null,
-        route: '/payments',
-      ),
-    ];
-
-    final open = items.where((i) => i.intent != null).length;
+    final t = context.tokens;
+    final text = Theme.of(context).textTheme;
+    final period = ref.watch(overviewPeriodProvider);
 
     return AppCard(
-      padding: EdgeInsets.zero,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(AppSpacing.cardPadding,
-                AppSpacing.x3, AppSpacing.cardPadding, AppSpacing.x3),
-            child: Row(
-              children: [
-                Icon(Icons.flag_outlined,
-                    size: AppSizes.iconMd,
-                    color: context.tokens.text.secondary),
-                const SizedBox(width: AppSpacing.x2),
-                Expanded(
-                  child: Text('Alerts', style: Theme.of(context).textTheme.titleMedium),
-                ),
-                if (open > 0)
-                  StatusPill.of('$open open', intent: StatusIntent.warning, dense: true),
-              ],
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(AppSpacing.cardPadding, 0,
-                AppSpacing.cardPadding, AppSpacing.cardPadding),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                for (var i = 0; i < items.length; i++) ...[
-                  if (i > 0) const SizedBox(height: AppSpacing.x2),
-                  items[i],
-                ],
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-/// One line of queued work, styled as its own small severity card — the same
-/// pattern the reference dashboard uses for its Alarms list.
-class _AttentionRow extends StatefulWidget {
-  const _AttentionRow({
-    required this.icon,
-    required this.label,
-    required this.description,
-    required this.route,
-    this.count,
-    this.valueOverride,
-    this.intent,
-  });
-
-  final IconData icon;
-  final String label;
-
-  /// The destination's own real description — reused rather than invented,
-  /// so the row reads like the reference's alarm detail line without
-  /// fabricating an event that never happened.
-  final String description;
-  final String route;
-  final int? count;
-  final String? valueOverride;
-  final StatusIntent? intent;
-
-  @override
-  State<_AttentionRow> createState() => _AttentionRowState();
-}
-
-class _AttentionRowState extends State<_AttentionRow> {
-  bool _hovered = false;
-
-  @override
-  Widget build(BuildContext context) {
-    final t = context.tokens;
-    final text = Theme.of(context).textTheme;
-    final colors = widget.intent == null ? null : t.status.of(widget.intent!);
-    final accent = colors?.solid ?? t.border.strong;
-
-    final value =
-        widget.valueOverride ??
-        (widget.count == null ? '—' : '${widget.count}');
-
-    return MouseRegion(
-      cursor: SystemMouseCursors.click,
-      onEnter: (_) => setState(() => _hovered = true),
-      onExit: (_) => setState(() => _hovered = false),
-      child: GestureDetector(
-        onTap: () => context.go(widget.route),
-        child: AnimatedContainer(
-          duration: AppMotion.fast,
-          curve: AppMotion.standard,
-          decoration: BoxDecoration(
-            color: _hovered ? t.surface.hover : t.surface.canvas,
-            borderRadius: AppRadii.mdAll,
-            border: Border.all(color: t.border.subtle),
-          ),
-          padding: const EdgeInsets.all(AppSpacing.x3),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
+          Row(
             children: [
-              Container(
-                width: 10,
-                height: 10,
-                margin: const EdgeInsets.only(top: 4),
-                decoration: BoxDecoration(
-                  color: accent,
-                  borderRadius: AppRadii.smAll,
-                ),
-              ),
-              const SizedBox(width: AppSpacing.x3),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(widget.label, style: text.titleSmall),
-                    const SizedBox(height: 2),
-                    Text(
-                      widget.description,
-                      style: text.bodySmall?.copyWith(color: t.text.secondary),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(width: AppSpacing.x3),
+              Text('This period', style: text.titleMedium),
+              const Spacer(),
               Text(
-                value,
-                style: AppTypography.tabular(
-                  text.titleMedium!,
-                ).copyWith(color: colors?.fg ?? t.text.tertiary),
-              ),
-              const SizedBox(width: AppSpacing.x1),
-              Icon(
-                Icons.chevron_right,
-                size: AppSizes.iconMd,
-                color: _hovered ? t.text.secondary : t.text.tertiary,
+                period.label,
+                style: text.labelSmall?.copyWith(color: t.text.tertiary),
               ),
             ],
           ),
-        ),
-      ),
-    );
-  }
-}
-
-// ── Layout helpers ───────────────────────────────────────────────────────────
-
-class _ChartPanel extends StatelessWidget {
-  const _ChartPanel({
-    required this.title,
-    required this.caption,
-    required this.child,
-  });
-
-  final String title;
-  final String caption;
-  final Widget child;
-
-  @override
-  Widget build(BuildContext context) {
-    final t = context.tokens;
-    final text = Theme.of(context).textTheme;
-
-    return AppCard(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
+          const SizedBox(height: AppSpacing.x3),
           Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(title, style: text.titleMedium),
-              const Spacer(),
-              Text(
-                caption,
-                style: text.labelSmall?.copyWith(color: t.text.secondary),
+              Expanded(
+                child: _Stat(
+                  label: 'Sessions',
+                  value: '${summary.sessionsInPeriod}',
+                  tone: StatusIntent.info,
+                ),
+              ),
+              Expanded(
+                child: _Stat(
+                  label: 'Collected',
+                  value: _money.format(summary.revenueCollected),
+                  tone: StatusIntent.success,
+                  caption:
+                      'fees ${_money.format(summary.feesCollected)} · fines ${_money.format(summary.finesCollected)}',
+                ),
+              ),
+              Expanded(
+                child: _Stat(
+                  label: 'Violations issued',
+                  value: '${summary.violationsIssued}',
+                  tone: summary.violationsIssued > 0
+                      ? StatusIntent.warning
+                      : StatusIntent.neutral,
+                ),
               ),
             ],
           ),
           const SizedBox(height: AppSpacing.x4),
-          child,
+          Text(
+            'ENTRIES BY HOUR',
+            style: text.labelSmall?.copyWith(color: t.text.secondary),
+          ),
+          const SizedBox(height: AppSpacing.x2),
+          AsyncView(
+            value: ref.watch(overviewHoursProvider),
+            onRetry: () => ref.invalidate(overviewHoursProvider),
+            loading: const SkeletonBlock(height: 160),
+            data: (points) {
+              final byHour = {for (final p in points) p.hour: p.count};
+              return AppBarChart(
+                height: 160,
+                data: [
+                  for (var h = 0; h < 24; h++)
+                    AppChartDatum(
+                      label: _hourLabel(h),
+                      value: (byHour[h] ?? 0).toDouble(),
+                      tooltip:
+                          '${_hourFull(h)} · ${byHour[h] ?? 0} ${(byHour[h] ?? 0) == 1 ? 'entry' : 'entries'}',
+                    ),
+                ],
+              );
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
+  static String _hourLabel(int h) => h == 0
+      ? '12a'
+      : h < 12
+      ? '${h}a'
+      : h == 12
+      ? '12p'
+      : '${h - 12}p';
+
+  static String _hourFull(int h) =>
+      DateFormat('h:00 a').format(DateTime(2000, 1, 1, h));
+}
+
+class _Stat extends StatelessWidget {
+  const _Stat({
+    required this.label,
+    required this.value,
+    required this.tone,
+    this.caption,
+  });
+
+  final String label;
+  final String value;
+  final String? caption;
+  final StatusIntent tone;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = context.tokens;
+    final text = Theme.of(context).textTheme;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(label, style: text.bodySmall?.copyWith(color: t.text.secondary)),
+        const SizedBox(height: 2),
+        Text(
+          value,
+          style: AppTypography.tabular(text.titleLarge!).copyWith(
+            color: tone == StatusIntent.neutral
+                ? t.text.primary
+                : t.status.of(tone).fg,
+          ),
+        ),
+        if (caption != null)
+          Text(
+            caption!,
+            style: text.labelSmall?.copyWith(color: t.text.tertiary),
+          ),
+      ],
+    );
+  }
+}
+
+/// Gives the bottom two cards one height. They hold a list and a chart, which
+/// cannot be stretched to match (see [_TwoUp.matchHeights]), so both are simply
+/// the same size.
+class _FixedHeight extends StatelessWidget {
+  const _FixedHeight({required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) => SizedBox(height: 400, child: child);
+}
+
+/// The empty state for a card. A plain column on purpose: the shared
+/// [AppEmptyState] centres itself, which an [IntrinsicHeight] row measures too
+/// small, and the card overflowed.
+class _QuietEmpty extends StatelessWidget {
+  const _QuietEmpty({
+    required this.icon,
+    required this.title,
+    required this.message,
+  });
+
+  final IconData icon;
+  final String title;
+  final String message;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = context.tokens;
+    final text = Theme.of(context).textTheme;
+    final c = t.status.success;
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: AppSpacing.x6),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 52,
+            height: 52,
+            decoration: BoxDecoration(
+              color: c.bg,
+              shape: BoxShape.circle,
+              border: Border.all(color: c.border),
+            ),
+            child: Icon(icon, color: c.fg),
+          ),
+          const SizedBox(height: AppSpacing.x3),
+          Text(title, style: text.titleSmall),
+          const SizedBox(height: AppSpacing.x1),
+          Text(
+            message,
+            textAlign: TextAlign.center,
+            style: text.bodySmall?.copyWith(color: t.text.secondary),
+          ),
         ],
       ),
     );
   }
 }
+
+// ── Layout ───────────────────────────────────────────────────────────────────
 
 class _TwoUp extends StatelessWidget {
   const _TwoUp({
@@ -1347,12 +1185,18 @@ class _TwoUp extends StatelessWidget {
     required this.right,
     this.leftFlex = 1,
     this.rightFlex = 1,
+    this.matchHeights = true,
   });
 
   final Widget left;
   final Widget right;
   final int leftFlex;
   final int rightFlex;
+
+  /// Stretch both cards to the taller one. Not for a row holding a table or a
+  /// chart: both measure themselves with a LayoutBuilder, which cannot answer
+  /// the intrinsic-height question this needs, and the row fails to draw.
+  final bool matchHeights;
 
   static const _breakpoint = 1000.0;
 
@@ -1370,16 +1214,17 @@ class _TwoUp extends StatelessWidget {
             ],
           );
         }
-        return IntrinsicHeight(
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Expanded(flex: leftFlex, child: left),
-              const SizedBox(width: AppSpacing.gutter),
-              Expanded(flex: rightFlex, child: right),
-            ],
-          ),
+        final row = Row(
+          crossAxisAlignment: matchHeights
+              ? CrossAxisAlignment.stretch
+              : CrossAxisAlignment.start,
+          children: [
+            Expanded(flex: leftFlex, child: left),
+            const SizedBox(width: AppSpacing.gutter),
+            Expanded(flex: rightFlex, child: right),
+          ],
         );
+        return matchHeights ? IntrinsicHeight(child: row) : row;
       },
     );
   }
