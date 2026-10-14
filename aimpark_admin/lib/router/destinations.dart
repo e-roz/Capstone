@@ -109,20 +109,6 @@ const navGroups = <NavGroup>[
   ]),
   NavGroup('Gates', [
     NavItem(
-      icon: Icons.badge_outlined,
-      selectedIcon: Icons.badge,
-      label: 'Gate Check',
-      route: '/gate',
-      moduleLabel: 'Entry/Exit Verification',
-      description:
-          'Look up a card, check the vehicle matches, and log entry or exit.',
-      // Security only — not in the capstone document as an admin feature.
-      // Admin still has Parking for the same manual entry/exit ability. Listed
-      // first so it heads the guard's sidebar; Admin never sees it, so Parking
-      // still leads theirs.
-      roles: {StaffRole.security},
-    ),
-    NavItem(
       icon: Icons.local_parking_outlined,
       selectedIcon: Icons.local_parking,
       label: 'Parking',
