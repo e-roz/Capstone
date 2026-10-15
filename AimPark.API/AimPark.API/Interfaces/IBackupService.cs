@@ -14,6 +14,16 @@ namespace AimPark.API.Interfaces
         /// </summary>
         Task<ActionResult> CreateAsync(Guid adminUserId, CancellationToken ct);
 
+        /// <summary>
+        /// The nightly backup: same file as <see cref="CreateAsync"/>, kept in
+        /// storage only, with the oldest nightly copies removed beyond
+        /// <paramref name="keep"/>. Returns the new file's name.
+        /// </summary>
+        Task<string> CreateScheduledAsync(int keep, CancellationToken ct);
+
+        /// <summary>When the newest nightly backup was written, or null if there is none.</summary>
+        Task<DateTime?> LastScheduledAtAsync(CancellationToken ct);
+
         /// <summary>Re-downloads a backup taken earlier.</summary>
         Task<ActionResult> DownloadAsync(string fileName, CancellationToken ct);
 

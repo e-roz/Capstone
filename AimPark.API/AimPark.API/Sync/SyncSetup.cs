@@ -131,6 +131,8 @@ namespace AimPark.API.Sync
             services.AddHostedService<AimPark.API.Services.ViolationDeadlineService>();
             // Tap photos sent up from the guard PC are kept for 30 days.
             services.AddHostedService<AimPark.API.Services.TapPhotoCleanupService>();
+            // A full backup every night at 2 AM, the last 14 kept.
+            services.AddHostedService<AimPark.API.Services.NightlyBackupService>();
             services.AddScoped<ISaveChangesInterceptor, MasterDataChangeInterceptor>();
             services.AddScoped<SnapshotBuilder>();
             services.AddScoped<EventIngestor>();

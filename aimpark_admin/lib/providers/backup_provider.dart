@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:dio/dio.dart';
@@ -138,7 +139,16 @@ class BackupActions extends _$BackupActions {
   /// the response came back as bytes — the download endpoints ask for those —
   /// the body is not a map, so fall through to the transport message.
   static String _messageFrom(DioException e) {
-    final data = e.response?.data;
+    var data = e.response?.data;
+
+    // Create and download ask for bytes, so an error body arrives as bytes too.
+    if (data is List<int>) {
+      try {
+        data = jsonDecode(utf8.decode(data));
+      } catch (_) {
+        data = null;
+      }
+    }
     if (data is Map && data['message'] != null) return data['message'].toString();
 
     return switch (e.type) {
