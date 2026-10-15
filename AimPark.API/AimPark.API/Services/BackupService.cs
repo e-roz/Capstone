@@ -181,6 +181,45 @@ namespace AimPark.API.Services
             return new FileContentResult(bytes, "application/json") { FileDownloadName = fileName };
         }
 
+        // ── Nightly ──────────────────────────────────────────────────────────
+
+        private const string ScheduledPrefix = "aimpark-auto-";
+
+        public async Task<string> CreateScheduledAsync(int keep, CancellationToken ct)
+        {
+            var (bytes, counts) = await BuildBackupAsync("auto/nightly", ct);
+
+            var fileName = $"{ScheduledPrefix}{DateTime.UtcNow:yyyyMMdd-HHmmss}.json";
+            await StoreAsync(fileName, bytes, ct);
+
+            // Only nightly copies are ever pruned: a backup an administrator
+            // took by hand, or the safety copy before a restore, stays until
+            // someone decides otherwise.
+            var old = (await _storage.ListAsync(Bucket, string.Empty, ct))
+                .Where(o => o.Name.StartsWith(ScheduledPrefix, StringComparison.Ordinal))
+                .OrderByDescending(o => o.Name, StringComparer.Ordinal)
+                .Skip(keep)
+                .Select(o => o.Name)
+                .ToList();
+            var removed = await _storage.DeleteAsync(Bucket, old, ct);
+
+            _logger.LogInformation(
+                "Nightly backup {FileName}: {Rows} rows across {Tables} tables, {Removed} old copies removed",
+                fileName, counts.Sum(c => c.Rows), counts.Count, removed);
+
+            return fileName;
+        }
+
+        public async Task<DateTime?> LastScheduledAtAsync(CancellationToken ct)
+        {
+            var objects = await _storage.ListAsync(Bucket, string.Empty, ct);
+            return objects
+                .Where(o => o.Name.StartsWith(ScheduledPrefix, StringComparison.Ordinal))
+                .Select(o => o.UpdatedAt)
+                .OrderByDescending(d => d)
+                .FirstOrDefault();
+        }
+
         public async Task<ActionResult> DownloadAsync(string fileName, CancellationToken ct)
         {
             if (!IsSafeFileName(fileName))
