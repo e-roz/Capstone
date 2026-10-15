@@ -1,14 +1,11 @@
 {
-  "version": "1.0.9",
-  "build": 10,
-  "apk_url": "https://github.com/e-roz/Capstone/releases/download/v1.0.9/app-release.apk",
-  "apk_sha256": "0b83668a8f6763481f19f0affab26f0a9be90b897212eeb1b8d504b43ffd4d19",
-  "apk_size_bytes": 94300685,
+  "version": "1.0.10",
+  "build": 11,
+  "apk_url": "https://github.com/e-roz/Capstone/releases/download/v1.0.10/app-release.apk",
+  "apk_sha256": "4cbe2c7e5beb9afa7bd09afb4a2a5aa56709bf7711c3609725a24349c5310c5f",
+  "apk_size_bytes": 94300681,
   "mandatory": false,
   "release_notes": [
-    "New: register an e-bike. You send your licence, then visit the admin office to finish",
-    "New: Documents shows when your licence and each vehicle's registration expire",
-    "New: a countdown on Home and a reminder 30 days before something expires",
-    "New: upload a renewed licence or registration for an admin to review"
+    "Faculty and staff no longer need to send an ID when registering"
   ]
 }
