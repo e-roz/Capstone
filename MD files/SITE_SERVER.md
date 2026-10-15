@@ -479,6 +479,16 @@ From then on, the cloud:
 | Read by | Mobile app, admin panel, reports | Gate readers, ALPR app, guard screens |
 | If lost | Serious. Restore from backup. | Minor. Reinstall and it downloads everything again. Only records not yet sent are lost, and `/api/site/status` shows how many are waiting. |
 
+## Backups
+
+Only the **cloud** is backed up, because the guard PC's database is a copy of it.
+
+- **Every night at 2 AM (Manila)** the cloud API saves a full backup file to the `backups` bucket, named `aimpark-auto-<date>-<time>.json`. The last **14** are kept; older nightly files are deleted. If the API was down at 2 AM, the missed backup is taken the next time it starts (when the newest one is over 20 hours old).
+- **By hand:** Backup & Restore in the admin panel makes the same file and downloads it. Manual backups and the safety copy taken before a restore are never deleted automatically.
+- **What is in a backup:** every table's rows. **Not** in it: the document, evidence and tap photo files, and the database schema. Restoring needs the same migrations as the backup.
+- **The guard PC is not backed up.** If it dies, reinstall and it downloads everything again. Lost: anything still in `SyncOutbox` (see `waitingToSend`) and the tap photos in `C:\ProgramData\AimPark\tap-photos`.
+- The nightly job runs on the cloud only, never on a site server.
+
 Supabase Storage (document and photo files) is unchanged. Gate tap photos stay on the guard PC (`C:\ProgramData\AimPark\tap-photos`) and are deleted after **30 days**; the tap rows go to the cloud without them.
 
 The live camera picture never leaves the guard PC. The Overview's live log and camera only work in the guard post's panel. The full **Gate taps** list (System Logs) works in both panels, but only the guard post's panel shows the photos.
