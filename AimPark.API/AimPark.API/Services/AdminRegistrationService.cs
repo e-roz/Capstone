@@ -687,7 +687,6 @@ namespace AimPark.API.Services
         private static string DocumentLabel(string type) => type switch
         {
             nameof(DocumentType.Raf) => "Registration form",
-            nameof(DocumentType.SchoolId) => "School ID",
             nameof(DocumentType.License) => "Driver's licence",
             nameof(DocumentType.OfficialReceipt) => "Official receipt",
             nameof(DocumentType.EBikePhoto) => "E-bike photo",

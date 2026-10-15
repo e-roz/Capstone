@@ -14,7 +14,6 @@ bool isImageDocument(String fileName) =>
 /// (`OfficialReceipt`, `Raf`), which must never reach the screen.
 String documentLabel(String type) => switch (type) {
       'Raf' => 'Registration form',
-      'SchoolId' => 'School ID',
       'License' => "Driver's licence",
       'OfficialReceipt' => 'Official receipt',
       'EBikePhoto' => 'E-bike photo',

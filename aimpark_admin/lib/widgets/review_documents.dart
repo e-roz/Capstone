@@ -15,7 +15,7 @@ class ReviewDocumentTab {
     this.reading,
   });
 
-  /// `Raf`, `SchoolId`, `License` or `OfficialReceipt`.
+  /// `Raf`, `License` or `OfficialReceipt`.
   final String type;
   final String label;
 
@@ -25,13 +25,16 @@ class ReviewDocumentTab {
 
   /// The tabs for one application, in the order the applicant took them.
   ///
-  /// Follows the affiliation, not the upload list: faculty and staff file a
-  /// school ID, not a registration form, and a missing document still gets a
-  /// tab so its absence is visible rather than silently skipped.
+  /// Follows the affiliation, not the upload list: only a student sends a
+  /// registration form, and a missing document still gets a tab so its absence is
+  /// visible rather than silently skipped.
   static List<ReviewDocumentTab> forDetail(RegistrationDetail detail) {
-    final identity = detail.affiliation == 'Student' ? 'Raf' : 'SchoolId';
     // An e-bike has no receipt, so no tab for one to be missing from.
-    final expected = [identity, 'License', if (!detail.isEBike) 'OfficialReceipt'];
+    final expected = [
+      if (detail.affiliation == 'Student') 'Raf',
+      'License',
+      if (!detail.isEBike) 'OfficialReceipt',
+    ];
     final readings = detail.checks?.readings ?? const <DocumentReading>[];
 
     final types = <String>{
@@ -225,13 +228,7 @@ class _Readings extends StatelessWidget {
     final text = Theme.of(context).textTheme;
     final values = tab.reading?.values ?? const <ReadingValue>[];
 
-    final body = tab.type == 'SchoolId'
-        ? Text(
-            'The phone does not read School IDs. Compare the image with the '
-            'account yourself.',
-            style: text.bodyMedium?.copyWith(color: t.text.secondary),
-          )
-        : values.isEmpty
+    final body = values.isEmpty
             ? Text(
                 'Nothing was read from this document.',
                 style: text.bodyMedium?.copyWith(color: t.text.secondary),

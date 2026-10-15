@@ -29,7 +29,7 @@ final documentScannerProvider = Provider<DocumentScanner>.internal(
 @Deprecated('Will be removed in 3.0. Use Ref instead')
 // ignore: unused_element
 typedef DocumentScannerRef = ProviderRef<DocumentScanner>;
-String _$documentAgendaHash() => r'c95fe3b728fba455b1228ff0adfcbe1baeb7d5df';
+String _$documentAgendaHash() => r'44543b95923314ee2be59387cd237314fc404f29';
 
 /// Which documents to ask for: all three, or only the ones sent back.
 ///

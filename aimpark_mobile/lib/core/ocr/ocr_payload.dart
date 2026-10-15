@@ -9,9 +9,6 @@ enum ScanDocumentType {
   /// School registration/assessment form — students.
   raf('Raf'),
 
-  /// School-issued ID — faculty and staff send this instead of a RAF.
-  schoolId('SchoolId'),
-
   license('License'),
   officialReceipt('OfficialReceipt');
 

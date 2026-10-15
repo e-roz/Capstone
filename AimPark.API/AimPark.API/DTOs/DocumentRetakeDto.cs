@@ -20,7 +20,7 @@ namespace AimPark.API.DTOs
     /// </summary>
     public class DocumentRetakeItemDto
     {
-        /// <summary>A <c>DocumentType</c> member name: Raf, SchoolId, License,
+        /// <summary>A <c>DocumentType</c> member name: Raf, License,
         /// OfficialReceipt.</summary>
         public string Type { get; set; } = string.Empty;
 

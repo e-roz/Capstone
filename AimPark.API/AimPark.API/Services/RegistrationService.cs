@@ -385,26 +385,26 @@ namespace AimPark.API.Services
             // can see the attempt against the vehicle it was made for.
             var vehicle = await _vehicles.FindAsync(v => v.UserId == userId, ct);
 
-            // A RAF only exists for students; everyone else brings a school ID.
-            var identityType = user.Affiliation == Affiliation.Student
+            // Only students send a school document, their RAF. Faculty and staff send
+            // their licence and receipt and nothing else: no ID is asked for.
+            DocumentType? identityType = user.Affiliation == Affiliation.Student
                 ? DocumentType.Raf
-                : DocumentType.SchoolId;
+                : null;
 
             // An e-bike has no LTO receipt, so it is never asked for or kept. The
             // account flag covers a reviewer-requested retake, where the app may not
             // repeat the choice the applicant made at the start.
             var isEBike = dto.IsEBike || user.IsEBikeApplicant;
 
-            var allSlots = new[]
-            {
-                (File: dto.IdentityDocument, Type: identityType, Ocr: dto.IdentityDocumentOcr),
-                (File: dto.License, Type: DocumentType.License, Ocr: dto.LicenseOcr),
-                (File: dto.OfficialReceipt, Type: DocumentType.OfficialReceipt, Ocr: dto.OfficialReceiptOcr)
-            };
+            var allSlots = new List<(IFormFile? File, DocumentType Type, string? Ocr)>();
+            if (identityType is { } identity)
+                allSlots.Add((dto.IdentityDocument, identity, dto.IdentityDocumentOcr));
+            allSlots.Add((dto.License, DocumentType.License, dto.LicenseOcr));
+            allSlots.Add((dto.OfficialReceipt, DocumentType.OfficialReceipt, dto.OfficialReceiptOcr));
 
             var slots = isEBike
                 ? allSlots.Where(s => s.Type != DocumentType.OfficialReceipt).ToArray()
-                : allSlots;
+                : allSlots.ToArray();
 
             // What this submission has to contain. A reviewer who asked for one
             // document gets one document; everyone else sends the full set.
@@ -479,7 +479,7 @@ namespace AimPark.API.Services
                 => payloads.TryGetValue(type, out var payload) ? payload : null;
 
             var extracted = _extraction.Extract(
-                PayloadFor(identityType),
+                identityType is { } id ? PayloadFor(id) : null,
                 PayloadFor(DocumentType.License),
                 PayloadFor(DocumentType.OfficialReceipt),
                 user.FullName);
@@ -850,15 +850,15 @@ namespace AimPark.API.Services
             if (payloads.Count == 0)
                 return;
 
-            var identityType = user.Affiliation == Affiliation.Student
+            DocumentType? identityType = user.Affiliation == Affiliation.Student
                 ? DocumentType.Raf
-                : DocumentType.SchoolId;
+                : null;
 
             OcrPayloadDto? PayloadFor(DocumentType type)
                 => payloads.TryGetValue(type, out var payload) ? payload : null;
 
             var read = _extraction.Extract(
-                PayloadFor(identityType),
+                identityType is { } id ? PayloadFor(id) : null,
                 PayloadFor(DocumentType.License),
                 PayloadFor(DocumentType.OfficialReceipt),
                 user.FullName);
@@ -1129,8 +1129,9 @@ namespace AimPark.API.Services
         /// forward, so they would still call a carried value missing.
         ///
         /// A registration expiry worked out from the plate is not missing — it is
-        /// flagged as derived and the applicant glances at it. The school ID is never
-        /// read, so only a registration form can come up short on the identity side.
+        /// flagged as derived and the applicant glances at it. Only a student has a
+        /// school document, so only a registration form can come up short on the
+        /// identity side.
         /// </remarks>
         private static Dictionary<DocumentType, List<string>> MissingValues(
             ExtractedValuesDto e, Affiliation affiliation, HashSet<DocumentType> sent)
@@ -1178,7 +1179,6 @@ namespace AimPark.API.Services
         private static string LabelFor(DocumentType type) => type switch
         {
             DocumentType.Raf => "registration form",
-            DocumentType.SchoolId => "school ID",
             DocumentType.License => "driver's licence",
             DocumentType.OfficialReceipt => "official receipt",
             _ => "document"
@@ -1415,13 +1415,11 @@ namespace AimPark.API.Services
         /// this applicant actually uses. Empty for an ordinary first submission.
         /// </summary>
         /// <remarks>
-        /// The identity slot holds a RAF for a student and a school ID for everyone
-        /// else, and a reviewer picking from a list may well name the other one.
-        /// Both are folded to whichever this account files under, so a request for
-        /// "the registration form" on a staff account asks for their school ID
-        /// rather than for a document they will never have.
+        /// Only students have a school document, their RAF. A request for the
+        /// registration form on a faculty or staff account asks for nothing, rather
+        /// than for a document they will never have.
         /// </remarks>
-        private static HashSet<DocumentType> OutstandingRetakeTypes(User user, DocumentType identityType)
+        private static HashSet<DocumentType> OutstandingRetakeTypes(User user, DocumentType? identityType)
         {
             var types = new HashSet<DocumentType>();
 
@@ -1430,7 +1428,14 @@ namespace AimPark.API.Services
                 if (!Enum.TryParse<DocumentType>(item.Type, ignoreCase: true, out var type))
                     continue;
 
-                types.Add(type is DocumentType.Raf or DocumentType.SchoolId ? identityType : type);
+                if (type == DocumentType.Raf)
+                {
+                    if (identityType is { } identity)
+                        types.Add(identity);
+                    continue;
+                }
+
+                types.Add(type);
             }
 
             return types;

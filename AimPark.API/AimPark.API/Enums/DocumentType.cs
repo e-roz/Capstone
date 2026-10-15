@@ -16,12 +16,6 @@ namespace AimPark.API.Enums
         /// <summary>School registration/assessment form — proves current enrolment.</summary>
         Raf,
 
-        /// <summary>
-        /// School-issued ID, submitted by faculty and staff in place of a RAF.
-        /// Not parsed — the admin reviews it by eye.
-        /// </summary>
-        SchoolId,
-
         /// <summary>Driver's licence — proves the applicant may legally drive.</summary>
         License,
 
