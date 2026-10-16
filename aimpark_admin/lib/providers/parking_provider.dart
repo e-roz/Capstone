@@ -51,18 +51,6 @@ class ParkingActions extends _$ParkingActions {
   @override
   AsyncValue<void> build() => const AsyncData(null);
 
-  Future<String?> createSlot(String slotCode, String? vehicleType, int gate) async {
-    return _run(() async {
-      final dio = ref.read(dioProvider);
-      final res = await dio.post(ApiEndpoints.parkingSlots, data: {
-        'slotCode': slotCode,
-        'vehicleType': vehicleType,
-        'gate': gate,
-      });
-      return (res.data as Map<String, dynamic>)['message']?.toString();
-    });
-  }
-
   Future<String?> updateSlotStatus(String slotId, String status) async {
     return _run(() async {
       final dio = ref.read(dioProvider);

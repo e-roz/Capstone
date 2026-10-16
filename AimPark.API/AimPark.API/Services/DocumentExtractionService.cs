@@ -65,6 +65,11 @@ namespace AimPark.API.Services
         /// only has two bay types, so anything else read is treated as a car
         /// rather than trying to enumerate every four-wheeled body type LTO
         /// might print.
+        ///
+        /// A value that is neither is left unread, not guessed as a car: the
+        /// result locks on the applicant's screen, so a motorcycle whose "MC"
+        /// the OCR garbled used to be locked in as a car with no way to correct
+        /// it. Unread sends them to retake the photo instead.
         /// </remarks>
         private static string? ExtractVehicleType(List<OcrLineDto> lines)
         {
@@ -72,9 +77,18 @@ namespace AimPark.API.Services
             if (string.IsNullOrWhiteSpace(raw))
                 return UnlabelledMotorcycle(lines);
 
-            return raw.TrimStart().StartsWith("MC", StringComparison.OrdinalIgnoreCase)
-                ? nameof(VehicleType.Motorcycle)
-                : nameof(VehicleType.Car);
+            var text = raw.Trim().ToUpperInvariant();
+
+            if (text.StartsWith("MC") || text.StartsWith("M/C") || text.StartsWith("M.C")
+                || text.Contains("MOTOR") || text.Contains("SIDECAR"))
+                return nameof(VehicleType.Motorcycle);
+
+            string[] carBodies =
+            [
+                "CAR", "SEDAN", "SUV", "UV", "UTILITY", "VAN", "WAGON", "PICK", "TRUCK",
+                "HATCH", "COUPE", "MPV", "JEEP", "AUV", "CROSSOVER", "BUS"
+            ];
+            return carBodies.Any(text.Contains) ? nameof(VehicleType.Car) : null;
         }
 
         /// <summary>

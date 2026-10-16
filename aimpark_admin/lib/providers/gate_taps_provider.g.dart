@@ -6,7 +6,7 @@ part of 'gate_taps_provider.dart';
 // RiverpodGenerator
 // **************************************************************************
 
-String _$gateTapsHash() => r'cb9305f49e46388797a797b116785954cff42011';
+String _$gateTapsHash() => r'ac79aae30810af831b600c82792b5476e02fcc33';
 
 /// See also [gateTaps].
 @ProviderFor(gateTaps)
@@ -24,7 +24,7 @@ final gateTapsProvider = AutoDisposeFutureProvider<GateTapPage>.internal(
 // ignore: unused_element
 typedef GateTapsRef = AutoDisposeFutureProviderRef<GateTapPage>;
 String _$gateTapsQueryNotifierHash() =>
-    r'706806555498313657e73096d521d29244408b45';
+    r'd2e989ec5114fd410af994d6d2a117bf35e8ca7a';
 
 /// See also [GateTapsQueryNotifier].
 @ProviderFor(GateTapsQueryNotifier)

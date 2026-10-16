@@ -20,6 +20,7 @@ const _results = [
   AppFilterOption('entered', 'Entered'),
   AppFilterOption('exited', 'Exited'),
   AppFilterOption('denied', 'Denied'),
+  AppFilterOption('serious', 'Denied, needs a look'),
   AppFilterOption('manual', 'Opened by guard'),
 ];
 
@@ -45,10 +46,13 @@ const _plateChecks = [
 /// For Security it is live, the same way Parking Logs is: today refreshes
 /// itself and a new tap is lit for a moment; an earlier day does not.
 class GateTapsScreen extends ConsumerStatefulWidget {
-  const GateTapsScreen({super.key, this.initialSearch});
+  const GateTapsScreen({super.key, this.initialSearch, this.initialResult});
 
   /// Starts the search box with this, e.g. a card or plate from the Overview.
   final String? initialSearch;
+
+  /// Starts on this result, for today. "serious" is the Overview's tile.
+  final String? initialResult;
 
   @override
   ConsumerState<GateTapsScreen> createState() => _GateTapsScreenState();
@@ -60,11 +64,13 @@ class _GateTapsScreenState extends ConsumerState<GateTapsScreen>
   void initState() {
     super.initState();
     final search = widget.initialSearch;
-    if (search != null && search.isNotEmpty) {
+    final result = widget.initialResult;
+    if ((search != null && search.isNotEmpty) || result != null) {
       Future.microtask(() {
-        if (mounted) {
-          ref.read(gateTapsQueryNotifierProvider.notifier).setSearch(search);
-        }
+        if (!mounted) return;
+        final notifier = ref.read(gateTapsQueryNotifierProvider.notifier);
+        if (search != null && search.isNotEmpty) notifier.setSearch(search);
+        if (result != null) notifier.showTodayWithResult(result);
       });
     }
   }
@@ -115,94 +121,106 @@ class _GateTapsScreenState extends ConsumerState<GateTapsScreen>
             onPressed: () => ref.invalidate(gateTapsProvider),
           ),
         ],
-        toolbar: AppToolbar(
-          search: AppSearchField(
-            hint: 'Search name, card or plate',
-            initialValue: query.search ?? widget.initialSearch,
-            onChanged: notifier.setSearch,
-          ),
-          filters: [
-            AppFilterDropdown<String>(
-              label: 'Result',
-              value: query.result,
-              options: _results,
-              allLabel: 'All results',
-              onChanged: notifier.setResult,
-            ),
-            AppFilterDropdown<int>(
-              label: 'Gate',
-              value: query.gate,
-              options: _gates,
-              allLabel: 'All gates',
-              onChanged: notifier.setGate,
-            ),
-            AppFilterDropdown<String>(
-              label: 'Plate',
-              value: query.plate,
-              options: _plateChecks,
-              allLabel: 'All',
-              onChanged: notifier.setPlate,
-            ),
-            if (isSecurity)
-              AppDayFilter(
-                day: query.from ?? DateTime.now(),
-                onChanged: notifier.setDay,
-              )
-            else
-              AppDateRangeFilter(
-                from: query.from,
-                to: query.to,
-                onChanged: notifier.setDateRange,
-              ),
-          ],
-        ),
-        body: AsyncView(
-          keepStaleData: true,
-          value: async,
-          onRetry: () => ref.invalidate(gateTapsProvider),
-          loading: const SkeletonTable(
-            columns: 6,
-            columnWidths: [120, 70, 140, 180, 200, 240],
-          ),
-          isEmpty: (page) => page.taps.isEmpty,
-          empty: const AppEmptyState(
-            icon: Icons.contactless_outlined,
-            title: 'No taps found',
-            message:
-                'Nothing matches the current filters. Every card tap at a gate '
-                '— let in, turned away, or opened by a guard — is listed here.',
-          ),
-          data: (page) => Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
+        // Filters sit directly under the totals and above the table they
+        // filter, and stay put while the rows load.
+        body: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            if (async.valueOrNull case final page?) ...[
               _Summary(summary: page.summary),
               const SizedBox(height: AppSpacing.headingGap),
-              Expanded(
-                child: AppDataTable(
-                  minWidth: 1100,
-                  columns: const [
-                    DataColumn(label: Text('Time')),
-                    DataColumn(label: Text('Gate')),
-                    DataColumn(label: Text('Result')),
-                    DataColumn(label: Text('Who')),
-                    DataColumn(label: Text('Plate check')),
-                    DataColumn(label: Text('Why')),
-                  ],
-                  rows: [
-                    for (final t in page.taps)
-                      _row(context, t, fresh: freshIds.contains(t.id)),
-                  ],
-                  footer: AppPagination(
-                    page: page.page,
-                    pageSize: page.pageSize,
-                    total: page.totalCount,
-                    itemLabel: 'gate taps',
-                    onPage: notifier.setPage,
+            ],
+            AppToolbar(
+              search: AppSearchField(
+                hint: 'Search name, card or plate',
+                initialValue: query.search ?? widget.initialSearch,
+                onChanged: notifier.setSearch,
+              ),
+              filters: [
+                AppFilterDropdown<String>(
+                  label: 'Result',
+                  value: query.result,
+                  options: _results,
+                  allLabel: 'All results',
+                  onChanged: notifier.setResult,
+                ),
+                AppFilterDropdown<int>(
+                  label: 'Gate',
+                  value: query.gate,
+                  options: _gates,
+                  allLabel: 'All gates',
+                  onChanged: notifier.setGate,
+                ),
+                AppFilterDropdown<String>(
+                  label: 'Plate',
+                  value: query.plate,
+                  options: _plateChecks,
+                  allLabel: 'All',
+                  onChanged: notifier.setPlate,
+                ),
+                if (isSecurity)
+                  AppDayFilter(
+                    day: query.from ?? DateTime.now(),
+                    onChanged: notifier.setDay,
+                  )
+                else
+                  AppDateRangeFilter(
+                    from: query.from,
+                    to: query.to,
+                    onChanged: notifier.setDateRange,
                   ),
+              ],
+            ),
+            const SizedBox(height: AppSpacing.x3),
+            Expanded(
+              child: AsyncView(
+                keepStaleData: true,
+                value: async,
+                onRetry: () => ref.invalidate(gateTapsProvider),
+                loading: const SkeletonTable(
+                  columns: 6,
+                  columnWidths: [120, 70, 140, 180, 200, 240],
+                ),
+                isEmpty: (page) => page.taps.isEmpty,
+                empty: const AppEmptyState(
+                  icon: Icons.contactless_outlined,
+                  title: 'No taps found',
+                  message:
+                      'Nothing matches the current filters. Every card tap at a gate '
+                      '— let in, turned away, or opened by a guard — is listed here.',
+                ),
+                data: (page) => Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Expanded(
+                      child: AppDataTable(
+                        minWidth: 1100,
+                        columns: const [
+                          DataColumn(label: Text('Time')),
+                          DataColumn(label: Text('Gate')),
+                          DataColumn(label: Text('Result')),
+                          DataColumn(label: Text('Who')),
+                          DataColumn(label: Text('Plate check')),
+                          DataColumn(label: Text('Why')),
+                        ],
+                        rows: [
+                          for (final t in page.taps)
+                            _row(context, t, fresh: freshIds.contains(t.id)),
+                        ],
+                        footer: AppPagination(
+                          page: page.page,
+                          pageSize: page.pageSize,
+                          total: page.totalCount,
+                          itemLabel: 'gate taps',
+                          onPage: notifier.setPage,
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );

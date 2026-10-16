@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import '../../theme/theme.dart';
+import 'app_range_picker.dart';
 
 final _dateOnly = DateFormat('MMM d, yyyy');
 
@@ -36,11 +37,11 @@ class AppDateRangeFilter extends StatelessWidget {
 
   Future<void> _pick(BuildContext context) async {
     final now = DateTime.now();
-    final picked = await showDateRangePicker(
-      context: context,
+    final picked = await showAppDateRange(
+      context,
       firstDate: DateTime(now.year - 5),
       lastDate: now,
-      initialDateRange: from != null && to != null
+      initial: from != null && to != null
           ? DateTimeRange(start: from!, end: to!)
           : null,
     );
