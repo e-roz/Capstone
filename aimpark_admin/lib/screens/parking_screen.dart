@@ -41,11 +41,6 @@ class ParkingScreen extends ConsumerWidget {
             label: const Text('Log Exit'),
             onPressed: () => _showLogExit(context, ref),
           ),
-          FilledButton.icon(
-            icon: const Icon(Icons.add, size: AppSizes.iconSm),
-            label: const Text('Add Slot'),
-            onPressed: () => _showAddSlot(context, ref),
-          ),
         ],
         IconButton(
           icon: const Icon(Icons.refresh),
@@ -67,86 +62,6 @@ class ParkingScreen extends ConsumerWidget {
   }
 
   // ── Actions ────────────────────────────────────────────────────────────────
-
-  Future<void> _showAddSlot(BuildContext context, WidgetRef ref) async {
-    final codeCtrl = TextEditingController();
-    String? vehicleType;
-    var gate = 1;
-    final formKey = GlobalKey<FormState>();
-
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setState) => AlertDialog(
-          title: const Text('Add Parking Slot'),
-          content: SizedBox(
-            width: ctx.dialogWidth(380),
-            child: Form(
-              key: formKey,
-              autovalidateMode: AutovalidateMode.onUserInteraction,
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const AppRequiredNote(),
-                  TextFormField(
-                    controller: codeCtrl,
-                    decoration: const InputDecoration(
-                        label: AppFieldLabel('Slot code', isRequired: true)),
-                    validator: (v) =>
-                        (v == null || v.isEmpty) ? 'Slot code is required' : null,
-                  ),
-                  const SizedBox(height: AppSpacing.x3),
-                  DropdownButtonFormField<String?>(
-                    initialValue: vehicleType,
-                    decoration:
-                        const InputDecoration(labelText: 'Vehicle type'),
-                    // Values must be the API's VehicleType enum names — the old
-                    // 'Motor'/'4 Wheels' never matched what registration stores.
-                    items: const [
-                      DropdownMenuItem(value: null, child: Text('Any')),
-                      DropdownMenuItem(
-                          value: 'Motorcycle', child: Text('Motorcycle')),
-                      DropdownMenuItem(value: 'Car', child: Text('Car')),
-                    ],
-                    onChanged: (v) => setState(() => vehicleType = v),
-                  ),
-                  const SizedBox(height: AppSpacing.x3),
-                  DropdownButtonFormField<int>(
-                    initialValue: gate,
-                    decoration: const InputDecoration(labelText: 'Gate'),
-                    items: const [
-                      DropdownMenuItem(value: 1, child: Text('Gate 1')),
-                      DropdownMenuItem(value: 2, child: Text('Gate 2')),
-                    ],
-                    onChanged: (v) => setState(() => gate = v ?? 1),
-                  ),
-                ],
-              ),
-            ),
-          ),
-          actions: [
-            TextButton(
-                onPressed: () => Navigator.pop(ctx, false),
-                child: const Text('Cancel')),
-            FilledButton(
-              onPressed: () {
-                if (formKey.currentState!.validate()) Navigator.pop(ctx, true);
-              },
-              child: const Text('Add'),
-            ),
-          ],
-        ),
-      ),
-    );
-
-    if (confirmed != true || !context.mounted) return;
-    final msg = await ref
-        .read(parkingActionsProvider.notifier)
-        .createSlot(codeCtrl.text.trim(), vehicleType, gate);
-    if (!context.mounted) return;
-    _showSnack(context, msg ?? 'Slot created.');
-    ref.invalidate(parkingSlotsProvider);
-  }
 
   Future<void> _showLogEntry(BuildContext context, WidgetRef ref) async {
     PickedUser? picked;
