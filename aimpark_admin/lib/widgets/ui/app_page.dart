@@ -125,6 +125,9 @@ class AppPage extends StatelessWidget {
 /// Below the compact breakpoint the actions wrap onto their own line — a plain
 /// `Row` with a `Spacer` cannot shrink and paints the overflow stripes instead.
 class AppPageHeader extends StatelessWidget {
+  /// Below this the actions drop under the title.
+  static const double _sideBySideMinWidth = 960;
+
   const AppPageHeader({
     super.key,
     required this.title,
@@ -209,33 +212,41 @@ class AppPageHeader extends StatelessWidget {
 
     if (actions.isEmpty) return titleBlock;
 
-    if (context.isCompact) {
-      return Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          titleBlock,
-          const SizedBox(height: AppSpacing.x3),
-          Wrap(
-            spacing: AppSpacing.controlGap,
-            runSpacing: AppSpacing.controlGap,
-            crossAxisAlignment: WrapCrossAlignment.center,
-            children: actions,
-          ),
-        ],
-      );
-    }
-
-    return Row(
+    Widget stacked() => Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Expanded(child: titleBlock),
-        const SizedBox(width: AppSpacing.x4),
+        titleBlock,
+        const SizedBox(height: AppSpacing.x3),
         Wrap(
           spacing: AppSpacing.controlGap,
+          runSpacing: AppSpacing.controlGap,
           crossAxisAlignment: WrapCrossAlignment.center,
           children: actions,
         ),
       ],
+    );
+
+    if (context.isCompact) return stacked();
+
+    // Beside the title only while there is room for both. A page with several
+    // buttons (Parking, Overview) on a narrow window or a zoomed-in browser
+    // otherwise left the title a few pixels wide, one letter per line.
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        if (constraints.maxWidth < _sideBySideMinWidth) return stacked();
+        return Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(child: titleBlock),
+            const SizedBox(width: AppSpacing.x4),
+            Wrap(
+              spacing: AppSpacing.controlGap,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: actions,
+            ),
+          ],
+        );
+      },
     );
   }
 }
