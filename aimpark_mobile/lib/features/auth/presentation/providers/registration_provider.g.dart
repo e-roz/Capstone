@@ -57,7 +57,7 @@ final documentAgendaProvider =
 // ignore: unused_element
 typedef DocumentAgendaRef = AutoDisposeFutureProviderRef<DocumentAgenda>;
 String _$registrationNotifierHash() =>
-    r'1405cb80d947e24d82d2c8070b65d17779ab818b';
+    r'af9cc975226e0b7b2fca570e43b1545809001758';
 
 /// See also [RegistrationNotifier].
 @ProviderFor(RegistrationNotifier)
