@@ -193,7 +193,10 @@ class _RegisterDocumentStepScreenState
         ),
       );
 
-      if (useIt == true) return true;
+      // Once the tries are spent there is nothing to go round again for: the
+      // review screen has no Retake, and backing out of it means "use this one"
+      // rather than reopening the camera for a fourth photo.
+      if (useIt == true || attempts >= _maxCaptureAttempts) return true;
       // Anything else — Retake, or backing out of the review screen — goes
       // round again rather than leaving the step on a photo the user just
       // said no to.
