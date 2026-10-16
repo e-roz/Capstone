@@ -60,6 +60,9 @@ GoRouter appRouter(Ref ref) {
       return null;
     },
     routes: [
+      // The bare address (localhost:5000 with nothing after it) has no page of
+      // its own; it used to land on go_router's "Page Not Found".
+      GoRoute(path: '/', redirect: (context, state) => '/dashboard'),
       GoRoute(
         path: '/login',
         builder: (context, state) => const LoginScreen(),
