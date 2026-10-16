@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
@@ -5,8 +7,6 @@ import 'package:riverpod_annotation/riverpod_annotation.dart';
 import '../core/constants/api_endpoints.dart';
 import '../core/network/dio_client.dart';
 import '../models/notification.dart';
-import '../router/destinations.dart';
-import 'auth_provider.dart';
 
 part 'notifications_provider.g.dart';
 
@@ -50,12 +50,18 @@ Future<NotificationListPage> inbox(Ref ref) async {
 /// Unread count for the sidebar badge.
 @riverpod
 Future<int> unreadInboxCount(Ref ref) async {
-  // An administrator has no inbox: nothing automatic is addressed to them, so
-  // there is nothing to count, and the badge must not advertise a list that is
-  // not on their screen.
-  if (ref.watch(staffRoleProvider) != StaffRole.security) return 0;
-  final page = await ref.watch(inboxProvider.future);
-  return page.unreadCount;
+  // Asks again on its own: the bell is the only way anyone learns a new
+  // registration or appeal has arrived, and it used to wait for a reload.
+  final timer = Timer(const Duration(seconds: 30), ref.invalidateSelf);
+  ref.onDispose(timer.cancel);
+
+  final dio = ref.watch(dioProvider);
+  final response = await dio.get(
+    ApiEndpoints.myNotifications,
+    queryParameters: {'page': 1, 'pageSize': 1},
+  );
+  return NotificationListPage.fromJson(response.data as Map<String, dynamic>)
+      .unreadCount;
 }
 
 @riverpod

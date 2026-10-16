@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../core/constants/api_endpoints.dart';
 import '../core/network/dio_client.dart';
 import '../models/admin_renewal.dart';
+import 'queue_counts_provider.dart';
 
 /// Renewals waiting on a decision, oldest first.
 ///
@@ -55,7 +56,10 @@ class RenewalActions {
     }
   }
 
-  void _refresh() => _ref.invalidate(pendingRenewalsProvider);
+  void _refresh() {
+    _ref.invalidate(pendingRenewalsProvider);
+    _ref.invalidate(pendingQueueCountProvider);
+  }
 
   String _message(DioException e) {
     final data = e.response?.data;

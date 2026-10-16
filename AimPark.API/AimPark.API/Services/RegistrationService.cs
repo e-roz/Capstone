@@ -37,6 +37,7 @@ namespace AimPark.API.Services
         private readonly GuardPostSignIn _guardPost;
         private readonly DuplicateIdentityGuard _duplicates;
         private readonly IUserActivityLogger _activity;
+        private readonly IStaffAlerts? _staffAlerts;
 
         public RegistrationService(
             IRepository<User> users,
@@ -52,8 +53,10 @@ namespace AimPark.API.Services
             IPreScreeningService preScreening,
             GuardPostSignIn guardPost,
             DuplicateIdentityGuard duplicates,
-            IUserActivityLogger activity)
+            IUserActivityLogger activity,
+            IStaffAlerts? staffAlerts = null)
         {
+            _staffAlerts = staffAlerts;
             _guardPost = guardPost;
             _duplicates = duplicates;
             _activity = activity;
@@ -906,6 +909,11 @@ namespace AimPark.API.Services
             user.RegistrationStep = RegistrationStep.Completed;
             user.AccountStatus = AccountStatus.PendingReview;
             user.VerificationStatus = VerificationStatus.ManualReview;
+
+            // Every application goes to an administrator, so say so now rather
+            // than leave them to notice a new row in the queue.
+            if (_staffAlerts is not null)
+                await _staffAlerts.RaiseAsync(StaffAlertKind.Registration, userId, ct);
 
             // Whatever the reviewer asked for has now been supplied. Leaving the
             // request set would send the applicant straight back into the capture

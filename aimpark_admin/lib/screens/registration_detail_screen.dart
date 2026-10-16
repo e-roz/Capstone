@@ -8,6 +8,7 @@ import '../models/audit_log_entry.dart';
 import '../models/registration_checks.dart';
 import '../models/registration_detail.dart';
 import '../providers/audit_logs_provider.dart';
+import '../providers/queue_counts_provider.dart';
 import '../providers/registrations_provider.dart';
 import '../theme/theme.dart';
 import '../widgets/checks_panel.dart';
@@ -208,6 +209,7 @@ class RegistrationDetailScreen extends ConsumerWidget {
         .showSnackBar(SnackBar(content: Text(msg ?? 'Approved successfully')));
     ref.invalidate(registrationDetailProvider(userId));
     ref.invalidate(pendingRegistrationsProvider);
+    ref.invalidate(pendingQueueCountProvider);
   }
 
   Future<void> _inspectEBike(
@@ -218,6 +220,7 @@ class RegistrationDetailScreen extends ConsumerWidget {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
     ref.invalidate(registrationDetailProvider(userId));
     ref.invalidate(pendingRegistrationsProvider);
+    ref.invalidate(pendingQueueCountProvider);
   }
 
   /// The documents a reviewer can send back, in the order the applicant took
@@ -377,6 +380,7 @@ class RegistrationDetailScreen extends ConsumerWidget {
         SnackBar(content: Text(msg ?? 'Sent back to the applicant')));
     ref.invalidate(registrationDetailProvider(userId));
     ref.invalidate(pendingRegistrationsProvider);
+    ref.invalidate(pendingQueueCountProvider);
   }
 
   static const _rejectPresets = <String, String>{
@@ -524,6 +528,7 @@ class RegistrationDetailScreen extends ConsumerWidget {
         .showSnackBar(SnackBar(content: Text(msg ?? 'Rejected')));
     ref.invalidate(registrationDetailProvider(userId));
     ref.invalidate(pendingRegistrationsProvider);
+    ref.invalidate(pendingQueueCountProvider);
   }
 }
 

@@ -31,6 +31,7 @@ namespace AimPark.API.Services
         private readonly IFileStorageService _fileStorage;
         private readonly IDocumentExtractionService _extraction;
         private readonly INotificationService _notifications;
+        private readonly IStaffAlerts? _staffAlerts;
 
         public RenewalService(
             IRepository<User> users,
@@ -40,8 +41,10 @@ namespace AimPark.API.Services
             IRepository<AdminAuditLog> auditLogs,
             IFileStorageService fileStorage,
             IDocumentExtractionService extraction,
-            INotificationService notifications)
+            INotificationService notifications,
+            IStaffAlerts? staffAlerts = null)
         {
+            _staffAlerts = staffAlerts;
             _users = users;
             _vehicles = vehicles;
             _documents = documents;
@@ -228,6 +231,9 @@ namespace AimPark.API.Services
             renewal.CreatedAt = DateTime.UtcNow;
             _renewals.Update(renewal);
             await _renewals.SaveAsync(ct);
+
+            if (_staffAlerts is not null)
+                await _staffAlerts.RaiseAsync(StaffAlertKind.Renewal, userId, ct);
 
             return new OkObjectResult(new
             {

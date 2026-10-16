@@ -21,6 +21,7 @@ namespace AimPark.API.Services
         private readonly INotificationService _notificationService;
         private readonly AppDbContext _db;
         private readonly ILogger<IncidentService> _logger;
+        private readonly IStaffAlerts? _staffAlerts;
 
         public IncidentService(
             IRepository<Incident> incidents,
@@ -28,8 +29,10 @@ namespace AimPark.API.Services
             IFileStorageService fileStorage,
             INotificationService notificationService,
             AppDbContext db,
-            ILogger<IncidentService> logger)
+            ILogger<IncidentService> logger,
+            IStaffAlerts? staffAlerts = null)
         {
+            _staffAlerts = staffAlerts;
             _logger = logger;
             _incidents = incidents;
             _evidence = evidence;
@@ -113,6 +116,9 @@ namespace AimPark.API.Services
                 await _evidence.AddAsync(evidence, ct);
 
             await _incidents.SaveAsync(ct);
+
+            if (_staffAlerts is not null)
+                await _staffAlerts.RaiseAsync(StaffAlertKind.Incident, reporterUserId, ct);
 
             return new OkObjectResult(new { message = "Incident reported.", incidentId = incident.Id });
         }

@@ -28,6 +28,8 @@ namespace AimPark.API.Services
         private readonly IAdminUserService _adminUsers;
         private readonly AppDbContext _db;
 
+        private readonly IStaffAlerts? _staffAlerts;
+
         public ViolationService(
             IRepository<PolicyRule> rules,
             IRepository<Violation> violations,
@@ -37,8 +39,10 @@ namespace AimPark.API.Services
             INotificationService notificationService,
             IFileStorageService fileStorage,
             IAdminUserService adminUsers,
-            AppDbContext db)
+            AppDbContext db,
+            IStaffAlerts? staffAlerts = null)
         {
+            _staffAlerts = staffAlerts;
             _adminUsers = adminUsers;
             _fileStorage = fileStorage;
             _rules = rules;
@@ -441,6 +445,9 @@ namespace AimPark.API.Services
             _violations.Update(violation);
 
             await _appeals.SaveAsync(ct);
+
+            if (_staffAlerts is not null)
+                await _staffAlerts.RaiseAsync(StaffAlertKind.Appeal, userId, ct);
 
             // The point of the appeal window: appeal inside it and the card
             // keeps working until somebody has actually read the objection.

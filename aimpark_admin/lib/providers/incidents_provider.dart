@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
@@ -80,6 +82,8 @@ Future<IncidentListPage> incidentList(Ref ref) async {
 /// truth. `pageSize: 1` because only `totalCount` is read.
 @riverpod
 Future<int> openIncidentCount(Ref ref) async {
+  final timer = Timer(const Duration(seconds: 30), ref.invalidateSelf);
+  ref.onDispose(timer.cancel);
   final dio = ref.watch(dioProvider);
 
   Future<int> countOf(String status) async {

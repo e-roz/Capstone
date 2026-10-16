@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
@@ -239,6 +241,8 @@ Future<ViolationAppealListPage> appealList(Ref ref) async {
 /// for why this is a request of its own rather than a count off the list.
 @riverpod
 Future<int> pendingAppealCount(Ref ref) async {
+  final timer = Timer(const Duration(seconds: 30), ref.invalidateSelf);
+  ref.onDispose(timer.cancel);
   final dio = ref.watch(dioProvider);
   final response = await dio.get(
     ApiEndpoints.violationAppeals,

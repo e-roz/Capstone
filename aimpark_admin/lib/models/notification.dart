@@ -10,6 +10,10 @@ class NotificationItem {
   /// The administrator who sent it; null for what the system raised itself.
   final String? sentByName;
 
+  /// What it is about. `route` names the panel page to open; empty for
+  /// announcements.
+  final Map<String, String> data;
+
   const NotificationItem({
     required this.notificationId,
     required this.title,
@@ -19,6 +23,7 @@ class NotificationItem {
     required this.createdAt,
     required this.isRead,
     this.sentByName,
+    this.data = const {},
   });
 
   factory NotificationItem.fromJson(Map<String, dynamic> json) =>
@@ -31,6 +36,10 @@ class NotificationItem {
         createdAt: DateTime.parse(json['createdAt'].toString()),
         isRead: (json['isRead'] as bool?) ?? false,
         sentByName: json['sentByName']?.toString(),
+        data: {
+          for (final e in ((json['data'] as Map?) ?? const {}).entries)
+            e.key.toString(): e.value.toString(),
+        },
       );
 }
 

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
 import '../core/utils/responsive.dart';
@@ -45,13 +46,13 @@ IconData _typeIcon(String type) => switch (type) {
       _ => Icons.notifications_outlined,
     };
 
-/// One screen, two jobs, split by who is looking.
+/// One screen, two jobs.
 ///
-/// An administrator writes announcements, so they get the log of what they
-/// sent and the Broadcast button. Nothing automatic is addressed to an
-/// administrator, so there is no inbox for them. A guard is the reverse: they
-/// cannot send, and the inbox is the only place on the desktop panel they can
-/// read what the system and the administrators have told them.
+/// A guard cannot send, so the inbox is all they get: the only place on the
+/// desktop panel they can read what the system and the administrators have told
+/// them. An administrator gets the same inbox — a new registration, renewal,
+/// appeal or incident lands there — and a second view of the announcements they
+/// have sent, with the Broadcast button.
 class NotificationsScreen extends ConsumerWidget {
   const NotificationsScreen({super.key});
 
@@ -63,7 +64,7 @@ class NotificationsScreen extends ConsumerWidget {
       title: 'Notifications',
       subtitle: isSecurity
           ? 'What the system and your administrators have sent you.'
-          : 'Announcements you’ve sent to everyone.',
+          : 'What needs you, and the announcements you’ve sent.',
       actions: [
         if (!isSecurity)
           FilledButton.icon(
@@ -82,7 +83,46 @@ class NotificationsScreen extends ConsumerWidget {
       ],
       body: isSecurity
           ? const _InboxList()
-          : _SentList(onBroadcast: () => showBroadcastDialog(context, ref)),
+          : _AdminBody(onBroadcast: () => showBroadcastDialog(context, ref)),
+    );
+  }
+}
+
+/// The administrator's two views of the one screen. Inbox first: it is what
+/// arrives without being asked for, and what the bell is counting.
+class _AdminBody extends StatefulWidget {
+  const _AdminBody({required this.onBroadcast});
+
+  final VoidCallback onBroadcast;
+
+  @override
+  State<_AdminBody> createState() => _AdminBodyState();
+}
+
+class _AdminBodyState extends State<_AdminBody> {
+  bool _showSent = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        SegmentedButton<bool>(
+          showSelectedIcon: false,
+          segments: const [
+            ButtonSegment(value: false, label: Text('Inbox')),
+            ButtonSegment(value: true, label: Text('Sent')),
+          ],
+          selected: {_showSent},
+          onSelectionChanged: (s) => setState(() => _showSent = s.first),
+        ),
+        const SizedBox(height: AppSpacing.gutter),
+        Expanded(
+          child: _showSent
+              ? _SentList(onBroadcast: widget.onBroadcast)
+              : const _InboxList(),
+        ),
+      ],
     );
   }
 }
@@ -94,6 +134,14 @@ class _InboxList extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    // The bell checks for new items on its own; when its count moves, this list
+    // is out of date too.
+    ref.listen(unreadInboxCountProvider, (previous, next) {
+      if (previous?.valueOrNull != next.valueOrNull) {
+        ref.invalidate(inboxProvider);
+      }
+    });
+
     return AsyncView(
       value: ref.watch(inboxProvider),
       onRetry: () => ref.invalidate(inboxProvider),
@@ -102,19 +150,30 @@ class _InboxList extends ConsumerWidget {
       empty: const AppEmptyState(
         icon: Icons.inbox_outlined,
         title: 'Nothing for you yet',
-        message: 'Announcements from your administrators, and anything the '
-            'system raises about your account, will appear here.',
+        message: 'New registrations, appeals and incidents, announcements, and '
+            'anything the system raises about your account, will appear here.',
       ),
       data: (page) => _GroupedList(
         items: page.notifications,
-        cardFor: (item) => _NotificationCard(
-          item: item,
-          onMarkRead: item.isRead
-              ? null
-              : () => ref
-                  .read(inboxActionsProvider.notifier)
-                  .markRead(item.notificationId),
-        ),
+        cardFor: (item) {
+          void markRead() => ref
+              .read(inboxActionsProvider.notifier)
+              .markRead(item.notificationId)
+              .then((_) => ref.invalidate(unreadInboxCountProvider));
+
+          final route = item.data['route'];
+          return _NotificationCard(
+            item: item,
+            onMarkRead: item.isRead ? null : markRead,
+            // Opens the page it is about, and clears the dot on the way.
+            onOpen: route == null || route.isEmpty
+                ? null
+                : () {
+                    if (!item.isRead) markRead();
+                    context.go(route);
+                  },
+          );
+        },
       ),
     );
   }
@@ -543,10 +602,15 @@ class _NotificationCard extends StatelessWidget {
   const _NotificationCard({
     required this.item,
     this.onMarkRead,
+    this.onOpen,
     this.sent = false,
   });
 
   final NotificationItem item;
+
+  /// Opens the page the notification is about; null when it is about nothing
+  /// in particular.
+  final VoidCallback? onOpen;
 
   /// Null on anything already read, and in the sent log where "read" is a fact
   /// about somebody else. Present, it renders the unread dot and the control
@@ -574,6 +638,7 @@ class _NotificationCard extends StatelessWidget {
         : when;
 
     return AppCard(
+      onTap: onOpen,
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
