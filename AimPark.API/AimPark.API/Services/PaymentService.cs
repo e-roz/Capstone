@@ -600,6 +600,7 @@ namespace AimPark.API.Services
             Source = p.Source.ToString(),
             ParkingLogId = p.ParkingLogId,
             ViolationId = p.ViolationId,
+            PayerName = p.User != null ? p.User.FullName : null,
             SlotCode = p.ParkingLog != null && p.ParkingLog.Slot != null ? p.ParkingLog.Slot.SlotCode : null,
             EntryTime = p.ParkingLog != null ? p.ParkingLog.EntryTime : (DateTime?)null,
             ExitTime = p.ParkingLog != null ? p.ParkingLog.ExitTime : null,

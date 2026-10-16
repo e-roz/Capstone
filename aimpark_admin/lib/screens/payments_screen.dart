@@ -90,7 +90,7 @@ class PaymentsScreen extends ConsumerWidget {
           minWidth: 1000,
           columns: const [
             DataColumn(label: Text('Source')),
-            DataColumn(label: Text('Slot')),
+            DataColumn(label: Text('Paid by')),
             DataColumn(label: Text('Duration'), numeric: true),
             DataColumn(label: Text('Rate/hr'), numeric: true),
             DataColumn(label: Text('Amount Due'), numeric: true),
@@ -119,7 +119,7 @@ class PaymentsScreen extends ConsumerWidget {
     return DataRow(
       cells: [
         DataCell(Text(p.source, style: text.titleSmall)),
-        DataCell(Text(p.slotCode ?? '—')),
+        DataCell(Text(p.payerName ?? '—')),
         DataCell(AppNumericCell('${p.durationMinutes} min')),
         DataCell(AppNumericCell(_money.format(p.ratePerHourApplied))),
         DataCell(
@@ -216,7 +216,7 @@ class PaymentsScreen extends ConsumerWidget {
                 ),
                 const Divider(height: AppSpacing.x6),
                 _ReceiptRow(label: 'Source', value: p.source),
-                _ReceiptRow(label: 'Slot', value: p.slotCode ?? '—'),
+                _ReceiptRow(label: 'Paid by', value: p.payerName ?? '—'),
                 _ReceiptRow(label: 'Entry', value: exact(p.entryTime)),
                 _ReceiptRow(label: 'Exit', value: exact(p.exitTime)),
                 _ReceiptRow(
