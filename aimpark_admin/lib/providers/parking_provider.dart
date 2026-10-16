@@ -60,34 +60,6 @@ class ParkingActions extends _$ParkingActions {
     });
   }
 
-  Future<String?> logEntry({
-    String? userId,
-    String? rfidTagId,
-    String? slotId,
-    int? gate,
-  }) async {
-    return _run(() async {
-      final dio = ref.read(dioProvider);
-      final res = await dio.post(ApiEndpoints.logParkingEntry, data: {
-        if (userId != null && userId.isNotEmpty) 'userId': userId,
-        if (rfidTagId != null && rfidTagId.isNotEmpty) 'rfidTagId': rfidTagId,
-        if (slotId != null && slotId.isNotEmpty) 'slotId': slotId,
-        'gate': ?gate,
-      });
-      final data = res.data as Map<String, dynamic>;
-      final msg = data['message']?.toString() ?? 'Entry logged.';
-      // Surface the assigned bay — on the automatic path this is the whole
-      // answer, and it is what the gate display will show in production.
-      final slotCode = data['slotCode']?.toString();
-      final assignedGate = data['gate']?.toString();
-      if (slotCode != null && assignedGate != null) {
-        return '$msg Assigned Gate $assignedGate · $slotCode';
-      }
-      final logId = data['logId']?.toString();
-      return logId != null ? '$msg Log ID: $logId' : msg;
-    });
-  }
-
   /// Closes the session belonging to a card, rather than to a picked log row.
   ///
   /// The gate screen only ever knows the card it just looked up - the same
@@ -98,15 +70,6 @@ class ParkingActions extends _$ParkingActions {
       final dio = ref.read(dioProvider);
       final res = await dio
           .post(ApiEndpoints.logParkingExit, data: {'rfidTagId': rfidTagId});
-      return _exitMessage(res.data as Map<String, dynamic>);
-    });
-  }
-
-  Future<String?> logExit(String logId) async {
-    return _run(() async {
-      final dio = ref.read(dioProvider);
-      final res = await dio
-          .post(ApiEndpoints.logParkingExit, data: {'logId': logId});
       return _exitMessage(res.data as Map<String, dynamic>);
     });
   }

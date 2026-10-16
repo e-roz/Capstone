@@ -1,8 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:intl/intl.dart';
 
-import '../core/utils/responsive.dart';
 import '../models/parking_slot.dart';
 import '../providers/auth_provider.dart';
 import '../providers/parking_provider.dart';
@@ -11,7 +9,6 @@ import '../theme/theme.dart';
 import '../widgets/ui/ui.dart';
 import '../widgets/parking/gate_entry_banners.dart';
 import '../widgets/parking/live_parking_map.dart';
-import '../widgets/user_picker.dart';
 
 /// The lot drawn as it is laid out physically — see [LiveParkingMapCard].
 ///
@@ -30,18 +27,6 @@ class ParkingScreen extends ConsumerWidget {
       scrollable: true,
       actions: [
         const ParkingStatus(),
-        if (isAdmin) ...[
-          OutlinedButton.icon(
-            icon: const Icon(Icons.login, size: AppSizes.iconSm),
-            label: const Text('Log Entry'),
-            onPressed: () => _showLogEntry(context, ref),
-          ),
-          OutlinedButton.icon(
-            icon: const Icon(Icons.logout, size: AppSizes.iconSm),
-            label: const Text('Log Exit'),
-            onPressed: () => _showLogExit(context, ref),
-          ),
-        ],
         IconButton(
           icon: const Icon(Icons.refresh),
           tooltip: 'Refresh',
@@ -62,198 +47,6 @@ class ParkingScreen extends ConsumerWidget {
   }
 
   // ── Actions ────────────────────────────────────────────────────────────────
-
-  Future<void> _showLogEntry(BuildContext context, WidgetRef ref) async {
-    PickedUser? picked;
-    String? slotId;
-    String? userError;
-    var gate = 1;
-    final slots = ref
-            .read(parkingSlotsProvider)
-            .valueOrNull
-            ?.slots
-            .where((s) => s.status == 'Available')
-            .toList() ??
-        [];
-
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setState) => AlertDialog(
-          title: const Text('Log Parking Entry'),
-          content: SizedBox(
-            width: ctx.dialogWidth(380),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                _DialogNote(
-                  'Stand-in for the RFID reader — record a vehicle entering '
-                  'the lot.',
-                ),
-                const SizedBox(height: AppSpacing.x4),
-                UserPickerField(
-                  selected: picked,
-                  errorText: userError,
-                  onChanged: (u) => setState(() {
-                    picked = u;
-                    userError = null;
-                  }),
-                ),
-                const SizedBox(height: AppSpacing.x3),
-                // Which reader the vehicle pulled up to. Set by hand while
-                // testing; in production each ESP32 is fixed to one gate and
-                // supplies this itself.
-                DropdownButtonFormField<int>(
-                  initialValue: gate,
-                  decoration:
-                      const InputDecoration(labelText: 'Scanning at gate'),
-                  items: const [
-                    DropdownMenuItem(value: 1, child: Text('Gate 1')),
-                    DropdownMenuItem(value: 2, child: Text('Gate 2')),
-                  ],
-                  onChanged: (v) => setState(() {
-                    gate = v ?? 1;
-                    // The bay picked at the old gate is not behind this one.
-                    slotId = null;
-                  }),
-                ),
-                const SizedBox(height: AppSpacing.x3),
-                // Only bays behind the gate the driver is actually at. A
-                // reader is bolted to one barrier, so offering Gate 2's bays
-                // while scanning at Gate 1 could only ever produce a wrong
-                // entry.
-                Builder(builder: (context) {
-                  final atGate =
-                      slots.where((s) => s.gate == gate).toList();
-
-                  return DropdownButtonFormField<String?>(
-                    initialValue:
-                        atGate.any((s) => s.slotId == slotId) ? slotId : null,
-                    decoration: InputDecoration(
-                      labelText: 'Slot',
-                      helperText: 'Free bays at gate $gate',
-                    ),
-                    items: [
-                      const DropdownMenuItem(
-                          value: null, child: Text('Assign automatically')),
-                      ...atGate.map((s) => DropdownMenuItem(
-                          value: s.slotId, child: Text(s.slotCode))),
-                    ],
-                    onChanged: (v) => setState(() => slotId = v),
-                  );
-                }),
-                if (slotId == null) ...[
-                  const SizedBox(height: AppSpacing.x2),
-                  _DialogNote(
-                    'The system will recommend the free bay nearest this '
-                    'gate for the vehicle.',
-                  ),
-                ],
-                if (slots.isEmpty) ...[
-                  const SizedBox(height: AppSpacing.x2),
-                  _DialogNote(
-                    'No slots are currently available.',
-                    intent: StatusIntent.warning,
-                  ),
-                ],
-              ],
-            ),
-          ),
-          actions: [
-            TextButton(
-                onPressed: () => Navigator.pop(ctx, false),
-                child: const Text('Cancel')),
-            FilledButton(
-              onPressed: () {
-                if (picked == null) {
-                  setState(() => userError = 'Select a user');
-                  return;
-                }
-                Navigator.pop(ctx, true);
-              },
-              child: const Text('Log Entry'),
-            ),
-          ],
-        ),
-      ),
-    );
-
-    if (confirmed != true || !context.mounted) return;
-
-    final msg = await ref.read(parkingActionsProvider.notifier).logEntry(
-          userId: picked!.userId,
-          slotId: slotId,
-          gate: gate,
-        );
-    if (!context.mounted) return;
-    _showSnack(context, msg ?? 'Entry logged.');
-    ref.invalidate(parkingSlotsProvider);
-    ref.invalidate(activeParkingSessionsProvider);
-  }
-
-  Future<void> _showLogExit(BuildContext context, WidgetRef ref) async {
-    final sessions = await ref.read(activeParkingSessionsProvider.future);
-    if (!context.mounted) return;
-
-    if (sessions.isEmpty) {
-      _showSnack(context, 'No vehicles are currently inside.');
-      return;
-    }
-
-    final selected = await showDialog<ActiveParkingSession>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Log Parking Exit'),
-        content: SizedBox(
-          width: ctx.dialogWidth(420),
-          height: ctx.dialogHeight(360),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              _DialogNote('Select the vehicle that is leaving.'),
-              const SizedBox(height: AppSpacing.x3),
-              Expanded(
-                child: ListView.separated(
-                  itemCount: sessions.length,
-                  separatorBuilder: (_, _) => const Divider(height: 1),
-                  itemBuilder: (context, i) {
-                    final s = sessions[i];
-                    final detail = [
-                      if (s.plateNumber != null) s.plateNumber!,
-                      'In since ${DateFormat('MMM d, HH:mm').format(s.entryTime.toLocal())}',
-                    ].join(' • ');
-
-                    return ListTile(
-                      dense: true,
-                      contentPadding: EdgeInsets.zero,
-                      title: Text(s.userName),
-                      subtitle: Text(detail),
-                      onTap: () => Navigator.pop(ctx, s),
-                    );
-                  },
-                ),
-              ),
-            ],
-          ),
-        ),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
-        ],
-      ),
-    );
-
-    if (selected == null || !context.mounted) return;
-
-    final msg = await ref
-        .read(parkingActionsProvider.notifier)
-        .logExit(selected.logId);
-    if (!context.mounted) return;
-    _showSnack(context, msg ?? 'Exit logged.');
-    ref.invalidate(parkingSlotsProvider);
-    ref.invalidate(activeParkingSessionsProvider);
-  }
 
   Future<void> _changeStatus(BuildContext context, WidgetRef ref, ParkingSlot slot) async {
     const options = {
@@ -304,26 +97,5 @@ class ParkingScreen extends ConsumerWidget {
 
   void _showSnack(BuildContext context, String msg) {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
-  }
-}
-
-/// Explanatory small print inside a dialog.
-class _DialogNote extends StatelessWidget {
-  const _DialogNote(this.message, {this.intent});
-
-  final String message;
-  final StatusIntent? intent;
-
-  @override
-  Widget build(BuildContext context) {
-    final t = context.tokens;
-    return Text(
-      message,
-      style: Theme.of(context).textTheme.bodySmall?.copyWith(
-            color: intent == null
-                ? t.text.secondary
-                : t.status.of(intent!).fg,
-          ),
-    );
   }
 }
