@@ -470,6 +470,14 @@ namespace AimPark.API.Services
             };
         }
 
+        /// <summary>Document names as the app sends them ("Raf,License"); unknown ones are ignored.</summary>
+        private static HashSet<DocumentType> ParseDocumentTypes(string? value)
+            => (value ?? string.Empty)
+                .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .Select(name => Enum.TryParse<DocumentType>(name, true, out var t) ? t : (DocumentType?)null)
+                .OfType<DocumentType>()
+                .ToHashSet();
+
         public async Task<ActionResult<ScanResultResponse>> ScanDocumentsAsync(DocumentUploadDTO dto, Guid userId, CancellationToken ct)
         {
             var user = await _users.FindAsync(u => u.Id == userId, ct);
@@ -558,6 +566,11 @@ namespace AimPark.API.Services
                 f => f.Type,
                 f => OcrPayloadParser.Parse(f.Ocr));
 
+            // Documents whose three tries were used up on the phone, where each one
+            // is now read as it is taken. Asking for a fourth photograph of those
+            // would undo the point of the limit.
+            var retakesSpent = ParseDocumentTypes(dto.RetakesSpent);
+
             var diagnostics = new List<DocumentDiagnosisDto>();
             foreach (var (_, type, _) in files)
             {
@@ -565,7 +578,7 @@ namespace AimPark.API.Services
                 // unreadable would send the applicant to retake a photograph this
                 // submission never touched.
                 var payload = payloads[type];
-                if (payload is null)
+                if (payload is null || retakesSpent.Contains(type))
                     continue;
 
                 var reason = OcrCleanup.Diagnose(payload.Lines, type);
@@ -615,7 +628,7 @@ namespace AimPark.API.Services
             var sentTypes = files.Select(f => f.Type).ToHashSet();
             foreach (var (type, labels) in MissingValues(extracted, user.Affiliation, sentTypes))
             {
-                if (diagnostics.Any(d => d.DocumentType == type.ToString()))
+                if (retakesSpent.Contains(type) || diagnostics.Any(d => d.DocumentType == type.ToString()))
                     continue;
 
                 diagnostics.Add(new DocumentDiagnosisDto

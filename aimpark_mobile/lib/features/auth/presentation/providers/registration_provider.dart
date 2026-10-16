@@ -12,6 +12,13 @@ import 'auth_provider.dart';
 
 part 'registration_provider.g.dart';
 
+/// Photographs of one document before the flow stops asking for another, and
+/// the user types what could not be read instead.
+///
+/// Mirrors the server's own limit (`MaxScanAttempts`), and lives here so the
+/// counter, the capture button and the sheet cannot disagree about it.
+const int maxCaptureAttempts = 3;
+
 /// One text recogniser for the whole registration flow.
 ///
 /// The documents are now captured on three separate screens, so a recogniser
@@ -159,10 +166,13 @@ class RegistrationState {
   ///
   /// Held here rather than on the capture screen because that screen is replaced
   /// on every step change, and a counter that resets whenever the user steps
-  /// back and forward would show the wrong number.
+  /// back and forward would never reach its limit.
   ///
-  /// Only shown to the user ("Try 3"). There is no limit: the point of a retake
-  /// is to keep going until the document reads.
+  /// The limit exists so a rejection is never a dead end. Landmark matching is
+  /// derived from the forms on hand, and a campus printing a different template
+  /// must not be able to lock a real student out of registering — so after
+  /// enough tries the photo goes up anyway, and the reviewer is told the system
+  /// never recognised it.
   final Map<ScanDocumentType, int> captureAttempts;
 
   /// The values the user confirmed for each document, as it was read.
@@ -328,11 +338,14 @@ class RegistrationNotifier extends _$RegistrationNotifier {
     _touched = true;
     state = state.copyWith(
       captured: {...state.captured, type: document},
-      // Only so the user can see how many photos they have taken. There is no
-      // limit: a document is retaken until it reads.
+      // Never counted past the limit: a count of "5 of 3" means nothing, and
+      // the capture button is switched off once the tries are spent anyway.
       captureAttempts: {
         ...state.captureAttempts,
-        type: (state.captureAttempts[type] ?? 0) + 1,
+        type: ((state.captureAttempts[type] ?? 0) + 1).clamp(
+          0,
+          maxCaptureAttempts,
+        ),
       },
       confirmed: {...state.confirmed}..remove(type),
     );
