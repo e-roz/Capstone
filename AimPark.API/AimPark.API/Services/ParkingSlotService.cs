@@ -24,6 +24,7 @@ namespace AimPark.API.Services
         /// same 60 s.
         /// </summary>
         private static readonly TimeSpan GuardPostSilentAfter = TimeSpan.FromSeconds(60);
+        private static readonly DateTime ProcessStartedAt = DateTime.UtcNow;
 
         public ParkingSlotService(
             IRepository<ParkingSlot> slots,
@@ -57,13 +58,16 @@ namespace AimPark.API.Services
             var heardAt = new[] { link.LastPushAt, link.HealthAt }.Max();
             response.LastHeardAt = heardAt;
 
-            // Never heard since the cloud started: with the guard post in charge
-            // of the gates that means it is off. While the cloud still runs the
-            // gates itself (before the guard post is live, or in development)
-            // there may be no guard post at all, so only a link that *was* up and
-            // then went quiet counts.
+            // The sensors are read by the guard post, so no guard post means no
+            // sensor feed and the stored bays are only a memory. What the cloud
+            // has heard is held in memory, and a restart forgets it — which used
+            // to read as "never heard, so maybe there is no guard post" and put
+            // the last known "9 free" back on screen with the hardware dead. The
+            // guard post reports at least every 15 seconds, so if the cloud has
+            // been up longer than the silence window and heard nothing, it is off.
             var silent = heardAt is null
-                ? !_site.CloudGateEndpointsEnabled || _site.TreatUnheardGuardPostAsSilent
+                ? _site.TreatUnheardGuardPostAsSilent
+                  || DateTime.UtcNow - ProcessStartedAt > GuardPostSilentAfter
                 : DateTime.UtcNow - heardAt.Value > GuardPostSilentAfter;
 
             if (!silent) return response;

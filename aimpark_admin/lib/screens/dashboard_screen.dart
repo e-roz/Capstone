@@ -424,7 +424,7 @@ class _LiveBaysCard extends ConsumerWidget {
               const Spacer(),
               if (stale)
                 StatusPill.of(
-                  'Last known',
+                  'No live reading',
                   intent: StatusIntent.warning,
                   dense: true,
                 )
@@ -439,37 +439,49 @@ class _LiveBaysCard extends ConsumerWidget {
           Text.rich(
             TextSpan(
               children: [
+                // With the guard post silent nothing is reading the bays, so a
+                // last-known count would be a guess shown as a fact.
                 TextSpan(
-                  text: '${summary.availableSlots}',
+                  text: stale ? '—' : '${summary.availableSlots}',
                   style: AppTypography.tabular(text.displaySmall!).copyWith(
                     color: stale ? t.text.tertiary : t.status.success.fg,
                   ),
                 ),
                 TextSpan(
-                  text: '  free · ${summary.occupiedSlots} occupied',
+                  text: stale
+                      ? '  free bays unknown'
+                      : '  free · ${summary.occupiedSlots} occupied',
                   style: text.bodyMedium?.copyWith(color: t.text.secondary),
                 ),
               ],
             ),
           ),
+          if (stale) ...[
+            const SizedBox(height: AppSpacing.x3),
+            Text(
+              'The sensors are read by the guard post, which is offline. '
+              'Counts return when it reconnects.',
+              style: text.labelSmall?.copyWith(color: t.text.tertiary),
+            ),
+          ],
           const SizedBox(height: AppSpacing.x4),
-          if (summary.usableFourWheel > 0)
+          if (!stale && summary.usableFourWheel > 0)
             _BayBar(
               label: 'Four-wheel',
               free: summary.freeFourWheel,
               used: fourWheelUsed,
               muted: stale,
             ),
-          if (summary.usableFourWheel > 0 && summary.usableMotorcycle > 0)
+          if (!stale && summary.usableFourWheel > 0 && summary.usableMotorcycle > 0)
             const SizedBox(height: AppSpacing.x3),
-          if (summary.usableMotorcycle > 0)
+          if (!stale && summary.usableMotorcycle > 0)
             _BayBar(
               label: 'Motorcycle',
               free: summary.freeMotorcycle,
               used: motorcycleUsed,
               muted: stale,
             ),
-          if (noteParts.isNotEmpty) ...[
+          if (!stale && noteParts.isNotEmpty) ...[
             const SizedBox(height: AppSpacing.x3),
             Text(
               noteParts.join(' · '),
@@ -481,13 +493,6 @@ class _LiveBaysCard extends ConsumerWidget {
             Divider(height: 1, color: t.border.subtle),
             const SizedBox(height: AppSpacing.x3),
             for (final gate in const [1, 2]) _GateRow(gate: gate, link: link),
-          ],
-          if (stale) ...[
-            const SizedBox(height: AppSpacing.x3),
-            Text(
-              'Bays may have changed since. Gate decisions still run on the guard post.',
-              style: text.bodySmall?.copyWith(color: t.status.warning.fg),
-            ),
           ],
         ],
       ),
