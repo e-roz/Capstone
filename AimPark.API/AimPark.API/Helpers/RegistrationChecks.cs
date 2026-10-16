@@ -162,6 +162,7 @@ namespace AimPark.API.Helpers
                     "Name mismatch — the name on file does not appear to be printed on the licence.",
                 Failed =>
                     $"Name mismatch — the account reads \"{user.FullName}\", the school document reads \"{schoolName}\".",
+                NotChecked when user.Affiliation != Affiliation.Student => NoSecondNameDocument,
                 NotChecked => "Could not compare names — no readable name came off the documents.",
                 _ => null
             };
@@ -499,6 +500,38 @@ namespace AimPark.API.Helpers
                 });
             }
 
+            // Written by RegistrationService when an expiry was edited or typed in a
+            // way the expiry block could not judge. An expired reading turned into a
+            // valid date is the one edit that decides whether a lapsed document gets
+            // through, so it is red.
+            foreach (var line in (newest.Notes ?? string.Empty).Split('\n'))
+            {
+                var (title, severity) =
+                    line.StartsWith(DocumentExpiryRules.ExpiredReadingEditedMarker, StringComparison.Ordinal)
+                        ? ("Expired date changed by applicant", Danger)
+                        : line.StartsWith(DocumentExpiryRules.TypedDateNotOnPhotoMarker, StringComparison.Ordinal)
+                            ? ("Typed date not found on the photo", Warning)
+                            : ((string?)null, (string?)null);
+
+                if (title is null || severity is null)
+                    continue;
+
+                var onReceipt = line.Contains("receipt", StringComparison.OrdinalIgnoreCase)
+                                || line.Contains("registration", StringComparison.OrdinalIgnoreCase);
+                var document = onReceipt ? Receipt : License;
+                var detail = line[(line.IndexOf('—') + 1)..].Trim();
+
+                findings.Add(new FindingResponse
+                {
+                    Key = $"Edit.{(severity == Danger ? "ExpiredDate" : "TypedDate")}.{document}",
+                    Category = Edited,
+                    Severity = severity,
+                    Title = title,
+                    Detail = detail.Length == 0 ? null : char.ToUpperInvariant(detail[0]) + detail[1..],
+                    Document = document
+                });
+            }
+
             // OrderBy is stable, so within one rank the order stays the order the
             // checks were built in: person before vehicle.
             return findings
@@ -573,11 +606,20 @@ namespace AimPark.API.Helpers
                 {
                     Key = check.Key, Category = NotChecked, Severity = Neutral,
                     Title = "Names not compared",
-                    Detail = "No readable name came off the documents.",
+                    Detail = isStudent ? "No readable name came off the documents." : NoSecondNameDocument,
                     Document = isStudent ? Raf : License
                 }
             };
         }
+
+        /// <summary>
+        /// Faculty and staff send only a licence and receipt, and type no name, so
+        /// the licence is the only place a name comes from and there is nothing to
+        /// hold it against.
+        /// </summary>
+        private const string NoSecondNameDocument =
+            "Faculty and staff send only a licence, so there is no second document to compare "
+            + "the name with. The account name is taken from the licence.";
 
         private static FindingResponse ExpiryFinding(
             CheckItemResponse check, string thing, DateTime? expiry, string document, DateTime nowUtc)

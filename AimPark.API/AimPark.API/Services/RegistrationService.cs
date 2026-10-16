@@ -237,9 +237,9 @@ namespace AimPark.API.Services
             if (!TryParseAffiliation(dto.Affiliation, out var affiliation))
                 return new BadRequestObjectResult(new { message = "Invalid affiliation." });
 
-            if (NameRequiredNow(affiliation) && ValidationHelper.HasEmptyFields(dto.FullName))
-                return new BadRequestObjectResult(new { message = "Full name is required." });
-
+            // No name is asked for at sign-up. The licence is the one source of it,
+            // set when the documents are confirmed. A name an older app version
+            // still sends is kept until then.
             var now = DateTime.UtcNow;
             var user = new User
             {
@@ -306,14 +306,11 @@ namespace AimPark.API.Services
             if (!TryParseAffiliation(dto.Affiliation, out var affiliation))
                 return new BadRequestObjectResult(new { message = "Invalid affiliation." });
 
-            if (NameRequiredNow(affiliation) && ValidationHelper.HasEmptyFields(dto.FullName))
-                return new BadRequestObjectResult(new { message = "Full name is required." });
-
             var affiliationChanged = user.Affiliation != affiliation;
 
-            // A student's name comes from their registration form, so there is
-            // nothing to overwrite it with here — a blank keeps the name already on
-            // the account rather than erasing it.
+            // The name comes from the licence, so there is nothing to overwrite it
+            // with here — a blank keeps the name already on the account rather than
+            // erasing it.
             if (!string.IsNullOrWhiteSpace(dto.FullName))
                 user.FullName = dto.FullName.Trim();
 
@@ -364,6 +361,122 @@ namespace AimPark.API.Services
             user.UpdatedAt = DateTime.UtcNow;
             return true;
         }
+
+        /// <summary>
+        /// Reads one document the moment it is photographed, so the applicant sees
+        /// what was read before going on to the next one.
+        /// </summary>
+        /// <remarks>
+        /// Text only: no image, nothing stored, no attempt counted. The phone counts
+        /// the tries for each document, and the full scan at the end — images and
+        /// all — stays the authority. The same rules run here as there, so a
+        /// document that reads cleanly now reads cleanly then.
+        /// </remarks>
+        public async Task<ActionResult<DocumentReadResponse>> ReadDocumentAsync(
+            ReadDocumentDto dto, Guid userId, CancellationToken ct)
+        {
+            var user = await _users.FindAsync(u => u.Id == userId, ct);
+            if (user is null)
+                return new NotFoundObjectResult(new { message = "User not found." });
+
+            if (user.RegistrationStep is not (RegistrationStep.DocumentUpload or RegistrationStep.VehicleInfo))
+                return new BadRequestObjectResult(new { message = "Document upload is not available at the current step." });
+
+            if (!Enum.TryParse<DocumentType>(dto.DocumentType, true, out var type)
+                || type is not (DocumentType.Raf or DocumentType.License or DocumentType.OfficialReceipt))
+            {
+                return new BadRequestObjectResult(new { message = "Unknown document type." });
+            }
+
+            var payload = OcrPayloadParser.Parse(dto.Ocr);
+            var response = new DocumentReadResponse { DocumentType = type.ToString() };
+
+            var reason = payload is null
+                ? ScanFailureReason.NoText
+                : OcrCleanup.Diagnose(payload.Lines, type);
+
+            if (reason != ScanFailureReason.None)
+            {
+                response.Diagnosis = new DocumentDiagnosisDto
+                {
+                    DocumentType = type.ToString(),
+                    Reason = reason.ToString(),
+                    Message = OcrCleanup.MessageFor(reason, LabelFor(type))
+                };
+            }
+
+            var extracted = _extraction.Extract(
+                type == DocumentType.Raf ? payload : null,
+                type == DocumentType.License ? payload : null,
+                type == DocumentType.OfficialReceipt ? payload : null,
+                user.FullName);
+
+            response.Extracted = extracted;
+
+            if (MissingValues(extracted, user.Affiliation, [type]).TryGetValue(type, out var labels))
+            {
+                response.MissingFields = labels;
+                response.Diagnosis ??= new DocumentDiagnosisDto
+                {
+                    DocumentType = type.ToString(),
+                    Reason = MissingFieldsReason,
+                    Message = $"We couldn't read your {JoinLabels(labels)} on the {LabelFor(type)}. "
+                              + "Photograph it again, flat and in good light."
+                };
+            }
+
+            var today = PhilippineTime.Today();
+            response.Expiry = type switch
+            {
+                DocumentType.License => LicenceExpiryCheck(extracted.LicenseExpiry, today),
+                DocumentType.OfficialReceipt => RegistrationExpiryCheck(extracted, today),
+                _ => null
+            };
+
+            return new OkObjectResult(response);
+        }
+
+        private static ExpiryCheckDto LicenceExpiryCheck(DateTime? expiry, DateOnly today)
+        {
+            var refusal = DocumentExpiryRules.LicenceRefusal(expiry, today);
+
+            return new ExpiryCheckDto
+            {
+                Field = nameof(ExtractedValuesDto.LicenseExpiry),
+                Date = expiry,
+                IsExpired = DocumentExpiry.IsExpired(expiry, today),
+                Blocks = refusal is not null,
+                Message = refusal
+            };
+        }
+
+        private static ExpiryCheckDto RegistrationExpiryCheck(ExtractedValuesDto extracted, DateOnly today)
+        {
+            var calculated = IsCalculated(extracted);
+            var expired = DocumentExpiry.IsExpired(extracted.RegistrationExpiry, today);
+            var refusal = DocumentExpiryRules.RegistrationRefusal(extracted.RegistrationExpiry, calculated, today);
+
+            return new ExpiryCheckDto
+            {
+                Field = nameof(ExtractedValuesDto.RegistrationExpiry),
+                Date = extracted.RegistrationExpiry,
+                IsExpired = expired,
+                IsCalculated = calculated,
+                Blocks = refusal is not null,
+                Message = refusal ?? (calculated && expired
+                    ? "We worked out this registration's expiry from the plate rather than reading it, "
+                      + "and that date has passed. Check it. The admin will too."
+                    : null)
+            };
+        }
+
+        /// <summary>Document names as the app sends them ("Raf,License"); unknown ones are ignored.</summary>
+        private static HashSet<DocumentType> ParseDocumentTypes(string? value)
+            => (value ?? string.Empty)
+                .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .Select(name => Enum.TryParse<DocumentType>(name, true, out var t) ? t : (DocumentType?)null)
+                .OfType<DocumentType>()
+                .ToHashSet();
 
         public async Task<ActionResult<ScanResultResponse>> ScanDocumentsAsync(DocumentUploadDTO dto, Guid userId, CancellationToken ct)
         {
@@ -453,6 +566,11 @@ namespace AimPark.API.Services
                 f => f.Type,
                 f => OcrPayloadParser.Parse(f.Ocr));
 
+            // Documents whose three tries were used up on the phone, where each one
+            // is now read as it is taken. Asking for a fourth photograph of those
+            // would undo the point of the limit.
+            var retakesSpent = ParseDocumentTypes(dto.RetakesSpent);
+
             var diagnostics = new List<DocumentDiagnosisDto>();
             foreach (var (_, type, _) in files)
             {
@@ -460,7 +578,7 @@ namespace AimPark.API.Services
                 // unreadable would send the applicant to retake a photograph this
                 // submission never touched.
                 var payload = payloads[type];
-                if (payload is null)
+                if (payload is null || retakesSpent.Contains(type))
                     continue;
 
                 var reason = OcrCleanup.Diagnose(payload.Lines, type);
@@ -510,7 +628,7 @@ namespace AimPark.API.Services
             var sentTypes = files.Select(f => f.Type).ToHashSet();
             foreach (var (type, labels) in MissingValues(extracted, user.Affiliation, sentTypes))
             {
-                if (diagnostics.Any(d => d.DocumentType == type.ToString()))
+                if (retakesSpent.Contains(type) || diagnostics.Any(d => d.DocumentType == type.ToString()))
                     continue;
 
                 diagnostics.Add(new DocumentDiagnosisDto
@@ -653,6 +771,32 @@ namespace AimPark.API.Services
             verification.ConfirmedPlateNumber = committedPlate.Length == 0 ? null : committedPlate;
             verification.ConfirmedRegistrationExpiry = dto.RegistrationExpiry;
 
+            // An expired licence or registration stops registration here, before
+            // anything is saved, instead of reaching a reviewer only to be rejected.
+            // The app already showed the applicant the date it read and let them
+            // correct a misread; this is the server's own copy of that rule, so a
+            // modified app cannot skip it. A registration expiry worked out from the
+            // plate rather than read never blocks: the reviewer's check shows it.
+            var today = PhilippineTime.Today();
+            var payloadsForChecks = DeserializePayloads(verification.RawPayloads);
+
+            var expiredRefusal = DocumentExpiryRules.LicenceRefusal(
+                verification.ConfirmedLicenseExpiry ?? verification.ExtractedLicenseExpiry, today);
+
+            if (expiredRefusal is null && !isEBike)
+            {
+                var registrationExpiry =
+                    verification.ConfirmedRegistrationExpiry ?? verification.ExtractedRegistrationExpiry;
+
+                expiredRefusal = DocumentExpiryRules.RegistrationRefusal(
+                    registrationExpiry,
+                    IsCalculatedRegistrationExpiry(payloadsForChecks, registrationExpiry),
+                    today);
+            }
+
+            if (expiredRefusal is not null)
+                return new BadRequestObjectResult(new { message = expiredRefusal });
+
             // What was read is checked as well as what was typed. The paper still
             // says what it says, so editing the form does not move the number off
             // the original owner — and the typed value covers the case where
@@ -700,16 +844,27 @@ namespace AimPark.API.Services
 
             // After the checks, not before. Whatever name the account held when
             // the documents arrived — Google's, or the one from an earlier
-            // submission — is what the registration form is compared against; set
-            // first, the form would be compared with itself and always agree.
-            if (user.Affiliation == Affiliation.Student
-                && NameFormat.DisplayName(verification.ConfirmedStudentName) is { } formName)
+            // submission — is what the documents are compared against; set first,
+            // a document would be compared with itself and always agree.
+            //
+            // The licence is the one source of the account's name, for every
+            // affiliation. A student's RAF name is only the fallback for a licence
+            // whose name could neither be read nor typed.
+            var accountName = NameFormat.DisplayName(
+                FirstNonBlank(verification.ConfirmedLicenseName, verification.ExtractedLicenseName));
+
+            if (accountName is null && user.Affiliation == Affiliation.Student)
             {
-                user.FullName = formName;
+                accountName = NameFormat.DisplayName(
+                    FirstNonBlank(verification.ConfirmedStudentName, verification.ExtractedStudentName));
             }
+
+            if (accountName is not null)
+                user.FullName = accountName;
 
             AppendNote(verification, vehicleNote);
             NoteVehicleEdits(verification, dto, user, vehicleType);
+            NoteExpiryEdits(verification, payloadsForChecks, isEBike, today);
 
             // Re-derived here rather than carried over from the scan. These are the
             // submissions that reached a reviewer without the system ever confirming
@@ -884,6 +1039,69 @@ namespace AimPark.API.Services
                     $"{RegistrationChecks.ColourEditMarker} — the receipt reads \"{readColour}\", the applicant submitted \"{chosenColour}\".");
             }
         }
+
+        /// <summary>
+        /// Tells the reviewer where an expiry date was edited or typed in a way
+        /// worth checking against the photo.
+        /// </summary>
+        /// <remarks>
+        /// The two cases the expiry block cannot judge on its own: an expired reading
+        /// edited into a valid date (a corrected misread, or a lie), and a typed date
+        /// that appears nowhere in the photo's text. Both reach review flagged
+        /// rather than being refused, because a real misread must not lock anyone out.
+        /// </remarks>
+        private static void NoteExpiryEdits(
+            DocumentVerification verification,
+            Dictionary<DocumentType, OcrPayloadDto> payloads,
+            bool isEBike,
+            DateOnly today)
+        {
+            AppendNote(verification, DocumentExpiryRules.ExpiredReadingEditedNote(
+                "licence", verification.ExtractedLicenseExpiry, verification.ConfirmedLicenseExpiry, today));
+            AppendNote(verification, DocumentExpiryRules.TypedDateNotOnPhotoNote(
+                "licence expiry", verification.ExtractedLicenseExpiry, verification.ConfirmedLicenseExpiry,
+                LinesOf(payloads, DocumentType.License)));
+
+            if (isEBike)
+                return;
+
+            AppendNote(verification, DocumentExpiryRules.ExpiredReadingEditedNote(
+                "receipt", verification.ExtractedRegistrationExpiry, verification.ConfirmedRegistrationExpiry, today));
+            AppendNote(verification, DocumentExpiryRules.TypedDateNotOnPhotoNote(
+                "registration expiry", verification.ExtractedRegistrationExpiry, verification.ConfirmedRegistrationExpiry,
+                LinesOf(payloads, DocumentType.OfficialReceipt)));
+        }
+
+        private static List<OcrLineDto> LinesOf(
+            Dictionary<DocumentType, OcrPayloadDto> payloads, DocumentType type)
+            => payloads.TryGetValue(type, out var payload) ? OcrCleanup.Prepare(payload.Lines) : [];
+
+        /// <summary>
+        /// Whether the registration expiry being submitted is the one the rules
+        /// worked out from the plate, rather than one read or typed.
+        /// </summary>
+        /// <remarks>
+        /// Not stored with the submission, so the receipt's OCR text is read again,
+        /// the same way <see cref="NoteVehicleEdits"/> recovers the vehicle type.
+        /// </remarks>
+        private bool IsCalculatedRegistrationExpiry(
+            Dictionary<DocumentType, OcrPayloadDto> payloads, DateTime? submitted)
+        {
+            if (submitted is null || !payloads.TryGetValue(DocumentType.OfficialReceipt, out var receipt))
+                return false;
+
+            var read = _extraction.Extract(null, null, receipt, null);
+
+            return IsCalculated(read) && read.RegistrationExpiry?.Date == submitted.Value.Date;
+        }
+
+        private static bool IsCalculated(ExtractedValuesDto read) =>
+            read.FieldsToCheck.Any(f =>
+                f.Field == nameof(ExtractedValuesDto.RegistrationExpiry)
+                && f.Reason == nameof(FieldFlag.Derived));
+
+        private static string? FirstNonBlank(params string?[] values)
+            => values.FirstOrDefault(v => !string.IsNullOrWhiteSpace(v));
 
         /// <summary>
         /// Creates or updates the applicant's vehicle from the plate the receipt
@@ -1232,13 +1450,6 @@ namespace AimPark.API.Services
 
             return new OkObjectResult(MapStatus(user));
         }
-
-        /// <summary>
-        /// Whether the sign-up form has to supply a name. Students do not: theirs is
-        /// read off the registration form and set when the documents are confirmed.
-        /// Faculty and staff still type it until their own route is settled.
-        /// </summary>
-        private static bool NameRequiredNow(Affiliation affiliation) => affiliation != Affiliation.Student;
 
         // Absent means Student — the overwhelming majority, and the app did not send
         // this field before. An unrecognised value is rejected rather than silently
