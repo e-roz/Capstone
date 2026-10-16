@@ -15,13 +15,16 @@ class PaymentsQuery {
 
   const PaymentsQuery({this.page = 1, this.pageSize = 20, this.status});
 
-  PaymentsQuery copyWith(
-          {int? page, int? pageSize, String? status, bool clearStatus = false}) =>
-      PaymentsQuery(
-        page: page ?? this.page,
-        pageSize: pageSize ?? this.pageSize,
-        status: clearStatus ? null : (status ?? this.status),
-      );
+  PaymentsQuery copyWith({
+    int? page,
+    int? pageSize,
+    String? status,
+    bool clearStatus = false,
+  }) => PaymentsQuery(
+    page: page ?? this.page,
+    pageSize: pageSize ?? this.pageSize,
+    status: clearStatus ? null : (status ?? this.status),
+  );
 }
 
 @riverpod
@@ -31,7 +34,10 @@ class PaymentsQueryNotifier extends _$PaymentsQueryNotifier {
 
   void setPage(int page) => state = state.copyWith(page: page);
   void setStatus(String? status) => state = state.copyWith(
-      status: status, clearStatus: status == null, page: 1);
+    status: status,
+    clearStatus: status == null,
+    page: 1,
+  );
 }
 
 @riverpod
@@ -45,7 +51,10 @@ Future<PaymentListPage> paymentList(Ref ref) async {
     if (query.status != null) 'status': query.status,
   };
 
-  final response = await dio.get(ApiEndpoints.payments, queryParameters: params);
+  final response = await dio.get(
+    ApiEndpoints.payments,
+    queryParameters: params,
+  );
   return PaymentListPage.fromJson(response.data as Map<String, dynamic>);
 }
 
@@ -63,25 +72,47 @@ class PaymentActions extends _$PaymentActions {
   @override
   AsyncValue<void> build() => const AsyncData(null);
 
+  Future<String?> deleteRate(String rateId) async {
+    state = const AsyncLoading();
+    try {
+      final dio = ref.read(dioProvider);
+      final res = await dio.delete('${ApiEndpoints.paymentRates}/$rateId');
+      state = const AsyncData(null);
+      return (res.data as Map<String, dynamic>)['message']?.toString();
+    } on DioException catch (e) {
+      state = const AsyncData(null);
+      final data = e.response?.data;
+      if (data is Map) {
+        return data['message']?.toString() ?? e.message ?? 'Error';
+      }
+      return e.message ?? 'Unknown error';
+    }
+  }
+
   Future<String?> upsertRate(
-    String? vehicleType,
+    String vehicleType,
     double ratePerHour, {
     double? minimumFee,
   }) async {
     state = const AsyncLoading();
     try {
       final dio = ref.read(dioProvider);
-      final res = await dio.put(ApiEndpoints.paymentRates, data: {
-        'vehicleType': vehicleType,
-        'ratePerHour': ratePerHour,
-        'minimumFee': minimumFee,
-      });
+      final res = await dio.put(
+        ApiEndpoints.paymentRates,
+        data: {
+          'vehicleType': vehicleType,
+          'ratePerHour': ratePerHour,
+          'minimumFee': minimumFee,
+        },
+      );
       state = const AsyncData(null);
       return (res.data as Map<String, dynamic>)['message']?.toString();
     } on DioException catch (e) {
       state = const AsyncData(null);
       final data = e.response?.data;
-      if (data is Map) return data['message']?.toString() ?? e.message ?? 'Error';
+      if (data is Map) {
+        return data['message']?.toString() ?? e.message ?? 'Error';
+      }
       return e.message ?? 'Unknown error';
     }
   }

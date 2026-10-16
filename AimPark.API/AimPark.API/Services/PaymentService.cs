@@ -500,14 +500,13 @@ namespace AimPark.API.Services
             if (dto.MinimumFee is < 0)
                 return new BadRequestObjectResult(new { message = "Minimum fee must be zero or greater." });
 
-            // A blank vehicle type means the default/fallback rate, not an invalid one.
-            VehicleType? vehicleType = null;
-            if (!string.IsNullOrWhiteSpace(dto.VehicleType))
-            {
-                if (!Enum.TryParse<VehicleType>(dto.VehicleType, true, out var parsed))
-                    return new BadRequestObjectResult(new { message = "Invalid vehicle type." });
-                vehicleType = parsed;
-            }
+            // A rate is for a vehicle type: Car or Motorcycle. The old blank "default"
+            // rate is gone, so a blank type is refused rather than quietly saved
+            // as a rate that applies to everything.
+            if (string.IsNullOrWhiteSpace(dto.VehicleType)
+                || !Enum.TryParse<VehicleType>(dto.VehicleType, true, out var vehicleType)
+                || !Enum.IsDefined(vehicleType))
+                return new BadRequestObjectResult(new { message = "Choose a vehicle type: Car or Motorcycle." });
 
             var existing = await _rates.FindAsync(r => r.VehicleType == vehicleType, ct);
             if (existing is not null)
@@ -532,6 +531,36 @@ namespace AimPark.API.Services
             await _rates.SaveAsync(ct);
 
             return new OkObjectResult(new { message = "Rate saved." });
+        }
+
+        // DELETE /api/admin/payments/rates/{rateId}
+        public async Task<ActionResult<object>> DeleteRateAsync(Guid rateId, CancellationToken ct)
+        {
+            var rate = await _rates.FindAsync(r => r.Id == rateId, ct);
+            if (rate is null)
+                return new NotFoundObjectResult(new { message = "That rate no longer exists." });
+
+            // Refuse a removal that would leave a vehicle type with no rate at all.
+            // QuoteForCompletedLogAsync bills a session with no rate as free, and
+            // nobody means to give parking away by tidying up the rate list.
+            var others = await _rates.GetAllAsync(r => r.Id != rateId, ct);
+            var hasDefault = others.Any(r => r.VehicleType is null);
+            var uncovered = Enum.GetValues<VehicleType>()
+                .Where(t => !hasDefault && others.All(r => r.VehicleType != t))
+                .ToList();
+            if (uncovered.Count > 0)
+            {
+                var names = string.Join(" and ", uncovered.Select(t => t == VehicleType.Car ? "Car" : "Motorcycle"));
+                return new BadRequestObjectResult(new
+                {
+                    message = $"Set a rate for {names} first. Without one, those vehicles would park for free."
+                });
+            }
+
+            _rates.Delete(rate);
+            await _rates.SaveAsync(ct);
+
+            return new OkObjectResult(new { message = "Rate removed." });
         }
 
         private async Task<ActionResult<PaymentListResponse>> ListAsync(
