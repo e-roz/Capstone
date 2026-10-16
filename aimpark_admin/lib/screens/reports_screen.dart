@@ -213,18 +213,18 @@ class ReportsScreen extends ConsumerWidget {
 }
 
 String _hour(int h) {
-  final suffix = h < 12 ? 'am' : 'pm';
+  final suffix = h < 12 ? 'AM' : 'PM';
   final display = h % 12 == 0 ? 12 : h % 12;
-  return '$display$suffix';
+  return '$display $suffix';
 }
 
 String _hourShort(int h) => h == 0
-    ? '12a'
+    ? '12 AM'
     : h < 12
-        ? '${h}a'
+        ? '$h AM'
         : h == 12
-            ? '12p'
-            : '${h - 12}p';
+            ? '12 PM'
+            : '${h - 12} PM';
 
 /// How a point's date reads on an axis, given how the period was cut.
 String _axisLabel(DateTime d, String granularity) =>
