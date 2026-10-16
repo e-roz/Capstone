@@ -6,7 +6,7 @@ part of 'payment_log_provider.dart';
 // RiverpodGenerator
 // **************************************************************************
 
-String _$paymentLogListHash() => r'ee315f1f53338e26bfca62b8c5b5fd48c4b28c60';
+String _$paymentLogListHash() => r'bbc29dac36188632df532a3e8f2567efe71b6676';
 
 /// See also [paymentLogList].
 @ProviderFor(paymentLogList)

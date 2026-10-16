@@ -24,7 +24,7 @@ final incidentListProvider =
 @Deprecated('Will be removed in 3.0. Use Ref instead')
 // ignore: unused_element
 typedef IncidentListRef = AutoDisposeFutureProviderRef<IncidentListPage>;
-String _$openIncidentCountHash() => r'7fc3d955ce8d59dc83396123a87c6a77fd06067c';
+String _$openIncidentCountHash() => r'9e9737782c5c8e372d62f01d10357467e81f1ba5';
 
 /// How many reports are still waiting on a decision - Submitted and Under
 /// review together.
