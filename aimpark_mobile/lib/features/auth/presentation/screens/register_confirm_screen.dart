@@ -161,6 +161,9 @@ class _RegisterConfirmScreenState extends ConsumerState<RegisterConfirmScreen> {
   /// same [fieldStillMissing] predicate over the fields that matter for this
   /// affiliation right before the request goes out.
   bool _hasUnresolvedFlags(bool isStudent, bool isEBike) {
+    // A receipt the applicant says has no plate is not missing one.
+    final noPlate = ref.read(registrationNotifierProvider).noPlate && !isEBike;
+
     final checks = [
       // Only a student's form carries a name of its own; everyone else's
       // comes from the licence below.
@@ -187,10 +190,11 @@ class _RegisterConfirmScreenState extends ConsumerState<RegisterConfirmScreen> {
           _extracted.flagFor('RegistrationExpiry'),
           _registrationExpiry == null,
         ),
-        fieldStillMissing(
-          _extracted.flagFor('PlateNumber'),
-          _plateNumber.text.trim().isEmpty,
-        ),
+        if (!noPlate)
+          fieldStillMissing(
+            _extracted.flagFor('PlateNumber'),
+            _plateNumber.text.trim().isEmpty,
+          ),
         fieldStillMissing(
           _extracted.flagFor('Color'),
           _color.text.trim().isEmpty,
@@ -246,6 +250,8 @@ class _RegisterConfirmScreenState extends ConsumerState<RegisterConfirmScreen> {
       return;
     }
 
+    final noPlate = ref.read(registrationNotifierProvider).noPlate && !isEBike;
+
     setState(() => _isSubmitting = true);
     try {
       final repo = ref.read(authRepositoryProvider);
@@ -261,7 +267,9 @@ class _RegisterConfirmScreenState extends ConsumerState<RegisterConfirmScreen> {
         if (isEBike)
           'isEBike': true
         else ...{
-          'plateNumber': _plateNumber.text.trim(),
+          // No plate to send: the server reserves a temporary one, and an admin
+          // confirms it by seeing the vehicle.
+          if (noPlate) 'noPlate': true else 'plateNumber': _plateNumber.text.trim(),
           'registrationExpiry': _registrationExpiry?.toIso8601String(),
           'vehicleType': _vehicleType,
           'color': _color.text.trim(),
@@ -272,6 +280,9 @@ class _RegisterConfirmScreenState extends ConsumerState<RegisterConfirmScreen> {
       // still waits for a reviewer, so this is read rather than assumed.
       final data = response.data;
       final approved = data is Map && data['approved'] == true;
+      final temporaryPlate = data is Map && data['needsTemporaryPlate'] == true
+          ? data['temporaryPlate']?.toString()
+          : null;
 
       // Last use of the registration token: point this phone at the new
       // account so the review decision can reach it as a push.
@@ -309,8 +320,9 @@ class _RegisterConfirmScreenState extends ConsumerState<RegisterConfirmScreen> {
               : _licenseName.text.trim(),
           email: ref.read(registrationNotifierProvider).email,
           affiliation: ref.read(registrationNotifierProvider).affiliation.label,
-          plateNumber: isEBike ? null : _plateNumber.text.trim(),
+          plateNumber: isEBike || noPlate ? null : _plateNumber.text.trim(),
           isEBike: isEBike,
+          temporaryPlate: temporaryPlate,
           approved: approved,
         ),
       );
@@ -363,6 +375,10 @@ class _RegisterConfirmScreenState extends ConsumerState<RegisterConfirmScreen> {
         Affiliation.student;
     final isEBike =
         ref.watch(registrationNotifierProvider.select((s) => s.isEBike));
+    final noPlate = ref.watch(
+          registrationNotifierProvider.select((s) => s.noPlate),
+        ) &&
+        !isEBike;
     final live = !_isSubmitting;
 
     return RegistrationStepScaffold(
@@ -393,6 +409,18 @@ class _RegisterConfirmScreenState extends ConsumerState<RegisterConfirmScreen> {
             ),
             const SizedBox(height: AppSpacing.lg),
           ] else ...[
+            if (noPlate) ...[
+              const AppNotice(
+                title: 'One more step after this',
+                message:
+                    'Your receipt has no plate number, so an admin has to see '
+                    'your vehicle in person. After you submit, bring your '
+                    'vehicle, your official receipt and your driver\'s licence '
+                    'to the admin office. You will get a temporary plate there.',
+                intent: StatusIntent.warning,
+              ),
+              const SizedBox(height: AppSpacing.lg),
+            ],
             AppSectionHeader(
               title: 'Your vehicle',
               subtitle:
@@ -474,13 +502,15 @@ class _RegisterConfirmScreenState extends ConsumerState<RegisterConfirmScreen> {
 
           if (!isEBike) ...[
             const AppSectionHeader(title: 'From your receipt'),
-            ScannedField(
-              label: 'Plate number',
-              controller: _plateNumber,
-              flag: _extracted.flagFor('PlateNumber'),
-              enabled: live,
-              textCapitalization: TextCapitalization.characters,
-            ),
+            // No plate number to check when the receipt has none.
+            if (!noPlate)
+              ScannedField(
+                label: 'Plate number',
+                controller: _plateNumber,
+                flag: _extracted.flagFor('PlateNumber'),
+                enabled: live,
+                textCapitalization: TextCapitalization.characters,
+              ),
             ScannedDateField(
               label: 'Registration expiry',
               value: _registrationExpiry,

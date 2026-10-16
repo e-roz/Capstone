@@ -96,12 +96,17 @@ class _RegisterDocumentStepScreenState
     final photo = ref.read(registrationNotifierProvider).captured[spec.type];
     if (photo == null) return;
 
+    final isReceipt = spec.type == ScanDocumentType.officialReceipt;
+    final notifier = ref.read(registrationNotifierProvider.notifier);
+
     setState(() => _isReading = true);
     DocumentReadResult result;
     try {
       final response = await ref.read(authRepositoryProvider).readDocument({
         'documentType': spec.type.wireName,
         'ocr': photo.payload?.toJsonString(),
+        if (isReceipt && ref.read(registrationNotifierProvider).noPlate)
+          'noPlate': true,
       });
       result = DocumentReadResult.fromJson(
         response.data as Map<String, dynamic>,
@@ -114,6 +119,15 @@ class _RegisterDocumentStepScreenState
     }
 
     if (!mounted) return;
+
+    // "No plate" was said about an earlier photo. If this one shows a plate, the
+    // vehicle has one after all, and the claim must not be sent with it.
+    if (isReceipt &&
+        ref.read(registrationNotifierProvider).noPlate &&
+        (result.extracted.plateNumber ?? '').trim().isNotEmpty) {
+      notifier.setNoPlate(false);
+    }
+
     final attempt =
         ref.read(registrationNotifierProvider).captureAttempts[spec.type] ?? 1;
 
@@ -123,12 +137,19 @@ class _RegisterDocumentStepScreenState
       result: result,
       attempt: attempt,
       maxAttempts: _maxCaptureAttempts,
+      noPlate: isReceipt && ref.read(registrationNotifierProvider).noPlate,
     );
 
     // Dismissed: the photo stays, and "Check what was read" reopens this.
     if (outcome == null || !mounted) return;
 
-    final notifier = ref.read(registrationNotifierProvider.notifier);
+    // "My receipt has no plate." Read the same photo again without asking for
+    // one, so anything else still missing is asked for in the usual way.
+    if (outcome.isNoPlate) {
+      notifier.setNoPlate(true);
+      await _readAndConfirm(spec);
+      return;
+    }
 
     if (outcome.isRetake) {
       if (outcome.forgiveTry) notifier.forgiveAttempt(spec.type);
@@ -138,6 +159,7 @@ class _RegisterDocumentStepScreenState
 
     notifier.setConfirmed(spec.type, outcome.values!);
   }
+
 
   /// Opens the camera. True once the user has accepted a photo.
   Future<bool> _capture(DocumentSpec spec) async {
@@ -271,6 +293,8 @@ class _RegisterDocumentStepScreenState
         // later still skips the receipt.
         if (state.isEBike) 'IsEBike': 'true',
         if (spent.isNotEmpty) 'RetakesSpent': spent.join(','),
+        // Only said for a motor vehicle: an e-bike has no receipt to lack a plate.
+        if (state.noPlate && !state.isEBike) 'NoPlate': 'true',
       };
       for (final spec in specs) {
         final photo = captured[spec.type]!;

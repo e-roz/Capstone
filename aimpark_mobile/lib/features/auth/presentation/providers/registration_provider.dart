@@ -128,6 +128,7 @@ class RegistrationState {
     this.captured = const {},
     this.captureAttempts = const {},
     this.confirmed = const {},
+    this.noPlate = false,
     this.hydrated = false,
   });
 
@@ -188,6 +189,14 @@ class RegistrationState {
     for (final values in confirmed.values) ...values,
   };
 
+  /// The applicant says the vehicle has no plate, and the receipt agrees.
+  ///
+  /// The LTO can issue a receipt before the plate exists. Then no plate number is
+  /// asked for, and the admin gives a temporary plate after seeing the vehicle.
+  /// Not saved to disk, like [confirmed]: after a restart the receipt is read
+  /// again and the question is asked again, which costs nothing.
+  final bool noPlate;
+
   /// False until the saved draft has been read back off disk.
   ///
   /// The read is a frame or two on a fast phone and a few hundred milliseconds
@@ -206,6 +215,7 @@ class RegistrationState {
     Map<ScanDocumentType, CapturedDocument>? captured,
     Map<ScanDocumentType, int>? captureAttempts,
     Map<ScanDocumentType, Map<String, String>>? confirmed,
+    bool? noPlate,
     bool? hydrated,
     bool clearSession = false,
   }) {
@@ -221,6 +231,7 @@ class RegistrationState {
       captured: captured ?? this.captured,
       captureAttempts: captureAttempts ?? this.captureAttempts,
       confirmed: confirmed ?? this.confirmed,
+      noPlate: noPlate ?? this.noPlate,
       hydrated: hydrated ?? this.hydrated,
     );
   }
@@ -300,6 +311,7 @@ class RegistrationNotifier extends _$RegistrationNotifier {
       captured: const {},
       captureAttempts: const {},
       confirmed: const {},
+      noPlate: false,
       hydrated: true,
     );
     unawaited(_store.clear());
@@ -381,8 +393,16 @@ class RegistrationNotifier extends _$RegistrationNotifier {
       captured: const {},
       captureAttempts: const {},
       confirmed: const {},
+      noPlate: false,
     );
     unawaited(_store.clear());
+  }
+
+  /// The applicant has said the vehicle has no plate (true), or a later photo of
+  /// the receipt showed one after all (false).
+  void setNoPlate(bool noPlate) {
+    _touched = true;
+    state = state.copyWith(noPlate: noPlate);
   }
 
   void clearSession() {

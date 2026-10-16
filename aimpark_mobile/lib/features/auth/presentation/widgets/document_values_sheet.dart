@@ -10,19 +10,32 @@ import 'scanned_field.dart';
 
 /// What the user decided on the sheet.
 class DocumentSheetOutcome {
-  const DocumentSheetOutcome.retake({this.forgiveTry = false}) : values = null;
+  const DocumentSheetOutcome.retake({this.forgiveTry = false})
+    : values = null,
+      isNoPlate = false;
 
   const DocumentSheetOutcome.confirmed(Map<String, String> this.values)
-    : forgiveTry = false;
+    : forgiveTry = false,
+      isNoPlate = false;
 
-  /// The values agreed to, by the server's field name. Null for a retake.
+  /// "My receipt really has no plate number." Nothing is confirmed yet: the
+  /// photo is read again without the plate, and what is still missing, if
+  /// anything, is asked for as usual.
+  const DocumentSheetOutcome.noPlate()
+    : values = null,
+      forgiveTry = false,
+      isNoPlate = true;
+
+  /// The values agreed to, by the server's field name. Null otherwise.
   final Map<String, String>? values;
 
   /// The retake is for a different document, not a better photo of this one,
   /// so it should not use up a try. Set when the document was expired.
   final bool forgiveTry;
 
-  bool get isRetake => values == null;
+  final bool isNoPlate;
+
+  bool get isRetake => values == null && !isNoPlate;
 }
 
 /// One value a document gives, as the sheet shows it.
@@ -107,6 +120,11 @@ DateTime? _dateOf(ExtractedValues e, String field) => switch (field) {
 /// An expired licence or receipt stops here with the date that was read, so a
 /// misread can be corrected. A corrected date is checked again. Using another
 /// document instead does not cost a try.
+///
+/// A receipt with no plate number asks one question first: does the receipt
+/// really have none? The LTO can issue one before the plate exists. "Yes" goes to
+/// an administrator for a temporary plate; "No" is another photo, and counts as a
+/// try like any other.
 class DocumentValuesSheet extends StatefulWidget {
   const DocumentValuesSheet({
     super.key,
@@ -114,6 +132,7 @@ class DocumentValuesSheet extends StatefulWidget {
     required this.result,
     required this.attempt,
     required this.maxAttempts,
+    this.noPlate = false,
   });
 
   final DocumentSpec spec;
@@ -123,12 +142,16 @@ class DocumentValuesSheet extends StatefulWidget {
   final int attempt;
   final int maxAttempts;
 
+  /// The applicant has said this vehicle has no plate, so none is asked for.
+  final bool noPlate;
+
   static Future<DocumentSheetOutcome?> show(
     BuildContext context, {
     required DocumentSpec spec,
     required DocumentReadResult result,
     required int attempt,
     required int maxAttempts,
+    bool noPlate = false,
   }) {
     return showModalBottomSheet<DocumentSheetOutcome>(
       context: context,
@@ -141,6 +164,7 @@ class DocumentValuesSheet extends StatefulWidget {
         result: result,
         attempt: attempt,
         maxAttempts: maxAttempts,
+        noPlate: noPlate,
       ),
     );
   }
@@ -153,11 +177,22 @@ class _DocumentValuesSheetState extends State<DocumentValuesSheet> {
   final _controllers = <String, TextEditingController>{};
   final _dates = <String, DateTime?>{};
 
-  List<_FieldSpec> get _fields => _fieldsFor[widget.spec.type] ?? const [];
+  /// The values this document is read for. A receipt the applicant says has no
+  /// plate is not asked for one.
+  List<_FieldSpec> get _fields => [
+    for (final f in _fieldsFor[widget.spec.type] ?? const <_FieldSpec>[])
+      if (!(widget.noPlate && f.field == 'PlateNumber')) f,
+  ];
 
   ExtractedValues get _extracted => widget.result.extracted;
 
   bool get _triesLeft => widget.attempt < widget.maxAttempts;
+
+  /// The receipt gave no plate number, and nobody has said it has none.
+  bool get _plateMissing =>
+      !widget.noPlate &&
+      widget.spec.type == ScanDocumentType.officialReceipt &&
+      widget.result.missingFields.contains('plate number');
 
   /// Another photo of the same document would help: it did not read, or a
   /// value is missing, and the user still has tries.
@@ -282,14 +317,51 @@ class _DocumentValuesSheetState extends State<DocumentValuesSheet> {
   List<Widget> _retakeBody(DocumentDiagnosis diagnosis) => [
     AppNotice(message: diagnosis.message, intent: StatusIntent.danger),
     const SizedBox(height: AppSpacing.sm),
+    if (_plateMissing) ..._plateQuestion() else ...[
+      Text(
+        'You can take this photo ${widget.maxAttempts} times. After that you '
+        'can type what we could not read, and the admin will see it was typed.',
+        style: context.text.bodySmall,
+      ),
+      const SizedBox(height: AppSpacing.lg),
+      AppButton(
+        label: 'Take it again (try ${widget.attempt + 1} of ${widget.maxAttempts})',
+        onPressed: () =>
+            Navigator.of(context).pop(const DocumentSheetOutcome.retake()),
+      ),
+    ],
+  ];
+
+  /// Whether the receipt really has no plate number.
+  ///
+  /// The LTO can issue a receipt before the plate is made, so "no plate" is a
+  /// real answer and not only a failed reading. The question comes before a
+  /// retake because a retake cannot find what is not there. "No" is an ordinary
+  /// retake and uses a try.
+  List<Widget> _plateQuestion() => [
     Text(
-      'You can take this photo ${widget.maxAttempts} times. After that you '
-      'can type what we could not read, and the admin will see it was typed.',
+      'Does your official receipt really have no plate number?',
+      style: context.text.titleMedium,
+    ),
+    const SizedBox(height: AppSpacing.xs),
+    Text(
+      'The LTO can give you a receipt before your plate is made. If that is '
+      'your case, the admin will give you a temporary plate when you bring '
+      'your documents and your vehicle to the office. If the receipt does have '
+      'a plate number, take the photo again.',
       style: context.text.bodySmall,
     ),
     const SizedBox(height: AppSpacing.lg),
     AppButton(
-      label: 'Take it again (try ${widget.attempt + 1} of ${widget.maxAttempts})',
+      label: 'Yes, it has no plate number',
+      style: AppButtonStyle.secondary,
+      onPressed: () =>
+          Navigator.of(context).pop(const DocumentSheetOutcome.noPlate()),
+    ),
+    const SizedBox(height: AppSpacing.sm),
+    AppButton(
+      label: 'No, it has one. Take it again '
+          '(try ${widget.attempt + 1} of ${widget.maxAttempts})',
       onPressed: () =>
           Navigator.of(context).pop(const DocumentSheetOutcome.retake()),
     ),
@@ -320,6 +392,15 @@ class _DocumentValuesSheetState extends State<DocumentValuesSheet> {
         ),
         const SizedBox(height: AppSpacing.md),
       ],
+      if (widget.noPlate && widget.spec.type == ScanDocumentType.officialReceipt) ...[
+        const AppNotice(
+          title: 'No plate number',
+          message: 'Bring your documents and your vehicle to the admin office. '
+              'The admin will give you a temporary plate.',
+          intent: StatusIntent.info,
+        ),
+        const SizedBox(height: AppSpacing.md),
+      ],
       for (final f in _fields)
         if (f.isDate)
           ScannedDateField(
@@ -335,6 +416,17 @@ class _DocumentValuesSheetState extends State<DocumentValuesSheet> {
             flag: _extracted.flagFor(f.field),
             textCapitalization: f.capitalization,
           ),
+      // Tries spent and still no plate: typing one is the only other way on, so
+      // the same answer is offered here, as a quiet link, not a second question.
+      if (_plateMissing)
+        Align(
+          alignment: Alignment.centerLeft,
+          child: TextButton(
+            onPressed: () =>
+                Navigator.of(context).pop(const DocumentSheetOutcome.noPlate()),
+            child: const Text('My receipt has no plate number'),
+          ),
+        ),
       if (widget.spec.type == ScanDocumentType.officialReceipt &&
           _extracted.vehicleType != null) ...[
         const SizedBox(height: AppSpacing.xs),
