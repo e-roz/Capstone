@@ -8,7 +8,12 @@ import 'package:intl/intl.dart';
 
 import '../core/constants/api_endpoints.dart';
 import '../core/network/dio_client.dart';
+import '../models/device_health.dart';
 import '../models/gate_reader.dart';
+import '../models/site_link.dart';
+import '../providers/auth_provider.dart';
+import '../providers/site_link_provider.dart';
+import '../router/destinations.dart';
 import '../theme/theme.dart';
 import '../widgets/device_health_list.dart' show lastSeenLabel;
 import '../widgets/hub_diagnostics.dart';
@@ -22,14 +27,28 @@ import '../widgets/ui/ui.dart';
 /// watches. They see whether each is up, watch the taps come in, and can
 /// open a gate by hand. There is no key to copy: the cable into the server is
 /// what makes a reader, or the hub, trusted.
-class GateReadersScreen extends ConsumerStatefulWidget {
+///
+/// An administrator opens it too, but only to look: the readers are not on
+/// their PC, so they see what the guard post last reported to the cloud and
+/// cannot link a port or open a gate.
+class GateReadersScreen extends ConsumerWidget {
   const GateReadersScreen({super.key});
 
   @override
-  ConsumerState<GateReadersScreen> createState() => _GateReadersScreenState();
+  Widget build(BuildContext context, WidgetRef ref) {
+    final isGuard = ref.watch(staffRoleProvider) == StaffRole.security;
+    return isGuard ? const _GuardGateReaders() : const _ReadOnlyGateReaders();
+  }
 }
 
-class _GateReadersScreenState extends ConsumerState<GateReadersScreen> {
+class _GuardGateReaders extends ConsumerStatefulWidget {
+  const _GuardGateReaders();
+
+  @override
+  ConsumerState<_GuardGateReaders> createState() => _GuardGateReadersState();
+}
+
+class _GuardGateReadersState extends ConsumerState<_GuardGateReaders> {
   /// Taps should appear about as fast as the barrier moves.
   static const _refreshEvery = Duration(seconds: 2);
 
@@ -866,4 +885,166 @@ int _naturalCompare(String a, String b) {
     if (c != 0) return c;
   }
   return pa.length.compareTo(pb.length);
+}
+
+/// What an administrator sees: every device the guard post reported, and
+/// whether it is up. Read from the cloud, so it is as fresh as the guard
+/// post's last report, and it says so.
+class _ReadOnlyGateReaders extends ConsumerWidget {
+  const _ReadOnlyGateReaders();
+
+  static const _kinds = {
+    'gateReader': 'Card reader',
+    'camera': 'Camera',
+    'hub': 'Wireless hub',
+    'gateNode': 'Gate board',
+    'sensorBoard': 'Sensor board',
+    'slotSensor': 'Slot sensor',
+  };
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final t = context.tokens;
+    final text = Theme.of(context).textTheme;
+    final link = ref.watch(siteLinkProvider);
+
+    return AppPage(
+      title: 'Gate Readers',
+      subtitle: 'Which readers, cameras and boards at the gates are online.',
+      scrollable: true,
+      actions: [
+        IconButton(
+          icon: const Icon(Icons.refresh),
+          tooltip: 'Refresh',
+          onPressed: () => ref.invalidate(siteLinkProvider),
+        ),
+      ],
+      body: AsyncView<SiteLink?>(
+        value: link,
+        onRetry: () => ref.invalidate(siteLinkProvider),
+        loading: const SkeletonList(count: 4),
+        data: (site) {
+          if (site == null || !site.reportsHealth) {
+            return const AppEmptyState(
+              icon: Icons.sensors_off_outlined,
+              title: 'Nothing reported yet',
+              message:
+                  'The guard post has not sent its device list. Open this '
+                  'screen from the guard post to see the readers directly.',
+            );
+          }
+          final devices = site.devices.where((d) => d.kind != 'cloud').toList();
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                children: [
+                  StatusPill.of(
+                    site.stale ? 'Guard post offline' : 'Guard post online',
+                    intent: site.stale
+                        ? StatusIntent.warning
+                        : StatusIntent.success,
+                  ),
+                  const SizedBox(width: AppSpacing.x3),
+                  Expanded(
+                    child: Text(
+                      'View only. Linking a port or opening a gate is done at '
+                      "the guard post's panel. Last heard "
+                      '${lastSeenLabel(site.lastContact, now: site.serverNow.toLocal())}.',
+                      style: text.bodySmall?.copyWith(color: t.text.secondary),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: AppSpacing.x4),
+              if (devices.isEmpty)
+                const AppEmptyState(
+                  icon: Icons.sensors_outlined,
+                  title: 'No devices',
+                  message: 'The guard post has no readers or cameras set up.',
+                )
+              else
+                AppCard(
+                  child: Column(
+                    children: [
+                      for (final (i, d) in devices.indexed) ...[
+                        if (i > 0) Divider(height: 1, color: t.border.subtle),
+                        _DeviceLine(
+                          device: d,
+                          kinds: _kinds,
+                          now: site.serverNow,
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _DeviceLine extends StatelessWidget {
+  const _DeviceLine({
+    required this.device,
+    required this.kinds,
+    required this.now,
+  });
+
+  final DeviceHealth device;
+  final Map<String, String> kinds;
+  final DateTime now;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = context.tokens;
+    final text = Theme.of(context).textTheme;
+    final (label, intent) = switch (device.condition) {
+      DeviceCondition.ok => ('Online', StatusIntent.success),
+      DeviceCondition.degraded => ('Online, had errors', StatusIntent.warning),
+      DeviceCondition.down => ('Offline', StatusIntent.danger),
+      DeviceCondition.unlinked => ('Not linked', StatusIntent.neutral),
+    };
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: AppSpacing.x3),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(device.name, style: text.titleSmall),
+                Text(
+                  [
+                    kinds[device.kind] ?? device.kind,
+                    if (device.boundTo != null) device.boundTo!,
+                  ].join(' · '),
+                  style: text.bodySmall?.copyWith(color: t.text.secondary),
+                ),
+                if (device.lastError != null)
+                  Text(
+                    device.lastError!,
+                    style: text.bodySmall?.copyWith(color: t.status.danger.fg),
+                  ),
+              ],
+            ),
+          ),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              StatusPill.of(label, intent: intent),
+              Text(
+                'seen ${lastSeenLabel(device.lastSeenAt, now: now.toLocal())}',
+                style: text.labelSmall?.copyWith(color: t.text.tertiary),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
 }

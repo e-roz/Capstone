@@ -8,8 +8,7 @@ import '../router/destinations.dart';
 import '../providers/auth_provider.dart';
 import '../providers/incidents_provider.dart';
 import '../providers/notifications_provider.dart';
-import '../providers/registrations_provider.dart';
-import '../providers/renewals_provider.dart';
+import '../providers/queue_counts_provider.dart';
 import '../providers/security_provider.dart';
 import '../providers/theme_provider.dart';
 import '../providers/violations_provider.dart';
@@ -223,8 +222,7 @@ int? _navBadge(String route, WidgetRef ref) => switch (route) {
       // sidebar is always mounted.
       '/violations' => ref.watch(pendingAppealCountProvider).valueOrNull,
       // Renewals are reviewed on the same page, so they are counted with it.
-      '/pending' => (ref.watch(pendingRegistrationsProvider).valueOrNull?.length ?? 0) +
-          (ref.watch(pendingRenewalsProvider).valueOrNull?.length ?? 0),
+      '/pending' => ref.watch(pendingQueueCountProvider).valueOrNull,
       '/visitors' => ref.watch(visitorsOnSiteCountProvider).valueOrNull,
       '/notifications' => ref.watch(unreadInboxCountProvider).valueOrNull,
       _ => null,

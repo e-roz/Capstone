@@ -11,9 +11,7 @@ import '../widgets/ui/ui.dart';
 
 const _statuses = [
   AppFilterOption('Pending', 'Pending'),
-  AppFilterOption('Processing', 'Processing'),
   AppFilterOption('Paid', 'Paid'),
-  AppFilterOption('Waived', 'Waived'),
 ];
 
 final _money = NumberFormat.currency(symbol: '₱', decimalDigits: 2);
@@ -83,7 +81,7 @@ class PaymentLogScreen extends ConsumerWidget {
           minWidth: 1000,
           columns: const [
             DataColumn(label: Text('Source')),
-            DataColumn(label: Text('Slot')),
+            DataColumn(label: Text('Paid by')),
             DataColumn(label: Text('Amount Due'), numeric: true),
             DataColumn(label: Text('Status')),
             DataColumn(label: Text('Method')),
@@ -107,7 +105,7 @@ class PaymentLogScreen extends ConsumerWidget {
   DataRow _row(PaymentTransaction p) {
     return DataRow(cells: [
       DataCell(Text(p.source)),
-      DataCell(Text(p.slotCode ?? '—')),
+      DataCell(Text(p.payerName ?? '—')),
       DataCell(AppNumericCell(_money.format(p.amountDue), emphasis: true)),
       DataCell(StatusPill.of(p.status,
           intent: StatusIntents.payment(p.status), dense: true)),
@@ -140,7 +138,7 @@ class PaymentLogScreen extends ConsumerWidget {
       fileName: 'aimpark-payment-log-${_fileStamp()}.csv',
       headers: const [
         'Source',
-        'Slot',
+        'Paid by',
         'Duration (min)',
         'Rate/hr',
         'Amount Due',
@@ -155,7 +153,7 @@ class PaymentLogScreen extends ConsumerWidget {
         for (final p in result.payments)
           [
             p.source,
-            p.slotCode ?? '',
+            p.payerName ?? '',
             p.durationMinutes,
             p.ratePerHourApplied,
             p.amountDue,

@@ -31,7 +31,7 @@ final inboxProvider = AutoDisposeFutureProvider<NotificationListPage>.internal(
 @Deprecated('Will be removed in 3.0. Use Ref instead')
 // ignore: unused_element
 typedef InboxRef = AutoDisposeFutureProviderRef<NotificationListPage>;
-String _$unreadInboxCountHash() => r'4a3ef4f4fa74e24c364972401b85a13439bb511d';
+String _$unreadInboxCountHash() => r'35ebe58f5ee87ae5c316b6e546299667dc32da60';
 
 /// Unread count for the sidebar badge.
 ///

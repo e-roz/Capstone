@@ -27,5 +27,13 @@ namespace AimPark.API.Entities
         public Guid CreatedByUserId { get; set; }
 
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+
+        /// <summary>
+        /// JSON object naming what this is about (<c>violationId</c>, <c>paymentId</c>,
+        /// <c>incidentId</c> or <c>screen</c>) — the same data the push carries, kept
+        /// so tapping the row in the app can open the same place. Null for
+        /// broadcasts and for rows written before this existed.
+        /// </summary>
+        public string? Data { get; set; }
     }
 }

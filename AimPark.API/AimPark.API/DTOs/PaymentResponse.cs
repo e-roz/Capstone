@@ -15,6 +15,9 @@ namespace AimPark.API.DTOs
         public Guid? ParkingLogId { get; set; }
         public Guid? ViolationId { get; set; }
         public string? SlotCode { get; set; }
+
+        /// <summary>The account the bill belongs to, who owes or paid it.</summary>
+        public string? PayerName { get; set; }
         public DateTime? EntryTime { get; set; }
         public DateTime? ExitTime { get; set; }
         public int DurationMinutes { get; set; }

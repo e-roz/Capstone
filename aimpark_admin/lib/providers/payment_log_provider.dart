@@ -71,8 +71,8 @@ Future<PaymentListPage> paymentLogList(Ref ref) async {
       'page': query.page,
       'pageSize': query.pageSize,
       if (query.status != null) 'status': query.status,
-      if (query.from != null) 'from': query.from!.toIso8601String(),
-      if (query.to != null) 'to': query.to!.toIso8601String(),
+      if (query.from != null) 'from': query.from!.toUtc().toIso8601String(),
+      if (query.to != null) 'to': query.to!.toUtc().toIso8601String(),
     },
   );
   return PaymentListPage.fromJson(response.data as Map<String, dynamic>);
@@ -91,8 +91,8 @@ Future<PaymentExportResult> fetchPaymentExport(
     ApiEndpoints.paymentsExport,
     queryParameters: {
       'status': ?status,
-      'from': ?from?.toIso8601String(),
-      'to': ?to?.toIso8601String(),
+      'from': ?from?.toUtc().toIso8601String(),
+      'to': ?to?.toUtc().toIso8601String(),
     },
   );
   return PaymentExportResult.fromJson(response.data as Map<String, dynamic>);

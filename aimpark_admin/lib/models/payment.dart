@@ -2,6 +2,9 @@ class PaymentTransaction {
   final String paymentId;
   final String source;
   final String? slotCode;
+
+  /// Who the bill belongs to.
+  final String? payerName;
   final DateTime? entryTime;
   final DateTime? exitTime;
   final int durationMinutes;
@@ -33,6 +36,7 @@ class PaymentTransaction {
     required this.paymentId,
     required this.source,
     required this.slotCode,
+    this.payerName,
     required this.entryTime,
     required this.exitTime,
     required this.durationMinutes,
@@ -60,6 +64,7 @@ class PaymentTransaction {
         paymentId: json['paymentId']?.toString() ?? '',
         source: json['source']?.toString() ?? '',
         slotCode: json['slotCode']?.toString(),
+        payerName: json['payerName']?.toString(),
         entryTime: json['entryTime'] == null
             ? null
             : DateTime.parse(json['entryTime'].toString()),

@@ -7,6 +7,7 @@ class NotificationItem {
     required this.createdAt,
     required this.isRead,
     this.targetRole,
+    this.data = const {},
   });
 
   final String notificationId;
@@ -17,6 +18,11 @@ class NotificationItem {
   final DateTime createdAt;
   final bool isRead;
 
+  /// What it is about (`violationId`, `paymentId`, `incidentId`, `screen`),
+  /// as the push carried it. Empty for announcements and for rows from before
+  /// the server kept it.
+  final Map<String, String> data;
+
   factory NotificationItem.fromJson(Map<String, dynamic> json) {
     return NotificationItem(
       notificationId: json['notificationId'] as String,
@@ -26,6 +32,10 @@ class NotificationItem {
       targetRole: json['targetRole'] as String?,
       createdAt: DateTime.parse(json['createdAt'] as String),
       isRead: json['isRead'] as bool,
+      data: {
+        for (final e in ((json['data'] as Map<String, dynamic>?) ?? {}).entries)
+          e.key: e.value.toString(),
+      },
     );
   }
 
@@ -38,6 +48,7 @@ class NotificationItem {
       targetRole: targetRole,
       createdAt: createdAt,
       isRead: isRead ?? this.isRead,
+      data: data,
     );
   }
 }

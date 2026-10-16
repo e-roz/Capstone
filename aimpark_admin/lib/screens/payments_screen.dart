@@ -47,8 +47,9 @@ class PaymentsScreen extends ConsumerWidget {
             value: query.status,
             options: _statuses,
             allLabel: 'All statuses',
-            onChanged:
-                ref.read(paymentsQueryNotifierProvider.notifier).setStatus,
+            onChanged: ref
+                .read(paymentsQueryNotifierProvider.notifier)
+                .setStatus,
           ),
         ],
         trailing: [
@@ -89,7 +90,7 @@ class PaymentsScreen extends ConsumerWidget {
           minWidth: 1000,
           columns: const [
             DataColumn(label: Text('Source')),
-            DataColumn(label: Text('Slot')),
+            DataColumn(label: Text('Paid by')),
             DataColumn(label: Text('Duration'), numeric: true),
             DataColumn(label: Text('Rate/hr'), numeric: true),
             DataColumn(label: Text('Amount Due'), numeric: true),
@@ -115,52 +116,66 @@ class PaymentsScreen extends ConsumerWidget {
     final t = context.tokens;
     final text = Theme.of(context).textTheme;
 
-    return DataRow(cells: [
-      DataCell(Text(p.source, style: text.titleSmall)),
-      DataCell(Text(p.slotCode ?? '—')),
-      DataCell(AppNumericCell('${p.durationMinutes} min')),
-      DataCell(AppNumericCell(_money.format(p.ratePerHourApplied))),
-      DataCell(Tooltip(
-        message: p.minimumFeeApplied
-            ? 'Minimum fee. The time parked costs less than this.'
-            : '',
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            if (p.minimumFeeApplied) ...[
-              Text('min.',
-                  style: text.labelSmall?.copyWith(color: t.text.tertiary)),
-              const SizedBox(width: AppSpacing.x2),
-            ],
-            AppNumericCell(_money.format(p.amountDue), emphasis: true),
-          ],
-        ),
-      )),
-      DataCell(_StatusCell(payment: p)),
-      // Cash and GCash both read as "Paid" in the status column, and they are
-      // not the same fact: one is in the school's merchant account with a
-      // provider's record behind it, the other is in somebody's drawer.
-      DataCell(Text(
-        // "Cash — J. Santos" answers the only question this column is here
-        // to answer: not whether it was settled, but by whom.
-        p.confirmedBy == null ? (p.method ?? '—') : '${p.method} · ${p.confirmedBy}',
-        style: text.bodySmall?.copyWith(color: t.text.secondary),
-      )),
-      DataCell(Text(
-        _dateTime.format(p.createdAt.toLocal()),
-        style: text.bodySmall?.copyWith(color: t.text.secondary),
-      )),
-      DataCell(Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          AppRowAction(
-            icon: Icons.receipt_long,
-            label: 'Receipt',
-            onPressed: () => _showReceipt(context, p),
+    return DataRow(
+      cells: [
+        DataCell(Text(p.source, style: text.titleSmall)),
+        DataCell(Text(p.payerName ?? '—')),
+        DataCell(AppNumericCell('${p.durationMinutes} min')),
+        DataCell(AppNumericCell(_money.format(p.ratePerHourApplied))),
+        DataCell(
+          Tooltip(
+            message: p.minimumFeeApplied
+                ? 'Minimum fee. The time parked costs less than this.'
+                : '',
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (p.minimumFeeApplied) ...[
+                  Text(
+                    'min.',
+                    style: text.labelSmall?.copyWith(color: t.text.tertiary),
+                  ),
+                  const SizedBox(width: AppSpacing.x2),
+                ],
+                AppNumericCell(_money.format(p.amountDue), emphasis: true),
+              ],
+            ),
           ),
-        ],
-      )),
-    ]);
+        ),
+        DataCell(_StatusCell(payment: p)),
+        // Cash and GCash both read as "Paid" in the status column, and they are
+        // not the same fact: one is in the school's merchant account with a
+        // provider's record behind it, the other is in somebody's drawer.
+        DataCell(
+          Text(
+            // "Cash — J. Santos" answers the only question this column is here
+            // to answer: not whether it was settled, but by whom.
+            p.confirmedBy == null
+                ? (p.method ?? '—')
+                : '${p.method} · ${p.confirmedBy}',
+            style: text.bodySmall?.copyWith(color: t.text.secondary),
+          ),
+        ),
+        DataCell(
+          Text(
+            _dateTime.format(p.createdAt.toLocal()),
+            style: text.bodySmall?.copyWith(color: t.text.secondary),
+          ),
+        ),
+        DataCell(
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              AppRowAction(
+                icon: Icons.receipt_long,
+                label: 'Receipt',
+                onPressed: () => _showReceipt(context, p),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
   }
 
   /// Every field is already present in the list response, so the receipt needs
@@ -193,17 +208,21 @@ class PaymentsScreen extends ConsumerWidget {
                       _money.format(p.amountDue),
                       style: AppTypography.tabular(text.displaySmall!),
                     ),
-                    StatusPill.of(p.status,
-                        intent: StatusIntents.payment(p.status)),
+                    StatusPill.of(
+                      p.status,
+                      intent: StatusIntents.payment(p.status),
+                    ),
                   ],
                 ),
                 const Divider(height: AppSpacing.x6),
                 _ReceiptRow(label: 'Source', value: p.source),
-                _ReceiptRow(label: 'Slot', value: p.slotCode ?? '—'),
+                _ReceiptRow(label: 'Paid by', value: p.payerName ?? '—'),
                 _ReceiptRow(label: 'Entry', value: exact(p.entryTime)),
                 _ReceiptRow(label: 'Exit', value: exact(p.exitTime)),
                 _ReceiptRow(
-                    label: 'Duration', value: '${p.durationMinutes} min'),
+                  label: 'Duration',
+                  value: '${p.durationMinutes} min',
+                ),
                 _ReceiptRow(
                   label: 'Rate applied',
                   value: '${_money.format(p.ratePerHourApplied)}/hr',
@@ -238,7 +257,10 @@ class PaymentsScreen extends ConsumerWidget {
   }
 
   Future<void> _showRates(
-      BuildContext context, WidgetRef ref, List<ParkingRate> rates) async {
+    BuildContext context,
+    WidgetRef ref,
+    List<ParkingRate> rates,
+  ) async {
     await showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -265,31 +287,53 @@ class PaymentsScreen extends ConsumerWidget {
                   child: Text('No rates configured yet.'),
                 )
               else
-                ...rates.map((r) => ListTile(
-                      dense: true,
-                      contentPadding: EdgeInsets.zero,
-                      title: Text(r.vehicleType ?? 'Default rate'),
-                      subtitle: Text(
-                          'Updated ${DateFormat('MMM d, yyyy').format(r.updatedAt.toLocal())}'),
-                      trailing: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        crossAxisAlignment: CrossAxisAlignment.end,
-                        children: [
-                          Text(
-                            '${_money.format(r.ratePerHour)}/hr',
-                            style: AppTypography.tabular(
-                                Theme.of(ctx).textTheme.titleSmall!),
+                ...rates.map(
+                  (r) => ListTile(
+                    dense: true,
+                    contentPadding: EdgeInsets.zero,
+                    title: Text(switch (r.vehicleType) {
+                      'Car' => 'Car',
+                      'Motorcycle' => 'Motorcycle',
+                      _ => 'Default rate (old, for any vehicle)',
+                    }),
+                    subtitle: Text(
+                      'Updated ${DateFormat('MMM d, yyyy').format(r.updatedAt.toLocal())}',
+                    ),
+                    trailing: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Column(
+                          mainAxisSize: MainAxisSize.min,
+                          crossAxisAlignment: CrossAxisAlignment.end,
+                          children: [
+                            Text(
+                              '${_money.format(r.ratePerHour)}/hr',
+                              style: AppTypography.tabular(
+                                Theme.of(ctx).textTheme.titleSmall!,
+                              ),
+                            ),
+                            Text(
+                              '${_money.format(r.minimumFee)} minimum',
+                              style: Theme.of(ctx).textTheme.bodySmall
+                                  ?.copyWith(color: ctx.tokens.text.secondary),
+                            ),
+                          ],
+                        ),
+                        IconButton(
+                          icon: const Icon(
+                            Icons.delete_outline,
+                            size: AppSizes.iconSm,
                           ),
-                          Text(
-                            '${_money.format(r.minimumFee)} minimum',
-                            style: Theme.of(ctx)
-                                .textTheme
-                                .bodySmall
-                                ?.copyWith(color: ctx.tokens.text.secondary),
-                          ),
-                        ],
-                      ),
-                    )),
+                          tooltip: 'Remove this rate',
+                          onPressed: () async {
+                            Navigator.pop(ctx);
+                            await _removeRate(context, ref, r);
+                          },
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
               const Divider(height: AppSpacing.x6),
               FilledButton.icon(
                 icon: const Icon(Icons.add, size: AppSizes.iconSm),
@@ -306,82 +350,132 @@ class PaymentsScreen extends ConsumerWidget {
     );
   }
 
+  Future<void> _removeRate(
+    BuildContext context,
+    WidgetRef ref,
+    ParkingRate rate,
+  ) async {
+    final name = rate.vehicleType ?? 'default';
+    final sure = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('Remove the $name rate?'),
+        content: const Text(
+          'New parking sessions will no longer use it. Past payments are not '
+          'changed. If a vehicle type would be left with no rate, this is '
+          'refused.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Remove'),
+          ),
+        ],
+      ),
+    );
+    if (sure != true || !context.mounted) return;
+    final msg = await ref
+        .read(paymentActionsProvider.notifier)
+        .deleteRate(rate.rateId);
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(msg ?? 'Rate removed.')));
+    ref.invalidate(parkingRatesProvider);
+  }
+
   Future<void> _showUpsertRate(BuildContext context, WidgetRef ref) async {
-    final vehicleTypeCtrl = TextEditingController();
+    String? vehicleType;
     final rateCtrl = TextEditingController();
     final minimumCtrl = TextEditingController(text: '20');
     final formKey = GlobalKey<FormState>();
 
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Add / Update Rate'),
-        content: Form(
-          key: formKey,
-          autovalidateMode: AutovalidateMode.onUserInteraction,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextFormField(
-                controller: vehicleTypeCtrl,
-                decoration: const InputDecoration(
-                  labelText: 'Vehicle type',
-                  helperText: 'Leave blank to set the default rate',
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setState) => AlertDialog(
+          title: const Text('Add / Update Rate'),
+          content: Form(
+            key: formKey,
+            autovalidateMode: AutovalidateMode.onUserInteraction,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                DropdownButtonFormField<String>(
+                  initialValue: vehicleType,
+                  decoration: const InputDecoration(
+                    label: AppFieldLabel('Vehicle type', isRequired: true),
+                    helperText: 'Saving again for the same type updates it',
+                  ),
+                  items: const [
+                    DropdownMenuItem(value: 'Car', child: Text('Car')),
+                    DropdownMenuItem(
+                      value: 'Motorcycle',
+                      child: Text('Motorcycle'),
+                    ),
+                  ],
+                  validator: (v) => v == null ? 'Choose a vehicle type' : null,
+                  onChanged: (v) => setState(() => vehicleType = v),
                 ),
-              ),
-              const SizedBox(height: AppSpacing.x4),
-              TextFormField(
-                controller: rateCtrl,
-                keyboardType: TextInputType.number,
-                decoration: const InputDecoration(
-                    label: AppFieldLabel('Rate per hour', isRequired: true)),
-                validator: (v) => double.tryParse(v ?? '') == null
-                    ? 'Enter a valid number'
-                    : null,
-              ),
-              const SizedBox(height: AppSpacing.x4),
-              TextFormField(
-                controller: minimumCtrl,
-                keyboardType: TextInputType.number,
-                decoration: const InputDecoration(
-                  label: AppFieldLabel('Minimum fee', isRequired: true),
-                  helperText:
-                      'Charged for any session shorter than this is worth. '
-                      'Card and e-wallet payments under ₱20 are refused by the '
-                      'provider, so keep it at ₱20 or above.',
+                const SizedBox(height: AppSpacing.x4),
+                TextFormField(
+                  controller: rateCtrl,
+                  keyboardType: TextInputType.number,
+                  decoration: const InputDecoration(
+                    label: AppFieldLabel('Rate per hour', isRequired: true),
+                  ),
+                  validator: (v) => double.tryParse(v ?? '') == null
+                      ? 'Enter a valid number'
+                      : null,
                 ),
-                validator: (v) => double.tryParse(v ?? '') == null
-                    ? 'Enter a valid number'
-                    : null,
-              ),
-            ],
+                const SizedBox(height: AppSpacing.x4),
+                TextFormField(
+                  controller: minimumCtrl,
+                  keyboardType: TextInputType.number,
+                  decoration: const InputDecoration(
+                    label: AppFieldLabel('Minimum fee', isRequired: true),
+                    helperText:
+                        'Charged for any session shorter than this is worth. '
+                        'Card and e-wallet payments under ₱20 are refused by the '
+                        'provider, so keep it at ₱20 or above.',
+                  ),
+                  validator: (v) => double.tryParse(v ?? '') == null
+                      ? 'Enter a valid number'
+                      : null,
+                ),
+              ],
+            ),
           ),
-        ),
-        actions: [
-          TextButton(
+          actions: [
+            TextButton(
               onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('Cancel')),
-          FilledButton(
-            onPressed: () {
-              if (formKey.currentState!.validate()) Navigator.pop(ctx, true);
-            },
-            child: const Text('Save'),
-          ),
-        ],
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () {
+                if (formKey.currentState!.validate()) Navigator.pop(ctx, true);
+              },
+              child: const Text('Save'),
+            ),
+          ],
+        ),
       ),
     );
 
     if (confirmed != true || !context.mounted) return;
-    final vehicleType =
-        vehicleTypeCtrl.text.trim().isEmpty ? null : vehicleTypeCtrl.text.trim();
     final rate = double.parse(rateCtrl.text.trim());
     final minimum = double.parse(minimumCtrl.text.trim());
     final msg = await ref
         .read(paymentActionsProvider.notifier)
-        .upsertRate(vehicleType, rate, minimumFee: minimum);
+        .upsertRate(vehicleType!, rate, minimumFee: minimum);
     if (!context.mounted) return;
-    ScaffoldMessenger.of(context)
-        .showSnackBar(SnackBar(content: Text(msg ?? 'Rate saved.')));
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(msg ?? 'Rate saved.')));
     ref.invalidate(parkingRatesProvider);
   }
 }
@@ -422,18 +516,21 @@ class _StatusCell extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
       children: [
-        StatusPill.of(payment.status,
-            intent: StatusIntents.payment(payment.status), dense: true),
+        StatusPill.of(
+          payment.status,
+          intent: StatusIntents.payment(payment.status),
+          dense: true,
+        ),
         if (age != null) ...[
           const SizedBox(height: 2),
           Text(
             'Open for ${_formatAge(age)}',
             style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: age >= _stuckAfter
-                      ? context.tokens.status.of(StatusIntent.danger).fg
-                      : context.tokens.text.secondary,
-                  fontWeight: age >= _stuckAfter ? FontWeight.w700 : null,
-                ),
+              color: age >= _stuckAfter
+                  ? context.tokens.status.of(StatusIntent.danger).fg
+                  : context.tokens.text.secondary,
+              fontWeight: age >= _stuckAfter ? FontWeight.w700 : null,
+            ),
           ),
         ],
       ],
@@ -459,7 +556,10 @@ class _ReceiptRow extends StatelessWidget {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Text(label, style: text.bodyMedium?.copyWith(color: t.text.secondary)),
+          Text(
+            label,
+            style: text.bodyMedium?.copyWith(color: t.text.secondary),
+          ),
           Text(value, style: text.titleSmall),
         ],
       ),

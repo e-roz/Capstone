@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
+import '../../../../core/services/push_navigation.dart';
 import '../../../../core/theme/theme.dart';
 import '../../../../core/utils/formatters.dart';
 import '../../../../core/widgets/widgets.dart';
@@ -55,9 +57,7 @@ class NotificationsScreen extends ConsumerWidget {
               for (final notification in day.items) ...[
                 _NotificationTile(
                   notification: notification,
-                  onTap: notification.isRead
-                      ? null
-                      : () => notifier.markRead(notification.notificationId),
+                  onTap: () => _open(context, notifier, notification),
                 ),
                 if (notification != day.items.last) const AppRowGap(),
               ],
@@ -68,6 +68,19 @@ class NotificationsScreen extends ConsumerWidget {
       ),
     );
   }
+}
+
+/// Marks it read, then opens what it is about. A tap that only cleared the dot
+/// looked like nothing had happened.
+void _open(
+  BuildContext context,
+  NotificationsNotifier notifier,
+  NotificationItem notification,
+) {
+  if (!notification.isRead) notifier.markRead(notification.notificationId);
+
+  final route = routeForNotification(notification.type, notification.data);
+  if (route != null) context.push(route);
 }
 
 /// One day of notifications, under a heading like "Today · Oct 11".

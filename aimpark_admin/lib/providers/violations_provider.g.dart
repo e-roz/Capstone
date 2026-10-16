@@ -221,7 +221,7 @@ final appealListProvider =
 // ignore: unused_element
 typedef AppealListRef = AutoDisposeFutureProviderRef<ViolationAppealListPage>;
 String _$pendingAppealCountHash() =>
-    r'f7be473b027a09979f4d1cca0f60623929e42b41';
+    r'b74fb1fc72d03ee617538ead382746a3af8c7954';
 
 /// How many appeals are still waiting on a decision. See [openIncidentCount]
 /// for why this is a request of its own rather than a count off the list.

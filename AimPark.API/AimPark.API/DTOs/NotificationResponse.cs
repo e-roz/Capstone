@@ -21,5 +21,11 @@ namespace AimPark.API.DTOs
 
         /// <summary>The administrator who sent it. Null for what the system raised itself.</summary>
         public string? SentByName { get; set; }
+
+        /// <summary>
+        /// What it is about: <c>violationId</c>, <c>paymentId</c>, <c>incidentId</c> or
+        /// <c>screen</c>. Null when it is about nothing in particular.
+        /// </summary>
+        public Dictionary<string, string>? Data { get; set; }
     }
 }

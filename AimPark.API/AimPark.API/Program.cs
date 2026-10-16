@@ -227,6 +227,7 @@ builder.Services.AddScoped<IRenewalService, RenewalService>();
 builder.Services.AddScoped<IDocumentExtractionService, DocumentExtractionService>();
 builder.Services.AddScoped<IPreScreeningService, PreScreeningService>();
 builder.Services.AddScoped<INotificationService, NotificationService>();
+builder.Services.AddScoped<IStaffAlerts, StaffAlerts>();
 builder.Services.AddScoped<IIncidentService, IncidentService>();
 builder.Services.AddScoped<IWrongBayService, WrongBayService>();
 builder.Services.AddScoped<IPaymentService, PaymentService>();

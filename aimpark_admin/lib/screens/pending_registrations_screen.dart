@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 
 import '../models/pending_registration.dart';
 import '../providers/registrations_provider.dart';
+import '../providers/queue_counts_provider.dart';
 import '../theme/theme.dart';
 import '../providers/renewals_provider.dart';
 import '../widgets/checks_panel.dart';
@@ -84,8 +85,10 @@ class _PendingRegistrationsScreenState
           tooltip: 'Refresh',
           onPressed: () {
             ref.invalidate(pendingRegistrationsProvider);
+            ref.invalidate(pendingQueueCountProvider);
             ref.invalidate(decidedRegistrationsProvider);
             ref.invalidate(pendingRenewalsProvider);
+            ref.invalidate(pendingQueueCountProvider);
           },
         ),
       ],

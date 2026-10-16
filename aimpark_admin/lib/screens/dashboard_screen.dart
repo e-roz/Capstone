@@ -8,6 +8,7 @@ import '../models/notification.dart';
 import '../models/parking_slot.dart';
 import '../models/report.dart';
 import '../providers/expiry_counts_provider.dart';
+import '../providers/queue_counts_provider.dart';
 import '../providers/overview_provider.dart';
 import '../providers/parking_provider.dart';
 import '../providers/registrations_provider.dart';
@@ -58,6 +59,7 @@ class DashboardScreen extends ConsumerWidget {
             ref.invalidate(overviewFeedProvider);
             ref.invalidate(overviewNotificationsProvider);
             ref.invalidate(pendingRegistrationsProvider);
+            ref.invalidate(pendingQueueCountProvider);
             ref.invalidate(activeParkingSessionsProvider);
           },
         ),
