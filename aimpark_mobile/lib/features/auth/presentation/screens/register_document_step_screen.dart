@@ -64,7 +64,7 @@ class _RegisterDocumentStepScreenState
   /// a form printed to a template nobody has seen must not be able to lock a
   /// real applicant out. After this many tries the photo is sent as it is and
   /// the reviewer is told the system could not recognise it.
-  static const int _maxCaptureAttempts = 3;
+  static const int _maxCaptureAttempts = maxCaptureAttempts;
 
   static const _tipsPreference = CaptureTipsPreference();
 
@@ -426,7 +426,9 @@ class _RegisterDocumentStepScreenState
             spec: spec,
             photo: photo,
             retakesSpent: retakesSpent,
-            onCapture: busy ? null : () => _captureAndRead(spec),
+            // Switched off once the tries are spent: from there the user types
+            // what could not be read, through "Check what was read".
+            onCapture: busy || retakesSpent ? null : () => _captureAndRead(spec),
           ),
           // A photo whose values were never checked: the sheet was dismissed,
           // the read failed, or the app restarted. Reading again costs no try.

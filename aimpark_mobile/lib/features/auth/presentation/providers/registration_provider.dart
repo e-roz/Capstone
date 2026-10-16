@@ -12,6 +12,13 @@ import 'auth_provider.dart';
 
 part 'registration_provider.g.dart';
 
+/// Photographs of one document before the flow stops asking for another, and
+/// the user types what could not be read instead.
+///
+/// Mirrors the server's own limit (`MaxScanAttempts`), and lives here so the
+/// counter, the capture button and the sheet cannot disagree about it.
+const int maxCaptureAttempts = 3;
+
 /// One text recogniser for the whole registration flow.
 ///
 /// The documents are now captured on three separate screens, so a recogniser
@@ -331,9 +338,14 @@ class RegistrationNotifier extends _$RegistrationNotifier {
     _touched = true;
     state = state.copyWith(
       captured: {...state.captured, type: document},
+      // Never counted past the limit: a count of "5 of 3" means nothing, and
+      // the capture button is switched off once the tries are spent anyway.
       captureAttempts: {
         ...state.captureAttempts,
-        type: (state.captureAttempts[type] ?? 0) + 1,
+        type: ((state.captureAttempts[type] ?? 0) + 1).clamp(
+          0,
+          maxCaptureAttempts,
+        ),
       },
       confirmed: {...state.confirmed}..remove(type),
     );
