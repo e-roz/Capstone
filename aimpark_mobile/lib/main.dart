@@ -24,16 +24,11 @@ class AimParkApp extends ConsumerWidget {
 
     return MaterialApp.router(
       title: 'AimPark',
-      // The app is light-only by product decision. Both slots get the light
-      // theme and [themeMode] is pinned, so a phone set to dark still renders
-      // light rather than falling through to a half-built dark theme.
-      //
-      // The dark token bundles in app_tokens.dart and AppTheme.dark() are left
-      // intact on purpose — restoring dark mode later is a matter of pointing
-      // these three lines back at appThemeModeProvider, not rebuilding tokens.
+      // Follows the phone's setting by default; Account > Appearance lets the
+      // user pin Light or Dark, and the choice is remembered.
       theme: AppTheme.light(),
-      darkTheme: AppTheme.light(),
-      themeMode: ThemeMode.light,
+      darkTheme: AppTheme.dark(),
+      themeMode: ref.watch(appThemeModeProvider),
       routerConfig: router,
     );
   }
