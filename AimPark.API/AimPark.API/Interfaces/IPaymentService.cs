@@ -63,6 +63,7 @@ namespace AimPark.API.Interfaces
 
         Task<ActionResult<List<ParkingRateResponse>>> ListRatesAsync(CancellationToken ct);
         Task<ActionResult<object>> UpsertRateAsync(UpsertParkingRateDto dto, CancellationToken ct);
+        Task<ActionResult<object>> DeleteRateAsync(Guid rateId, CancellationToken ct);
     }
 
     /// <summary>The fee for one finished session.</summary>

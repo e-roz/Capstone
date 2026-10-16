@@ -47,6 +47,10 @@ namespace AimPark.API.Controllers
         [HttpPut("rates")]
         public Task<ActionResult<object>> UpsertRate([FromBody] UpsertParkingRateDto dto, CancellationToken ct)
             => _paymentService.UpsertRateAsync(dto, ct);
+
+        [HttpDelete("rates/{rateId:guid}")]
+        public Task<ActionResult<object>> DeleteRate(Guid rateId, CancellationToken ct)
+            => _paymentService.DeleteRateAsync(rateId, ct);
     
         private Guid GetAdminUserId()
             => Guid.Parse(User.FindFirst(ClaimTypes.NameIdentifier)!.Value);
