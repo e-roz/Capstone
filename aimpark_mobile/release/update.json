@@ -1,11 +1,12 @@
 {
-  "version": "1.0.10",
-  "build": 11,
-  "apk_url": "https://github.com/e-roz/Capstone/releases/download/v1.0.10/app-release.apk",
-  "apk_sha256": "4cbe2c7e5beb9afa7bd09afb4a2a5aa56709bf7711c3609725a24349c5310c5f",
-  "apk_size_bytes": 94300681,
+  "version": "1.0.12",
+  "build": 13,
+  "apk_url": "https://github.com/e-roz/Capstone/releases/download/v1.0.12/app-release.apk",
+  "apk_sha256": "ff7426a6ce6951f6a8c24dc3125bae5565a7c19df6a53ab719be20fcffa09410",
+  "apk_size_bytes": 94333449,
   "mandatory": false,
   "release_notes": [
-    "Faculty and staff no longer need to send an ID when registering"
+    "Dark mode: follows your phone, or choose Light or Dark in Account > Appearance",
+    "Tapping a notification now opens what it is about"
   ]
 }
