@@ -175,9 +175,10 @@ const navGroups = <NavGroup>[
       description:
           'Link the card readers plugged into this PC to their gates, '
           'watch taps, and open a gate by hand.',
-      // Security only: the readers are cabled to the guard post's PC, and the
-      // screen only works on the panel that PC serves.
-      roles: {StaffRole.security},
+      // The readers are cabled to the guard post's PC, so the screen only
+      // works on the panel that PC serves. An administrator opening it from
+      // the cloud gets the server's own "site server only" message.
+      roles: {StaffRole.admin, StaffRole.security},
     ),
   ]),
   NavGroup('People', [
