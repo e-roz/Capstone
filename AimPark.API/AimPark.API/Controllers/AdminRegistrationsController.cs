@@ -28,8 +28,8 @@ namespace AimPark.API.Controllers
             => _adminRegistrationService.GetDetailAsync(userId, ct);
 
         [HttpPost("{userId:guid}/approve")]
-        public Task<ActionResult<object>> Approve(Guid userId, [FromBody] ApproveRegistrationDto dto, CancellationToken ct)
-            => _adminRegistrationService.ApproveAsync(userId, GetAdminUserId(), dto, ct);
+        public Task<ActionResult<object>> Approve(Guid userId, [FromBody] ApproveRegistrationDto? dto, CancellationToken ct)
+            => _adminRegistrationService.ApproveAsync(userId, GetAdminUserId(), dto ?? new ApproveRegistrationDto(), ct);
 
         [HttpPost("{userId:guid}/reject")]
         public Task<ActionResult<object>> Reject(Guid userId, [FromBody] RejectRegistrationDto dto, CancellationToken ct)

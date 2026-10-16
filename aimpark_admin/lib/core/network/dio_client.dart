@@ -18,6 +18,9 @@ class AdminDioClient {
         baseUrl: ApiConstants.baseUrl,
         connectTimeout: const Duration(seconds: 30),
         receiveTimeout: const Duration(seconds: 30),
+        // Without this an empty `{}` body (Approve with no note) goes out as a
+        // form body and the API answers 415. FormData uploads override it.
+        contentType: Headers.jsonContentType,
       ),
     );
 
