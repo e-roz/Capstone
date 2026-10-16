@@ -44,6 +44,15 @@ namespace AimPark.API.Helpers
         public const string VehicleTypeEditMarker = "Vehicle type changed";
         public const string ColourEditMarker = "Colour changed";
 
+        /// <summary>
+        /// The same two values when nothing was read at all, so the applicant typed
+        /// them. Told apart from an edit: the reviewer's question is different —
+        /// not "why did you change what we read" but "check this against the
+        /// receipt, the system could not".
+        /// </summary>
+        public const string VehicleTypeTypedMarker = "Vehicle type typed";
+        public const string ColourTypedMarker = "Colour typed";
+
         public const string Passed = "Passed";
         public const string ExpiringSoon = "ExpiringSoon";
         public const string Failed = "Failed";
@@ -492,6 +501,32 @@ namespace AimPark.API.Helpers
                 findings.Add(new FindingResponse
                 {
                     Key = "Edit." + title.Split(' ')[0] + title.Split(' ')[1],
+                    Category = Edited,
+                    Severity = Warning,
+                    Title = title,
+                    Detail = detail.Length == 0 ? null : char.ToUpperInvariant(detail[0]) + detail[1..],
+                    Document = Receipt
+                });
+            }
+
+            // A vehicle type or colour nothing could be read for, so the applicant
+            // typed it. Amber: the reviewer checks it against the receipt image.
+            foreach (var line in (newest.Notes ?? string.Empty).Split('\n'))
+            {
+                var (key, title) =
+                    line.StartsWith(VehicleTypeTypedMarker, StringComparison.Ordinal)
+                        ? ("Typed.VehicleType", "Vehicle type typed by applicant")
+                        : line.StartsWith(ColourTypedMarker, StringComparison.Ordinal)
+                            ? ("Typed.Colour", "Colour typed by applicant")
+                            : ((string?)null, (string?)null);
+
+                if (key is null || title is null)
+                    continue;
+
+                var detail = line[(line.IndexOf('—') + 1)..].Trim();
+                findings.Add(new FindingResponse
+                {
+                    Key = key,
                     Category = Edited,
                     Severity = Warning,
                     Title = title,

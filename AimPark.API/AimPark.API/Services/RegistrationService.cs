@@ -1038,6 +1038,24 @@ namespace AimPark.API.Services
                 AppendNote(verification,
                     $"{RegistrationChecks.ColourEditMarker} — the receipt reads \"{readColour}\", the applicant submitted \"{chosenColour}\".");
             }
+
+            // Nothing was read, so the applicant typed it. Only when there is a
+            // receipt at all: an e-bike has none, and its type and colour are the
+            // admin's to record, not something the applicant failed to supply.
+            if (payloads.ContainsKey(DocumentType.OfficialReceipt))
+            {
+                if (readType is null)
+                {
+                    AppendNote(verification,
+                        $"{RegistrationChecks.VehicleTypeTypedMarker} — the receipt could not be read for this, the applicant chose {chosenType}.");
+                }
+
+                if (string.IsNullOrEmpty(readColour) && !string.IsNullOrEmpty(chosenColour))
+                {
+                    AppendNote(verification,
+                        $"{RegistrationChecks.ColourTypedMarker} — the receipt could not be read for this, the applicant typed \"{chosenColour}\".");
+                }
+            }
         }
 
         /// <summary>

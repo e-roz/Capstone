@@ -49,7 +49,8 @@ namespace AimPark.API.Services
             result.PlateNumber = plate;
             result.RegistrationExpiry = ExtractRegistrationExpiry(receiptLines, plate, result);
             result.VehicleType = ExtractVehicleType(receiptLines);
-            result.Color = ReceiptValue(receiptLines, DocumentLabels.Receipt.Color);
+            result.Color = ReceiptValue(receiptLines, DocumentLabels.Receipt.Color)
+                           ?? UnlabelledColour(receiptLines);
 
             FlagMissing(result);
             return result;
@@ -69,12 +70,62 @@ namespace AimPark.API.Services
         {
             var raw = ReceiptValue(lines, DocumentLabels.Receipt.VehicleType);
             if (string.IsNullOrWhiteSpace(raw))
-                return null;
+                return UnlabelledMotorcycle(lines);
 
             return raw.TrimStart().StartsWith("MC", StringComparison.OrdinalIgnoreCase)
                 ? nameof(VehicleType.Motorcycle)
                 : nameof(VehicleType.Car);
         }
+
+        /// <summary>
+        /// Motorcycle, for the older receipt that prints no "Vehicle Type" label.
+        /// </summary>
+        /// <remarks>
+        /// That layout packs the vehicle into two unlabelled lines — "PRIVATE
+        /// Motorcycle without Sid" and "…Car/MC/GAS/Red" — and OCR drops the
+        /// slashes and mangles the first ("Nolbrcyce"). Only evidence of a
+        /// motorcycle is accepted: the word itself, or "MC" directly followed by a
+        /// fuel. The "Car" in that second line is not the vehicle type, so a car is
+        /// never inferred. With no evidence the answer is "not found", which the
+        /// applicant types.
+        /// </remarks>
+        private static string? UnlabelledMotorcycle(List<OcrLineDto> lines)
+            => lines.Any(l => MotorcycleWordPattern().IsMatch(l.Text) || McThenFuelPattern().IsMatch(l.Text))
+                ? nameof(VehicleType.Motorcycle)
+                : null;
+
+        /// <summary>
+        /// The colour, for the older receipt: the last word or words on the line
+        /// that lists the fuel, after the fuel itself ("MC/GAS/Red").
+        /// </summary>
+        /// <remarks>
+        /// OCR drops the slashes ("CarMCGASRed"), so the fuel is the landmark: the
+        /// colour is what follows it. Accepted only when exactly one line has that
+        /// shape, because two lines doing so would mean guessing between them.
+        /// </remarks>
+        private static string? UnlabelledColour(List<OcrLineDto> lines)
+        {
+            var found = lines
+                .Select(l => FuelThenColourPattern().Match(l.Text))
+                .Where(m => m.Success)
+                .Select(m => FuzzyText.TrimValue(m.Groups[1].Value))
+                .Where(c => c.Length >= 3)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            return found.Count == 1 ? found[0] : null;
+        }
+
+        [GeneratedRegex(@"\bmotorcycle\b", RegexOptions.IgnoreCase)]
+        private static partial Regex MotorcycleWordPattern();
+
+        // Upper case on purpose: it is how the receipt prints these, and it keeps
+        // "mc" inside an ordinary word from counting.
+        [GeneratedRegex(@"MC[\s/]*(?:GASOLINE|GAS|DIESEL|ELECTRIC|HYBRID|LPG)")]
+        private static partial Regex McThenFuelPattern();
+
+        [GeneratedRegex(@"(?:GASOLINE|GAS|DIESEL|ELECTRIC|HYBRID|LPG)[\s/]*([A-Za-z][A-Za-z /]{2,29})\s*$")]
+        private static partial Regex FuelThenColourPattern();
 
         private static List<OcrLineDto> Prepare(OcrPayloadDto? payload)
             => payload is null ? [] : OcrCleanup.Prepare(payload.Lines);
@@ -474,6 +525,20 @@ namespace AimPark.API.Services
                 var read = DateExtraction.FindExpiry(stream[after..]);
                 if (read is not null)
                     return read;
+            }
+
+            // The older receipt layout: the registration runs to the end of the
+            // renewal window printed on its last line. Same line only, so a date
+            // from the fee table or the footer can never stand in for it.
+            foreach (var line in lines)
+            {
+                var window = FuzzyText.IndexAfterLabel(line.Text, DocumentLabels.Receipt.RenewalWindow);
+                if (window < 0)
+                    continue;
+
+                var windowEnd = DateExtraction.FindLastMonthNameDate(line.Text[window..]);
+                if (windowEnd is not null)
+                    return windowEnd;
             }
 
             var receiptDate = DateExtraction.FindFullDate(

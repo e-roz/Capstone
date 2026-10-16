@@ -83,6 +83,14 @@ namespace AimPark.API.Helpers
             /// </summary>
             public const string ValidUntil = "valid until";
 
+            /// <summary>
+            /// The older receipt has no "valid until" sentence. Its last line reads
+            /// "NEXT REG RENEWAL JAN 1 2026 to MAR 31 2026", and the registration
+            /// runs to the end of that window. Short on purpose: OCR returned
+            /// "HEXT REG RENEWAL".
+            /// </summary>
+            public const string RenewalWindow = "Reg Renewal";
+
             public static readonly string[] IssueDate = ["Date"];
 
             /// <summary>Prints as e.g. "Vehicle Type: MC Without Sidecar".</summary>
