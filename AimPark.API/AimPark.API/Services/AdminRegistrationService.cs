@@ -371,6 +371,22 @@ namespace AimPark.API.Services
                 null,
                 ct);
 
+            // A vehicle whose receipt had no plate carries the temporary one reserved
+            // for it when the applicant submitted. It only counts once approved, so
+            // this is when they are told to display it.
+            var temporary = vehicles.FirstOrDefault(v => TemporaryPlates.IsVehicleTemporary(v.PlateNumber));
+            if (temporary is not null)
+            {
+                await _notificationService.NotifyUserAsync(
+                    user.Id,
+                    NotificationType.Account,
+                    "Temporary plate",
+                    $"Your vehicle's temporary plate is {TemporaryPlates.Format(temporary.PlateNumber)}. "
+                    + "Display it on your vehicle.",
+                    null,
+                    ct);
+            }
+
             return new OkObjectResult(new { message = "User approved." });
         }
 
@@ -504,27 +520,17 @@ namespace AimPark.API.Services
             });
         }
 
-        private const string TemporaryPlatePrefix = "EB";
-
-        /// <summary>The next free temporary plate: EB0001, EB0002 and so on.</summary>
+        /// <summary>The next free e-bike temporary plate: EB0001, EB0002 and so on.</summary>
         private async Task<string> NextTemporaryPlateAsync(CancellationToken ct)
         {
             var issued = await _vehicles.GetAllAsync(
-                v => v.IsEBike && v.PlateNumber.StartsWith(TemporaryPlatePrefix), ct);
+                v => v.IsEBike && v.PlateNumber.StartsWith(TemporaryPlates.EBikePrefix), ct);
 
-            var highest = issued
-                .Select(v => int.TryParse(v.PlateNumber[TemporaryPlatePrefix.Length..], out var n) ? n : 0)
-                .DefaultIfEmpty(0)
-                .Max();
-
-            return $"{TemporaryPlatePrefix}{highest + 1:D4}";
+            return TemporaryPlates.Next(TemporaryPlates.EBikePrefix, issued.Select(v => v.PlateNumber));
         }
 
         /// <summary>Plates are stored without punctuation; the one people read has a dash.</summary>
-        private static string FormatTemporaryPlate(string plate) =>
-            plate.StartsWith(TemporaryPlatePrefix) && plate.Length > TemporaryPlatePrefix.Length
-                ? $"{TemporaryPlatePrefix}-{plate[TemporaryPlatePrefix.Length..]}"
-                : plate;
+        private static string FormatTemporaryPlate(string plate) => TemporaryPlates.Format(plate);
 
         public async Task<ActionResult<object>> RejectAsync(Guid userId, Guid adminUserId, RejectRegistrationDto dto, CancellationToken ct)
         {

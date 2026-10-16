@@ -53,6 +53,13 @@ namespace AimPark.API.Helpers
         public const string VehicleTypeTypedMarker = "Vehicle type typed";
         public const string ColourTypedMarker = "Colour typed";
 
+        /// <summary>
+        /// Opening words of the note for an applicant whose receipt has no plate.
+        /// The LTO can issue a receipt before the plate exists, so this is a real
+        /// case rather than a failed reading. Read back as a finding.
+        /// </summary>
+        public const string NoPlateMarker = "No plate declared";
+
         public const string Passed = "Passed";
         public const string ExpiringSoon = "ExpiringSoon";
         public const string Failed = "Failed";
@@ -233,8 +240,14 @@ namespace AimPark.API.Helpers
 
             if (onFile.Length == 0)
             {
+                // Left NotChecked on purpose, for either reason: approving needs a
+                // note, and for a vehicle with no plate that note is where the
+                // reviewer writes that they saw it.
                 plate.State = NotChecked;
-                plate.Detail = "Could not read a plate number from the receipt.";
+                plate.Detail = (v.Notes ?? string.Empty).Contains(NoPlateMarker, StringComparison.Ordinal)
+                    ? "The applicant says this vehicle has no plate yet. A temporary plate is reserved. "
+                      + "See the vehicle in person before approving."
+                    : "Could not read a plate number from the receipt.";
             }
             else
             {
@@ -504,6 +517,25 @@ namespace AimPark.API.Helpers
                     Category = Edited,
                     Severity = Warning,
                     Title = title,
+                    Detail = detail.Length == 0 ? null : char.ToUpperInvariant(detail[0]) + detail[1..],
+                    Document = Receipt
+                });
+            }
+
+            // The applicant says the vehicle has no plate. Red: the reviewer has to
+            // see the vehicle, and the temporary plate only counts once they do.
+            foreach (var line in (newest.Notes ?? string.Empty).Split('\n'))
+            {
+                if (!line.StartsWith(NoPlateMarker, StringComparison.Ordinal))
+                    continue;
+
+                var detail = line[(line.IndexOf('—') + 1)..].Trim();
+                findings.Add(new FindingResponse
+                {
+                    Key = "NoPlate",
+                    Category = Identity,
+                    Severity = Danger,
+                    Title = "No plate on the vehicle",
                     Detail = detail.Length == 0 ? null : char.ToUpperInvariant(detail[0]) + detail[1..],
                     Document = Receipt
                 });

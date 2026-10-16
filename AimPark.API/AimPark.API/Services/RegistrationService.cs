@@ -413,7 +413,8 @@ namespace AimPark.API.Services
 
             response.Extracted = extracted;
 
-            if (MissingValues(extracted, user.Affiliation, [type]).TryGetValue(type, out var labels))
+            if (MissingValues(extracted, user.Affiliation, [type], plateOptional: dto.NoPlate)
+                .TryGetValue(type, out var labels))
             {
                 response.MissingFields = labels;
                 response.Diagnosis ??= new DocumentDiagnosisDto
@@ -626,7 +627,8 @@ namespace AimPark.API.Services
             // one-document retake must not send the applicant back to a document
             // they were never asked about.
             var sentTypes = files.Select(f => f.Type).ToHashSet();
-            foreach (var (type, labels) in MissingValues(extracted, user.Affiliation, sentTypes))
+            foreach (var (type, labels) in MissingValues(
+                         extracted, user.Affiliation, sentTypes, plateOptional: dto.NoPlate && !isEBike))
             {
                 if (retakesSpent.Contains(type) || diagnostics.Any(d => d.DocumentType == type.ToString()))
                     continue;
@@ -820,7 +822,25 @@ namespace AimPark.API.Services
             string? vehicleNote = null;
             string? refusal = null;
 
-            if (!isEBike)
+            // The applicant says the vehicle has no plate. Only believed when the
+            // receipt agrees: a plate that was read, or one typed in, means it has
+            // one. An e-bike has its own route to a temporary plate.
+            var noPlate = dto.NoPlate && !isEBike;
+
+            if (noPlate && HasPlate(verification))
+            {
+                return new BadRequestObjectResult(new
+                {
+                    message = "A plate number was found on your receipt, so this vehicle has one. "
+                              + "Take the receipt again, or type the plate number."
+                });
+            }
+
+            if (noPlate)
+            {
+                vehicle = await UpsertTemporaryVehicleAsync(verification, dto, vehicleType, userId, ct);
+            }
+            else if (!isEBike)
             {
                 (vehicle, vehicleNote, refusal) = await UpsertVehicleFromReceiptAsync(
                     verification, dto, vehicleType, userId, attempts, ct);
@@ -866,6 +886,14 @@ namespace AimPark.API.Services
             NoteVehicleEdits(verification, dto, user, vehicleType);
             NoteExpiryEdits(verification, payloadsForChecks, isEBike, today);
 
+            if (noPlate && vehicle is not null)
+            {
+                AppendNote(verification,
+                    $"{RegistrationChecks.NoPlateMarker} — the applicant says the vehicle has no plate, and "
+                    + $"none was found on the receipt. The temporary plate {TemporaryPlates.Format(vehicle.PlateNumber)} "
+                    + "is reserved. See the vehicle in person before approving.");
+            }
+
             // Re-derived here rather than carried over from the scan. These are the
             // submissions that reached a reviewer without the system ever confirming
             // what it was looking at, and that must not have to be inferred from an
@@ -899,6 +927,24 @@ namespace AimPark.API.Services
                     approved = false,
                     isEBike = true,
                     inspectionDeadline = user.EBikeInspectionDeadline
+                });
+            }
+
+            // A vehicle with no plate is never approved on the spot: an administrator
+            // has to see it, and the temporary plate only counts once they do.
+            if (noPlate && vehicle is not null)
+            {
+                user.UpdatedAt = DateTime.UtcNow;
+                _users.Update(user);
+                await _users.SaveAsync(ct);
+
+                return new OkObjectResult(new
+                {
+                    message = "Registration submitted. Bring your documents and your vehicle to the admin "
+                              + "office to get your temporary plate.",
+                    approved = false,
+                    needsTemporaryPlate = true,
+                    temporaryPlate = TemporaryPlates.Format(vehicle.PlateNumber)
                 });
             }
 
@@ -1120,6 +1166,61 @@ namespace AimPark.API.Services
 
         private static string? FirstNonBlank(params string?[] values)
             => values.FirstOrDefault(v => !string.IsNullOrWhiteSpace(v));
+
+        /// <summary>Whether a plate was read from the receipt or typed by the applicant.</summary>
+        private static bool HasPlate(DocumentVerification verification)
+            => IdentifierNormalizer.NormalizePlate(
+                   verification.ConfirmedPlateNumber ?? verification.ExtractedPlateNumber).Length > 0;
+
+        /// <summary>
+        /// The vehicle of an applicant whose receipt carries no plate, under a
+        /// temporary plate reserved for it.
+        /// </summary>
+        /// <remarks>
+        /// Made now, not at approval, so the type, colour and registration expiry the
+        /// applicant already confirmed are not lost: nothing else stores them. The
+        /// account is pending, so the gate does not open for it, and the plate means
+        /// nothing until an administrator has seen the vehicle and approved. A
+        /// rejection frees the plate with the vehicle record, as for any plate.
+        ///
+        /// Submitting again reuses the plate already reserved rather than taking a
+        /// second number. No renewal month is set: that comes from the last digit of
+        /// a real plate, and this one has none.
+        /// </remarks>
+        private async Task<Vehicle> UpsertTemporaryVehicleAsync(
+            DocumentVerification verification,
+            ConfirmDocumentsDto dto,
+            VehicleType vehicleType,
+            Guid userId,
+            CancellationToken ct)
+        {
+            var mine = (await _vehicles.GetAllAsync(
+                    v => v.UserId == userId && v.PlateNumber.StartsWith(TemporaryPlates.VehiclePrefix), ct))
+                .FirstOrDefault(v => TemporaryPlates.IsVehicleTemporary(v.PlateNumber));
+
+            var vehicle = mine ?? new Vehicle
+            {
+                UserId = userId,
+                PlateNumber = TemporaryPlates.Next(
+                    TemporaryPlates.VehiclePrefix,
+                    (await _vehicles.GetAllAsync(
+                        v => v.PlateNumber.StartsWith(TemporaryPlates.VehiclePrefix), ct))
+                        .Select(v => v.PlateNumber))
+            };
+
+            vehicle.VehicleType = vehicleType;
+            vehicle.Color = dto.Color!.Trim();
+            vehicle.RegistrationValidThrough =
+                verification.ConfirmedRegistrationExpiry ?? verification.ExtractedRegistrationExpiry;
+            vehicle.RegistrationRenewalMonth = null;
+
+            if (mine is null)
+                await _vehicles.AddAsync(vehicle, ct);
+            else
+                _vehicles.Update(vehicle);
+
+            return vehicle;
+        }
 
         /// <summary>
         /// Creates or updates the applicant's vehicle from the plate the receipt
@@ -1368,9 +1469,14 @@ namespace AimPark.API.Services
         /// flagged as derived and the applicant glances at it. Only a student has a
         /// school document, so only a registration form can come up short on the
         /// identity side.
+        ///
+        /// <paramref name="plateOptional"/> is for an applicant who has said the
+        /// vehicle has no plate. The LTO can issue a receipt before the plate
+        /// exists, so a receipt without one is not asking for another photograph.
         /// </remarks>
         private static Dictionary<DocumentType, List<string>> MissingValues(
-            ExtractedValuesDto e, Affiliation affiliation, HashSet<DocumentType> sent)
+            ExtractedValuesDto e, Affiliation affiliation, HashSet<DocumentType> sent,
+            bool plateOptional = false)
         {
             var missing = new Dictionary<DocumentType, List<string>>();
 
@@ -1397,7 +1503,7 @@ namespace AimPark.API.Services
             Check(DocumentType.License, string.IsNullOrWhiteSpace(e.LicenseNumber), "licence number");
             Check(DocumentType.License, e.LicenseExpiry is null, "expiry date");
 
-            Check(DocumentType.OfficialReceipt, string.IsNullOrWhiteSpace(e.PlateNumber), "plate number");
+            Check(DocumentType.OfficialReceipt, !plateOptional && string.IsNullOrWhiteSpace(e.PlateNumber), "plate number");
             Check(DocumentType.OfficialReceipt, e.RegistrationExpiry is null, "registration expiry");
             Check(DocumentType.OfficialReceipt, string.IsNullOrWhiteSpace(e.VehicleType), "vehicle type");
             Check(DocumentType.OfficialReceipt, string.IsNullOrWhiteSpace(e.Color), "colour");

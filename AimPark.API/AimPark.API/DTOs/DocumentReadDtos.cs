@@ -16,6 +16,12 @@ namespace AimPark.API.DTOs
 
         /// <summary>Serialised <see cref="OcrPayloadDto"/>.</summary>
         public string? Ocr { get; set; }
+
+        /// <summary>
+        /// The applicant has said the vehicle has no plate, so a receipt without one
+        /// is not reported as missing a value.
+        /// </summary>
+        public bool NoPlate { get; set; }
     }
 
     /// <summary>

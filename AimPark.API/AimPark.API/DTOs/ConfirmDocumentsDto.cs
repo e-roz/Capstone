@@ -49,5 +49,13 @@ namespace AimPark.API.DTOs
         /// e-bike at the in-person inspection.
         /// </summary>
         public bool IsEBike { get; set; }
+
+        /// <summary>
+        /// The applicant says the vehicle has no plate, and the receipt agrees: none
+        /// was read from it. The LTO can issue a receipt before the plate exists.
+        /// A temporary plate is reserved and the application goes to an
+        /// administrator, who confirms it by seeing the vehicle.
+        /// </summary>
+        public bool NoPlate { get; set; }
     }
 }
