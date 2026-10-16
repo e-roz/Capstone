@@ -10,6 +10,9 @@ class ApiEndpoints {
   // what the second call confirms, so there is no separate vehicle endpoint in
   // registration any more.
   static const scanDocuments = '/api/auth/register/documents/scan';
+  /// One document's OCR text, read as soon as it is photographed so the user
+  /// sees what was read before the next document. Nothing is stored.
+  static const readDocument = '/api/auth/register/documents/read';
   static const confirmDocuments = '/api/auth/register/documents/confirm';
   /// Where the flow learns whether a reviewer has asked for specific documents
   /// again, rather than assuming every visit to the document step wants all four.

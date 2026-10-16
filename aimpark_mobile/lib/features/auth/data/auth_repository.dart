@@ -87,6 +87,12 @@ class AuthRepository {
     return _dio.post(ApiEndpoints.scanDocuments, data: formData);
   }
 
+  /// Reads one document's OCR text — no photo — and gets back what was read,
+  /// what is missing, and whether its expiry date has passed.
+  Future<Response<dynamic>> readDocument(Map<String, dynamic> body) {
+    return _dio.post(ApiEndpoints.readDocument, data: body);
+  }
+
   /// Where the account stands, including any documents a reviewer sent back.
   Future<Response<dynamic>> registrationStatus() {
     return _dio.get(ApiEndpoints.registrationStatus);

@@ -23,9 +23,17 @@ import '../widgets/scanned_field.dart';
 /// there is no photograph of the physical plate to corroborate it, so a
 /// correction here is shown to the reviewer the same way a corrected name is.
 class RegisterConfirmScreen extends ConsumerStatefulWidget {
-  const RegisterConfirmScreen({super.key, required this.result});
+  const RegisterConfirmScreen({
+    super.key,
+    required this.result,
+    this.confirmed = const {},
+  });
 
   final ScanResult result;
+
+  /// What the user already checked on each document's own sheet, by field
+  /// name. Wins over [result]'s reading, which is the same text read again.
+  final Map<String, String> confirmed;
 
   @override
   ConsumerState<RegisterConfirmScreen> createState() =>
@@ -74,19 +82,45 @@ class _RegisterConfirmScreenState extends ConsumerState<RegisterConfirmScreen> {
 
   bool get _isEBike => ref.read(registrationNotifierProvider).isEBike;
 
+  /// The value the user checked for [field], or what the scan read.
+  String? _start(String field, String? read) {
+    final checked = widget.confirmed[field];
+    return checked != null && checked.isNotEmpty ? checked : read;
+  }
+
+  DateTime? _startDate(String field, DateTime? read) {
+    final checked = widget.confirmed[field];
+    return (checked == null ? null : DateTime.tryParse(checked)) ?? read;
+  }
+
   @override
   void initState() {
     super.initState();
-    _studentNumber = TextEditingController(text: _extracted.studentNumber);
-    _studentName = TextEditingController(text: _extracted.studentName);
-    _section = TextEditingController(text: _extracted.section);
-    _semester = TextEditingController(text: _extracted.semester);
-    _licenseName = TextEditingController(text: _extracted.licenseName);
-    _licenseNumber = TextEditingController(text: _extracted.licenseNumber);
-    _plateNumber = TextEditingController(text: _extracted.plateNumber);
-    _color = TextEditingController(text: _extracted.color);
-    _licenseExpiry = _extracted.licenseExpiry;
-    _registrationExpiry = _extracted.registrationExpiry;
+    _studentNumber = TextEditingController(
+      text: _start('StudentNumber', _extracted.studentNumber),
+    );
+    _studentName = TextEditingController(
+      text: _start('StudentName', _extracted.studentName),
+    );
+    _section = TextEditingController(text: _start('Section', _extracted.section));
+    _semester = TextEditingController(
+      text: _start('Semester', _extracted.semester),
+    );
+    _licenseName = TextEditingController(
+      text: _start('LicenseName', _extracted.licenseName),
+    );
+    _licenseNumber = TextEditingController(
+      text: _start('LicenseNumber', _extracted.licenseNumber),
+    );
+    _plateNumber = TextEditingController(
+      text: _start('PlateNumber', _extracted.plateNumber),
+    );
+    _color = TextEditingController(text: _start('Color', _extracted.color));
+    _licenseExpiry = _startDate('LicenseExpiry', _extracted.licenseExpiry);
+    _registrationExpiry = _startDate(
+      'RegistrationExpiry',
+      _extracted.registrationExpiry,
+    );
 
     // Pre-filled from the receipt, same as every other field on this screen —
     // still a tap away from changing, never forced.
@@ -128,10 +162,13 @@ class _RegisterConfirmScreenState extends ConsumerState<RegisterConfirmScreen> {
   /// affiliation right before the request goes out.
   bool _hasUnresolvedFlags(bool isStudent, bool isEBike) {
     final checks = [
-      fieldStillMissing(
-        _extracted.flagFor('StudentName'),
-        _studentName.text.trim().isEmpty,
-      ),
+      // Only a student's form carries a name of its own; everyone else's
+      // comes from the licence below.
+      if (isStudent)
+        fieldStillMissing(
+          _extracted.flagFor('StudentName'),
+          _studentName.text.trim().isEmpty,
+        ),
       fieldStillMissing(
         _extracted.flagFor('LicenseName'),
         _licenseName.text.trim().isEmpty,
@@ -215,7 +252,7 @@ class _RegisterConfirmScreenState extends ConsumerState<RegisterConfirmScreen> {
       final response = await repo.confirmDocuments({
         'verificationId': widget.result.verificationId,
         if (isStudent) 'studentNumber': _studentNumber.text.trim(),
-        'studentName': _studentName.text.trim(),
+        if (isStudent) 'studentName': _studentName.text.trim(),
         if (isStudent) 'section': _section.text.trim(),
         if (isStudent) 'semester': _semester.text.trim(),
         'licenseName': _licenseName.text.trim(),
@@ -266,9 +303,10 @@ class _RegisterConfirmScreenState extends ConsumerState<RegisterConfirmScreen> {
       context.go(
         '/register/submitted',
         extra: RegistrationSummary(
-          name: _studentName.text.trim().isEmpty
-              ? _licenseName.text.trim()
-              : _studentName.text.trim(),
+          // The licence is the one source of the account's name.
+          name: _licenseName.text.trim().isEmpty
+              ? _studentName.text.trim()
+              : _licenseName.text.trim(),
           email: ref.read(registrationNotifierProvider).email,
           affiliation: ref.read(registrationNotifierProvider).affiliation.label,
           plateNumber: isEBike ? null : _plateNumber.text.trim(),
@@ -409,16 +447,9 @@ class _RegisterConfirmScreenState extends ConsumerState<RegisterConfirmScreen> {
               flag: _extracted.flagFor('Semester'),
               enabled: live,
             ),
-          ] else ...[
-            const AppSectionHeader(title: 'Your name'),
-            ScannedField(
-              label: 'Full name',
-              controller: _studentName,
-              flag: _extracted.flagFor('StudentName'),
-              enabled: live,
-            ),
           ],
 
+          // The name on the licence becomes the account's name, for everyone.
           const AppSectionHeader(title: 'From your licence'),
           ScannedField(
             label: 'Name on licence',

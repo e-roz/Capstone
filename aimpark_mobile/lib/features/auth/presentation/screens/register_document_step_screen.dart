@@ -20,6 +20,7 @@ import '../../data/models/scan_result.dart';
 import '../providers/auth_provider.dart';
 import '../providers/registration_provider.dart';
 import '../widgets/document_photo_panel.dart';
+import '../widgets/document_values_sheet.dart';
 import '../widgets/registration_step_scaffold.dart';
 import 'register_confirm_screen.dart';
 
@@ -29,10 +30,12 @@ import 'register_confirm_screen.dart';
 /// to hold four documents in their head at once and gave no sense of progress.
 /// Split up, each screen has one job and can say what that document is for.
 ///
-/// The photos are not uploaded as they are taken. They collect in
-/// [RegistrationNotifier] and go up in one call from the last screen, which
-/// keeps the server's single scan endpoint and means the retake verdicts all
-/// arrive together rather than four separate waits.
+/// Each document is read as soon as it is photographed: its OCR text (not the
+/// photo) goes to the server, and [DocumentValuesSheet] shows what came back.
+/// The user moves on only once every value is read and checked, or once the
+/// three tries are spent and they have typed the rest. The photos themselves
+/// still collect in [RegistrationNotifier] and go up in one call from the last
+/// screen, which stays the server's authority.
 class RegisterDocumentStepScreen extends ConsumerStatefulWidget {
   const RegisterDocumentStepScreen({
     super.key,
@@ -67,6 +70,9 @@ class _RegisterDocumentStepScreenState
 
   bool _isSubmitting = false;
 
+  /// True while this document's OCR text is with the server.
+  bool _isReading = false;
+
   /// Set when the server sends this document back for a retake.
   String? _retakeMessage;
 
@@ -76,15 +82,73 @@ class _RegisterDocumentStepScreenState
     _retakeMessage = widget.retakeMessage;
   }
 
-  Future<void> _capture(DocumentSpec spec) async {
-    if (!await _tipsPreference.hasBeenShown()) {
-      if (!mounted) return;
-      final proceed = await CaptureTipsSheet.show(context);
-      if (!proceed || !mounted) return;
-      unawaited(_tipsPreference.markShown());
+  /// Photographs the document, then reads it and asks the user to check it.
+  Future<void> _captureAndRead(DocumentSpec spec) async {
+    if (await _capture(spec)) await _readAndConfirm(spec);
+  }
+
+  /// Sends this document's OCR text to the server and shows what came back.
+  ///
+  /// Loops back to the camera on a retake. A retake for an expired document
+  /// gives its try back first: the user is photographing a different, valid
+  /// document, not a clearer copy of this one.
+  Future<void> _readAndConfirm(DocumentSpec spec) async {
+    final photo = ref.read(registrationNotifierProvider).captured[spec.type];
+    if (photo == null) return;
+
+    setState(() => _isReading = true);
+    DocumentReadResult result;
+    try {
+      final response = await ref.read(authRepositoryProvider).readDocument({
+        'documentType': spec.type.wireName,
+        'ocr': photo.payload?.toJsonString(),
+      });
+      result = DocumentReadResult.fromJson(
+        response.data as Map<String, dynamic>,
+      );
+    } catch (e) {
+      if (mounted) showApiError(context, e);
+      return;
+    } finally {
+      if (mounted) setState(() => _isReading = false);
     }
 
     if (!mounted) return;
+    final attempt =
+        ref.read(registrationNotifierProvider).captureAttempts[spec.type] ?? 1;
+
+    final outcome = await DocumentValuesSheet.show(
+      context,
+      spec: spec,
+      result: result,
+      attempt: attempt,
+      maxAttempts: _maxCaptureAttempts,
+    );
+
+    // Dismissed: the photo stays, and "Check what was read" reopens this.
+    if (outcome == null || !mounted) return;
+
+    final notifier = ref.read(registrationNotifierProvider.notifier);
+
+    if (outcome.isRetake) {
+      if (outcome.forgiveTry) notifier.forgiveAttempt(spec.type);
+      await _captureAndRead(spec);
+      return;
+    }
+
+    notifier.setConfirmed(spec.type, outcome.values!);
+  }
+
+  /// Opens the camera. True once the user has accepted a photo.
+  Future<bool> _capture(DocumentSpec spec) async {
+    if (!await _tipsPreference.hasBeenShown()) {
+      if (!mounted) return false;
+      final proceed = await CaptureTipsSheet.show(context);
+      if (!proceed || !mounted) return false;
+      unawaited(_tipsPreference.markShown());
+    }
+
+    if (!mounted) return false;
     final navigator = Navigator.of(context);
 
     // Loops on a retake chosen from the review screen, rather than requiring
@@ -104,7 +168,7 @@ class _RegisterDocumentStepScreenState
           ),
         ),
       );
-      if (captured == null || !mounted) return;
+      if (captured == null || !mounted) return false;
 
       ref.read(registrationNotifierProvider.notifier).setCaptured(
             spec.type,
@@ -129,11 +193,12 @@ class _RegisterDocumentStepScreenState
         ),
       );
 
-      if (useIt == true) return;
+      if (useIt == true) return true;
       // Anything else — Retake, or backing out of the review screen — goes
       // round again rather than leaving the step on a photo the user just
       // said no to.
     }
+    return false;
   }
 
   /// Names each photo the way the server's multipart form expects.
@@ -188,10 +253,21 @@ class _RegisterDocumentStepScreenState
         return;
       }
 
+      final state = ref.read(registrationNotifierProvider);
+
+      // Documents whose three tries were used up here. Their missing values
+      // were typed on the sheet, so the server must not ask for a fourth photo.
+      final spent = [
+        for (final spec in specs)
+          if ((state.captureAttempts[spec.type] ?? 0) >= _maxCaptureAttempts)
+            spec.type.wireName,
+      ];
+
       final fields = <String, dynamic>{
         // The server also remembers this on the account, so a retake asked for
         // later still skips the receipt.
-        if (ref.read(registrationNotifierProvider).isEBike) 'IsEBike': 'true',
+        if (state.isEBike) 'IsEBike': 'true',
+        if (spent.isNotEmpty) 'RetakesSpent': spent.join(','),
       };
       for (final spec in specs) {
         final photo = captured[spec.type]!;
@@ -216,7 +292,12 @@ class _RegisterDocumentStepScreenState
 
       await Navigator.of(context).push(
         MaterialPageRoute(
-          builder: (_) => RegisterConfirmScreen(result: result),
+          builder: (_) => RegisterConfirmScreen(
+            result: result,
+            // What the user already checked, document by document, wins over
+            // the scan's fresh reading of the same text.
+            confirmed: ref.read(registrationNotifierProvider).confirmedValues,
+          ),
         ),
       );
     } catch (e) {
@@ -264,6 +345,10 @@ class _RegisterDocumentStepScreenState
       registrationNotifierProvider.select((s) => s.captureAttempts),
     );
 
+    final confirmed = ref.watch(
+      registrationNotifierProvider.select((s) => s.confirmed),
+    );
+
     final hydrated = ref.watch(
       registrationNotifierProvider.select((s) => s.hydrated),
     );
@@ -295,12 +380,14 @@ class _RegisterDocumentStepScreenState
     final isLast = widget.index == specs.length - 1;
 
     final retakesSpent = (attempts[spec.type] ?? 0) >= _maxCaptureAttempts;
+    final isChecked = confirmed.containsKey(spec.type);
+    final busy = _isSubmitting || _isReading;
 
-    // The photo has to be readable and the right document before the flow moves
-    // on. Once the retakes are spent it goes up regardless — a check derived
-    // from a handful of sample forms is not grounds for refusing to register
-    // someone, only for telling a reviewer it could not be confirmed.
-    final canProceed = photo != null && (photo.isUsable || retakesSpent);
+    // The document has to be read and its values checked before the flow moves
+    // on. Once the retakes are spent the user types what could not be read — a
+    // check derived from a handful of sample forms is not grounds for refusing
+    // to register someone, only for telling a reviewer it could not be confirmed.
+    final canProceed = photo != null && isChecked;
 
     return RegistrationStepScaffold(
       step: 4,
@@ -314,7 +401,7 @@ class _RegisterDocumentStepScreenState
       // decides which documents this screen asks for — so without a way back to
       // it, someone who picked the wrong one was being asked for a document
       // they do not have, on a screen with no way out.
-      busy: _isSubmitting,
+      busy: busy,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -339,8 +426,26 @@ class _RegisterDocumentStepScreenState
             spec: spec,
             photo: photo,
             retakesSpent: retakesSpent,
-            onCapture: _isSubmitting ? null : () => _capture(spec),
+            onCapture: busy ? null : () => _captureAndRead(spec),
           ),
+          // A photo whose values were never checked: the sheet was dismissed,
+          // the read failed, or the app restarted. Reading again costs no try.
+          if (photo != null) ...[
+            const SizedBox(height: AppSpacing.md),
+            if (isChecked)
+              AppNotice(
+                message: 'Checked. Try ${attempts[spec.type] ?? 1} of '
+                    '$_maxCaptureAttempts used.',
+                intent: StatusIntent.success,
+              ),
+            const SizedBox(height: AppSpacing.sm),
+            AppButton(
+              label: isChecked ? 'Check the values again' : 'Check what was read',
+              style: AppButtonStyle.secondary,
+              isLoading: _isReading,
+              onPressed: busy ? null : () => _readAndConfirm(spec),
+            ),
+          ],
           if (_retakeMessage != null) ...[
             const SizedBox(height: AppSpacing.md),
             AppNotice(
@@ -352,7 +457,7 @@ class _RegisterDocumentStepScreenState
           AppButton(
             label: isLast ? 'Read my documents' : 'Continue',
             isLoading: _isSubmitting,
-            onPressed: !canProceed || _isSubmitting
+            onPressed: !canProceed || busy
                 ? null
                 : () {
                     if (isLast) {
@@ -370,7 +475,7 @@ class _RegisterDocumentStepScreenState
               child: Text(
                 photo == null
                     ? 'Take the photo to continue.'
-                    : 'Retake this one to continue.',
+                    : 'Check what was read to continue.',
                 textAlign: TextAlign.center,
                 style: context.text.bodySmall,
               ),
