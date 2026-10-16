@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../core/utils/ph_time.dart';
 import '../providers/overview_provider.dart';
 import '../theme/theme.dart';
+import 'ui/app_range_picker.dart';
 
 /// One control for the history side of a page: a few shortcuts, a single day,
 /// or any range. Shared by the Overview and Reports so both mean the same by
@@ -87,16 +88,19 @@ class PeriodPicker extends ConsumerWidget {
   static Future<DateTime?> _pickDay(
     BuildContext context,
     OverviewPeriod current,
-  ) {
+  ) async {
     final today = _today;
     final shown = current.days?.from ?? today;
-    return showDatePicker(
-      context: context,
-      initialDate: shown.isAfter(today) ? today : shown,
+    final shownDay = shown.isAfter(today) ? today : shown;
+    final picked = await showAppDateRange(
+      context,
+      singleDay: true,
       firstDate: DateTime(today.year - 5),
       // A day that has not happened has nothing in it.
       lastDate: today,
+      initial: DateTimeRange(start: shownDay, end: shownDay),
     );
+    return picked?.start;
   }
 
   static Future<DateTimeRange?> _pickRange(
@@ -105,13 +109,11 @@ class PeriodPicker extends ConsumerWidget {
   ) {
     final today = _today;
     final d = current.days;
-    return showDateRangePicker(
-      context: context,
+    return showAppDateRange(
+      context,
       firstDate: DateTime(today.year - 5),
       lastDate: today,
-      initialDateRange: d == null
-          ? null
-          : DateTimeRange(start: d.from, end: d.to),
+      initial: d == null ? null : DateTimeRange(start: d.from, end: d.to),
     );
   }
 }

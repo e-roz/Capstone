@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import '../../theme/theme.dart';
+import 'app_range_picker.dart';
 
 final _dateOnly = DateFormat('MMM d, yyyy');
 
@@ -21,14 +22,16 @@ class AppDayFilter extends StatelessWidget {
 
   Future<void> _pick(BuildContext context) async {
     final now = DateTime.now();
-    final picked = await showDatePicker(
-      context: context,
-      initialDate: day.isAfter(now) ? now : day,
+    final shown = day.isAfter(now) ? now : day;
+    final picked = await showAppDateRange(
+      context,
+      singleDay: true,
       firstDate: DateTime(now.year - 5),
       // A day that has not happened has nothing in it.
       lastDate: now,
+      initial: DateTimeRange(start: shown, end: shown),
     );
-    if (picked != null) onChanged(picked);
+    if (picked != null) onChanged(picked.start);
   }
 
   @override

@@ -15,6 +15,7 @@ export 'app_day_filter.dart';
 export 'app_field.dart';
 export 'app_form.dart';
 export 'app_page.dart';
+export 'app_range_picker.dart';
 export 'app_pagination.dart';
 export 'app_toolbar.dart';
 export 'async_view.dart';
