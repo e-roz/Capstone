@@ -195,7 +195,18 @@ public static class ReceiptProbeFixture
             .Select(l => Line(l.Text, l.X, l.Y, l.W, l.H, l.Confidence))
             .ToList());
 
-    private static OcrLineDto Line(string text, int x, int y, int w, int h, double confidence)
+    /// <summary>
+    /// A copy of <paramref name="payload"/> with the line carrying <paramref name="text"/>
+    /// replaced by <paramref name="parts"/>: one OCR line split into several.
+    /// </summary>
+    public static OcrPayloadDto Split(OcrPayloadDto payload, string text, params OcrLineDto[] parts)
+        => Payload(payload.Lines
+            .SelectMany(l => l.Text == text
+                ? parts
+                : [Line(l.Text, l.X, l.Y, l.W, l.H, l.Confidence)])
+            .ToList());
+
+    public static OcrLineDto Line(string text, int x, int y, int w, int h, double confidence)
         => new() { Text = text, X = x, Y = y, W = w, H = h, Confidence = confidence };
 
     private static OcrPayloadDto Payload(List<OcrLineDto> lines) => new()

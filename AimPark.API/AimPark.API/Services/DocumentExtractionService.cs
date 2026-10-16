@@ -408,11 +408,18 @@ namespace AimPark.API.Services
         /// Reads the plate off the Official Receipt.
         /// </summary>
         /// <remarks>
-        /// The label and value share one line, so this is a split rather than a
-        /// spatial search. Anchoring on the label is what makes it safe: directly
-        /// beneath the plate sits a File No that opens with the same digits, and the
-        /// CR carries another near-identical number. Any rule that simply hunts for
-        /// digits captures the wrong one.
+        /// The plate is printed large and bold, in a different size from the labels
+        /// around it, so the OCR often returns "Plate No:" and the plate as two
+        /// separate lines on the same row. The value on the label's own line is
+        /// tried first, then the cell to its right, which is how the vehicle type
+        /// and colour are found.
+        ///
+        /// Anchoring on the label is what makes it safe: directly beneath the plate
+        /// sits a File No that opens with the same digits, and the CR carries another
+        /// near-identical number. Any rule that simply hunts for digits captures the
+        /// wrong one, so there is no search of the whole page for a plate-shaped
+        /// string. A plate whose label is unreadable is "not found", which the
+        /// applicant types.
         ///
         /// No plate format is enforced. Motorcycle plates here are digits only while
         /// car plates mix letters and digits, so a pattern like "three letters then
@@ -434,7 +441,10 @@ namespace AimPark.API.Services
                     return candidate;
             }
 
-            return null;
+            var beside = IdentifierNormalizer.NormalizePlate(
+                ReceiptValue(lines, DocumentLabels.Receipt.PlateNumber));
+
+            return beside.Length is >= MinPlateLength and <= MaxPlateLength ? beside : null;
         }
 
         /// <summary>

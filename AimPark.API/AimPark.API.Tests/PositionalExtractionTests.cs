@@ -200,6 +200,54 @@ public class PositionalExtractionTests
         Assert.Null(result.VehicleType);
     }
 
+    // The plate is printed large and bold, so the OCR can return the label and the
+    // plate as two lines. The photos above happened to keep them together.
+    private static OcrPayloadDto WithSplitPlate(OcrPayloadDto receipt, string label, string combined) =>
+        ReceiptProbeFixture.Split(
+            receipt,
+            combined,
+            ReceiptProbeFixture.Line(label, 377, 1530, 190, 40, 0.85),
+            ReceiptProbeFixture.Line(ReceiptProbeFixture.Plate, 640, 1520, 300, 64, 0.88));
+
+    [Fact]
+    public void ReadsThePlateWhenItIsSplitFromItsLabel()
+    {
+        var receipt = WithSplitPlate(ReceiptProbeFixture.Second(), "Plate No:", "Plate No: 482KLM");
+
+        Assert.Equal(ReceiptProbeFixture.Plate, ReadReceipt(receipt).PlateNumber);
+    }
+
+    [Fact]
+    public void ReadsThePlateWhenTheLabelIsMisreadAndSplit()
+    {
+        var receipt = WithSplitPlate(ReceiptProbeFixture.First(), "Plote No:", "Plate No: 482KLM");
+
+        Assert.Equal(ReceiptProbeFixture.Plate, ReadReceipt(receipt).PlateNumber);
+    }
+
+    [Fact]
+    public void ThePlateIsStillReadWhenLabelAndValueShareALine()
+    {
+        Assert.Equal(ReceiptProbeFixture.Plate, ReadReceipt(ReceiptProbeFixture.First()).PlateNumber);
+        Assert.Equal(ReceiptProbeFixture.Plate, ReadReceipt(ReceiptProbeFixture.Second()).PlateNumber);
+    }
+
+    [Fact]
+    public void MissingPlateDoesNotReachAcrossToTheFeeTableOrTheFileNumber()
+    {
+        // Only the label is left. On its row, to the right, sit "MVUC" and the fee
+        // table; below it sits the File No. None of them may stand in for the plate.
+        var receipt = ReceiptProbeFixture.Split(
+            ReceiptProbeFixture.Second(),
+            "Plate No: 482KLM",
+            ReceiptProbeFixture.Line("Plate No:", 377, 1530, 190, 40, 0.85));
+
+        var result = ReadReceipt(receipt);
+
+        Assert.Null(result.PlateNumber);
+        Assert.True(result.IsFlagged(nameof(result.PlateNumber)));
+    }
+
     [Fact]
     public void VehicleTypeIsNotReadFromTheNextFieldsCaption()
     {
