@@ -1,3 +1,4 @@
+import 'affiliation_label.dart';
 import 'registration_checks.dart';
 
 class RegistrationDetail {
@@ -77,7 +78,7 @@ class RegistrationDetail {
         userId: json['userId']?.toString() ?? '',
         fullName: json['fullName']?.toString() ?? '',
         email: json['email']?.toString() ?? '',
-        affiliation: json['affiliation']?.toString() ?? 'Student',
+        affiliation: affiliationLabel(json['affiliation']?.toString()),
         studentNumber: json['studentNumber']?.toString(),
         section: json['section']?.toString(),
         registrationStep: json['registrationStep']?.toString() ?? '',

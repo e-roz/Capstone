@@ -19,6 +19,18 @@ namespace AimPark.API.Helpers
         [GeneratedRegex(@"\b(\d{1,2})[/\-](\d{4})\b")]
         private static partial Regex MonthYearPattern();
 
+        // "MAR 31 2026", as the older receipt prints its renewal window. The day
+        // and year are allowed to run together ("MAR 312026", "JAN 12026"): OCR
+        // drops that space, and the pattern backtracks so a day of one or two
+        // digits still leaves a four-digit year.
+        [GeneratedRegex(
+            @"\b(JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|OCT|NOV|DEC)[A-Z]*\.?\s*(\d{1,2})\s*,?\s*(\d{4})\b",
+            RegexOptions.IgnoreCase)]
+        private static partial Regex MonthNameDatePattern();
+
+        private static readonly string[] MonthAbbreviations =
+            ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"];
+
         // Opens the renewal window that trails the expiry. Either word alone is
         // enough, because OCR drops letters from this line — a real receipt gave
         // "and due or renewal on" for "and due for renewal on".
@@ -80,6 +92,43 @@ namespace AimPark.API.Helpers
             return monthYear.Value.Index < full.Value.Index
                 ? monthYear.Value.Date
                 : full.Value.Date;
+        }
+
+        /// <summary>
+        /// The last date written with a month name ("MAR 31 2026") in the text.
+        /// </summary>
+        /// <remarks>
+        /// The older receipt prints "NEXT REG RENEWAL JAN 1 2026 to MAR 31 2026",
+        /// and the registration runs to the end of that window. The last date is
+        /// taken, not the first: OCR damaged the first one ("JAN 12026") and left
+        /// the last one clean, and the first is only where the window opens.
+        ///
+        /// Month names are matched on their first three letters, since OCR changes
+        /// the rest. A date that is not on the calendar is skipped, never rolled
+        /// into the next month.
+        /// </remarks>
+        public static DateTime? FindLastMonthNameDate(string? text)
+        {
+            if (string.IsNullOrWhiteSpace(text))
+                return null;
+
+            DateTime? last = null;
+
+            foreach (Match match in MonthNameDatePattern().Matches(text))
+            {
+                var month = Array.IndexOf(
+                    MonthAbbreviations, match.Groups[1].Value.ToUpperInvariant()) + 1;
+
+                var date = Build(
+                    int.Parse(match.Groups[3].Value, CultureInfo.InvariantCulture),
+                    month,
+                    int.Parse(match.Groups[2].Value, CultureInfo.InvariantCulture));
+
+                if (date is not null)
+                    last = date;
+            }
+
+            return last;
         }
 
         private static (DateTime Date, int Index)? FirstFullDate(string repaired)

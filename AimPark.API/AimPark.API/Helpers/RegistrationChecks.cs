@@ -44,6 +44,22 @@ namespace AimPark.API.Helpers
         public const string VehicleTypeEditMarker = "Vehicle type changed";
         public const string ColourEditMarker = "Colour changed";
 
+        /// <summary>
+        /// The same two values when nothing was read at all, so the applicant typed
+        /// them. Told apart from an edit: the reviewer's question is different —
+        /// not "why did you change what we read" but "check this against the
+        /// receipt, the system could not".
+        /// </summary>
+        public const string VehicleTypeTypedMarker = "Vehicle type typed";
+        public const string ColourTypedMarker = "Colour typed";
+
+        /// <summary>
+        /// Opening words of the note for an applicant whose receipt has no plate.
+        /// The LTO can issue a receipt before the plate exists, so this is a real
+        /// case rather than a failed reading. Read back as a finding.
+        /// </summary>
+        public const string NoPlateMarker = "No plate declared";
+
         public const string Passed = "Passed";
         public const string ExpiringSoon = "ExpiringSoon";
         public const string Failed = "Failed";
@@ -162,6 +178,7 @@ namespace AimPark.API.Helpers
                     "Name mismatch — the name on file does not appear to be printed on the licence.",
                 Failed =>
                     $"Name mismatch — the account reads \"{user.FullName}\", the school document reads \"{schoolName}\".",
+                NotChecked when user.Affiliation != Affiliation.Student => NoSecondNameDocument,
                 NotChecked => "Could not compare names — no readable name came off the documents.",
                 _ => null
             };
@@ -223,8 +240,14 @@ namespace AimPark.API.Helpers
 
             if (onFile.Length == 0)
             {
+                // Left NotChecked on purpose, for either reason: approving needs a
+                // note, and for a vehicle with no plate that note is where the
+                // reviewer writes that they saw it.
                 plate.State = NotChecked;
-                plate.Detail = "Could not read a plate number from the receipt.";
+                plate.Detail = (v.Notes ?? string.Empty).Contains(NoPlateMarker, StringComparison.Ordinal)
+                    ? "The applicant says this vehicle has no plate yet. A temporary plate is reserved. "
+                      + "See the vehicle in person before approving."
+                    : "Could not read a plate number from the receipt.";
             }
             else
             {
@@ -499,6 +522,83 @@ namespace AimPark.API.Helpers
                 });
             }
 
+            // The applicant says the vehicle has no plate. Red: the reviewer has to
+            // see the vehicle, and the temporary plate only counts once they do.
+            foreach (var line in (newest.Notes ?? string.Empty).Split('\n'))
+            {
+                if (!line.StartsWith(NoPlateMarker, StringComparison.Ordinal))
+                    continue;
+
+                var detail = line[(line.IndexOf('—') + 1)..].Trim();
+                findings.Add(new FindingResponse
+                {
+                    Key = "NoPlate",
+                    Category = Identity,
+                    Severity = Danger,
+                    Title = "No plate on the vehicle",
+                    Detail = detail.Length == 0 ? null : char.ToUpperInvariant(detail[0]) + detail[1..],
+                    Document = Receipt
+                });
+            }
+
+            // A vehicle type or colour nothing could be read for, so the applicant
+            // typed it. Amber: the reviewer checks it against the receipt image.
+            foreach (var line in (newest.Notes ?? string.Empty).Split('\n'))
+            {
+                var (key, title) =
+                    line.StartsWith(VehicleTypeTypedMarker, StringComparison.Ordinal)
+                        ? ("Typed.VehicleType", "Vehicle type typed by applicant")
+                        : line.StartsWith(ColourTypedMarker, StringComparison.Ordinal)
+                            ? ("Typed.Colour", "Colour typed by applicant")
+                            : ((string?)null, (string?)null);
+
+                if (key is null || title is null)
+                    continue;
+
+                var detail = line[(line.IndexOf('—') + 1)..].Trim();
+                findings.Add(new FindingResponse
+                {
+                    Key = key,
+                    Category = Edited,
+                    Severity = Warning,
+                    Title = title,
+                    Detail = detail.Length == 0 ? null : char.ToUpperInvariant(detail[0]) + detail[1..],
+                    Document = Receipt
+                });
+            }
+
+            // Written by RegistrationService when an expiry was edited or typed in a
+            // way the expiry block could not judge. An expired reading turned into a
+            // valid date is the one edit that decides whether a lapsed document gets
+            // through, so it is red.
+            foreach (var line in (newest.Notes ?? string.Empty).Split('\n'))
+            {
+                var (title, severity) =
+                    line.StartsWith(DocumentExpiryRules.ExpiredReadingEditedMarker, StringComparison.Ordinal)
+                        ? ("Expired date changed by applicant", Danger)
+                        : line.StartsWith(DocumentExpiryRules.TypedDateNotOnPhotoMarker, StringComparison.Ordinal)
+                            ? ("Typed date not found on the photo", Warning)
+                            : ((string?)null, (string?)null);
+
+                if (title is null || severity is null)
+                    continue;
+
+                var onReceipt = line.Contains("receipt", StringComparison.OrdinalIgnoreCase)
+                                || line.Contains("registration", StringComparison.OrdinalIgnoreCase);
+                var document = onReceipt ? Receipt : License;
+                var detail = line[(line.IndexOf('—') + 1)..].Trim();
+
+                findings.Add(new FindingResponse
+                {
+                    Key = $"Edit.{(severity == Danger ? "ExpiredDate" : "TypedDate")}.{document}",
+                    Category = Edited,
+                    Severity = severity,
+                    Title = title,
+                    Detail = detail.Length == 0 ? null : char.ToUpperInvariant(detail[0]) + detail[1..],
+                    Document = document
+                });
+            }
+
             // OrderBy is stable, so within one rank the order stays the order the
             // checks were built in: person before vehicle.
             return findings
@@ -573,11 +673,20 @@ namespace AimPark.API.Helpers
                 {
                     Key = check.Key, Category = NotChecked, Severity = Neutral,
                     Title = "Names not compared",
-                    Detail = "No readable name came off the documents.",
+                    Detail = isStudent ? "No readable name came off the documents." : NoSecondNameDocument,
                     Document = isStudent ? Raf : License
                 }
             };
         }
+
+        /// <summary>
+        /// Faculty and staff send only a licence and receipt, and type no name, so
+        /// the licence is the only place a name comes from and there is nothing to
+        /// hold it against.
+        /// </summary>
+        private const string NoSecondNameDocument =
+            "Faculty and staff send only a licence, so there is no second document to compare "
+            + "the name with. The account name is taken from the licence.";
 
         private static FindingResponse ExpiryFinding(
             CheckItemResponse check, string thing, DateTime? expiry, string document, DateTime nowUtc)

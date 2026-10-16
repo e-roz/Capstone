@@ -1,3 +1,4 @@
+import 'affiliation_label.dart';
 import 'registration_checks.dart';
 
 /// One line in the review queue.
@@ -99,7 +100,7 @@ class PendingRegistration {
         userId: json['userId']?.toString() ?? '',
         fullName: json['fullName']?.toString() ?? '',
         email: json['email']?.toString() ?? '',
-        affiliation: json['affiliation']?.toString() ?? 'Student',
+        affiliation: affiliationLabel(json['affiliation']?.toString()),
         createdAt: DateTime.parse(json['createdAt'].toString()),
         updatedAt: DateTime.parse(json['updatedAt'].toString()),
         checksVerdict: json['checksVerdict']?.toString() ?? 'None',

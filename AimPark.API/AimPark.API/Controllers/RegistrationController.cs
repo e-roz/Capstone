@@ -54,6 +54,15 @@ namespace AimPark.API.Controllers
             => _registrationService.ScanDocumentsAsync(dto, GetUserId(), ct);
 
         /// <summary>
+        /// Reads one document's OCR text as soon as it is photographed. No image,
+        /// nothing stored, no attempt counted.
+        /// </summary>
+        [Authorize]
+        [HttpPost("documents/read")]
+        public Task<ActionResult<DocumentReadResponse>> ReadDocument([FromBody] ReadDocumentDto dto, CancellationToken ct)
+            => _registrationService.ReadDocumentAsync(dto, GetUserId(), ct);
+
+        /// <summary>
         /// Records the values the user confirmed and completes registration.
         /// </summary>
         [Authorize]

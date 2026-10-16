@@ -17,6 +17,7 @@ class RegistrationSummary {
     this.affiliation,
     this.plateNumber,
     this.isEBike = false,
+    this.temporaryPlate,
     this.approved = false,
   });
 
@@ -28,6 +29,11 @@ class RegistrationSummary {
   /// An e-bike application: not approved from paper, but by an admin who sees
   /// the e-bike in person.
   final bool isEBike;
+
+  /// The temporary plate reserved for a vehicle whose receipt had no plate
+  /// ("TP-0007"), or null for every other application. Like an e-bike, it is
+  /// approved by an admin who sees the vehicle.
+  final String? temporaryPlate;
 
   /// The server approved this application without a reviewer. Everything else
   /// is still waiting, and the screen must not say otherwise.
@@ -57,6 +63,8 @@ class RegistrationSubmittedScreen extends StatelessWidget {
     final s = summary;
     final approved = s?.approved ?? false;
     final isEBike = s?.isEBike ?? false;
+    final temporaryPlate = s?.temporaryPlate;
+    final hasTemporaryPlate = temporaryPlate != null && temporaryPlate.isNotEmpty;
 
     final facts = <AppFact>[
       if (s?.name != null && s!.name!.isNotEmpty) AppFact('Name', s.name!),
@@ -66,6 +74,8 @@ class RegistrationSubmittedScreen extends StatelessWidget {
       if (s?.plateNumber != null && s!.plateNumber!.isNotEmpty)
         AppFact('Vehicle', s.plateNumber!),
       if (isEBike) const AppFact('Vehicle', 'E-bike (plate given at the office)'),
+      if (hasTemporaryPlate)
+        AppFact('Vehicle', 'No plate yet (temporary plate $temporaryPlate)'),
     ];
 
     return AppScreen(
@@ -98,8 +108,10 @@ class RegistrationSubmittedScreen extends StatelessWidget {
                 ? 'Everything checked out, so no review was needed.'
                 : isEBike
                     ? 'One more step: bring your e-bike to the admin office.'
-                    : 'That is everything we need from you. The parking office '
-                        'reviews it next.',
+                    : hasTemporaryPlate
+                        ? 'One more step: bring your vehicle to the admin office.'
+                        : 'That is everything we need from you. The parking office '
+                            'reviews it next.',
             textAlign: TextAlign.center,
             style: context.text.bodyMedium?.copyWith(color: t.text.secondary),
           ),
@@ -134,7 +146,13 @@ class RegistrationSubmittedScreen extends StatelessWidget {
                               'form. An admin checks the e-bike in person and '
                               'gives it a temporary plate. You cannot park until '
                               'that is done.'
-                          : 'Your account is pending review, so you cannot park yet. '
+                          : hasTemporaryPlate
+                              ? 'Go to the admin office with your vehicle, your '
+                                  'official receipt and your driver\'s licence. An '
+                                  'admin checks the vehicle in person and gives you '
+                                  'your temporary plate, $temporaryPlate. You cannot '
+                                  'park until that is done.'
+                              : 'Your account is pending review, so you cannot park yet. '
                               'Sign in any time to check the status — we will tell you '
                               'as soon as a decision is recorded.',
                   style: context.text.bodyMedium,

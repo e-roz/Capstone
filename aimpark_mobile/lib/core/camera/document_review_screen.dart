@@ -32,9 +32,9 @@ class DocumentReviewScreen extends StatelessWidget {
   final CapturedDocument photo;
   final CaptureSpec spec;
 
-  /// True once this document's retake allowance is spent — the photo will be
-  /// sent as it is, so "Use this photo" is the only real choice even when the
-  /// reading looks bad.
+  /// True once this document's tries are spent. There is no Retake then:
+  /// "Use this photo" is the only choice, even when the reading looks bad. What
+  /// could not be read is typed on the next screen.
   final bool retakesSpent;
 
   @override
@@ -52,8 +52,8 @@ class DocumentReviewScreen extends StatelessWidget {
     final message = issue == null
         ? 'Looks good — we could read this one.'
         : retakesSpent
-            ? '${documentIssueMessage(issue, spec.label)} We will send this '
-                'photo as it is and have someone check it.'
+            ? '${documentIssueMessage(issue, spec.label)} That was your last '
+                'try. Continue, and type what we could not read.'
             : documentIssueMessage(issue, spec.label);
 
     // No PopScope needed: the system back gesture pops with a null result,
@@ -108,20 +108,24 @@ class DocumentReviewScreen extends StatelessWidget {
                   const SizedBox(height: AppSpacing.md),
                   Row(
                     children: [
-                      Expanded(
-                        child: TextButton(
-                          onPressed: () => Navigator.of(context).pop(false),
-                          style: TextButton.styleFrom(
-                            foregroundColor: t.text.onDark,
-                            padding: const EdgeInsets.symmetric(
-                              vertical: AppSpacing.md,
+                      // Gone once the tries are spent, so a document cannot be
+                      // retaken round and round from this screen.
+                      if (!retakesSpent) ...[
+                        Expanded(
+                          child: TextButton(
+                            onPressed: () => Navigator.of(context).pop(false),
+                            style: TextButton.styleFrom(
+                              foregroundColor: t.text.onDark,
+                              padding: const EdgeInsets.symmetric(
+                                vertical: AppSpacing.md,
+                              ),
+                              side: BorderSide(color: t.border.normal),
                             ),
-                            side: BorderSide(color: t.border.normal),
+                            child: const Text('Retake'),
                           ),
-                          child: const Text('Retake'),
                         ),
-                      ),
-                      const SizedBox(width: AppSpacing.md),
+                        const SizedBox(width: AppSpacing.md),
+                      ],
                       Expanded(
                         child: AppButton(
                           label: 'Use this photo',

@@ -12,6 +12,13 @@ import 'auth_provider.dart';
 
 part 'registration_provider.g.dart';
 
+/// Photographs of one document before the flow stops asking for another, and
+/// the user types what could not be read instead.
+///
+/// Mirrors the server's own limit (`MaxScanAttempts`), and lives here so the
+/// counter, the capture button and the sheet cannot disagree about it.
+const int maxCaptureAttempts = 3;
+
 /// One text recogniser for the whole registration flow.
 ///
 /// The documents are now captured on three separate screens, so a recogniser
@@ -28,13 +35,24 @@ DocumentScanner documentScanner(Ref ref) {
 /// enum, which the server parses by name.
 enum Affiliation {
   student('Student', 'Student'),
-  faculty('Faculty', 'Faculty'),
-  staff('Staff', 'Staff');
+  faculty('Faculty', 'Faculty / Staff'),
+
+  /// Kept only so an account made before faculty and staff were merged still
+  /// reads back. Never offered as a choice; see [asChoice].
+  staff('Staff', 'Faculty / Staff');
 
   const Affiliation(this.wireName, this.label);
 
   final String wireName;
   final String label;
+
+  /// What the sign-up form offers. Faculty and staff send the same documents
+  /// and are checked the same way, so they are one option.
+  static const choices = [Affiliation.student, Affiliation.faculty];
+
+  /// This value as one of [choices]: an old `staff` reads as faculty.
+  Affiliation get asChoice =>
+      this == Affiliation.staff ? Affiliation.faculty : this;
 
   static Affiliation? fromWire(String? value) {
     for (final affiliation in values) {
@@ -109,6 +127,8 @@ class RegistrationState {
     this.isEBike = false,
     this.captured = const {},
     this.captureAttempts = const {},
+    this.confirmed = const {},
+    this.noPlate = false,
     this.hydrated = false,
   });
 
@@ -156,6 +176,27 @@ class RegistrationState {
   /// never recognised it.
   final Map<ScanDocumentType, int> captureAttempts;
 
+  /// The values the user confirmed for each document, as it was read.
+  ///
+  /// Keyed by document, then by the server's field name (`LicenseNumber`,
+  /// `LicenseExpiry` as an ISO date, …). A document with an entry here has been
+  /// read and checked, and the step lets the user move on. Not saved to disk:
+  /// after a restart the photo is simply read again, which costs no try.
+  final Map<ScanDocumentType, Map<String, String>> confirmed;
+
+  /// Every confirmed value, across all documents, by field name.
+  Map<String, String> get confirmedValues => {
+    for (final values in confirmed.values) ...values,
+  };
+
+  /// The applicant says the vehicle has no plate, and the receipt agrees.
+  ///
+  /// The LTO can issue a receipt before the plate exists. Then no plate number is
+  /// asked for, and the admin gives a temporary plate after seeing the vehicle.
+  /// Not saved to disk, like [confirmed]: after a restart the receipt is read
+  /// again and the question is asked again, which costs nothing.
+  final bool noPlate;
+
   /// False until the saved draft has been read back off disk.
   ///
   /// The read is a frame or two on a fast phone and a few hundred milliseconds
@@ -173,6 +214,8 @@ class RegistrationState {
     bool? isEBike,
     Map<ScanDocumentType, CapturedDocument>? captured,
     Map<ScanDocumentType, int>? captureAttempts,
+    Map<ScanDocumentType, Map<String, String>>? confirmed,
+    bool? noPlate,
     bool? hydrated,
     bool clearSession = false,
   }) {
@@ -187,6 +230,8 @@ class RegistrationState {
       isEBike: isEBike ?? this.isEBike,
       captured: captured ?? this.captured,
       captureAttempts: captureAttempts ?? this.captureAttempts,
+      confirmed: confirmed ?? this.confirmed,
+      noPlate: noPlate ?? this.noPlate,
       hydrated: hydrated ?? this.hydrated,
     );
   }
@@ -265,6 +310,8 @@ class RegistrationNotifier extends _$RegistrationNotifier {
       isEBike: false,
       captured: const {},
       captureAttempts: const {},
+      confirmed: const {},
+      noPlate: false,
       hydrated: true,
     );
     unawaited(_store.clear());
@@ -297,16 +344,44 @@ class RegistrationNotifier extends _$RegistrationNotifier {
     _persist();
   }
 
+  /// A new photo replaces the old one, and whatever was confirmed from the old
+  /// one no longer describes it.
   void setCaptured(ScanDocumentType type, CapturedDocument document) {
     _touched = true;
     state = state.copyWith(
       captured: {...state.captured, type: document},
+      // Never counted past the limit: a count of "5 of 3" means nothing, and
+      // the capture button is switched off once the tries are spent anyway.
       captureAttempts: {
         ...state.captureAttempts,
-        type: (state.captureAttempts[type] ?? 0) + 1,
+        type: ((state.captureAttempts[type] ?? 0) + 1).clamp(
+          0,
+          maxCaptureAttempts,
+        ),
       },
+      confirmed: {...state.confirmed}..remove(type),
     );
     _persist();
+  }
+
+  /// Gives back the try a photo used.
+  ///
+  /// For a document that read perfectly well and was refused for being expired:
+  /// the tries are for photographs that would not read, and photographing a
+  /// different, valid document is not a second attempt at the first.
+  void forgiveAttempt(ScanDocumentType type) {
+    final attempts = state.captureAttempts[type] ?? 0;
+    if (attempts == 0) return;
+    state = state.copyWith(
+      captureAttempts: {...state.captureAttempts, type: attempts - 1},
+    );
+    _persist();
+  }
+
+  /// Records the values the user agreed to for one document.
+  void setConfirmed(ScanDocumentType type, Map<String, String> values) {
+    _touched = true;
+    state = state.copyWith(confirmed: {...state.confirmed, type: values});
   }
 
   /// Forgets the photos once they have been submitted, so a second pass through
@@ -314,8 +389,20 @@ class RegistrationNotifier extends _$RegistrationNotifier {
   /// last time's images.
   void clearCaptured() {
     _touched = true;
-    state = state.copyWith(captured: const {}, captureAttempts: const {});
+    state = state.copyWith(
+      captured: const {},
+      captureAttempts: const {},
+      confirmed: const {},
+      noPlate: false,
+    );
     unawaited(_store.clear());
+  }
+
+  /// The applicant has said the vehicle has no plate (true), or a later photo of
+  /// the receipt showed one after all (false).
+  void setNoPlate(bool noPlate) {
+    _touched = true;
+    state = state.copyWith(noPlate: noPlate);
   }
 
   void clearSession() {

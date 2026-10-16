@@ -22,12 +22,9 @@ class RegisterProfileScreen extends ConsumerStatefulWidget {
 }
 
 class _RegisterProfileScreenState extends ConsumerState<RegisterProfileScreen> {
-  final _firstNameController = TextEditingController();
-  final _lastNameController = TextEditingController();
   final _passwordController = TextEditingController();
   final _confirmPasswordController = TextEditingController();
   bool _isLoading = false;
-  bool _initialized = false;
   bool _acceptedTerms = false;
   Affiliation _affiliation = Affiliation.student;
 
@@ -44,18 +41,15 @@ class _RegisterProfileScreenState extends ConsumerState<RegisterProfileScreen> {
   /// would be gone by then.
   bool _isRevisit = false;
 
-  /// True while the saved name and affiliation are being fetched.
+  /// True while the saved affiliation is being fetched.
   bool _isPreparing = true;
 
   /// One message per field, so each problem is stated where it can be fixed.
   ///
   /// The screen used to raise the first failure it found in a bar across the
-  /// top: a form with an empty surname, a short password and unread terms told
-  /// the user about the surname, waited for them to fix it and submit again,
-  /// then told them about the password. Three round trips to learn what one
-  /// glance could have said.
-  String? _firstNameError;
-  String? _lastNameError;
+  /// top: a short password and unread terms told the user about the password,
+  /// waited for them to fix it and submit again, then told them about the
+  /// terms. Two round trips to learn what one glance could have said.
   String? _passwordError;
   String? _confirmPasswordError;
   String? _termsError;
@@ -70,10 +64,9 @@ class _RegisterProfileScreenState extends ConsumerState<RegisterProfileScreen> {
   /// from the server in the second case.
   ///
   /// The values have to come from the server: completing the profile clears the
-  /// local draft's session, and an app relaunched mid-registration never held
-  /// the name at all. A revisit that could not read them would present an empty
-  /// form whose Save would overwrite a good name with nothing, so a failed read
-  /// returns to the document step instead of showing the form.
+  /// local draft's session. A revisit that could not read them would present a
+  /// form that might save the wrong affiliation, so a failed read returns to the
+  /// document step instead of showing the form.
   Future<void> _prepare() async {
     final repo = ref.read(authRepositoryProvider);
     final token = await repo.getToken();
@@ -93,20 +86,15 @@ class _RegisterProfileScreenState extends ConsumerState<RegisterProfileScreen> {
       final response = await repo.registrationStatus();
       final data = response.data as Map<String, dynamic>;
 
-      final fullName = data['fullName']?.toString().trim() ?? '';
-      final parts = fullName.split(' ')..removeWhere((p) => p.isEmpty);
-
       if (!mounted) return;
       setState(() {
         _isRevisit = true;
         _isPreparing = false;
-        _initialized = true;
-        if (parts.isNotEmpty) {
-          _firstNameController.text = parts.first;
-          _lastNameController.text = parts.sublist(1).join(' ');
-        }
-        _affiliation =
-            Affiliation.fromWire(data['affiliation']?.toString()) ??
+        // Kept as stored, even an old "Staff": shown as "Faculty / Staff", and
+        // saved back unchanged unless the user picks the other option. Turning
+        // it into "Faculty" on save would count as a change of affiliation and
+        // clear a reviewer's retake request.
+        _affiliation = Affiliation.fromWire(data['affiliation']?.toString()) ??
             ref.read(registrationNotifierProvider).affiliation;
         _isEBike = data['isEBike'] == true ||
             ref.read(registrationNotifierProvider).isEBike;
@@ -123,24 +111,9 @@ class _RegisterProfileScreenState extends ConsumerState<RegisterProfileScreen> {
 
   @override
   void dispose() {
-    _firstNameController.dispose();
-    _lastNameController.dispose();
     _passwordController.dispose();
     _confirmPasswordController.dispose();
     super.dispose();
-  }
-
-  /// Pre-fill name fields from Google display name on first render.
-  void _maybeInitFromOAuth(RegistrationState regState) {
-    if (_initialized) return;
-    _initialized = true;
-    if (regState.isOAuthFlow && regState.googleDisplayName != null) {
-      final parts = regState.googleDisplayName!.trim().split(' ');
-      _firstNameController.text = parts.first;
-      if (parts.length > 1) {
-        _lastNameController.text = parts.sublist(1).join(' ');
-      }
-    }
   }
 
   /// Checks every field and reports all of them at once.
@@ -148,22 +121,14 @@ class _RegisterProfileScreenState extends ConsumerState<RegisterProfileScreen> {
   /// [noPassword] covers both cases where there is no password on this form: a
   /// Google account never sets one, and a revisit is editing an account whose
   /// password is already set and is not changed here.
+  ///
+  /// There is no name to check: nobody types one. It is read off the driver's
+  /// licence, the one document every applicant sends.
   bool _validate(bool noPassword) {
-    final firstName = _firstNameController.text.trim();
-    final lastName = _lastNameController.text.trim();
     final password = _passwordController.text;
     final confirmPassword = _confirmPasswordController.text;
 
-    // A student's name is read off their registration form, so the form does not
-    // ask for it.
-    final needsName = _affiliation != Affiliation.student;
-
     setState(() {
-      _firstNameError =
-          needsName && firstName.isEmpty ? 'Enter your first name.' : null;
-      _lastNameError =
-          needsName && lastName.isEmpty ? 'Enter your last name.' : null;
-
       _passwordError = noPassword
           ? null
           : password.length < 8
@@ -186,9 +151,7 @@ class _RegisterProfileScreenState extends ConsumerState<RegisterProfileScreen> {
           : 'Accept the Terms & Conditions to continue.';
     });
 
-    return _firstNameError == null &&
-        _lastNameError == null &&
-        _passwordError == null &&
+    return _passwordError == null &&
         _confirmPasswordError == null &&
         _termsError == null;
   }
@@ -199,16 +162,12 @@ class _RegisterProfileScreenState extends ConsumerState<RegisterProfileScreen> {
     setState(() => _isLoading = true);
 
     try {
-      final firstName = _firstNameController.text.trim();
-      final lastName = _lastNameController.text.trim();
-
-      // Left blank for a student: the server takes the name from the registration
-      // form once it has been read. Google's own name is still sent, because the
-      // form is compared against it before it replaces it.
+      // Left blank: the server takes the name from the licence once it has been
+      // read. Google's own name is still sent, because the documents are
+      // compared against it before the licence's name replaces it.
       final regState = ref.read(registrationNotifierProvider);
-      final fullName = _affiliation == Affiliation.student
-          ? (regState.isOAuthFlow ? regState.googleDisplayName ?? '' : '')
-          : '$firstName $lastName';
+      final fullName =
+          regState.isOAuthFlow ? regState.googleDisplayName ?? '' : '';
 
       final body = <String, dynamic>{
         'fullName': fullName,
@@ -276,9 +235,6 @@ class _RegisterProfileScreenState extends ConsumerState<RegisterProfileScreen> {
     final isOAuth = regState.isOAuthFlow;
     final noPassword = isOAuth || _isRevisit;
 
-    // Pre-fill on first build when coming from Google sign-in
-    _maybeInitFromOAuth(regState);
-
     return RegistrationStepScaffold(
       step: 3,
       title: 'Your Profile',
@@ -299,14 +255,18 @@ class _RegisterProfileScreenState extends ConsumerState<RegisterProfileScreen> {
           ),
           // Decides which document proves affiliation at the upload step: a
           // registration form for students and nothing extra for everyone else.
+          // Faculty and staff send the same documents, so they are one choice.
           AppChipGroup<Affiliation>(
             label: 'I am a…',
             options: {
-              for (final option in Affiliation.values) option: option.label,
+              for (final option in Affiliation.choices) option: option.label,
             },
-            value: _affiliation,
+            value: _affiliation.asChoice,
             enabled: !_isLoading,
-            onChanged: (value) => setState(() => _affiliation = value),
+            onChanged: (value) {
+              if (value == _affiliation.asChoice) return;
+              setState(() => _affiliation = value);
+            },
           ),
           const SizedBox(height: AppSpacing.md),
           // Decides whether a receipt is asked for. An e-bike is not registered
@@ -330,44 +290,11 @@ class _RegisterProfileScreenState extends ConsumerState<RegisterProfileScreen> {
               style: context.text.bodySmall,
             ),
           ],
-          if (_affiliation != Affiliation.student) ...[
-            const SizedBox(height: AppSpacing.md),
-            AppTextField(
-              label: 'First Name',
-              controller: _firstNameController,
-              enabled: !_isLoading,
-              textCapitalization: TextCapitalization.words,
-              textInputAction: TextInputAction.next,
-              autofillHints: const [AutofillHints.givenName],
-              errorText: _firstNameError,
-              onChanged: (_) {
-                if (_firstNameError != null) {
-                  setState(() => _firstNameError = null);
-                }
-              },
-            ),
-            const SizedBox(height: AppSpacing.md),
-            AppTextField(
-              label: 'Last Name',
-              controller: _lastNameController,
-              enabled: !_isLoading,
-              textCapitalization: TextCapitalization.words,
-              textInputAction: TextInputAction.next,
-              autofillHints: const [AutofillHints.familyName],
-              errorText: _lastNameError,
-              onChanged: (_) {
-                if (_lastNameError != null) {
-                  setState(() => _lastNameError = null);
-                }
-              },
-            ),
-          ] else ...[
-            const SizedBox(height: AppSpacing.sm),
-            Text(
-              'We will read your name from your registration form.',
-              style: context.text.bodySmall,
-            ),
-          ],
+          const SizedBox(height: AppSpacing.sm),
+          Text(
+            'We will read your name from your driver\'s licence.',
+            style: context.text.bodySmall,
+          ),
           // Password fields: only on a first pass, and only for a local
           // (non-OAuth) registration. A revisit is not where a password gets
           // changed — the server ignores one sent here, and offering the field

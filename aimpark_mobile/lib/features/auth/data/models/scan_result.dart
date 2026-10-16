@@ -119,6 +119,82 @@ class ExtractedValues {
       value is String ? DateTime.tryParse(value) : null;
 }
 
+/// The expiry date a licence or receipt carries, and whether it stops
+/// registration.
+class ExpiryCheck {
+  const ExpiryCheck({
+    required this.field,
+    this.date,
+    this.isExpired = false,
+    this.isCalculated = false,
+    this.blocks = false,
+    this.message,
+  });
+
+  /// `LicenseExpiry` or `RegistrationExpiry`.
+  final String field;
+  final DateTime? date;
+  final bool isExpired;
+
+  /// Worked out from the plate rather than read. Never blocks.
+  final bool isCalculated;
+  final bool blocks;
+
+  /// The server's sentence, naming the date it read.
+  final String? message;
+
+  factory ExpiryCheck.fromJson(Map<String, dynamic> json) => ExpiryCheck(
+    field: json['field'] as String? ?? '',
+    date: ExtractedValues._date(json['date']),
+    isExpired: json['isExpired'] as bool? ?? false,
+    isCalculated: json['isCalculated'] as bool? ?? false,
+    blocks: json['blocks'] as bool? ?? false,
+    message: json['message'] as String?,
+  );
+}
+
+/// The server's reading of one document, taken as soon as it is photographed.
+class DocumentReadResult {
+  const DocumentReadResult({
+    required this.documentType,
+    required this.extracted,
+    this.diagnosis,
+    this.missingFields = const [],
+    this.expiry,
+  });
+
+  final String documentType;
+
+  /// Why another photo would help, or null when this one read well.
+  final DocumentDiagnosis? diagnosis;
+
+  /// The values this document should give and did not, in words.
+  final List<String> missingFields;
+
+  /// Only this document's fields mean anything here.
+  final ExtractedValues extracted;
+
+  final ExpiryCheck? expiry;
+
+  factory DocumentReadResult.fromJson(Map<String, dynamic> json) =>
+      DocumentReadResult(
+        documentType: json['documentType'] as String? ?? '',
+        diagnosis: json['diagnosis'] is Map<String, dynamic>
+            ? DocumentDiagnosis.fromJson(json['diagnosis'] as Map<String, dynamic>)
+            : null,
+        missingFields: [
+          for (final f in (json['missingFields'] as List<dynamic>? ?? []))
+            f.toString(),
+        ],
+        extracted: ExtractedValues.fromJson(
+          json['extracted'] as Map<String, dynamic>? ?? const {},
+        ),
+        expiry: json['expiry'] is Map<String, dynamic>
+            ? ExpiryCheck.fromJson(json['expiry'] as Map<String, dynamic>)
+            : null,
+      );
+}
+
 /// The server's answer to a scan: what it read, and whether that is good enough
 /// to move on.
 class ScanResult {

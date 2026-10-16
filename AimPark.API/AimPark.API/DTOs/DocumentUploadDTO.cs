@@ -41,6 +41,20 @@ namespace AimPark.API.DTOs
         // text recognition still submits, and the whole thing falls to manual review
         // rather than blocking the applicant.
         public string? IdentityDocumentOcr { get; set; }
+
+        /// <summary>
+        /// The applicant has said the vehicle has no plate, so a receipt without one
+        /// is not sent back for another photograph.
+        /// </summary>
+        public bool NoPlate { get; set; }
+
+        /// <summary>
+        /// The documents, by name ("Raf,License"), whose three tries the applicant
+        /// already used up on the phone. Their missing values were typed, so the
+        /// scan does not send them back for another photograph. Absent from older
+        /// app versions, which keeps the old behaviour for them.
+        /// </summary>
+        public string? RetakesSpent { get; set; }
         public string? LicenseOcr { get; set; }
         public string? OfficialReceiptOcr { get; set; }
     }

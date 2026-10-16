@@ -54,6 +54,17 @@ namespace AimPark.API.Helpers
             /// <summary>Prints as e.g. "License No." with "N01-23-456789" beneath.</summary>
             public static readonly string[] Number =
                 ["License No", "Licence No", "Driver's License No"];
+
+            /// <summary>
+            /// Every caption printed on the card. Only used to stop a lookup at the
+            /// next field's caption instead of reading it as a value.
+            /// </summary>
+            public static readonly string[] Captions =
+            [
+                "License No", "Expiration Date", "Agency Code", "Nationality", "Sex",
+                "Date of Birth", "Weight", "Height", "Address", "Blood Type",
+                "Eyes Color", "DL Codes", "Conditions", "Last Name"
+            ];
         }
 
         /// <summary>LTO Official Receipt.</summary>
@@ -72,6 +83,14 @@ namespace AimPark.API.Helpers
             /// </summary>
             public const string ValidUntil = "valid until";
 
+            /// <summary>
+            /// The older receipt has no "valid until" sentence. Its last line reads
+            /// "NEXT REG RENEWAL JAN 1 2026 to MAR 31 2026", and the registration
+            /// runs to the end of that window. Short on purpose: OCR returned
+            /// "HEXT REG RENEWAL".
+            /// </summary>
+            public const string RenewalWindow = "Reg Renewal";
+
             public static readonly string[] IssueDate = ["Date"];
 
             /// <summary>Prints as e.g. "Vehicle Type: MC Without Sidecar".</summary>
@@ -79,6 +98,16 @@ namespace AimPark.API.Helpers
 
             /// <summary>Prints as e.g. "Color: MATTE ORANGE/BLACK".</summary>
             public const string Color = "Color";
+
+            /// <summary>
+            /// The captions in the vehicle details block. Only used to stop a lookup
+            /// at the next field's caption instead of reading it as a value.
+            /// </summary>
+            public static readonly string[] Captions =
+            [
+                "Plate No", "File No", "Classification", "Vehicle Type", "Fuel Type",
+                "Aircon Type", "Color", "Year Model", "Transaction No"
+            ];
         }
     }
 }
