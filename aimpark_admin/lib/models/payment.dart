@@ -48,6 +48,13 @@ class PaymentTransaction {
     this.confirmedBy,
   });
 
+  /// True when the bill is the parking minimum rather than time x rate: a
+  /// 1 minute stay at 15/hr still costs the 20 minimum. Violation fines have no
+  /// rate, so they never count.
+  bool get minimumFeeApplied =>
+      ratePerHourApplied > 0 &&
+      amountDue > ratePerHourApplied / 60 * durationMinutes + 0.005;
+
   factory PaymentTransaction.fromJson(Map<String, dynamic> json) =>
       PaymentTransaction(
         paymentId: json['paymentId']?.toString() ?? '',

@@ -120,7 +120,22 @@ class PaymentsScreen extends ConsumerWidget {
       DataCell(Text(p.slotCode ?? '—')),
       DataCell(AppNumericCell('${p.durationMinutes} min')),
       DataCell(AppNumericCell(_money.format(p.ratePerHourApplied))),
-      DataCell(AppNumericCell(_money.format(p.amountDue), emphasis: true)),
+      DataCell(Tooltip(
+        message: p.minimumFeeApplied
+            ? 'Minimum fee. The time parked costs less than this.'
+            : '',
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (p.minimumFeeApplied) ...[
+              Text('min.',
+                  style: text.labelSmall?.copyWith(color: t.text.tertiary)),
+              const SizedBox(width: AppSpacing.x2),
+            ],
+            AppNumericCell(_money.format(p.amountDue), emphasis: true),
+          ],
+        ),
+      )),
       DataCell(_StatusCell(payment: p)),
       // Cash and GCash both read as "Paid" in the status column, and they are
       // not the same fact: one is in the school's merchant account with a
@@ -193,6 +208,11 @@ class PaymentsScreen extends ConsumerWidget {
                   label: 'Rate applied',
                   value: '${_money.format(p.ratePerHourApplied)}/hr',
                 ),
+                if (p.minimumFeeApplied)
+                  const _ReceiptRow(
+                    label: 'Minimum fee',
+                    value: 'Applied, the time parked costs less',
+                  ),
                 const Divider(height: AppSpacing.x6),
                 _ReceiptRow(label: 'Created', value: time(p.createdAt)),
                 _ReceiptRow(label: 'Paid', value: time(p.paidAt)),
