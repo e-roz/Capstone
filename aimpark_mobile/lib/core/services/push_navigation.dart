@@ -30,3 +30,22 @@ String routeForPush(Map<String, String> data) {
     _ => '/home/user/notifications',
   };
 }
+
+/// Where tapping a row in the notifications list should go, or null when there
+/// is nowhere better than the list the user is already on.
+///
+/// The record it names when the notification carries one; otherwise the list
+/// for its kind, which is all an older row (written before the server kept the
+/// data) can offer. Announcements and anything else about nothing in particular
+/// stay put.
+String? routeForNotification(String type, Map<String, String> data) {
+  final route = routeForPush(data);
+  if (route != '/home/user/notifications') return route;
+
+  return switch (type.toLowerCase()) {
+    'violation' => '/home/user/violations',
+    'payment' => '/home/user/payments',
+    'incident' => '/home/user/incidents',
+    _ => null,
+  };
+}

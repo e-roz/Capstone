@@ -5,6 +5,7 @@ using AimPark.API.Enums;
 using AimPark.API.Interfaces;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using System.Text.Json;
 
 namespace AimPark.API.Services
 {
@@ -53,7 +54,8 @@ namespace AimPark.API.Services
                     TargetUserId = userId,
                     TargetRole = null,
                     CreatedByUserId = Guid.Empty, // raised by the system, not an admin
-                    CreatedAt = DateTime.UtcNow
+                    CreatedAt = DateTime.UtcNow,
+                    Data = data is { Count: > 0 } ? JsonSerializer.Serialize(data) : null
                 };
 
                 await _notifications.AddAsync(notification, ct);
@@ -224,26 +226,48 @@ namespace AimPark.API.Services
                 .OrderByDescending(n => n.CreatedAt)
                 .Skip((page - 1) * pageSize)
                 .Take(pageSize)
-                .Select(n => new NotificationResponse
+                .Select(n => new
                 {
-                    NotificationId = n.Id,
-                    Title = n.Title,
-                    Message = n.Message,
-                    Type = n.Type.ToString(),
-                    TargetRole = n.TargetRole == null ? null : n.TargetRole.ToString(),
-                    CreatedAt = n.CreatedAt,
-                    IsRead = _db.Set<NotificationRead>().Any(r => r.NotificationId == n.Id && r.UserId == userId)
+                    Response = new NotificationResponse
+                    {
+                        NotificationId = n.Id,
+                        Title = n.Title,
+                        Message = n.Message,
+                        Type = n.Type.ToString(),
+                        TargetRole = n.TargetRole == null ? null : n.TargetRole.ToString(),
+                        CreatedAt = n.CreatedAt,
+                        IsRead = _db.Set<NotificationRead>().Any(r => r.NotificationId == n.Id && r.UserId == userId)
+                    },
+                    n.Data
                 })
                 .ToListAsync(ct);
 
+            foreach (var row in notifications)
+                row.Response.Data = ParseData(row.Data);
+
             return new OkObjectResult(new NotificationListResponse
             {
-                Notifications = notifications,
+                Notifications = notifications.Select(r => r.Response).ToList(),
                 TotalCount = totalCount,
                 Page = page,
                 PageSize = pageSize,
                 UnreadCount = unreadCount
             });
+        }
+
+        /// <summary>A stored row's data, or null. Never throws: a bad row only loses its link.</summary>
+        private static Dictionary<string, string>? ParseData(string? json)
+        {
+            if (string.IsNullOrWhiteSpace(json))
+                return null;
+            try
+            {
+                return JsonSerializer.Deserialize<Dictionary<string, string>>(json);
+            }
+            catch (JsonException)
+            {
+                return null;
+            }
         }
 
         // POST /api/notifications/{id}/read
