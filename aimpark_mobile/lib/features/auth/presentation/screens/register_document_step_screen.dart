@@ -57,15 +57,6 @@ class RegisterDocumentStepScreen extends ConsumerStatefulWidget {
 
 class _RegisterDocumentStepScreenState
     extends ConsumerState<RegisterDocumentStepScreen> {
-  /// Photographs of one document before the flow stops asking for another.
-  ///
-  /// Mirrors the server's own limit, and exists for the same reason: the checks
-  /// are derived from the documents that were on hand when they were written, so
-  /// a form printed to a template nobody has seen must not be able to lock a
-  /// real applicant out. After this many tries the photo is sent as it is and
-  /// the reviewer is told the system could not recognise it.
-  static const int _maxCaptureAttempts = maxCaptureAttempts;
-
   static const _tipsPreference = CaptureTipsPreference();
 
   bool _isSubmitting = false;
@@ -89,9 +80,10 @@ class _RegisterDocumentStepScreenState
 
   /// Sends this document's OCR text to the server and shows what came back.
   ///
-  /// Loops back to the camera on a retake. A retake for an expired document
-  /// gives its try back first: the user is photographing a different, valid
-  /// document, not a clearer copy of this one.
+  /// Loops back to the camera on a retake, as many times as it takes: a
+  /// document is photographed until it reads. A retake for an expired document
+  /// gives its try back first, so the counter only counts photos of the
+  /// document being read, not a different, valid one replacing it.
   Future<void> _readAndConfirm(DocumentSpec spec) async {
     final photo = ref.read(registrationNotifierProvider).captured[spec.type];
     if (photo == null) return;
@@ -122,7 +114,6 @@ class _RegisterDocumentStepScreenState
       spec: spec,
       result: result,
       attempt: attempt,
-      maxAttempts: _maxCaptureAttempts,
     );
 
     // Dismissed: the photo stays, and "Check what was read" reopens this.
@@ -179,17 +170,9 @@ class _RegisterDocumentStepScreenState
       // someone their retake is still blurry before anyone has looked at it.
       setState(() => _retakeMessage = null);
 
-      final attempts =
-          ref.read(registrationNotifierProvider).captureAttempts[spec.type] ??
-              0;
-
       final useIt = await navigator.push<bool>(
         MaterialPageRoute(
-          builder: (_) => DocumentReviewScreen(
-            photo: captured,
-            spec: spec,
-            retakesSpent: attempts >= _maxCaptureAttempts,
-          ),
+          builder: (_) => DocumentReviewScreen(photo: captured, spec: spec),
         ),
       );
 
@@ -253,21 +236,10 @@ class _RegisterDocumentStepScreenState
         return;
       }
 
-      final state = ref.read(registrationNotifierProvider);
-
-      // Documents whose three tries were used up here. Their missing values
-      // were typed on the sheet, so the server must not ask for a fourth photo.
-      final spent = [
-        for (final spec in specs)
-          if ((state.captureAttempts[spec.type] ?? 0) >= _maxCaptureAttempts)
-            spec.type.wireName,
-      ];
-
       final fields = <String, dynamic>{
         // The server also remembers this on the account, so a retake asked for
         // later still skips the receipt.
-        if (state.isEBike) 'IsEBike': 'true',
-        if (spent.isNotEmpty) 'RetakesSpent': spent.join(','),
+        if (ref.read(registrationNotifierProvider).isEBike) 'IsEBike': 'true',
       };
       for (final spec in specs) {
         final photo = captured[spec.type]!;
@@ -322,9 +294,7 @@ class _RegisterDocumentStepScreenState
 
       if (diagnosis == null) continue;
 
-      final tries =
-          '${result.triesLeft} ${result.triesLeft == 1 ? 'try' : 'tries'} left';
-      final message = '${diagnosis.message} ($tries)';
+      final message = diagnosis.message;
 
       if (i == widget.index) {
         setState(() => _retakeMessage = message);
@@ -379,14 +349,12 @@ class _RegisterDocumentStepScreenState
     final photo = captured[spec.type];
     final isLast = widget.index == specs.length - 1;
 
-    final retakesSpent = (attempts[spec.type] ?? 0) >= _maxCaptureAttempts;
     final isChecked = confirmed.containsKey(spec.type);
     final busy = _isSubmitting || _isReading;
 
-    // The document has to be read and its values checked before the flow moves
-    // on. Once the retakes are spent the user types what could not be read — a
-    // check derived from a handful of sample forms is not grounds for refusing
-    // to register someone, only for telling a reviewer it could not be confirmed.
+    // The document has to be read, and its values checked, before the flow moves
+    // on. A document that does not read is photographed again, as many times as
+    // it takes.
     final canProceed = photo != null && isChecked;
 
     return RegistrationStepScaffold(
@@ -425,10 +393,7 @@ class _RegisterDocumentStepScreenState
           DocumentPhotoPanel(
             spec: spec,
             photo: photo,
-            retakesSpent: retakesSpent,
-            // Switched off once the tries are spent: from there the user types
-            // what could not be read, through "Check what was read".
-            onCapture: busy || retakesSpent ? null : () => _captureAndRead(spec),
+            onCapture: busy ? null : () => _captureAndRead(spec),
           ),
           // A photo whose values were never checked: the sheet was dismissed,
           // the read failed, or the app restarted. Reading again costs no try.
@@ -436,8 +401,8 @@ class _RegisterDocumentStepScreenState
             const SizedBox(height: AppSpacing.md),
             if (isChecked)
               AppNotice(
-                message: 'Checked. Try ${attempts[spec.type] ?? 1} of '
-                    '$_maxCaptureAttempts used.',
+                message: 'Checked. This took ${attempts[spec.type] ?? 1} '
+                    '${(attempts[spec.type] ?? 1) == 1 ? 'try' : 'tries'}.',
                 intent: StatusIntent.success,
               ),
             const SizedBox(height: AppSpacing.sm),

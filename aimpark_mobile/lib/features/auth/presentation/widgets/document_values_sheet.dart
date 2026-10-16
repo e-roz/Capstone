@@ -98,22 +98,20 @@ DateTime? _dateOf(ExtractedValues e, String field) => switch (field) {
 
 /// Shows what was read from one document, right after it was photographed.
 ///
-/// Three things can happen here. The photo did not read, or a value is
-/// missing, and tries remain: the user takes it again, and the sheet says
-/// which try this was. The tries are spent: the missing values open for
-/// typing, and the admin sees they were typed. Everything read: the user checks
-/// each value, and a value the OCR read is only changed after "Are you sure?".
+/// Two things can happen here. The photo did not read, or a value is missing:
+/// the user takes it again, as many times as it takes, and the sheet says which
+/// try this was. Everything read: the user checks each value, and a value the
+/// OCR read is only changed after "Are you sure?".
 ///
 /// An expired licence or receipt stops here with the date that was read, so a
 /// misread can be corrected. A corrected date is checked again. Using another
-/// document instead does not cost a try.
+/// document instead does not count as another try.
 class DocumentValuesSheet extends StatefulWidget {
   const DocumentValuesSheet({
     super.key,
     required this.spec,
     required this.result,
     required this.attempt,
-    required this.maxAttempts,
   });
 
   final DocumentSpec spec;
@@ -121,14 +119,12 @@ class DocumentValuesSheet extends StatefulWidget {
 
   /// Which photo of this document this was, from 1.
   final int attempt;
-  final int maxAttempts;
 
   static Future<DocumentSheetOutcome?> show(
     BuildContext context, {
     required DocumentSpec spec,
     required DocumentReadResult result,
     required int attempt,
-    required int maxAttempts,
   }) {
     return showModalBottomSheet<DocumentSheetOutcome>(
       context: context,
@@ -136,12 +132,8 @@ class DocumentValuesSheet extends StatefulWidget {
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
-      builder: (_) => DocumentValuesSheet(
-        spec: spec,
-        result: result,
-        attempt: attempt,
-        maxAttempts: maxAttempts,
-      ),
+      builder: (_) =>
+          DocumentValuesSheet(spec: spec, result: result, attempt: attempt),
     );
   }
 
@@ -157,11 +149,9 @@ class _DocumentValuesSheetState extends State<DocumentValuesSheet> {
 
   ExtractedValues get _extracted => widget.result.extracted;
 
-  bool get _triesLeft => widget.attempt < widget.maxAttempts;
-
-  /// Another photo of the same document would help: it did not read, or a
-  /// value is missing, and the user still has tries.
-  bool get _mustRetake => widget.result.diagnosis != null && _triesLeft;
+  /// Another photo of the same document is needed: it did not read, or a value
+  /// is missing. There is no limit, so this is the only way on.
+  bool get _mustRetake => widget.result.diagnosis != null;
 
   @override
   void initState() {
@@ -265,13 +255,13 @@ class _DocumentValuesSheetState extends State<DocumentValuesSheet> {
               ),
               const SizedBox(height: AppSpacing.xs),
               Text(
-                'Try ${widget.attempt} of ${widget.maxAttempts}',
+                'Try ${widget.attempt}',
                 style: context.text.labelMedium?.copyWith(
                   color: context.tokens.text.secondary,
                 ),
               ),
               const SizedBox(height: AppSpacing.md),
-              if (_mustRetake) ..._retakeBody(diagnosis!) else ..._valuesBody(diagnosis, expiry, blocked),
+              if (_mustRetake) ..._retakeBody(diagnosis!) else ..._valuesBody(expiry, blocked),
             ],
           ),
         ),
@@ -283,20 +273,19 @@ class _DocumentValuesSheetState extends State<DocumentValuesSheet> {
     AppNotice(message: diagnosis.message, intent: StatusIntent.danger),
     const SizedBox(height: AppSpacing.sm),
     Text(
-      'You can take this photo ${widget.maxAttempts} times. After that you '
-      'can type what we could not read, and the admin will see it was typed.',
+      'Take it again until we can read it. You can take it as many times as '
+      'you need.',
       style: context.text.bodySmall,
     ),
     const SizedBox(height: AppSpacing.lg),
     AppButton(
-      label: 'Take it again (try ${widget.attempt + 1} of ${widget.maxAttempts})',
+      label: 'Take it again (try ${widget.attempt + 1})',
       onPressed: () =>
           Navigator.of(context).pop(const DocumentSheetOutcome.retake()),
     ),
   ];
 
   List<Widget> _valuesBody(
-    DocumentDiagnosis? diagnosis,
     ({DateTime? date, bool expired, bool blocks})? expiry,
     bool blocked,
   ) {
@@ -304,22 +293,12 @@ class _DocumentValuesSheetState extends State<DocumentValuesSheet> {
         expiry != null && expiry.expired && !expiry.blocks;
 
     return [
-      if (diagnosis != null) ...[
-        AppNotice(
-          title: 'You have used all ${widget.maxAttempts} tries',
-          message: 'Type what we could not read. The admin will see it was '
-              'typed, not read.',
-          intent: StatusIntent.warning,
-        ),
-        const SizedBox(height: AppSpacing.md),
-      ] else ...[
-        Text(
-          'Check each one. A lock means we read it. Tap it to change it. The '
-          'admin will see anything you change.',
-          style: context.text.bodySmall,
-        ),
-        const SizedBox(height: AppSpacing.md),
-      ],
+      Text(
+        'Check each one. A lock means we read it. Tap it to change it. The '
+        'admin will see anything you change.',
+        style: context.text.bodySmall,
+      ),
+      const SizedBox(height: AppSpacing.md),
       for (final f in _fields)
         if (f.isDate)
           ScannedDateField(
