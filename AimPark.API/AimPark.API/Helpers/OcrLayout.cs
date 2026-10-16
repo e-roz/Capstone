@@ -42,16 +42,122 @@ namespace AimPark.API.Helpers
         /// <summary>
         /// The nearest line to the right of <paramref name="label"/> on the same row.
         /// </summary>
-        public static OcrLineDto? ValueRightOf(IEnumerable<OcrLineDto> lines, OcrLineDto label)
+        /// <remarks>
+        /// Both limits are optional so the school form keeps its old behaviour.
+        /// <paramref name="maxGap"/> stops the search running across the page: on an
+        /// LTO receipt a "Vehicle Type:" whose value did not read would otherwise
+        /// pick up "Registration" from the fee table 600 pixels away and call the
+        /// vehicle a car. <paramref name="neighbourLabels"/> makes the search stop,
+        /// rather than skip, when the nearest line is another field's caption.
+        /// </remarks>
+        public static OcrLineDto? ValueRightOf(
+            IEnumerable<OcrLineDto> lines,
+            OcrLineDto label,
+            int? maxGap = null,
+            IReadOnlyCollection<string>? neighbourLabels = null)
         {
             var labelRight = label.X + label.W;
 
-            return lines
+            var nearest = lines
                 .Where(l => !ReferenceEquals(l, label))
                 .Where(l => l.X >= labelRight - (label.W / 10))
                 .Where(l => OnSameRow(l, label))
                 .OrderBy(l => l.X)
                 .FirstOrDefault();
+
+            if (nearest is null)
+                return null;
+
+            if (maxGap is int gap && nearest.X - labelRight > gap)
+                return null;
+
+            return neighbourLabels is not null && IsLabelLine(nearest, neighbourLabels)
+                ? null
+                : nearest;
+        }
+
+        /// <summary>
+        /// The line printed directly below <paramref name="label"/>, for captions
+        /// that sit above their value.
+        /// </summary>
+        /// <remarks>
+        /// A Philippine licence prints "License No.", "Expiration Date" and "Agency
+        /// Code" side by side, with their values one row down. Reading order puts the
+        /// three captions next to each other, so "the next line" after a caption is
+        /// another caption. Comparing boxes finds the value instead.
+        ///
+        /// "Below" means the line's middle is under the label's bottom edge. The tops
+        /// are not compared: on real licences the value's box starts 4 to 12 pixels
+        /// inside the caption's. The gap is capped at twice the label's height, as
+        /// for <see cref="ValueAbove"/>.
+        ///
+        /// The boxes must share at least half the narrower one's width, so a value
+        /// under one column is never credited to the caption beside it. One OCR line
+        /// can sit under two captions at once: the licence number and expiry often
+        /// come back as one line. That is deliberate; the caller separates them by
+        /// pattern.
+        ///
+        /// When the nearest line below is itself a caption, the value is missing,
+        /// and the search stops there rather than continuing into the next field.
+        /// </remarks>
+        public static OcrLineDto? ValueBelow(
+            IEnumerable<OcrLineDto> lines,
+            OcrLineDto label,
+            IReadOnlyCollection<string>? neighbourLabels = null)
+        {
+            var labelBottom = label.Y + label.H;
+            var maxGap = label.H * 2;
+
+            var nearest = lines
+                .Where(l => !ReferenceEquals(l, label))
+                .Where(l => l.Y + (l.H / 2) > labelBottom)
+                .Where(l => l.Y - labelBottom <= maxGap)
+                .Where(l => HorizontalOverlap(l, label) >= Math.Min(l.W, label.W) * 0.5)
+                .OrderBy(l => l.Y)
+                .FirstOrDefault();
+
+            if (nearest is null)
+                return null;
+
+            return neighbourLabels is not null && IsLabelLine(nearest, neighbourLabels)
+                ? null
+                : nearest;
+        }
+
+        /// <summary>
+        /// True when the line is a caption from <paramref name="labels"/> rather than
+        /// a value.
+        /// </summary>
+        /// <remarks>
+        /// The caption has to be most of the line. A value that merely contains a
+        /// caption word — "Color: MATTE ORANGE/BLACK" holds "Color" — is still a
+        /// value.
+        /// </remarks>
+        public static bool IsLabelLine(OcrLineDto line, IEnumerable<string> labels)
+        {
+            var text = FuzzyText.TrimValue(line.Text);
+
+            return labels.Any(label =>
+                text.Length <= label.Length + 3
+                && FuzzyText.LabelDistance(text, label) != int.MaxValue);
+        }
+
+        /// <summary>
+        /// The line carrying the first of <paramref name="labels"/> that appears,
+        /// trying each spelling in order.
+        /// </summary>
+        public static OcrLineDto? FindAnyLabel(IEnumerable<OcrLineDto> lines, IEnumerable<string> labels)
+        {
+            var all = lines as IReadOnlyCollection<OcrLineDto> ?? lines.ToList();
+
+            foreach (var label in labels)
+            {
+                var found = FindLabel(all, label);
+                if (found is not null)
+                    return found;
+            }
+
+            return null;
         }
 
         /// <summary>
@@ -109,10 +215,17 @@ namespace AimPark.API.Helpers
         /// Value for a label, wherever the form happens to put it: on the same line,
         /// beside it, or above it.
         /// </summary>
+        /// <remarks>
+        /// <paramref name="maxRightGapInHeights"/> and
+        /// <paramref name="neighbourLabels"/> pass through to
+        /// <see cref="ValueRightOf"/>. The school form does not use them.
+        /// </remarks>
         public static string? ValueFor(
             IReadOnlyList<OcrLineDto> lines,
             string label,
-            bool captionBelowValue = false)
+            bool captionBelowValue = false,
+            double? maxRightGapInHeights = null,
+            IReadOnlyCollection<string>? neighbourLabels = null)
         {
             var labelLine = FindLabel(lines, label);
             if (labelLine is null)
@@ -128,7 +241,12 @@ namespace AimPark.API.Helpers
             if (inline.Length > 1)
                 return inline;
 
-            return FuzzyText.TrimValue(ValueRightOf(lines, labelLine)?.Text);
+            int? maxGap = maxRightGapInHeights is double heights
+                ? (int)(labelLine.H * heights)
+                : null;
+
+            return FuzzyText.TrimValue(
+                ValueRightOf(lines, labelLine, maxGap, neighbourLabels)?.Text);
         }
     }
 }

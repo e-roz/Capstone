@@ -36,10 +36,7 @@ namespace AimPark.API.Services
 
             result.LicenseName = ValueAfterAnyLabel(
                 licenseLines, DocumentLabels.License.Name, allowNextLine: true, preferNextLine: true);
-            result.LicenseExpiry = DateExtraction.FindFullDate(
-                ValueAfterAnyLabel(
-                    licenseLines, DocumentLabels.License.Expiry, allowNextLine: true, preferNextLine: true));
-
+            result.LicenseExpiry = ExtractLicenseExpiry(licenseLines);
             result.LicenseNumber = ExtractLicenseNumber(licenseLines);
 
             // Faculty and staff have no RAF, so the only trusted name to search
@@ -52,7 +49,7 @@ namespace AimPark.API.Services
             result.PlateNumber = plate;
             result.RegistrationExpiry = ExtractRegistrationExpiry(receiptLines, plate, result);
             result.VehicleType = ExtractVehicleType(receiptLines);
-            result.Color = ValueAfterAnyLabel(receiptLines, [DocumentLabels.Receipt.Color]);
+            result.Color = ReceiptValue(receiptLines, DocumentLabels.Receipt.Color);
 
             FlagMissing(result);
             return result;
@@ -70,7 +67,7 @@ namespace AimPark.API.Services
         /// </remarks>
         private static string? ExtractVehicleType(List<OcrLineDto> lines)
         {
-            var raw = ValueAfterAnyLabel(lines, [DocumentLabels.Receipt.VehicleType]);
+            var raw = ReceiptValue(lines, DocumentLabels.Receipt.VehicleType);
             if (string.IsNullOrWhiteSpace(raw))
                 return null;
 
@@ -257,23 +254,155 @@ namespace AimPark.API.Services
         /// are one value.
         /// </summary>
         /// <remarks>
-        /// Shape is checked here, unlike the plate, because the caption prints
-        /// above its value and a missed read leaves the next line — a name or
-        /// address — standing in for it. A real number carries digits; a name does
-        /// not. Accepting only a plausible one means a bad read becomes "not found"
-        /// (typed by the user, sent to review) rather than a wrong value that could
-        /// collide with a stranger's account.
+        /// Read from the line under the "License No." caption, found by position.
+        /// That line often carries the expiry date as well — "C66-24-000000
+        /// 2028/12/20" — so the number is picked out by its shape rather than by
+        /// taking the whole line.
+        ///
+        /// When the caption itself is misread ("LjcenseNd." in testing), the shape
+        /// is searched for across the whole card, and accepted only when exactly one
+        /// line carries it. Two candidates means the rules cannot tell which is
+        /// right, and "not found" is safer than a guess.
+        ///
+        /// Shape is checked, unlike the plate, because a missed read leaves a name
+        /// or address standing in for the number. Accepting only a plausible one
+        /// means a bad read becomes "not found" (typed by the user, sent to review)
+        /// rather than a wrong value that could collide with a stranger's account.
         /// </remarks>
         private static string? ExtractLicenseNumber(List<OcrLineDto> lines)
         {
-            var raw = ValueAfterAnyLabel(lines, DocumentLabels.License.Number, allowNextLine: true);
-            var candidate = IdentifierNormalizer.NormalizeLicenseNumber(raw);
+            var caption = OcrLayout.FindAnyLabel(lines, DocumentLabels.License.Number);
+            if (caption is not null)
+            {
+                var below = OcrLayout.ValueBelow(lines, caption, DocumentLabels.License.Captions);
+                var read = LicenseNumberIn(below?.Text);
+                if (read is not null)
+                    return read;
+            }
+
+            var anywhere = lines
+                .SelectMany(l => LicenseNumberPattern().Matches(l.Text))
+                .Select(m => IdentifierNormalizer.NormalizeLicenseNumber(m.Value))
+                .Distinct()
+                .ToList();
+
+            return anywhere.Count == 1 ? anywhere[0] : null;
+        }
+
+        /// <summary>
+        /// The licence number in one line of text, or null.
+        /// </summary>
+        /// <remarks>
+        /// The LTO shape is tried first, which is what separates the number from a
+        /// date sharing its line. A line without that shape falls back to the older
+        /// length-and-digits check on the whole line, so a number in some other
+        /// format still reads when it sits alone under its caption.
+        /// </remarks>
+        private static string? LicenseNumberIn(string? text)
+        {
+            if (string.IsNullOrWhiteSpace(text))
+                return null;
+
+            var shaped = LicenseNumberPattern().Matches(text)
+                .Select(m => IdentifierNormalizer.NormalizeLicenseNumber(m.Value))
+                .Distinct()
+                .ToList();
+
+            if (shaped.Count > 0)
+                return shaped.Count == 1 ? shaped[0] : null;
+
+            var candidate = IdentifierNormalizer.NormalizeLicenseNumber(text);
 
             if (candidate.Length is < MinLicenseNumberLength or > MaxLicenseNumberLength)
                 return null;
 
             return candidate.Count(char.IsDigit) >= MinLicenseNumberDigits ? candidate : null;
         }
+
+        /// <summary>
+        /// The licence expiry, read only from the line under the "Expiration Date"
+        /// caption.
+        /// </summary>
+        /// <remarks>
+        /// The card carries two other dates, the date of birth and the issue date.
+        /// Neither ever stands in for the expiry: there is no "any date on the card"
+        /// fallback. A missing expiry is "not found", which the user types and the
+        /// admin sees as typed.
+        ///
+        /// The value line is split into words before reading dates, because it
+        /// usually holds the licence number too. Exactly one date must be found;
+        /// two would mean the rules cannot tell which is the expiry.
+        /// </remarks>
+        private static DateTime? ExtractLicenseExpiry(List<OcrLineDto> lines)
+        {
+            var caption = OcrLayout.FindAnyLabel(lines, DocumentLabels.License.Expiry);
+            if (caption is null)
+                return null;
+
+            var below = OcrLayout.ValueBelow(lines, caption, DocumentLabels.License.Captions);
+            if (below is null)
+                return null;
+
+            var dates = RepairDateSpacing(below.Text)
+                .Split(' ', StringSplitOptions.RemoveEmptyEntries)
+                .Select(DateExtraction.FindFullDate)
+                .OfType<DateTime>()
+                .Distinct()
+                .ToList();
+
+            return dates.Count == 1 ? dates[0] : null;
+        }
+
+        /// <summary>
+        /// Closes a stray space OCR puts inside a year-first date.
+        /// </summary>
+        /// <remarks>
+        /// A real licence came back as "2028/1 2/20" for 2028/12/20. Only a space
+        /// between two digits of the month or of the day is closed, so the space
+        /// between the licence number and the date is never touched.
+        /// </remarks>
+        private static string RepairDateSpacing(string text)
+        {
+            var month = MonthStraySpacePattern().Replace(text, "$1/$2$3/$4");
+            return DayStraySpacePattern().Replace(month, "$1/$2/$3$4");
+        }
+
+        /// <summary>
+        /// A receipt value on the same line as its label, or in the cell to its
+        /// right.
+        /// </summary>
+        /// <remarks>
+        /// OCR splits these rows differently on every photo. One photo returned
+        /// "Color: MATTE ORANGE/BLACK" as one line and "Vehicle Type:" apart from
+        /// "MC Without Sidecar"; another photo of the same receipt did the opposite.
+        /// The cell to the right is only accepted when it starts within a few line
+        /// heights of the label, and never when it is another field's caption.
+        /// </remarks>
+        private static string? ReceiptValue(List<OcrLineDto> lines, string label)
+        {
+            var value = OcrLayout.ValueFor(
+                lines,
+                label,
+                maxRightGapInHeights: ReceiptRightGapInHeights,
+                neighbourLabels: DocumentLabels.Receipt.Captions);
+
+            return value is { Length: > 1 } ? value : null;
+        }
+
+        // Measured gaps between a receipt label and its value were 1 to 2 line
+        // heights. The fee table's "Registration" sat 13 line heights away.
+        private const double ReceiptRightGapInHeights = 4;
+
+        // LTO licence numbers: a letter, two digits, two digits, six digits —
+        // "N01-23-456789". Separators may be dashes or spaces, or missing.
+        [GeneratedRegex(@"\b[A-Z]\d{2}[\s\-]?\d{2}[\s\-]?\d{6}\b", RegexOptions.IgnoreCase)]
+        private static partial Regex LicenseNumberPattern();
+
+        [GeneratedRegex(@"\b(\d{4})/(\d)\s(\d)/(\d{1,2})\b")]
+        private static partial Regex MonthStraySpacePattern();
+
+        [GeneratedRegex(@"\b(\d{4})/(\d{1,2})/(\d)\s(\d)\b")]
+        private static partial Regex DayStraySpacePattern();
 
         /// <summary>
         /// Reads the plate off the Official Receipt.
