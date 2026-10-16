@@ -137,9 +137,11 @@ GoRouter appRouter(Ref ref) {
             // investigation panel shows all of one card's or plate's taps.
             builder: (context, state) {
               final search = state.uri.queryParameters['search'];
+              final result = state.uri.queryParameters['result'];
               return GateTapsScreen(
-                key: ValueKey(search),
+                key: ValueKey('$search|$result'),
                 initialSearch: search,
+                initialResult: result,
               );
             },
           ),

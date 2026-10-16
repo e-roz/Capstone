@@ -240,10 +240,12 @@ class _AttentionSection extends ConsumerWidget {
       _AttentionTile(
         label: 'Serious denials today',
         value: '${summary.seriousDenialsToday}',
-        hint: 'Unknown card or wrong plate',
+        // Routine refusals (full lot, double tap, no camera reading) are on
+        // Gate Taps but not counted here.
+        hint: 'Unknown card or wrong plate only',
         icon: Icons.block,
         intent: summary.seriousDenialsToday > 0 ? StatusIntent.danger : null,
-        route: '/gate-taps',
+        route: '/gate-taps?result=serious',
       ),
     ];
 
@@ -1090,12 +1092,12 @@ class _PeriodCard extends ConsumerWidget {
   }
 
   static String _hourLabel(int h) => h == 0
-      ? '12a'
+      ? '12 AM'
       : h < 12
-      ? '${h}a'
+      ? '$h AM'
       : h == 12
-      ? '12p'
-      : '${h - 12}p';
+      ? '12 PM'
+      : '${h - 12} PM';
 
   static String _hourFull(int h) =>
       DateFormat('h:00 a').format(DateTime(2000, 1, 1, h));

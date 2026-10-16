@@ -13,7 +13,7 @@ class GateTapsQuery {
   final int page;
   final int pageSize;
 
-  /// "entered", "exited", "denied", "manual", or null for all.
+  /// "entered", "exited", "denied", "serious", "manual", or null for all.
   final String? result;
   final int? gate;
 
@@ -72,6 +72,17 @@ class GateTapsQueryNotifier extends _$GateTapsQueryNotifier {
   }
 
   /// One whole day, for the guard's picker.
+  /// One whole day from the Overview's "today" tiles, with a result.
+  void showTodayWithResult(String result) {
+    final today = DateTime.now();
+    state = state.copyWith(
+      page: 1,
+      result: () => result,
+      from: () => DateTime(today.year, today.month, today.day),
+      to: () => DateTime(today.year, today.month, today.day, 23, 59, 59),
+    );
+  }
+
   void setDay(DateTime day) => setDateRange(
         DateTime(day.year, day.month, day.day),
         DateTime(day.year, day.month, day.day, 23, 59, 59),
@@ -108,7 +119,10 @@ Future<GateTapPage> gateTaps(Ref ref) async {
     queryParameters: {
       'page': query.page,
       'pageSize': query.pageSize,
-      'result': ?query.result,
+      // "serious" is the Overview's "needs a look" rule: denied taps for an
+      // unknown card or a wrong plate.
+      'result': query.result == 'serious' ? 'denied' : query.result,
+      'serious': ?(query.result == 'serious' ? true : null),
       'gate': ?query.gate,
       'plate': ?query.plate,
       'search': ?query.search,
