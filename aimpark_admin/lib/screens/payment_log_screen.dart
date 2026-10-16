@@ -11,9 +11,7 @@ import '../widgets/ui/ui.dart';
 
 const _statuses = [
   AppFilterOption('Pending', 'Pending'),
-  AppFilterOption('Processing', 'Processing'),
   AppFilterOption('Paid', 'Paid'),
-  AppFilterOption('Waived', 'Waived'),
 ];
 
 final _money = NumberFormat.currency(symbol: '₱', decimalDigits: 2);

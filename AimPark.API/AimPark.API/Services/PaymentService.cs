@@ -465,6 +465,12 @@ namespace AimPark.API.Services
             if (!string.IsNullOrWhiteSpace(status) && Enum.TryParse<PaymentStatus>(status, true, out var parsedStatus))
                 query = query.Where(p => p.Status == parsedStatus);
 
+            // A date with no zone on it arrives as Kind=Unspecified, which Npgsql
+            // refuses to compare with a timestamptz column - that was a 500 on
+            // the Payment Log the moment a range was picked. Read it as UTC.
+            if (from is { Kind: DateTimeKind.Unspecified }) from = DateTime.SpecifyKind(from.Value, DateTimeKind.Utc);
+            if (to is { Kind: DateTimeKind.Unspecified }) to = DateTime.SpecifyKind(to.Value, DateTimeKind.Utc);
+
             // CreatedAt, not PaidAt: every row has one regardless of whether it
             // ever settled, so a date range does not silently drop unpaid bills.
             if (from is not null) query = query.Where(p => p.CreatedAt >= from);
