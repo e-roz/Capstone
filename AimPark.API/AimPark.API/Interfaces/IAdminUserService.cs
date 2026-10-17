@@ -9,6 +9,7 @@ namespace AimPark.API.Interfaces
     {
         Task<ActionResult<UserListResponse>> ListAsync(int page, int pageSize, string? status, string? search, string? role, string? card, string? expiry, CancellationToken ct);
         Task<ActionResult<object>> ArchiveAsync(Guid userId, Guid adminUserId, ArchiveUserDto dto, CancellationToken ct);
+        Task<ActionResult<object>> SendPasswordResetAsync(Guid userId, Guid adminUserId, ArchiveUserDto dto, CancellationToken ct);
         Task<ActionResult<object>> RestoreAsync(Guid userId, Guid adminUserId, CancellationToken ct);
         Task<ActionResult<object>> DeleteDocumentsAsync(Guid userId, Guid adminUserId, DeleteDocumentsDto dto, CancellationToken ct);
         Task<ActionResult<object>> AssignRfidAsync(Guid userId, Guid adminUserId, AssignRfidDto dto, CancellationToken ct);

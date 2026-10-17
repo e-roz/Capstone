@@ -76,7 +76,7 @@ public class UserExpiryListTests
         .Options);
 
     private static AdminUserService Service(AppDbContext db) =>
-        new(new Repository<User>(db), new Repository<AdminAuditLog>(db), db, storage: null!, notificationService: null!);
+        new(new Repository<User>(db), new Repository<AdminAuditLog>(db), db, storage: null!, notificationService: null!, otpService: null!, emailService: null!);
 
     private static User Person(
         AppDbContext db, string name, DateTime? licence, AccountStatus status = AccountStatus.Active,

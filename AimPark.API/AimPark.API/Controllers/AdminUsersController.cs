@@ -63,6 +63,15 @@ namespace AimPark.API.Controllers
             => _adminUserService.DeleteDocumentsAsync(userId, GetAdminUserId(), dto, ct);
 
         /// <summary>
+        /// Emails the user a password-reset code (the same one "Forgot password"
+        /// sends). Works on Security and ordinary users, never Admins.
+        /// Requires the acting admin's password.
+        /// </summary>
+        [HttpPost("{userId:guid}/reset-password")]
+        public Task<ActionResult<object>> ResetPassword(Guid userId, [FromBody] ArchiveUserDto dto, CancellationToken ct)
+            => _adminUserService.SendPasswordResetAsync(userId, GetAdminUserId(), dto, ct);
+
+        /// <summary>
         /// Restores a soft-deleted user account, clearing IsDeleted and DeletedAt.
         /// </summary>
         [HttpPost("{userId:guid}/restore")]

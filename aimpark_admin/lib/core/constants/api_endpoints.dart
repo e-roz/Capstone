@@ -35,6 +35,8 @@ class ApiEndpoints {
   static String archiveUser(String userId) => '/api/admin/users/$userId';
   static String deleteUserDocuments(String userId) =>
       '/api/admin/users/$userId/documents';
+  static String resetUserPassword(String userId) =>
+      '/api/admin/users/$userId/reset-password';
   static String restoreUser(String userId) =>
       '/api/admin/users/$userId/restore';
   static String assignRfid(String userId) =>
