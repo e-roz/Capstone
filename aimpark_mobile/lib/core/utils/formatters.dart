@@ -18,13 +18,15 @@ abstract class Formatters {
 
   /// `Aug 5, 2026`. Month-name form on purpose: no reader has to work out
   /// whether the first number is the month or the day.
-  static String date(DateTime value) => _date.format(value);
+  static String date(DateTime value) => _date.format(value.toLocal());
 
   /// `Aug 5` — for rows where the year is noise because everything is recent.
-  static String dateShort(DateTime value) => _dateShort.format(value);
+  static String dateShort(DateTime value) =>
+      _dateShort.format(value.toLocal());
 
-  /// `2:05 PM`.
-  static String time(DateTime value) => _time.format(value);
+  /// `2:05 PM`. The API sends UTC instants; every formatter below converts to
+  /// the device's zone first, or a Manila reader sees times 8 hours behind.
+  static String time(DateTime value) => _time.format(value.toLocal());
 
   /// `₱1,234.56`.
   static String peso(num value) => _peso.format(value);
@@ -58,8 +60,9 @@ abstract class Formatters {
   /// elapsed hours — 11pm and 1am are different days, not "2 hours ago".
   static String relativeDay(DateTime value) {
     final now = DateTime.now();
+    final local = value.toLocal();
     final today = DateTime(now.year, now.month, now.day);
-    final day = DateTime(value.year, value.month, value.day);
+    final day = DateTime(local.year, local.month, local.day);
     final diff = today.difference(day).inDays;
     if (diff == 0) return 'Today';
     if (diff == 1) return 'Yesterday';
