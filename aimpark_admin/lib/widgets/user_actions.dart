@@ -82,6 +82,64 @@ class UserAccountActions {
     _done(context, msg ?? 'RFID tag revoked.');
   }
 
+  Future<void> resetPassword(BuildContext context) async {
+    final passwordCtrl = TextEditingController();
+    final formKey = GlobalKey<FormState>();
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Reset password'),
+        content: SizedBox(
+          width: ctx.dialogWidth(420),
+          child: Form(
+            key: formKey,
+            autovalidateMode: AutovalidateMode.onUserInteraction,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Email $fullName a password reset code? They enter it in the '
+                  'app and choose their own new password.',
+                ),
+                const SizedBox(height: AppSpacing.x4),
+                TextFormField(
+                  controller: passwordCtrl,
+                  obscureText: true,
+                  decoration: const InputDecoration(
+                    labelText: 'Confirm your admin password',
+                  ),
+                  validator: (v) =>
+                      (v == null || v.isEmpty) ? 'Password is required' : null,
+                ),
+              ],
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () {
+              if (formKey.currentState!.validate()) Navigator.pop(ctx, true);
+            },
+            child: const Text('Send code'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !context.mounted) return;
+
+    final msg = await ref
+        .read(userActionsProvider.notifier)
+        .resetPassword(userId, passwordCtrl.text);
+    if (!context.mounted) return;
+    _done(context, msg ?? 'Reset code sent.');
+  }
+
   Future<void> archive(BuildContext context) async {
     final passwordCtrl = TextEditingController();
     final formKey = GlobalKey<FormState>();

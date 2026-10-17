@@ -16,19 +16,25 @@ namespace AimPark.API.Services
         private readonly AppDbContext _db;
         private readonly IFileStorageService _storage;
         private readonly INotificationService _notificationService;
+        private readonly IOtpService _otpService;
+        private readonly IEmailService _emailService;
 
         public AdminUserService(
             IRepository<User> users,
             IRepository<AdminAuditLog> auditLogs,
             AppDbContext db,
             IFileStorageService storage,
-            INotificationService notificationService)
+            INotificationService notificationService,
+            IOtpService otpService,
+            IEmailService emailService)
         {
             _users = users;
             _auditLogs = auditLogs;
             _db = db;
             _storage = storage;
             _notificationService = notificationService;
+            _otpService = otpService;
+            _emailService = emailService;
         }
 
         // GET /api/admin/users?page=1&pageSize=20&status=Revoked&search=cruz&role=User&card=none (includes archived users)
@@ -230,6 +236,47 @@ namespace AimPark.API.Services
             await _users.SaveAsync(ct);
 
             return new OkObjectResult(new { message = "User archived. Data is retained and can be restored later." });
+        }
+
+        // POST /api/admin/users/{userId}/reset-password
+        // Emails the user the same one-time code "Forgot password" sends; they
+        // choose the new password themselves. The admin never sees a password.
+        public async Task<ActionResult<object>> SendPasswordResetAsync(Guid userId, Guid adminUserId, ArchiveUserDto dto, CancellationToken ct)
+        {
+            var admin = await _users.FindAsync(u => u.Id == adminUserId, ct);
+            if (admin?.PasswordHash is null)
+                return new BadRequestObjectResult(new { message = "Password confirmation is unavailable for this admin account." });
+
+            if (string.IsNullOrEmpty(dto.Password) || !BCrypt.Net.BCrypt.Verify(dto.Password, admin.PasswordHash))
+                return new UnauthorizedObjectResult(new { message = "Incorrect password." });
+
+            var user = await _users.FindAsync(u => u.Id == userId, ct);
+            if (user is null)
+                return new NotFoundObjectResult(new { message = "User not found." });
+
+            if (user.Role == UserRole.Admin)
+                return new BadRequestObjectResult(new { message = "Admin passwords cannot be reset from here." });
+
+            if (user.IsDeleted)
+                return new BadRequestObjectResult(new { message = "This account is archived. Restore it first." });
+
+            if (user.AuthProvider != AuthProvider.Local)
+                return new BadRequestObjectResult(new { message = "This account signs in with Google and has no password to reset." });
+
+            var otp = _otpService.GenerateOtp();
+            user.PasswordResetOtpHash = _otpService.HashOtp(otp);
+            user.PasswordResetOtpExpiresAt = DateTime.UtcNow.Add(_otpService.OtpExpiry);
+            user.PasswordResetOtpAttempts = 0;
+            user.UpdatedAt = DateTime.UtcNow;
+
+            await LogActionAsync(adminUserId, userId, "ResetPassword", null, "Reset code emailed", null, ct);
+
+            _users.Update(user);
+            await _users.SaveAsync(ct);
+
+            await _emailService.SendPasswordResetOtpEmailAsync(user.Email, otp, ct);
+
+            return new OkObjectResult(new { message = $"A reset code was emailed to {user.Email}." });
         }
 
         // POST /api/admin/users/{userId}/restore

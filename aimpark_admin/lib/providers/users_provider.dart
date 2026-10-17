@@ -168,6 +168,16 @@ class UserActions extends _$UserActions {
     });
   }
 
+  /// Emails the user a password-reset code. Needs the admin's own password.
+  Future<String?> resetPassword(String userId, String adminPassword) async {
+    return _run(() async {
+      final dio = ref.read(dioProvider);
+      final res = await dio.post(ApiEndpoints.resetUserPassword(userId),
+          data: {'password': adminPassword});
+      return (res.data as Map<String, dynamic>)['message']?.toString();
+    });
+  }
+
   Future<String?> restore(String userId) async {
     return _run(() async {
       final dio = ref.read(dioProvider);

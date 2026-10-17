@@ -205,7 +205,7 @@ final usersQueryNotifierProvider =
     );
 
 typedef _$UsersQueryNotifier = AutoDisposeNotifier<UsersQuery>;
-String _$userActionsHash() => r'302ff27d8279c194e195c8914be0952b94f1dae2';
+String _$userActionsHash() => r'99ba6d17c099ebb3e9662677352f930711972d00';
 
 /// See also [UserActions].
 @ProviderFor(UserActions)

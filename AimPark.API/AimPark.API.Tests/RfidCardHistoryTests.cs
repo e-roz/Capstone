@@ -21,7 +21,7 @@ public class RfidCardHistoryTests
         .Options);
 
     private static AdminUserService Service(AppDbContext db) => new(
-        new Repository<User>(db), new Repository<AdminAuditLog>(db), db, storage: null!, notificationService: null!);
+        new Repository<User>(db), new Repository<AdminAuditLog>(db), db, storage: null!, notificationService: null!, otpService: null!, emailService: null!);
 
     private static AdminAuditLog Log(string action, string? oldValue, string? newValue, string? reason, DateTime at) => new()
     {

@@ -475,6 +475,7 @@ class _CardCell extends StatelessWidget {
 enum _RowAction {
   assignCard,
   revokeCard,
+  resetPassword,
   archive,
   restore,
   review,
@@ -532,6 +533,9 @@ class _RowMenu extends ConsumerWidget {
           cardItem(),
           const PopupMenuDivider(),
         ],
+        if (user.role != 'Admin')
+          item(_RowAction.resetPassword, 'Reset password…',
+              Icons.lock_reset_outlined),
         item(
           _RowAction.archive,
           'Archive…',
@@ -558,6 +562,8 @@ class _RowMenu extends ConsumerWidget {
             actions.assignRfid(context);
           case _RowAction.revokeCard:
             actions.revokeRfid(context);
+          case _RowAction.resetPassword:
+            actions.resetPassword(context);
           case _RowAction.archive:
             actions.archive(context);
           case _RowAction.restore:
