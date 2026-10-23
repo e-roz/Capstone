@@ -64,6 +64,10 @@ namespace AimPark.API.Services
                     return new BadRequestObjectResult(new { message = "Each evidence file must be 5MB or smaller." });
             }
 
+            if (dto.SlotId is Guid slotId &&
+                !await _db.Set<ParkingSlot>().AsNoTracking().AnyAsync(s => s.Id == slotId, ct))
+                return new BadRequestObjectResult(new { message = "That parking slot does not exist." });
+
             var now = DateTime.UtcNow;
             var incident = new Incident
             {
@@ -72,6 +76,7 @@ namespace AimPark.API.Services
                 Category = category,
                 Description = dto.Description.Trim(),
                 Location = dto.Location,
+                SlotId = dto.SlotId,
                 Status = IncidentStatus.Submitted,
                 CreatedAt = now,
                 UpdatedAt = now
@@ -412,12 +417,21 @@ namespace AimPark.API.Services
                 ? await LoadFollowUpsAsync(incident.Id, ct)
                 : [];
 
+            var slotCode = incident.SlotId is Guid reportedSlot
+                ? await _db.Set<ParkingSlot>().AsNoTracking()
+                    .Where(s => s.Id == reportedSlot)
+                    .Select(s => s.SlotCode)
+                    .FirstOrDefaultAsync(ct)
+                : null;
+
             return new OkObjectResult(new IncidentDetailResponse
             {
                 IncidentId = incident.Id,
                 Category = incident.Category.ToString(),
                 Description = incident.Description,
                 Location = incident.Location,
+                SlotId = incident.SlotId,
+                SlotCode = slotCode,
                 Status = incident.Status.ToString(),
                 AdminNotes = incident.AdminNotes,
                 CreatedAt = incident.CreatedAt,

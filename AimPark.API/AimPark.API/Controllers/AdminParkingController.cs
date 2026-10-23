@@ -60,6 +60,17 @@ namespace AimPark.API.Controllers
             => _parkingSlotService.UpdateStatusAsync(slotId, dto, ct);
 
         /// <summary>
+        /// Who has used one bay. With <c>from</c> and <c>to</c> it lists only the
+        /// sessions that overlapped that window, which is how an incident finds
+        /// who was in the bay when it was reported.
+        /// </summary>
+        [Authorize(Roles = "Admin,Security")]
+        [HttpGet("slots/{slotId:guid}/history")]
+        public Task<ActionResult<SlotHistoryResponse>> GetSlotHistory(
+            Guid slotId, [FromQuery] DateTime? from, [FromQuery] DateTime? to, CancellationToken ct)
+            => _parkingSlotService.GetHistoryAsync(slotId, from, to, ct);
+
+        /// <summary>
         /// Vehicles currently inside (entry logged, no exit yet). Backs the "Log Exit"
         /// picker so an operator never has to look up a raw log ID.
         /// </summary>

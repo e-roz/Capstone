@@ -604,6 +604,9 @@ namespace AimPark.API.Migrations
                     b.Property<Guid?>("ReviewedByUserId")
                         .HasColumnType("uuid");
 
+                    b.Property<Guid?>("SlotId")
+                        .HasColumnType("uuid");
+
                     b.Property<string>("Status")
                         .IsRequired()
                         .HasColumnType("text");
@@ -788,6 +791,9 @@ namespace AimPark.API.Migrations
 
                     b.Property<int?>("Gate")
                         .HasColumnType("integer");
+
+                    b.Property<DateTime?>("SlotConfirmedAt")
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<Guid?>("SlotId")
                         .HasColumnType("uuid");

@@ -184,6 +184,8 @@ class ProfileSession {
     required this.gate,
     required this.plate,
     required this.plateMatched,
+    this.slotCode,
+    this.slotConfirmed = false,
   });
 
   final String id;
@@ -192,6 +194,11 @@ class ProfileSession {
   final int? gate;
   final String? plate;
   final bool? plateMatched;
+
+  /// The bay on the session. Only the driver's own pick when [slotConfirmed];
+  /// otherwise the bay the gate suggested.
+  final String? slotCode;
+  final bool slotConfirmed;
 
   factory ProfileSession.fromJson(Map<String, dynamic> json) => ProfileSession(
         id: json['id'] as String,
@@ -202,6 +209,8 @@ class ProfileSession {
         gate: (json['gate'] as num?)?.toInt(),
         plate: json['plate'] as String?,
         plateMatched: json['plateMatched'] as bool?,
+        slotCode: json['slotCode'] as String?,
+        slotConfirmed: json['slotConfirmed'] == true,
       );
 }
 
