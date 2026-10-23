@@ -238,6 +238,154 @@ namespace AimPark.API.Services
             return new OkObjectResult(new { message = "User archived. Data is retained and can be restored later." });
         }
 
+        // POST /api/admin/users/bulk-archive
+        //
+        // The end-of-semester sweep. A preview (DryRun) lists who would be archived
+        // and who is skipped and why, and changes nothing. The real run archives
+        // each account like ArchiveAsync does and also hands its card back to the
+        // pool, since an archived account is refused at the gate anyway and the
+        // card is better off free for someone else. One bad account is skipped,
+        // never a reason to fail the rest.
+        public async Task<ActionResult<BulkArchiveResponse>> BulkArchiveAsync(
+            Guid adminUserId, BulkArchiveDto dto, CancellationToken ct)
+        {
+            Affiliation? affiliation = null;
+            if (!string.IsNullOrWhiteSpace(dto.Affiliation))
+            {
+                if (!Enum.TryParse<Affiliation>(dto.Affiliation, true, out var parsed))
+                    return new BadRequestObjectResult(new { message = "Unknown affiliation." });
+                affiliation = parsed;
+            }
+
+            var reason = dto.Reason?.Trim() ?? string.Empty;
+
+            if (!dto.DryRun)
+            {
+                if (reason.Length == 0)
+                    return new BadRequestObjectResult(new { message = "Give a reason for the archive." });
+
+                if (dto.UserIds.Count == 0 && affiliation is null && dto.InactiveBefore is null)
+                    return new BadRequestObjectResult(new { message = "Choose who to archive." });
+
+                var admin = await _users.FindAsync(u => u.Id == adminUserId, ct);
+                if (admin?.PasswordHash is null)
+                    return new BadRequestObjectResult(new { message = "Password confirmation is unavailable for this admin account." });
+
+                if (string.IsNullOrEmpty(dto.Password) || !BCrypt.Net.BCrypt.Verify(dto.Password, admin.PasswordHash))
+                    return new UnauthorizedObjectResult(new { message = "Incorrect password." });
+            }
+
+            var candidates = _db.Set<User>().AsNoTracking().AsQueryable();
+            if (dto.UserIds.Count > 0)
+                candidates = candidates.Where(u => dto.UserIds.Contains(u.Id));
+            else
+                candidates = candidates.Where(u => !u.IsDeleted && u.Role == UserRole.User);
+            if (affiliation is Affiliation wanted)
+                candidates = candidates.Where(u => u.Affiliation == wanted);
+
+            var people = await candidates
+                .Select(u => new { u.Id, u.FullName, u.Email, u.Role, u.Affiliation, u.IsDeleted, u.RfidTagId, u.RfidStatus, u.CreatedAt })
+                .ToListAsync(ct);
+
+            var ids = people.Select(p => p.Id).ToList();
+            var tags = people.Where(p => !string.IsNullOrWhiteSpace(p.RfidTagId)).Select(p => p.RfidTagId!).Distinct().ToList();
+
+            // When each account last did anything: its latest parking session
+            // (in or out) or gate tap, else the day it was made.
+            var sessions = await _db.Set<ParkingLog>().AsNoTracking()
+                .Where(l => l.UserId != null && ids.Contains(l.UserId.Value))
+                .GroupBy(l => l.UserId!.Value)
+                .Select(g => new { UserId = g.Key, At = g.Max(l => l.ExitTime ?? l.EntryTime) })
+                .ToDictionaryAsync(x => x.UserId, x => x.At, ct);
+
+            var taps = await _db.Set<GateTapEvent>().AsNoTracking()
+                .Where(t => t.RfidTagId != null && tags.Contains(t.RfidTagId))
+                .GroupBy(t => t.RfidTagId!)
+                .Select(g => new { Tag = g.Key, At = g.Max(t => t.At) })
+                .ToDictionaryAsync(x => x.Tag, x => x.At, ct);
+
+            var inside = (await _db.Set<ParkingLog>().AsNoTracking()
+                .Where(l => l.ExitTime == null && l.UserId != null && ids.Contains(l.UserId.Value))
+                .Select(l => l.UserId!.Value).Distinct().ToListAsync(ct)).ToHashSet();
+
+            var owing = (await _db.Set<PaymentTransaction>().AsNoTracking()
+                .Where(p => ids.Contains(p.UserId) && p.Status == PaymentStatus.Pending && p.AmountDue > 0m)
+                .Select(p => p.UserId).Distinct().ToListAsync(ct)).ToHashSet();
+
+            var openViolations = (await _db.Set<Violation>().AsNoTracking()
+                .Where(v => ids.Contains(v.UserId))
+                .Select(v => new { v.UserId, v.Status }).ToListAsync(ct))
+                .Where(v => BulkArchiveRules.IsOpen(v.Status))
+                .Select(v => v.UserId).ToHashSet();
+
+            var response = new BulkArchiveResponse { DryRun = dto.DryRun };
+            var eligible = new List<(Guid Id, bool HasCard)>();
+
+            foreach (var p in people.OrderBy(p => p.FullName))
+            {
+                var lastActive = new[]
+                {
+                    p.CreatedAt,
+                    sessions.TryGetValue(p.Id, out var s) ? s : DateTime.MinValue,
+                    p.RfidTagId is not null && taps.TryGetValue(p.RfidTagId, out var t) ? t : DateTime.MinValue
+                }.Max();
+
+                // The date filter only picks accounts when nobody was named. A
+                // named account that is too recent is a mismatch worth saying.
+                if (dto.UserIds.Count == 0 && dto.InactiveBefore is DateTime cutoff && lastActive >= cutoff)
+                    continue;
+
+                var skip = BulkArchiveRules.SkipReason(
+                    p.Role, p.Id == adminUserId, p.IsDeleted,
+                    inside.Contains(p.Id), owing.Contains(p.Id), openViolations.Contains(p.Id));
+
+                if (skip is not null)
+                {
+                    response.Skipped.Add(new BulkArchiveSkip { UserId = p.Id, FullName = p.FullName, Reason = skip });
+                    continue;
+                }
+
+                var hasCard = p.RfidStatus != RfidStatus.Unassigned && !string.IsNullOrWhiteSpace(p.RfidTagId);
+                eligible.Add((p.Id, hasCard));
+                response.Users.Add(new BulkArchiveUser
+                {
+                    UserId = p.Id,
+                    FullName = p.FullName,
+                    Email = p.Email,
+                    Affiliation = p.Affiliation.ToString(),
+                    HasCard = hasCard,
+                    LastActiveAt = lastActive
+                });
+            }
+
+            if (dto.DryRun)
+                return new OkObjectResult(response);
+
+            foreach (var (id, hasCard) in eligible)
+            {
+                var user = await _users.FindAsync(u => u.Id == id, ct);
+                if (user is null) continue;
+
+                if (hasCard)
+                {
+                    var (ok, _) = await RevokeCardAsync(
+                        user, adminUserId, RfidRevokeReason.NoLongerNeeded, $"Bulk archive: {reason}", ct);
+                    if (ok) response.CardsRevoked++;
+                }
+
+                user.IsDeleted = true;
+                user.DeletedAt = DateTime.UtcNow;
+                user.UpdatedAt = DateTime.UtcNow;
+                _users.Update(user);
+
+                await LogActionAsync(adminUserId, id, "Archive", "IsDeleted=false", "IsDeleted=true",
+                    $"Bulk archive: {reason}", ct);
+            }
+
+            await _users.SaveAsync(ct);
+            return new OkObjectResult(response);
+        }
+
         // POST /api/admin/users/{userId}/reset-password
         // Emails the user the same one-time code "Forgot password" sends; they
         // choose the new password themselves. The admin never sees a password.
