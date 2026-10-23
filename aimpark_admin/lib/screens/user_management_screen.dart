@@ -11,6 +11,7 @@ import '../models/admin_user.dart';
 import '../providers/auth_provider.dart';
 import '../providers/users_provider.dart';
 import '../theme/theme.dart';
+import '../widgets/bulk_archive_dialog.dart';
 import '../widgets/rfid_revoke_dialog.dart';
 import '../widgets/ui/ui.dart';
 import '../widgets/user_actions.dart';
@@ -91,7 +92,10 @@ class _UserManagementScreenState extends ConsumerState<UserManagementScreen> {
       title: 'Users',
       subtitle: 'Every account, its status and its card.',
       actions: [
-        _MoreMenu(onBulkRevoke: () => _bulkRevokeRfid(context, ref)),
+        _MoreMenu(
+          onBulkRevoke: () => _bulkRevokeRfid(context, ref),
+          onBulkArchive: () => _bulkArchive(context, ref),
+        ),
         const SizedBox(width: AppSpacing.x2),
         IconButton(
           icon: const Icon(Icons.refresh),
@@ -282,9 +286,10 @@ class _FilterChoiceChip extends StatelessWidget {
 /// Secondary page actions. Bulk revoke is a once-a-term job, so it no longer
 /// sits in the header at the weight of an everyday action.
 class _MoreMenu extends StatelessWidget {
-  const _MoreMenu({required this.onBulkRevoke});
+  const _MoreMenu({required this.onBulkRevoke, required this.onBulkArchive});
 
   final VoidCallback onBulkRevoke;
+  final VoidCallback onBulkArchive;
 
   @override
   Widget build(BuildContext context) {
@@ -295,6 +300,11 @@ class _MoreMenu extends StatelessWidget {
           leadingIcon: const Icon(Icons.nfc, size: AppSizes.iconSm),
           onPressed: onBulkRevoke,
           child: const Text('Bulk revoke RFID…'),
+        ),
+        MenuItemButton(
+          leadingIcon: const Icon(Icons.archive_outlined, size: AppSizes.iconSm),
+          onPressed: onBulkArchive,
+          child: const Text('Bulk archive…'),
         ),
       ],
       builder: (context, controller, _) => OutlinedButton.icon(
@@ -692,6 +702,28 @@ Future<void> _bulkRevokeRfid(BuildContext context, WidgetRef ref) async {
   ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
   ref.invalidate(userListProvider);
   // Every revoked card lands back in the Free pool the RFID Cards page shows.
+  ref.invalidate(rfidCardsProvider);
+}
+
+// ── Bulk archive ─────────────────────────────────────────────────────────────
+//
+// The end-of-semester sweep. The dialog previews exactly who would go and who
+// is left alone before anything changes.
+
+Future<void> _bulkArchive(BuildContext context, WidgetRef ref) async {
+  final result = await showBulkArchiveDialog(context);
+  if (result == null || !context.mounted) return;
+
+  final n = result.users.length;
+  final cards = result.cardsRevoked;
+  final message = n == 0
+      ? 'Nobody was archived.'
+      : 'Archived $n user${n == 1 ? '' : 's'}'
+          '${cards == 0 ? '' : ', handed back $cards card${cards == 1 ? '' : 's'}'}'
+          '${result.skipped.isEmpty ? '' : ', skipped ${result.skipped.length}'}.';
+
+  ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+  ref.invalidate(userListProvider);
   ref.invalidate(rfidCardsProvider);
 }
 

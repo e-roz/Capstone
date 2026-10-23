@@ -1337,7 +1337,7 @@ class _BayState extends State<_Bay> {
         wrongBay.isConfirmed
             ? 'Wrong kind of vehicle here (confirmed)'
             : 'The wrong kind of vehicle may be here. Check it.',
-      if (widget.onTap != null) 'Click to change status',
+      if (widget.onTap != null) 'Click to see who used this bay',
     ].join('\n');
 
     // With no bay heard from, the banner above the map says so once; each

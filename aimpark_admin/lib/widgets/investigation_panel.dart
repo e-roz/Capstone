@@ -674,7 +674,9 @@ class _SessionRow extends StatelessWidget {
               children: [
                 Text(
                   'In ${_short.format(manila(session.entryTime))}'
-                  '${session.gate == null ? '' : ' · Gate ${session.gate}'}',
+                  '${session.gate == null ? '' : ' · Gate ${session.gate}'}'
+                  '${session.slotCode == null ? '' : ' · ${session.slotCode}'}'
+                  '${session.slotCode != null && !session.slotConfirmed ? ' (unconfirmed)' : ''}',
                   style: text.bodyMedium,
                 ),
                 Text(

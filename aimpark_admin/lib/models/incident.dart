@@ -136,6 +136,11 @@ class IncidentDetail {
   final String category;
   final String description;
   final String? location;
+
+  /// The bay the reporter picked, if any, and its code for display.
+  final String? slotId;
+  final String? slotCode;
+
   final String status;
   final String? adminNotes;
   final DateTime createdAt;
@@ -162,6 +167,8 @@ class IncidentDetail {
     required this.createdAt,
     required this.updatedAt,
     required this.evidence,
+    this.slotId,
+    this.slotCode,
     this.reviewedAt,
     this.reportedByName = '',
     this.reportedByRole = '',
@@ -197,6 +204,8 @@ class IncidentDetail {
       category: json['category']?.toString() ?? '',
       description: json['description']?.toString() ?? '',
       location: json['location']?.toString(),
+      slotId: json['slotId']?.toString(),
+      slotCode: json['slotCode']?.toString(),
       status: json['status']?.toString() ?? '',
       adminNotes: json['adminNotes']?.toString(),
       createdAt: DateTime.parse(json['createdAt'].toString()),

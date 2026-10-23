@@ -65,14 +65,19 @@ class ViolationsScreen extends ConsumerWidget {
 /// The Issue Violation form. [description] starts the "What happened" field
 /// off, for when another screen already knows, like a wrong-bay warning.
 ///
+/// [user] and [parkingLogId] fill in who and which parking session, for when the
+/// admin comes from an incident or a bay's history and already knows.
+///
 /// Returns whether a violation was issued.
 Future<bool> showIssueViolationDialog(
   BuildContext context,
   WidgetRef ref, {
   String? description,
+  PickedUser? user,
+  String? parkingLogId,
 }) async {
   final descriptionCtrl = TextEditingController(text: description);
-  PickedUser? picked;
+  PickedUser? picked = user;
   String? userError;
   String? ruleId;
   final formKey = GlobalKey<FormState>();
@@ -174,6 +179,7 @@ Future<bool> showIssueViolationDialog(
         userId: picked!.userId,
         policyRuleId: ruleId!,
         description: descriptionCtrl.text.trim(),
+        parkingLogId: parkingLogId,
       );
   if (!context.mounted) return false;
   ScaffoldMessenger.of(context)

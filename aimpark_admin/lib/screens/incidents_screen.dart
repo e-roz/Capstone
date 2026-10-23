@@ -10,6 +10,7 @@ import '../providers/incidents_provider.dart';
 import '../router/destinations.dart';
 import '../theme/theme.dart';
 import '../widgets/document_viewer.dart';
+import '../widgets/incident_leads.dart';
 import '../widgets/ui/ui.dart';
 
 const _incidentStatuses = [
@@ -64,6 +65,14 @@ const _maxFiles = 5;
 const _maxFileBytes = 5 * 1024 * 1024;
 const _maxTotalBytes = 9 * 1024 * 1024;
 const _allowedExtensions = ['jpg', 'jpeg', 'png', 'pdf'];
+
+/// The decisions an administrator writes most often. Each one starts the note.
+const _decisionChips = [
+  'No evidence found',
+  'Identified, violation issued',
+  'Duplicate report',
+  'Not a parking matter',
+];
 
 class IncidentsScreen extends ConsumerWidget {
   const IncidentsScreen({super.key});
@@ -266,6 +275,22 @@ class _DateText extends StatelessWidget {
 
 /// Opens a report. For an administrator, opening a fresh one is the act of
 /// starting the review: it becomes Under review and the reporter is told.
+/// Opens one report straight from somewhere else, such as a user's page,
+/// the same way its row in the list does: an administrator opening a new
+/// report starts its review.
+Future<void> openIncidentReport(
+        BuildContext context, WidgetRef ref, String incidentId, String status) =>
+    _open(
+      context,
+      ref,
+      IncidentSummary(
+        incidentId: incidentId,
+        category: '',
+        status: status,
+        createdAt: DateTime.now(),
+      ),
+    );
+
 Future<void> _open(
     BuildContext context, WidgetRef ref, IncidentSummary summary) async {
   final isSecurity = ref.read(staffRoleProvider) == StaffRole.security;
@@ -656,12 +681,21 @@ Future<void> _showDetail(
             ],
           ),
           content: SizedBox(
-            width: context.dialogWidth(500),
-            child: SingleChildScrollView(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
+            width: context.dialogWidth(1000),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                // The report on the left and who was there on the right. The
+                // decision stays pinned underneath, so it is never scrolled
+                // away from the evidence it rests on.
+                Flexible(
+                  child: SingleChildScrollView(
+                    child: LayoutBuilder(builder: (lc, box) {
+                      final left = Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
                   // Who reported it, first: it decides how much weight the rest
                   // carries and is what an administrator follows up on.
                   if (detail.reportedByName.isNotEmpty)
@@ -883,11 +917,78 @@ Future<void> _showDetail(
                       ),
                     ],
                   ],
-                  const SizedBox(height: AppSpacing.x5),
+                        ],
+                      );
+
+                      final right = detail.slotId != null && detail.slotCode != null
+                          ? Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                _SectionLabel(
+                                  icon: Icons.person_pin_circle_outlined,
+                                  label: 'Who was in ${detail.slotCode}',
+                                ),
+                                const SizedBox(height: AppSpacing.x2),
+                                IncidentLeadPanel(
+                                  slotId: detail.slotId!,
+                                  slotCode: detail.slotCode!,
+                                  reportedAt: detail.createdAt,
+                                  incidentLabel: _categoryLabel(detail.category),
+                                ),
+                                const SizedBox(height: AppSpacing.x3),
+                                IncidentSlotSummary(
+                                  slotId: detail.slotId!,
+                                  slotCode: detail.slotCode!,
+                                  reportedAt: detail.createdAt,
+                                ),
+                              ],
+                            )
+                          : const _Callout(
+                              intent: StatusIntent.info,
+                              icon: Icons.info_outline,
+                              text: 'This report does not name a bay, so there is no one to look up. '
+                                  'Check Parking Logs around the time it was reported.',
+                            );
+
+                      return box.maxWidth >= 720
+                          ? Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Expanded(child: left),
+                                const SizedBox(width: AppSpacing.x5),
+                                Expanded(child: right),
+                              ],
+                            )
+                          : Column(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: [left, const SizedBox(height: AppSpacing.x5), right],
+                            );
+                    }),
+                  ),
+                ),
+                const Divider(height: AppSpacing.x5),
                   if (canDecide) ...[
                     const _SectionLabel(
                       icon: Icons.gavel,
                       label: 'Your decision',
+                    ),
+                    const SizedBox(height: AppSpacing.x2),
+                    // Most decisions are one of a few. Tapping one starts the
+                    // note, which can still be edited; the reporter reads it.
+                    Wrap(
+                      spacing: AppSpacing.x2,
+                      runSpacing: AppSpacing.x1,
+                      children: [
+                        for (final chip in _decisionChips)
+                          ActionChip(
+                            label: Text(chip),
+                            onPressed: () => setState(() {
+                              final now = notesCtrl.text.trim();
+                              notesCtrl.text = now.isEmpty ? chip : '$now. $chip';
+                              notesError = null;
+                            }),
+                          ),
+                      ],
                     ),
                     const SizedBox(height: AppSpacing.x2),
                     TextField(
@@ -921,8 +1022,7 @@ Future<void> _showDetail(
                       text: 'Only an administrator can decide on a report. '
                           'Your follow-ups go to the administrator, not the reporter.',
                     ),
-                ],
-              ),
+              ],
             ),
           ),
           actions: [

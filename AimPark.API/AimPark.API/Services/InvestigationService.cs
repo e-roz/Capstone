@@ -341,7 +341,8 @@ namespace AimPark.API.Services
             profile.Sessions = await scope
                 .OrderByDescending(l => l.EntryTime)
                 .Take(Latest)
-                .Select(l => new ProfileSession(l.Id, l.EntryTime, l.ExitTime, l.Gate, l.AlprPlateNumber, l.AlprMatched))
+                .Select(l => new ProfileSession(l.Id, l.EntryTime, l.ExitTime, l.Gate, l.AlprPlateNumber, l.AlprMatched,
+                    l.Slot != null ? l.Slot.SlotCode : null, l.SlotConfirmedAt != null))
                 .ToListAsync(ct);
 
             profile.Totals = profile.Totals with { Sessions = await scope.CountAsync(ct) };

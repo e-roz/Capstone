@@ -14,6 +14,13 @@ namespace AimPark.API.Entities
         public string Description { get; set; } = string.Empty;
         public string? Location { get; set; }
 
+        /// <summary>
+        /// The bay the report is about, when the reporter picked one. No FK:
+        /// like <see cref="ReviewedByUserId"/> it is a plain reference, so a
+        /// bay that is later removed never takes the report with it.
+        /// </summary>
+        public Guid? SlotId { get; set; }
+
         public IncidentStatus Status { get; set; } = IncidentStatus.Submitted;
         public string? AdminNotes { get; set; }
 

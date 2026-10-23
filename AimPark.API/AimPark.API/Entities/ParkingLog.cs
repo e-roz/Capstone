@@ -29,6 +29,13 @@ namespace AimPark.API.Entities
         public Guid? SlotId { get; set; }
         public ParkingSlot? Slot { get; set; }
 
+        /// <summary>
+        /// When the driver confirmed in the app that this is the bay they parked
+        /// in. Null = never confirmed, so <see cref="SlotId"/> is only the bay the
+        /// gate suggested and the admin panel labels it unconfirmed.
+        /// </summary>
+        public DateTime? SlotConfirmedAt { get; set; }
+
         public DateTime EntryTime { get; set; }
         public DateTime? ExitTime { get; set; }
 

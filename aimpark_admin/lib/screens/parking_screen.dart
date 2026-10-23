@@ -9,6 +9,7 @@ import '../theme/theme.dart';
 import '../widgets/ui/ui.dart';
 import '../widgets/parking/gate_entry_banners.dart';
 import '../widgets/parking/live_parking_map.dart';
+import '../widgets/parking/slot_history.dart';
 
 /// The lot drawn as it is laid out physically — see [LiveParkingMapCard].
 ///
@@ -39,7 +40,13 @@ class ParkingScreen extends ConsumerWidget {
       // A guard gets the gate banners on top, for the screen the page is
       // projected on, and has the wrong-bay alerts on the Overview instead.
       body: LiveParkingMapCard(
-        onBayTap: isAdmin ? (slot) => _changeStatus(context, ref, slot) : null,
+        // Everyone opens a bay's history; only the administrator can also
+        // change its status from there.
+        onBayTap: (slot) => showSlotHistoryDialog(
+          context,
+          slot,
+          onChangeStatus: isAdmin ? () => _changeStatus(context, ref, slot) : null,
+        ),
         showWrongBayAlerts: isAdmin,
         header: isAdmin ? null : const GateEntryBanners(),
       ),

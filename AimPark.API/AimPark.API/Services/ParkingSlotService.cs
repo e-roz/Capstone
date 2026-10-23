@@ -175,6 +175,138 @@ namespace AimPark.API.Services
             return new OkObjectResult(new { message = "Slot status updated." });
         }
 
+        /// <summary>Most sessions one history call returns. The window narrows it; this bounds it.</summary>
+        private const int HistoryLimit = 200;
+
+        // GET /api/admin/parking/slots/{id}/history — who used one bay.
+        //
+        // A session counts when it overlapped [from, to]: it began before the
+        // window ended and had not ended before it began. Either end may be left
+        // open. Whose session it is comes from the log's SlotId, which is the bay
+        // the driver confirmed when ConfirmedAt is set and only the gate's
+        // suggestion when it is not; the response carries that so the panel can
+        // say which.
+        public async Task<ActionResult<SlotHistoryResponse>> GetHistoryAsync(
+            Guid slotId, DateTime? from, DateTime? to, CancellationToken ct)
+        {
+            var slot = await _db.Set<ParkingSlot>().AsNoTracking()
+                .FirstOrDefaultAsync(s => s.Id == slotId, ct);
+            if (slot is null)
+                return new NotFoundObjectResult(new { message = "Slot not found." });
+
+            if (from is not null && to is not null && from > to)
+                return new BadRequestObjectResult(new { message = "'from' must be before 'to'." });
+
+            var logs = _db.Set<ParkingLog>().AsNoTracking().Where(l => l.SlotId == slotId);
+
+            if (to is DateTime end) logs = logs.Where(l => l.EntryTime <= end);
+            if (from is DateTime start) logs = logs.Where(l => l.ExitTime == null || l.ExitTime >= start);
+
+            var rows = await logs
+                .OrderByDescending(l => l.EntryTime)
+                .Take(HistoryLimit + 1)
+                .Select(l => new SlotSessionItem
+                {
+                    LogId = l.Id,
+                    UserId = l.UserId,
+                    UserName = l.User != null
+                        ? l.User.FullName
+                        : l.VisitorPass != null
+                            ? l.VisitorPass.VisitorName
+                            : "Unknown",
+                    // What the camera read is what actually came in; a registered
+                    // plate is only a guess for a holder with several vehicles.
+                    PlateNumber = l.AlprPlateNumber
+                        ?? (l.VisitorPass != null
+                            ? l.VisitorPass.PlateNumber
+                            : _db.Set<Vehicle>()
+                                .Where(v => v.UserId == l.UserId)
+                                .Select(v => v.PlateNumber)
+                                .FirstOrDefault()),
+                    IsVisitor = l.VisitorPassId != null,
+                    EntryTime = l.EntryTime,
+                    ExitTime = l.ExitTime,
+                    ConfirmedAt = l.SlotConfirmedAt
+                })
+                .ToListAsync(ct);
+
+            var truncated = rows.Count > HistoryLimit;
+            if (truncated) rows.RemoveAt(rows.Count - 1);
+
+            // The current occupant is whoever has an open session on the bay,
+            // whatever the window asked for.
+            var current = await _db.Set<ParkingLog>().AsNoTracking()
+                .Where(l => l.SlotId == slotId && l.ExitTime == null)
+                .OrderByDescending(l => l.EntryTime)
+                .Select(l => new SlotSessionItem
+                {
+                    LogId = l.Id,
+                    UserId = l.UserId,
+                    UserName = l.User != null
+                        ? l.User.FullName
+                        : l.VisitorPass != null
+                            ? l.VisitorPass.VisitorName
+                            : "Unknown",
+                    PlateNumber = l.AlprPlateNumber
+                        ?? (l.VisitorPass != null
+                            ? l.VisitorPass.PlateNumber
+                            : _db.Set<Vehicle>()
+                                .Where(v => v.UserId == l.UserId)
+                                .Select(v => v.PlateNumber)
+                                .FirstOrDefault()),
+                    IsVisitor = l.VisitorPassId != null,
+                    EntryTime = l.EntryTime,
+                    ExitTime = l.ExitTime,
+                    ConfirmedAt = l.SlotConfirmedAt
+                })
+                .FirstOrDefaultAsync(ct);
+
+            var logIds = rows.Select(r => r.LogId).ToList();
+            var violations = await _db.Set<Violation>().AsNoTracking()
+                .Where(v => v.ParkingLogId != null && logIds.Contains(v.ParkingLogId.Value))
+                .OrderByDescending(v => v.CreatedAt)
+                .Select(v => new SlotViolationItem
+                {
+                    ViolationId = v.Id,
+                    UserId = v.UserId,
+                    UserName = v.User.FullName,
+                    RuleTitle = v.PolicyRule.Title,
+                    Status = v.Status.ToString(),
+                    PenaltyAmount = v.PenaltyAmount,
+                    CreatedAt = v.CreatedAt
+                })
+                .ToListAsync(ct);
+
+            var flags = _db.Set<WrongBayFlag>().AsNoTracking().Where(f => f.SlotId == slotId);
+            if (to is DateTime flagEnd) flags = flags.Where(f => f.DetectedAt <= flagEnd);
+            if (from is DateTime flagStart) flags = flags.Where(f => f.BayClearedAt == null || f.BayClearedAt >= flagStart);
+
+            var wrongBay = await flags
+                .OrderByDescending(f => f.DetectedAt)
+                .Take(50)
+                .Select(f => new SlotWrongBayItem
+                {
+                    FlagId = f.Id,
+                    Status = f.Status.ToString(),
+                    DetectedAt = f.DetectedAt,
+                    BayClearedAt = f.BayClearedAt
+                })
+                .ToListAsync(ct);
+
+            return new OkObjectResult(new SlotHistoryResponse
+            {
+                SlotId = slot.Id,
+                SlotCode = slot.SlotCode,
+                Gate = slot.Gate,
+                BayType = slot.VehicleType?.ToString(),
+                Current = current,
+                Sessions = rows,
+                Violations = violations,
+                WrongBayFlags = wrongBay,
+                Truncated = truncated
+            });
+        }
+
         private async Task<ParkingAvailabilityResponse> BuildResponseAsync(IQueryable<ParkingSlot> query, CancellationToken ct)
         {
             var slots = await query

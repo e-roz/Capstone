@@ -105,6 +105,17 @@ namespace AimPark.API.Controllers
         public Task<ActionResult<BulkRevokeRfidResponse>> BulkRevokeRfid([FromBody] BulkRevokeRfidDto dto, CancellationToken ct)
             => _adminUserService.BulkRevokeRfidAsync(GetAdminUserId(), dto, ct);
 
+        /// <summary>
+        /// Archives many accounts at once, for the end of a semester. Send
+        /// <c>dryRun: true</c> first: it lists who would be archived and who is
+        /// skipped (parked now, owing money, an open violation) and changes
+        /// nothing. The real run needs a reason and the administrator's password,
+        /// and also hands each account's RFID card back to the pool.
+        /// </summary>
+        [HttpPost("bulk-archive")]
+        public Task<ActionResult<BulkArchiveResponse>> BulkArchive([FromBody] BulkArchiveDto dto, CancellationToken ct)
+            => _adminUserService.BulkArchiveAsync(GetAdminUserId(), dto, ct);
+
         private Guid GetAdminUserId()
             => Guid.Parse(User.FindFirst(ClaimTypes.NameIdentifier)!.Value);
     }

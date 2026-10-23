@@ -44,6 +44,7 @@ class ApiEndpoints {
   static String revokeRfid(String userId) =>
       '/api/admin/users/$userId/revoke-rfid';
   static const bulkRevokeRfid = '/api/admin/users/bulk-revoke-rfid';
+  static const bulkArchive = '/api/admin/users/bulk-archive';
 
   /// Physical cards revoked from a user and not yet reissued — Free ones
   /// ready to hand to someone else, Blocked ones that must not be. Add
@@ -74,6 +75,8 @@ class ApiEndpoints {
   static const parkingSlots = '/api/admin/parking/slots';
   static String slotStatus(String slotId) =>
       '/api/admin/parking/slots/$slotId/status';
+  static String slotHistory(String slotId) =>
+      '/api/admin/parking/slots/$slotId/history';
   static const logParkingEntry = '/api/admin/parking/log-entry';
   static const logParkingExit = '/api/admin/parking/log-exit';
   static const activeParkingSessions = '/api/admin/parking/active-sessions';

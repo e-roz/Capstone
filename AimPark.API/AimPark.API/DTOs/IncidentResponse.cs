@@ -57,6 +57,11 @@ namespace AimPark.API.DTOs
         public string Category { get; set; } = string.Empty;
         public string Description { get; set; } = string.Empty;
         public string? Location { get; set; }
+
+        /// <summary>The bay the reporter picked, and its code for display. Null when none.</summary>
+        public Guid? SlotId { get; set; }
+        public string? SlotCode { get; set; }
+
         public string Status { get; set; } = string.Empty;
         public string? AdminNotes { get; set; }
         public DateTime CreatedAt { get; set; }

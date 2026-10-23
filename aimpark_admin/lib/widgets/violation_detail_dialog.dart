@@ -7,6 +7,7 @@ import '../models/violation.dart';
 import '../providers/violations_provider.dart';
 import '../theme/theme.dart';
 import 'document_viewer.dart';
+import 'review_summary.dart';
 import 'ui/ui.dart';
 
 final _money = NumberFormat.currency(symbol: '₱', decimalDigits: 2);
@@ -101,6 +102,11 @@ class _Body extends ConsumerWidget {
           ),
         ),
         const Divider(height: 1),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(
+              AppSpacing.x5, AppSpacing.x3, AppSpacing.x5, 0),
+          child: _violationSummary(v),
+        ),
         Flexible(
           child: SingleChildScrollView(
             padding: const EdgeInsets.all(AppSpacing.x5),
@@ -130,6 +136,54 @@ class _Body extends ConsumerWidget {
       ],
     );
   }
+}
+
+/// Where this violation stands, in one sentence, so the sections below are
+/// read to confirm it rather than to work it out.
+Widget _violationSummary(ViolationDetail v) {
+  final name = v.userFullName;
+  final deadline = v.appealDeadline == null ? null : _when.format(v.appealDeadline!.toLocal());
+
+  return switch (v.status) {
+    ViolationStatuses.issued => ReviewSummary(
+        intent: StatusIntent.warning,
+        icon: Icons.schedule,
+        headline: '$name can still appeal.',
+        detail: deadline == null
+            ? 'It becomes accountable on its own if they do not.'
+            : 'It becomes accountable on its own on $deadline if they do not.',
+      ),
+    ViolationStatuses.pendingAppeal => ReviewSummary(
+        intent: StatusIntent.info,
+        icon: Icons.how_to_vote_outlined,
+        headline: '$name appealed${v.appealCreatedAt == null ? '' : ' on ${_when.format(v.appealCreatedAt!.toLocal())}'}.',
+        detail: 'Read their reason and evidence below, then accept or reject the appeal.',
+      ),
+    ViolationStatuses.appealed => ReviewSummary(
+        intent: StatusIntent.neutral,
+        icon: Icons.fact_check_outlined,
+        headline: 'The appeal was decided${v.appealDecidedAt == null ? '' : ' on ${_when.format(v.appealDecidedAt!.toLocal())}'}.',
+        detail: v.appealAdminNotes,
+      ),
+    ViolationStatuses.accountable => ReviewSummary(
+        intent: StatusIntent.danger,
+        icon: Icons.gavel,
+        headline: 'Final. This is accountable violation ${v.accountableCount} of ${ViolationStatuses.strikesBeforeRevoke} for $name.',
+        detail: v.rfidRevokedAt != null
+            ? 'Their card was revoked.'
+            : v.accountableCount >= ViolationStatuses.strikesBeforeRevoke
+                ? null
+                : '${ViolationStatuses.strikesBeforeRevoke - v.accountableCount} more and the card is revoked.'
+                    '${v.paymentStatus == 'Pending' && (v.amountDue ?? 0) > 0 ? ' The fine is still unpaid.' : ''}',
+      ),
+    _ => ReviewSummary(
+        intent: StatusIntent.neutral,
+        icon: Icons.block,
+        headline: 'Dismissed${v.dismissedAt == null ? '' : ' on ${_when.format(v.dismissedAt!.toLocal())}'}'
+            '${v.dismissedByName == null ? '' : ' by ${v.dismissedByName}'}.',
+        detail: v.dismissReason,
+      ),
+  };
 }
 
 // ── Sections ─────────────────────────────────────────────────────────────────

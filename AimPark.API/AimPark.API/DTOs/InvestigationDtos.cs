@@ -25,8 +25,10 @@ namespace AimPark.API.DTOs
         Guid Id, string VisitorName, string PlateNumber, string RfidTagId, string? Purpose,
         DateTime IssuedAt, DateTime ExpiresAt, DateTime? ReturnedAt);
 
+    /// <param name="SlotCode">The bay on the session: the driver's pick when <paramref name="SlotConfirmed"/>, else only the gate's suggestion.</param>
     public record ProfileSession(
-        Guid Id, DateTime EntryTime, DateTime? ExitTime, int? Gate, string? Plate, bool? PlateMatched);
+        Guid Id, DateTime EntryTime, DateTime? ExitTime, int? Gate, string? Plate, bool? PlateMatched,
+        string? SlotCode = null, bool SlotConfirmed = false);
 
     public record ProfileViolation(
         Guid Id, string RuleTitle, string Status, decimal PenaltyAmount, DateTime CreatedAt);
