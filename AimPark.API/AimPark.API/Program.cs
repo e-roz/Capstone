@@ -210,6 +210,7 @@ builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<IAdminLogService, AdminLogService>();
 builder.Services.AddScoped<IUserActivityLogger, UserActivityLogger>();
 builder.Services.AddScoped<IParkingSlotService, ParkingSlotService>();
+builder.Services.AddScoped<IUserHistoryService, UserHistoryService>();
 builder.Services.Configure<GateOptions>(builder.Configuration.GetSection(GateOptions.Section));
 builder.Services.AddScoped<IParkingHistoryService, ParkingHistoryService>();
 builder.Services.AddScoped<IParkingAllocationService, ParkingAllocationService>();

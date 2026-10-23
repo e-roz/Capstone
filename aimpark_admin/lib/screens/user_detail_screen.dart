@@ -12,6 +12,7 @@ import '../widgets/document_viewer.dart';
 import '../widgets/expiry_card.dart';
 import '../widgets/ui/ui.dart';
 import '../widgets/user_actions.dart';
+import '../widgets/user_history_tabs.dart';
 import '../widgets/user_vehicle_card.dart';
 
 String _date(DateTime dt) => DateFormat('MMM d, yyyy').format(dt.toLocal());
@@ -83,14 +84,50 @@ class UserDetailScreen extends ConsumerWidget {
   }
 }
 
-class _UserDetailView extends ConsumerWidget {
+class _UserDetailView extends ConsumerStatefulWidget {
   const _UserDetailView({required this.userId, required this.detail});
 
   final String userId;
   final RegistrationDetail detail;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<_UserDetailView> createState() => _UserDetailViewState();
+}
+
+class _UserDetailViewState extends ConsumerState<_UserDetailView> {
+  UserTab _tab = UserTab.overview;
+
+  String get userId => widget.userId;
+  RegistrationDetail get detail => widget.detail;
+
+  @override
+  Widget build(BuildContext context) {
+    final overview = _overview(context);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        UserHistoryHeader(
+          userId: userId,
+          selected: _tab,
+          onSelect: (tab) => setState(() => _tab = tab),
+        ),
+        const SizedBox(height: AppSpacing.gutter),
+        switch (_tab) {
+          UserTab.overview => overview,
+          UserTab.parking => UserParkingTab(userId: userId),
+          UserTab.violations => UserViolationsTab(userId: userId),
+          UserTab.incidents => UserIncidentsTab(userId: userId),
+          UserTab.payments => UserPaymentsTab(userId: userId),
+          UserTab.taps => UserTapsTab(userId: userId),
+        },
+      ],
+    );
+  }
+
+  /// The account, vehicle, expiry and documents cards: what this page showed
+  /// before it had tabs.
+  Widget _overview(BuildContext context) {
     final actions = _UserActions(userId: userId, detail: detail, ref: ref);
 
     // Mirrors the rule the API enforces on assign-rfid. A card sets RfidStatus
