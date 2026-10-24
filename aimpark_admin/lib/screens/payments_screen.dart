@@ -15,7 +15,6 @@ const _statuses = [
   // an admin looking for money that never arrived starts by looking at these.
   AppFilterOption('Processing', 'Processing'),
   AppFilterOption('Paid', 'Paid'),
-  AppFilterOption('Waived', 'Waived'),
 ];
 
 final _money = NumberFormat.currency(symbol: '₱', decimalDigits: 2);
