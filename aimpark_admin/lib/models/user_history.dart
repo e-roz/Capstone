@@ -2,6 +2,9 @@
 /// tab labels and the overview cards.
 class UserHistorySummary {
   final int sessions;
+
+  /// How many of [sessions] the driver said a bay for.
+  final int sessionsConfirmed;
   final int violations;
   final int incidentsFiled;
   final int incidentsPossible;
@@ -10,10 +13,14 @@ class UserHistorySummary {
   final double paidThisYear;
   final bool isInside;
   final String? insideSlotCode;
+
+  /// False means [insideSlotCode] is only the bay the gate suggested.
+  final bool insideSlotConfirmed;
   final DateTime? insideSince;
 
   const UserHistorySummary({
     required this.sessions,
+    required this.sessionsConfirmed,
     required this.violations,
     required this.incidentsFiled,
     required this.incidentsPossible,
@@ -22,6 +29,7 @@ class UserHistorySummary {
     required this.paidThisYear,
     required this.isInside,
     required this.insideSlotCode,
+    required this.insideSlotConfirmed,
     required this.insideSince,
   });
 
@@ -30,6 +38,7 @@ class UserHistorySummary {
   factory UserHistorySummary.fromJson(Map<String, dynamic> json) =>
       UserHistorySummary(
         sessions: (json['sessions'] as num?)?.toInt() ?? 0,
+        sessionsConfirmed: (json['sessionsConfirmed'] as num?)?.toInt() ?? 0,
         violations: (json['violations'] as num?)?.toInt() ?? 0,
         incidentsFiled: (json['incidentsFiled'] as num?)?.toInt() ?? 0,
         incidentsPossible: (json['incidentsPossible'] as num?)?.toInt() ?? 0,
@@ -38,6 +47,7 @@ class UserHistorySummary {
         paidThisYear: (json['paidThisYear'] as num?)?.toDouble() ?? 0,
         isInside: json['isInside'] == true,
         insideSlotCode: json['insideSlotCode']?.toString(),
+        insideSlotConfirmed: json['insideSlotConfirmed'] == true,
         insideSince: json['insideSince'] == null
             ? null
             : DateTime.parse(json['insideSince'].toString()),
@@ -82,6 +92,9 @@ class UserSessionItem {
 
   /// False means the bay is only the one the gate suggested.
   final bool slotConfirmed;
+
+  /// When they confirmed it. After [exitTime] means they confirmed late.
+  final DateTime? slotConfirmedAt;
   final String? plate;
   final bool? plateMatched;
 
@@ -92,6 +105,7 @@ class UserSessionItem {
     required this.gate,
     required this.slotCode,
     required this.slotConfirmed,
+    required this.slotConfirmedAt,
     required this.plate,
     required this.plateMatched,
   });
@@ -105,6 +119,9 @@ class UserSessionItem {
         gate: (json['gate'] as num?)?.toInt(),
         slotCode: json['slotCode']?.toString(),
         slotConfirmed: json['slotConfirmed'] == true,
+        slotConfirmedAt: json['slotConfirmedAt'] == null
+            ? null
+            : DateTime.parse(json['slotConfirmedAt'].toString()),
         plate: json['plate']?.toString(),
         plateMatched: json['plateMatched'] as bool?,
       );

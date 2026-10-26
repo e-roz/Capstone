@@ -7,6 +7,7 @@ import '../../models/parking_slot.dart';
 import '../../models/slot_history.dart';
 import '../../providers/slot_history_provider.dart';
 import '../../theme/theme.dart';
+import '../slot_confirmation_pill.dart';
 import '../ui/ui.dart';
 
 final _short = DateFormat('MMM d, h:mm a');
@@ -271,16 +272,9 @@ class _SessionRow extends StatelessWidget {
             ),
           // The bay on an unconfirmed session is only the gate's suggestion,
           // so it must not read as proof of where the car was.
-          Tooltip(
-            message: session.isConfirmed
-                ? 'The driver confirmed this bay in the app.'
-                : 'The driver did not confirm. This is the bay the gate suggested.',
-            child: StatusPill.of(
-              session.isConfirmed ? 'Confirmed' : 'Unconfirmed',
-              intent: session.isConfirmed ? StatusIntent.success : StatusIntent.warning,
-              showDot: false,
-              dense: true,
-            ),
+          SlotConfirmationPill(
+            confirmedAt: session.confirmedAt,
+            exitTime: session.exitTime,
           ),
         ],
       ),
