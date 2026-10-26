@@ -13,6 +13,14 @@ namespace AimPark.API.Interfaces
     {
         /// <summary>Unpaid bills for one user, fed to <c>UnpaidBalance.Evaluate</c>.</summary>
         Task<IReadOnlyList<PaymentTransaction>> GetOwedAsync(Guid userId, CancellationToken ct);
+
+        /// <summary>
+        /// Has this one bill been settled (paid or waived)? Asked at the exit, where
+        /// a driver with a fee to pay is held until it is. A bill that is only
+        /// <see cref="PaymentStatus.Processing"/> is not settled: the checkout was
+        /// opened, but nothing has confirmed the money.
+        /// </summary>
+        Task<bool> IsSettledAsync(Guid paymentId, CancellationToken ct);
     }
 
     /// <summary>The cloud's answer, and the default: payments are settled here.</summary>
@@ -26,5 +34,10 @@ namespace AimPark.API.Interfaces
             await _db.Set<PaymentTransaction>().AsNoTracking()
                 .Where(p => p.UserId == userId && p.Status == PaymentStatus.Pending && p.AmountDue > 0m)
                 .ToListAsync(ct);
+
+        public Task<bool> IsSettledAsync(Guid paymentId, CancellationToken ct) =>
+            _db.Set<PaymentTransaction>().AsNoTracking()
+                .AnyAsync(p => p.Id == paymentId
+                               && (p.Status == PaymentStatus.Paid || p.Status == PaymentStatus.Waived), ct);
     }
 }

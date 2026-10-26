@@ -99,6 +99,27 @@ namespace AimPark.API.Services
             foreach (var entry in logs)
                 entry.VehicleId = AttributeVehicle(entry.AlprPlateNumber, vehicles.Select(v => (v.Id, v.PlateNumber)).ToList());
 
+            // A driver who has tapped out and owes this session's fee is still
+            // inside until it is paid: say so, with the amount, so the app can ask
+            // them to pay rather than tell them they are parked. Read here, where
+            // the app's payments are settled.
+            var openBillIds = logs.Where(e => e.ExitTime == null && e.PaymentId != null)
+                .Select(e => e.PaymentId!.Value).ToList();
+            if (openBillIds.Count > 0)
+            {
+                var owed = await _db.Set<PaymentTransaction>().AsNoTracking()
+                    .Where(p => openBillIds.Contains(p.Id)
+                                && (p.Status == PaymentStatus.Pending || p.Status == PaymentStatus.Processing)
+                                && p.AmountDue > 0m)
+                    .ToDictionaryAsync(p => p.Id, p => p.AmountDue, ct);
+
+                foreach (var entry in logs.Where(e => e.PaymentId is Guid id && owed.ContainsKey(id)))
+                {
+                    entry.WaitingToLeave = true;
+                    entry.ExitAmountDue = owed[entry.PaymentId!.Value];
+                }
+            }
+
             return new OkObjectResult(new ParkingHistoryResponse
             {
                 Logs = logs,
@@ -216,9 +237,37 @@ namespace AimPark.API.Services
                             .FirstOrDefault(),
                     SlotCode = l.Slot != null ? l.Slot.SlotCode : null,
                     EntryTime = l.EntryTime,
-                    IsVisitor = l.VisitorPassId != null
+                    IsVisitor = l.VisitorPassId != null,
+                    Gate = l.Gate,
+                    PaymentId = _db.Set<PaymentTransaction>()
+                        .Where(p => p.ParkingLogId == l.Id)
+                        .Select(p => (Guid?)p.Id).FirstOrDefault(),
+                    AmountDue = _db.Set<PaymentTransaction>()
+                        .Where(p => p.ParkingLogId == l.Id)
+                        .Select(p => (decimal?)p.AmountDue).FirstOrDefault(),
+                    PaymentStatus = _db.Set<PaymentTransaction>()
+                        .Where(p => p.ParkingLogId == l.Id)
+                        .Select(p => p.Status.ToString()).FirstOrDefault(),
+                    WaitingSince = _db.Set<PaymentTransaction>()
+                        .Where(p => p.ParkingLogId == l.Id)
+                        .Select(p => (DateTime?)p.CreatedAt).FirstOrDefault()
                 })
                 .ToListAsync(ct);
+
+            // A bill that is still Pending or Processing here may already be
+            // settled: on the site server, a payment made in the app is learned
+            // from the snapshot, not from this table.
+            foreach (var s in sessions)
+            {
+                if (s.PaymentId is Guid billId
+                    && s.AmountDue > 0m
+                    && s.PaymentStatus is nameof(PaymentStatus.Pending) or nameof(PaymentStatus.Processing))
+                {
+                    s.WaitingToLeave = !await _entryDues.IsSettledAsync(billId, ct);
+                    if (!s.WaitingToLeave)
+                        s.PaymentStatus = nameof(PaymentStatus.Paid);
+                }
+            }
 
             return new OkObjectResult(sessions);
         }
@@ -868,6 +917,49 @@ namespace AimPark.API.Services
             });
         }
 
+        /// <summary>
+        /// Raises this session's bill at the exit gate and holds the barrier until
+        /// it is settled. Null means the driver may go: nothing is owed, or it has
+        /// been paid.
+        /// </summary>
+        /// <remarks>
+        /// Only this session's fee holds the exit. An older unpaid bill still stops
+        /// the next entry, as before, but never a car that is already inside.
+        /// A bill that is only Processing does not let the car out; the checkout
+        /// was opened, not paid.
+        /// </remarks>
+        private async Task<ObjectResult?> HoldForPaymentAsync(ParkingLog log, CancellationToken ct)
+        {
+            var bill = await _paymentService.FindForLogAsync(log.Id, ct);
+
+            if (bill is null)
+            {
+                var now = DateTime.UtcNow;
+                var quote = await _paymentService.QuoteAsync(log, now, ct);
+                if (quote.AmountDue <= 0m)
+                    return null;
+
+                bill = await _paymentService.RaiseExitBillAsync(log, now, ct);
+            }
+
+            // Settled, or a guard has let this driver through (the bill stays owed).
+            if (bill.AmountDue <= 0m
+                || ExitPayment.IsReleased(bill)
+                || await _entryDues.IsSettledAsync(bill.Id, ct))
+                return null;
+
+            return new ObjectResult(new
+            {
+                result = AllocationResult.PaymentDue,
+                message = "Pay in the app or at the guard post, then tap again.",
+                paymentId = (Guid?)bill.Id,
+                amountDue = bill.AmountDue,
+                durationMinutes = bill.DurationMinutes,
+                collectInCash = true
+            })
+            { StatusCode = 402 };
+        }
+
         // POST /api/admin/parking/log-exit
         public async Task<ActionResult<object>> LogExitAsync(
             LogParkingExitDto dto, Guid? loggedByUserId, Guid? loggedByDeviceId, CancellationToken ct)
@@ -929,6 +1021,20 @@ namespace AimPark.API.Services
                     message = "This entry already has a recorded exit."
                 });
 
+            // A driver tapping out at a gate pays before the barrier opens: the
+            // first tap raises the bill and the barrier stays shut, and the tap
+            // after it is settled closes the session. A guard logging an exit by
+            // hand in the panel is not held, and visitors are never charged.
+            var billRaisedAtGate = false;
+            if (loggedByDeviceId is not null && log.UserId is not null)
+            {
+                var hold = await HoldForPaymentAsync(log, ct);
+                if (hold is not null)
+                    return hold;
+
+                billRaisedAtGate = await _paymentService.FindForLogAsync(log.Id, ct) is not null;
+            }
+
             log.ExitTime = DateTime.UtcNow;
             _logs.Update(log);
 
@@ -982,6 +1088,19 @@ namespace AimPark.API.Services
             }
 
             var transaction = await _paymentService.CreateForCompletedLogAsync(log, ct);
+
+            // The fee notice went out at the gate. Say the visit is over.
+            if (billRaisedAtGate)
+            {
+                var stayed = log.ExitTime!.Value - log.EntryTime;
+                await _notificationService.NotifyUserAsync(
+                    log.UserId!.Value,
+                    NotificationType.Parking,
+                    "You've left",
+                    $"You parked for {(stayed.TotalHours >= 1 ? $"{(int)stayed.TotalHours}h {stayed.Minutes}m" : $"{(int)stayed.TotalMinutes}m")}. Thanks for paying.",
+                    new Dictionary<string, string> { ["screen"] = "parking-history" },
+                    ct);
+            }
 
             return new OkObjectResult(new
             {

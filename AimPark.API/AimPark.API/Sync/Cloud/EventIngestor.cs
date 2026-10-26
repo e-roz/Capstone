@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using AimPark.API.Data;
 using AimPark.API.Entities;
 using AimPark.API.Enums;
+using AimPark.API.Helpers;
 using AimPark.API.Interfaces;
 using Microsoft.EntityFrameworkCore;
 
@@ -33,19 +34,23 @@ namespace AimPark.API.Sync.Cloud
         private readonly IPushSender _push;
         private readonly SentPushLedger _sentPushes;
         private readonly ILogger<EventIngestor> _logger;
+        private readonly MasterDataChangeNotifier _notifier;
+        private bool _settledAtSite;
 
         public EventIngestor(
             AppDbContext db,
             SyncSuppression suppression,
             IPushSender push,
             SentPushLedger sentPushes,
-            ILogger<EventIngestor> logger)
+            ILogger<EventIngestor> logger,
+            MasterDataChangeNotifier notifier)
         {
             _db = db;
             _suppression = suppression;
             _push = push;
             _sentPushes = sentPushes;
             _logger = logger;
+            _notifier = notifier;
         }
 
         public async Task<int> IngestAsync(SiteEventBatch batch, CancellationToken ct)
@@ -63,7 +68,7 @@ namespace AimPark.API.Sync.Cloud
             steps.AddRange(batch.ParkingLogs.Select(l => ($"parking log {l.Id}", (Func<CancellationToken, Task>)(c => StageParkingLogAsync(l, c)))));
             steps.AddRange(batch.SlotStatuses.Select(s => ($"slot {s.Id}", (Func<CancellationToken, Task>)(c => StageSlotStatusAsync(s, c)))));
             steps.AddRange(batch.GateAccessAttempts.Select(a => ($"gate attempt {a.Id}", (Func<CancellationToken, Task>)(c => UpsertAsync(a, a.Id, c)))));
-            steps.AddRange(batch.PaymentTransactions.Select(p => ($"payment {p.Id}", (Func<CancellationToken, Task>)(c => InsertOnceAsync(p, p.Id, c)))));
+            steps.AddRange(batch.PaymentTransactions.Select(p => ($"payment {p.Id}", (Func<CancellationToken, Task>)(c => StagePaymentAsync(p, c)))));
             steps.AddRange(batch.Notifications.Select(n => ($"notification {n.Id}", (Func<CancellationToken, Task>)(c => InsertOnceAsync(n, n.Id, c)))));
             steps.AddRange(batch.GateTapEvents.Select(t => ($"gate tap {t.Id}", (Func<CancellationToken, Task>)(c => InsertOnceAsync(t, t.Id, c)))));
             steps.AddRange(batch.WrongBayFlags.Select(f => ($"wrong-bay warning {f.Id}", (Func<CancellationToken, Task>)(c => StageWrongBayFlagAsync(f, c)))));
@@ -97,6 +102,16 @@ namespace AimPark.API.Sync.Cloud
                         _db.ChangeTracker.Clear();
                     }
                 }
+            }
+
+            // Cash taken at the guard post settled a bill here. The site learns
+            // what is owed from the cloud's list, and the cloud's own interceptor
+            // is silent while it ingests, so tell the sites by hand: otherwise the
+            // driver would be turned away at the next entry for money already paid.
+            if (_settledAtSite)
+            {
+                _settledAtSite = false;
+                _notifier.Notify();
             }
 
             // After the rows are stored, so a phone opening the notification
@@ -151,6 +166,57 @@ namespace AimPark.API.Sync.Cloud
                 existing.SlotId = confirmedSlotId;
                 existing.SlotConfirmedAt = confirmedAt;
             }
+        }
+
+        /// <summary>
+        /// A bill is created at the site when the driver taps out, and the cloud owns
+        /// it from then on, except for what only the guard post can know: cash taken
+        /// there, or a driver let out still owing.
+        /// </summary>
+        private async Task StagePaymentAsync(PaymentTransaction incoming, CancellationToken ct)
+        {
+            var existing = await _db.Set<PaymentTransaction>().FindAsync([incoming.Id], ct);
+            if (existing is null)
+            {
+                _db.Set<PaymentTransaction>().Add(incoming);
+                return;
+            }
+
+            if (MergePayment(existing, incoming))
+                _settledAtSite = true;
+        }
+
+        /// <summary>
+        /// Takes what the site knows about a bill that the cloud already holds.
+        /// Returns true when it settled the bill. Never un-settles one: a payment
+        /// made in the app before the cash was taken stands.
+        /// </summary>
+        public static bool MergePayment(PaymentTransaction existing, PaymentTransaction incoming)
+        {
+            if (existing.Status is PaymentStatus.Paid or PaymentStatus.Waived)
+                return false;
+
+            if (incoming.Status == PaymentStatus.Paid)
+            {
+                existing.Status = PaymentStatus.Paid;
+                existing.PaidAt = incoming.PaidAt;
+                existing.Method = incoming.Method;
+                existing.Provider = incoming.Provider;
+                existing.ReferenceNumber = incoming.ReferenceNumber;
+                existing.ConfirmedByUserId = incoming.ConfirmedByUserId;
+                return true;
+            }
+
+            // Let out, still owing: nothing changes about what is owed, but the
+            // admin should be able to see who let the driver go and why.
+            if (incoming.Provider == ExitPayment.ReleasedProvider)
+            {
+                existing.Provider = incoming.Provider;
+                existing.ReferenceNumber = incoming.ReferenceNumber;
+                existing.ConfirmedByUserId = incoming.ConfirmedByUserId;
+            }
+
+            return false;
         }
 
         /// <summary>

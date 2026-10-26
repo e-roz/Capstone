@@ -39,7 +39,13 @@ namespace AimPark.API.Services
         }
 
         // Called by ParkingHistoryService.LogExitAsync right after ExitTime is recorded.
-        public async Task<ParkingFeeQuote> QuoteForCompletedLogAsync(ParkingLog log, CancellationToken ct)
+        public Task<ParkingFeeQuote> QuoteForCompletedLogAsync(ParkingLog log, CancellationToken ct)
+            => QuoteAsync(log, log.ExitTime!.Value, ct);
+
+        public Task<PaymentTransaction?> FindForLogAsync(Guid parkingLogId, CancellationToken ct)
+            => _db.Set<PaymentTransaction>().FirstOrDefaultAsync(p => p.ParkingLogId == parkingLogId, ct);
+
+        public async Task<ParkingFeeQuote> QuoteAsync(ParkingLog log, DateTime at, CancellationToken ct)
         {
             VehicleType? vehicleType = null;
             if (log.SlotId is not null)
@@ -66,7 +72,7 @@ namespace AimPark.API.Services
             // nearest also billed people for less time than they parked - a
             // 9:34:50 entry and a 9:36:10 exit is 1m20s, which came out as one
             // minute on a receipt showing two different clock minutes.
-            var durationMinutes = Math.Max(0, (int)Math.Ceiling((log.ExitTime!.Value - log.EntryTime).TotalMinutes));
+            var durationMinutes = Math.Max(0, (int)Math.Ceiling((at - log.EntryTime).TotalMinutes));
             var metered = Math.Round(ratePerHour / 60m * durationMinutes, 2);
 
             // A floor, not a fee on top. Twenty minutes at ₱15 an hour is five
@@ -89,6 +95,12 @@ namespace AimPark.API.Services
             if (log.UserId is null)
                 throw new InvalidOperationException(
                     "A visitor session has no account to bill. Use QuoteForCompletedLogAsync.");
+
+            // Already raised at the exit gate, where the driver was asked to pay
+            // before the barrier would open. Nothing more to create.
+            var raised = await FindForLogAsync(log.Id, ct);
+            if (raised is not null)
+                return raised;
 
             var (durationMinutes, ratePerHour, amountDue) =
                 await QuoteForCompletedLogAsync(log, ct);
@@ -138,6 +150,45 @@ namespace AimPark.API.Services
                     new Dictionary<string, string> { ["screen"] = "parking-history" },
                     ct);
             }
+
+            return transaction;
+        }
+
+        public async Task<PaymentTransaction> RaiseExitBillAsync(ParkingLog log, DateTime at, CancellationToken ct)
+        {
+            if (log.UserId is null)
+                throw new InvalidOperationException("A visitor session has no account to bill.");
+
+            var existing = await FindForLogAsync(log.Id, ct);
+            if (existing is not null)
+                return existing;
+
+            var (durationMinutes, ratePerHour, amountDue) = await QuoteAsync(log, at, ct);
+
+            var transaction = new PaymentTransaction
+            {
+                Id = Guid.NewGuid(),
+                Source = PaymentSource.ParkingFee,
+                ParkingLogId = log.Id,
+                UserId = log.UserId.Value,
+                DurationMinutes = durationMinutes,
+                RatePerHourApplied = ratePerHour,
+                AmountDue = amountDue,
+                Status = PaymentStatus.Pending,
+                DueAt = null,
+                CreatedAt = DateTime.UtcNow
+            };
+
+            await _payments.AddAsync(transaction, ct);
+            await _payments.SaveAsync(ct);
+
+            await _notificationService.NotifyUserAsync(
+                log.UserId.Value,
+                NotificationType.Payment,
+                "Pay to leave",
+                $"Your parking fee is ₱{amountDue:0.00}. Pay in the app or at the guard post, then tap your card again.",
+                new Dictionary<string, string> { ["paymentId"] = transaction.Id.ToString() },
+                ct);
 
             return transaction;
         }

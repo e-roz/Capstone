@@ -20,6 +20,22 @@ namespace AimPark.API.Interfaces
         /// </remarks>
         Task<ParkingFeeQuote> QuoteForCompletedLogAsync(ParkingLog log, CancellationToken ct);
 
+        /// <summary>
+        /// What the session would cost if it ended at <paramref name="at"/>, without
+        /// recording anything. Used at the exit gate, before the session is closed.
+        /// </summary>
+        Task<ParkingFeeQuote> QuoteAsync(ParkingLog log, DateTime at, CancellationToken ct);
+
+        /// <summary>The bill for this session, if one has been raised yet.</summary>
+        Task<PaymentTransaction?> FindForLogAsync(Guid parkingLogId, CancellationToken ct);
+
+        /// <summary>
+        /// Raises the bill for a session whose driver has tapped out but not yet
+        /// paid, or returns the one already raised. The amount is frozen at the
+        /// first tap, so it cannot change under a driver who is already paying.
+        /// </summary>
+        Task<PaymentTransaction> RaiseExitBillAsync(ParkingLog log, DateTime at, CancellationToken ct);
+
         // Internal — called by ViolationService when a violation carrying a penalty is issued.
         Task<PaymentTransaction> CreateForViolationAsync(Violation violation, CancellationToken ct);
 
