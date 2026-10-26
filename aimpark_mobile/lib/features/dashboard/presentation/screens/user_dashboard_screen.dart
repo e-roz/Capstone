@@ -125,6 +125,10 @@ class UserDashboardScreen extends ConsumerWidget {
     final recentLogs =
         history?.logs.take(3).toList() ?? const <ParkingHistoryEntry>[];
 
+    // Inside or just left, and no bay said yet. Nothing to ask if they never
+    // came in today.
+    final awaitingSlot = history?.awaitingSlotConfirmation();
+
     // The bills already loaded, keyed so each session can show what it cost.
     final billsById = {
       for (final p in paymentsAsync.valueOrNull?.payments ?? const <Payment>[])
@@ -175,6 +179,11 @@ class UserDashboardScreen extends ConsumerWidget {
               const ExpiryBanner(),
 
               _hero(context, ref, availabilityAsync, vehicles),
+
+              if (awaitingSlot != null) ...[
+                gap,
+                ConfirmSlotCard(session: awaitingSlot),
+              ],
 
               if (unpaid.isNotEmpty) ...[
                 gap,

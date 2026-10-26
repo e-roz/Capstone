@@ -11,19 +11,25 @@ import '../../domain/lot_layout.dart';
 /// Deliberately not [StatusIntents.slot]: that maps `occupied` to the brand tone,
 /// and the map keeps the one brand colour for the suggested bay.
 ///
-/// There is no "yours": the lot only knows which bays have a car in them, never
-/// whose, so the map cannot say where a driver parked.
+/// "Yours" is only ever the bay the driver said they parked in. The lot's
+/// sensors know which bays have a car in them, never whose, so the map cannot
+/// work it out for them.
 enum BayState {
   free,
   taken,
   outOfService,
   noSignal,
-  suggested;
+  suggested,
+  confirmed;
 
   static BayState of(
     ParkingSlot slot, {
     String? suggestedCode,
+    String? confirmedCode,
   }) {
+    if (confirmedCode != null && slot.slotCode == confirmedCode) {
+      return confirmed;
+    }
     if (suggestedCode != null && slot.slotCode == suggestedCode) {
       return suggested;
     }
@@ -43,6 +49,7 @@ enum BayState {
     BayState.outOfService => 'Out of service',
     BayState.noSignal => 'No signal',
     BayState.suggested => 'Suggested',
+    BayState.confirmed => 'Your bay',
   };
 }
 
@@ -62,6 +69,11 @@ enum BayState {
 ///
 /// A bay is a button. Tapping one opens a small sheet saying what it is.
 ///
+/// When [onConfirmSlot] is given the sheet also offers to record that the driver
+/// parked there. A bay the sensor calls taken stays confirmable: sensors
+/// sometimes report a car that is not there, and the driver's word is what the
+/// guards rely on.
+///
 /// If the account has only one kind of vehicle, bays for the other kind are
 /// dimmed rather than hidden — the lot stays whole and the driver's own bays are
 /// the ones that stand out.
@@ -70,6 +82,8 @@ class ParkingMap extends StatelessWidget {
     super.key,
     required this.availability,
     this.suggestedCode,
+    this.confirmedCode,
+    this.onConfirmSlot,
     this.userHasCar = false,
     this.userHasMotorcycle = false,
   });
@@ -78,6 +92,13 @@ class ParkingMap extends StatelessWidget {
 
   /// The bay the server suggested, if they asked.
   final String? suggestedCode;
+
+  /// The bay the driver has said they are parked in, if they have.
+  final String? confirmedCode;
+
+  /// Records that the driver parked in the given bay. Returns whether it
+  /// worked; the caller shows any error itself. Null hides the confirm button.
+  final Future<bool> Function(ParkingSlot slot)? onConfirmSlot;
 
   final bool userHasCar;
   final bool userHasMotorcycle;
@@ -110,6 +131,7 @@ class ParkingMap extends StatelessWidget {
       builder: (_) => _BaySheet(
         slot: slot,
         state: state,
+        onConfirm: onConfirmSlot,
         wrongKindFor: _isDimmed(slot, state)
             ? (userHasMotorcycle ? 'motorcycle' : 'car')
             : null,
@@ -123,7 +145,11 @@ class ParkingMap extends StatelessWidget {
     final layout = LotLayout.of(availability.slots);
 
     Widget bay(ParkingSlot slot, {required bool mirrored, required double w}) {
-      final state = BayState.of(slot, suggestedCode: suggestedCode);
+      final state = BayState.of(
+        slot,
+        suggestedCode: suggestedCode,
+        confirmedCode: confirmedCode,
+      );
       return _Bay(
         slot: slot,
         state: state,
@@ -190,7 +216,10 @@ class ParkingMap extends StatelessWidget {
               ),
             ),
             const SizedBox(height: AppSpacing.md),
-            _Legend(showSuggested: suggestedCode != null),
+            _Legend(
+              showSuggested: suggestedCode != null,
+              showConfirmed: confirmedCode != null,
+            ),
             // Bays the drawing has no room for are listed rather than dropped.
             if (layout.unplaced.isNotEmpty) ...[
               const SizedBox(height: AppSpacing.lg),
@@ -262,6 +291,15 @@ class _Bay extends StatelessWidget {
           shape: BoxShape.circle,
         ),
         child: Icon(Icons.near_me_rounded, size: 14, color: t.brand.onSolid),
+      ),
+      BayState.confirmed => Container(
+        width: 24,
+        height: 24,
+        decoration: BoxDecoration(
+          color: t.status.success.solid,
+          shape: BoxShape.circle,
+        ),
+        child: const Icon(Icons.check_rounded, size: 16, color: Colors.white),
       ),
       BayState.outOfService => Icon(
         Icons.block_rounded,
@@ -396,6 +434,12 @@ class _BayColors {
       t.tertiary.subtle,
       t.brand.primary,
       t.brand.subtleText,
+      borderWidth: 2.5,
+    ),
+    BayState.confirmed => _BayColors(
+      t.status.success.bg,
+      t.status.success.solid,
+      t.status.success.fg,
       borderWidth: 2.5,
     ),
   };
@@ -620,11 +664,12 @@ class _DashPainter extends CustomPainter {
 // ── Legend ───────────────────────────────────────────────────────────────────
 
 class _Legend extends StatelessWidget {
-  const _Legend({required this.showSuggested});
+  const _Legend({required this.showSuggested, required this.showConfirmed});
 
   /// Only listed when the colour appears on the map. A key to something that is
   /// not there is noise.
   final bool showSuggested;
+  final bool showConfirmed;
 
   @override
   Widget build(BuildContext context) {
@@ -637,6 +682,7 @@ class _Legend extends StatelessWidget {
         const _LegendItem(state: BayState.outOfService),
         const _LegendItem(state: BayState.noSignal),
         if (showSuggested) const _LegendItem(state: BayState.suggested),
+        if (showConfirmed) const _LegendItem(state: BayState.confirmed),
       ],
     );
   }
@@ -695,10 +741,20 @@ class _BaySheet extends StatelessWidget {
     required this.slot,
     required this.state,
     required this.wrongKindFor,
+    this.onConfirm,
   });
 
   final ParkingSlot slot;
   final BayState state;
+
+  /// Null when the map is only for looking.
+  final Future<bool> Function(ParkingSlot slot)? onConfirm;
+
+  /// Out-of-service bays cannot be parked in, so there is nothing to confirm.
+  bool get _canConfirm =>
+      onConfirm != null &&
+      state != BayState.outOfService &&
+      state != BayState.confirmed;
 
   /// Set to `car` or `motorcycle` when this bay is for the other kind from the
   /// only kind of vehicle on the account.
@@ -712,9 +768,18 @@ class _BaySheet extends StatelessWidget {
     BayState.taken || BayState.outOfService => StatusIntent.neutral,
     BayState.noSignal => StatusIntent.warning,
     BayState.suggested => StatusIntent.brand,
+    BayState.confirmed => StatusIntent.success,
   };
 
   String get _message => switch (state) {
+    // Asking where the driver parked: the sentence is about them, not the bay.
+    BayState.free when onConfirm != null =>
+      'Parked here? Confirm it so the guards know which bay is yours.',
+    BayState.taken when onConfirm != null =>
+      'The sensor says a vehicle is here. If it is yours, confirm it — the '
+          'sensor is sometimes wrong.',
+    BayState.noSignal when onConfirm != null =>
+      "This bay's sensor is not reporting. If you are parked here, confirm it.",
     BayState.free =>
       'Free right now. Looking at a bay does not hold it for you — entry '
           'is confirmed by your card at the gate.',
@@ -725,6 +790,8 @@ class _BaySheet extends StatelessWidget {
     BayState.suggested =>
       'Suggested for you. It is not held, so it may be taken before you '
           'arrive.',
+    BayState.confirmed =>
+      'You said you parked here. To change it, tap another bay.',
   };
 
   @override
@@ -783,6 +850,10 @@ class _BaySheet extends StatelessWidget {
             ),
             const SizedBox(height: AppSpacing.md),
             Text(_message, style: context.text.bodyMedium),
+            if (_canConfirm) ...[
+              const SizedBox(height: AppSpacing.md),
+              _ConfirmBayButton(slot: slot, onConfirm: onConfirm!),
+            ],
             if (wrongKindFor != null && state == BayState.free) ...[
               const SizedBox(height: AppSpacing.sm),
               AppNotice(
@@ -794,6 +865,47 @@ class _BaySheet extends StatelessWidget {
             ],
           ],
         ),
+      ),
+    );
+  }
+}
+
+/// Confirms the bay and closes the sheet when it worked. Stays open on failure,
+/// where the caller has already shown why, so the driver can try again or pick
+/// another bay.
+class _ConfirmBayButton extends StatefulWidget {
+  const _ConfirmBayButton({required this.slot, required this.onConfirm});
+
+  final ParkingSlot slot;
+  final Future<bool> Function(ParkingSlot slot) onConfirm;
+
+  @override
+  State<_ConfirmBayButton> createState() => _ConfirmBayButtonState();
+}
+
+class _ConfirmBayButtonState extends State<_ConfirmBayButton> {
+  bool _busy = false;
+
+  Future<void> _run() async {
+    setState(() => _busy = true);
+    var ok = false;
+    try {
+      ok = await widget.onConfirm(widget.slot);
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+    if (ok && mounted) Navigator.of(context).pop();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: double.infinity,
+      child: AppButton(
+        label: 'Confirm parking slot',
+        icon: const Icon(Icons.check_circle_outline_rounded),
+        isLoading: _busy,
+        onPressed: _busy ? null : _run,
       ),
     );
   }

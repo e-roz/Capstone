@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import '../../../../core/theme/theme.dart';
 import '../../../../core/utils/formatters.dart';
 import '../../../../core/widgets/widgets.dart';
+import '../../../parking/data/models/parking_history_entry.dart';
 import '../../../payments/data/models/payment.dart';
 import '../../../violations/data/models/violation.dart';
 
@@ -339,6 +340,37 @@ class _StrikeDot extends StatelessWidget {
         color: filled ? fill : Colors.transparent,
         border: Border.all(color: filled ? fill : outline, width: 2),
       ),
+    );
+  }
+}
+
+/// Shown while the driver has not said which bay they parked in.
+///
+/// Asking is the whole point: the sensors only know a bay has something in it,
+/// never whose car, and a guard looking into a violation or an incident needs
+/// to know who was where. A session that has ended is still asked about until
+/// midnight, which is as long as the server takes an answer.
+///
+/// One tap, to the map on the Parking screen, where the driver picks the bay.
+class ConfirmSlotCard extends StatelessWidget {
+  const ConfirmSlotCard({super.key, required this.session});
+
+  /// The session still waiting for a bay. Never one already confirmed.
+  final ParkingHistoryEntry session;
+
+  @override
+  Widget build(BuildContext context) {
+    return AppAlertCard(
+      intent: StatusIntent.info,
+      eyebrow: 'Where did you park?',
+      icon: Icons.local_parking_rounded,
+      title: session.isOpen
+          ? 'Tell us which bay is yours'
+          : 'You left today. Which bay did you use?',
+      message:
+          'Tap your bay on the map and confirm it, so the guards know it was '
+          'you if something happens there.',
+      onTap: () => context.push('/home/user/parking-slots'),
     );
   }
 }

@@ -36,6 +36,7 @@ class ApiEndpoints {
   static const parkingHistory = '/api/parking/history';
   static const parkingSlots = '/api/parking/slots';
   static const parkingRecommend = '/api/parking/recommend';
+  static const parkingConfirmSlot = '/api/parking/confirm-slot';
 
   static const vehicles = '/api/vehicles';
   // A vehicle added after registration is proved the same way the first one was:
