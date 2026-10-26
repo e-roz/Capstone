@@ -20,6 +20,7 @@ import '../widgets/live_gate_log.dart';
 import '../widgets/open_gate_button.dart';
 import '../widgets/parking/live_parking_map.dart';
 import '../widgets/ui/ui.dart';
+import '../widgets/waiting_to_leave_card.dart';
 
 /// What the guard on duty sees when they sign in.
 ///
@@ -114,6 +115,10 @@ class SecurityOverviewScreen extends ConsumerWidget {
           ),
           const SizedBox(height: AppSpacing.gutter),
           const _ActionBar(),
+          const SizedBox(height: AppSpacing.gutter),
+          // A car is sitting at a shut barrier, so this comes before everything
+          // that can wait.
+          const WaitingToLeaveCard(alwaysShow: true),
           const SizedBox(height: AppSpacing.gutter),
           const _AlertsAndCameras(),
           const SizedBox(height: AppSpacing.gutter),

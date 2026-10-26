@@ -94,6 +94,22 @@ class ActiveParkingSession {
   /// is true of anybody else in the list.
   final bool isVisitor;
 
+  final int? gate;
+
+  /// This session's bill, once the driver has tapped out and been asked to pay.
+  final String? paymentId;
+  final double? amountDue;
+
+  /// Pending, Processing, Paid or Waived. Null until a bill exists.
+  final String? paymentStatus;
+
+  /// When they tapped out and the bill was raised.
+  final DateTime? waitingSince;
+
+  /// The driver has tapped out, owes the fee, and the barrier is shut until it
+  /// is settled.
+  final bool waitingToLeave;
+
   const ActiveParkingSession({
     required this.logId,
     required this.userId,
@@ -102,6 +118,12 @@ class ActiveParkingSession {
     required this.slotCode,
     required this.entryTime,
     this.isVisitor = false,
+    this.gate,
+    this.paymentId,
+    this.amountDue,
+    this.paymentStatus,
+    this.waitingSince,
+    this.waitingToLeave = false,
   });
 
   factory ActiveParkingSession.fromJson(Map<String, dynamic> json) =>
@@ -113,6 +135,14 @@ class ActiveParkingSession {
         slotCode: json['slotCode']?.toString(),
         entryTime: DateTime.parse(json['entryTime'].toString()),
         isVisitor: json['isVisitor'] as bool? ?? false,
+        gate: (json['gate'] as num?)?.toInt(),
+        paymentId: json['paymentId']?.toString(),
+        amountDue: (json['amountDue'] as num?)?.toDouble(),
+        paymentStatus: json['paymentStatus']?.toString(),
+        waitingSince: json['waitingSince'] == null
+            ? null
+            : DateTime.parse(json['waitingSince'].toString()),
+        waitingToLeave: json['waitingToLeave'] as bool? ?? false,
       );
 }
 
