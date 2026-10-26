@@ -54,9 +54,36 @@ class ParkingAvailabilityNotifier extends _$ParkingAvailabilityNotifier {
 
 @riverpod
 class ParkingHistoryNotifier extends _$ParkingHistoryNotifier {
+  /// How often to look again while the driver is held at the exit. Nothing
+  /// pushes the news that a payment went through to the phone sooner than this,
+  /// and a car is sitting at a shut barrier.
+  static const waitingPollEvery = Duration(seconds: 5);
+
+  Timer? _timer;
+  bool _disposed = false;
+
   @override
   Future<ParkingHistoryResult> build() {
+    _disposed = false;
+    _timer = Timer.periodic(waitingPollEvery, (_) => _pollWhileWaiting());
+    ref.onDispose(() {
+      _disposed = true;
+      _timer?.cancel();
+    });
     return ref.read(parkingRepositoryProvider).getHistory();
+  }
+
+  /// Only does anything while a session is waiting to leave, and only with the
+  /// app in front. Replaces the answer in place, so nothing blinks.
+  Future<void> _pollWhileWaiting() async {
+    if (WidgetsBinding.instance.lifecycleState != AppLifecycleState.resumed) return;
+    if (state.isLoading || state.valueOrNull?.waitingToLeave == null) return;
+    try {
+      final fresh = await ref.read(parkingRepositoryProvider).getHistory();
+      if (!_disposed) state = AsyncData(fresh);
+    } catch (_) {
+      // Offline for a moment: the last answer stays.
+    }
   }
 
   Future<void> refresh() async {

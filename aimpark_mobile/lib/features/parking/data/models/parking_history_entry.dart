@@ -4,6 +4,8 @@ class ParkingHistoryEntry {
     required this.entryTime,
     this.slotCode,
     this.slotConfirmed = false,
+    this.waitingToLeave = false,
+    this.exitAmountDue,
     this.exitTime,
     this.paymentId,
     this.alprPlateNumber,
@@ -16,6 +18,13 @@ class ParkingHistoryEntry {
   /// True when the driver said this is the bay they parked in. False means
   /// [slotCode] is only the bay the gate suggested.
   final bool slotConfirmed;
+
+  /// The driver tapped out at the gate and owes this session's fee, so the
+  /// barrier is shut and the session is still open until it is paid.
+  final bool waitingToLeave;
+
+  /// The fee they are being asked for, frozen when they tapped out.
+  final double? exitAmountDue;
   final DateTime entryTime;
   final DateTime? exitTime;
 
@@ -43,6 +52,8 @@ class ParkingHistoryEntry {
       logId: json['logId'] as String,
       slotCode: json['slotCode'] as String?,
       slotConfirmed: json['slotConfirmed'] as bool? ?? false,
+      waitingToLeave: json['waitingToLeave'] as bool? ?? false,
+      exitAmountDue: (json['exitAmountDue'] as num?)?.toDouble(),
       entryTime: DateTime.parse(json['entryTime'] as String),
       exitTime: json['exitTime'] == null ? null : DateTime.parse(json['exitTime'] as String),
       paymentId: json['paymentId'] as String?,
@@ -62,6 +73,14 @@ class ParkingHistoryResult {
   ParkingHistoryEntry? get currentlyParked {
     for (final log in logs) {
       if (log.isOpen) return log;
+    }
+    return null;
+  }
+
+  /// The open session held at the exit barrier until its fee is paid, if any.
+  ParkingHistoryEntry? get waitingToLeave {
+    for (final log in logs) {
+      if (log.isOpen && log.waitingToLeave) return log;
     }
     return null;
   }

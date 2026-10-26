@@ -5,6 +5,7 @@ import '../../../../core/theme/theme.dart';
 import '../../../../core/utils/app_flushbar.dart';
 import '../../../../core/utils/formatters.dart';
 import '../../../../core/widgets/widgets.dart';
+import '../../../dashboard/presentation/widgets/home_attention_cards.dart';
 import '../../../vehicles/data/models/vehicle.dart';
 import '../../../vehicles/presentation/providers/vehicles_provider.dart';
 import '../../data/models/parking_history_entry.dart';
@@ -146,7 +147,10 @@ class _ParkingScreenState extends ConsumerState<ParkingScreen> {
             // repeating it only pushed the map further down.
             if (current != null) ...[
               const SizedBox(height: AppSpacing.md),
-              _CurrentSessionCard(entry: current),
+              // Tapped out with a fee to pay: the gate is shut until it is paid.
+              current.waitingToLeave
+                  ? PayToLeaveCard(session: current)
+                  : _CurrentSessionCard(entry: current),
             ],
             if (canFind) ...[
               const SizedBox(height: AppSpacing.md),
@@ -261,7 +265,8 @@ class _CurrentSessionCard extends StatelessWidget {
           // is created at exit — so any figure here would be the app inventing
           // a number the server has not agreed to.
           Text(
-            'The amount is calculated at exit from the gate reading.',
+            'You pay when you leave. Tap your card at the gate and the fee '
+            'shows here.',
             style: context.text.bodySmall,
           ),
           if (entry.slotConfirmed && entry.slotCode != null) ...[
