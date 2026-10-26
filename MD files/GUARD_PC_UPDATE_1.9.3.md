@@ -21,6 +21,7 @@ Merged to `main` since the `site-installer-v1.9.2` tag:
 - **The app shows no free bays while the guard post is offline** (#78).
 - Admin: email a password-reset code to a user (#85).
 - Admin: slot history, bulk archive, user history tabs, clearer incident review (#87).
+- **Pay before the exit gate opens** (the "pay to leave" change; the pull request number is in the PR list). A driver tapping out is shown the fee first and the barrier stays shut. They pay in the app (simulated GCash or Maya for now) or pay cash to the guard, then tap their card again and the barrier opens. The guard panel gets a **Waiting to leave** card for this. The firmware is not involved: a shut barrier is the same `RESULT:SHUT` answer the readers already understand. **The guard PC needs this update for it to work**, because the guard PC is what decides whether the barrier opens.
 - **Drivers confirm the bay they parked in** (#88): "Confirmed", "Confirmed late" and "Bay confirmed X of Y" now show in the guard panel too, because the guard panel is the admin app.
 
 **New database tables and columns** (migrations) come with it. They are added automatically when the server starts. Your settings, reader links, photos and database are kept.
@@ -67,7 +68,18 @@ powershell -ExecutionPolicy Bypass -File site-server\installer\build-installer.p
 4. **Confirm the bay.** On a phone with app 1.0.14, open the Parking tab, tap the bay you parked in and confirm it.
 5. **Check the panel.** The same session now shows **Confirmed** next to its bay in the bay's history, and your user page shows "Bay confirmed 1 of N".
 6. **Reminder.** Tap in again and do not confirm. After about 10 minutes the phone gets "Where did you park?". This runs in the cloud, so the phone needs internet.
-7. **Exit.** Tap out. The session closes and the bill is created as before.
+7. **Exit with a fee, paid in the app.** Park long enough to owe a fee (or set a parking rate with a minimum fee so even a short stay costs something), then tap out.
+   - The barrier **stays shut** and the panel's Gate Log shows the tap as refused with "₱X due. Pay in the app or at the guard post, then tap again."
+   - The guard panel's Overview shows the driver under **Waiting to leave** with the amount.
+   - On the phone, Home shows **Pay to leave**. Press **Pay now** and finish the simulated checkout.
+   - Tap the card again. The barrier opens, the session closes, and the card disappears from **Waiting to leave**.
+8. **Exit with a fee, paid in cash.** Repeat step 7, but this time press **Received cash** in the guard panel instead of paying in the app, and confirm.
+   - The Payments page (admin) shows the bill as Paid, method **Cash**, "Settled by" the guard's name, with a receipt number like `CASH-20261026-0001`.
+   - The guard's **Cash today** line goes up by the amount.
+   - Tap the card again. The barrier opens.
+9. **Let out, still owes.** Repeat step 7, then press **Let out, still owes** in the panel and type a reason. Tap the card. The barrier opens. Check that the bill is still **Pending**, and that the same driver is refused at the next entry with an unpaid balance.
+10. **No internet.** Unplug the guard PC's internet, tap out with a fee, and take cash (step 8). It must still work, because cash is handled on the guard PC itself. Reconnect, and within a few minutes the cash payment shows in the cloud's Payments page.
+11. **Exit with no fee.** A stay with a ₱0 fee opens on the first tap, as before.
 
 If any step behaves differently from before the update, write down which step and what you saw.
 
