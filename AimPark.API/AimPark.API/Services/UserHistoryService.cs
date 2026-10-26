@@ -45,6 +45,8 @@ namespace AimPark.API.Services
             var summary = new UserHistorySummary
             {
                 Sessions = await _db.Set<ParkingLog>().CountAsync(l => l.UserId == userId, ct),
+                SessionsConfirmed = await _db.Set<ParkingLog>()
+                    .CountAsync(l => l.UserId == userId && l.SlotConfirmedAt != null, ct),
                 Violations = await _db.Set<Violation>().CountAsync(v => v.UserId == userId, ct),
                 IncidentsFiled = await _db.Set<Incident>().CountAsync(i => i.ReportedByUserId == userId, ct),
                 IncidentsPossible = (await LoadPossiblyInvolvedAsync(userId, ct)).Count,
@@ -70,13 +72,19 @@ namespace AimPark.API.Services
             var inside = await _db.Set<ParkingLog>().AsNoTracking()
                 .Where(l => l.UserId == userId && l.ExitTime == null)
                 .OrderByDescending(l => l.EntryTime)
-                .Select(l => new { l.EntryTime, SlotCode = l.Slot != null ? l.Slot.SlotCode : null })
+                .Select(l => new
+                {
+                    l.EntryTime,
+                    SlotCode = l.Slot != null ? l.Slot.SlotCode : null,
+                    Confirmed = l.SlotConfirmedAt != null
+                })
                 .FirstOrDefaultAsync(ct);
             if (inside is not null)
             {
                 summary.IsInside = true;
                 summary.InsideSince = inside.EntryTime;
                 summary.InsideSlotCode = inside.SlotCode;
+                summary.InsideSlotConfirmed = inside.Confirmed;
             }
 
             return new OkObjectResult(summary);
@@ -110,6 +118,7 @@ namespace AimPark.API.Services
                     Gate = l.Gate,
                     SlotCode = l.Slot != null ? l.Slot.SlotCode : null,
                     SlotConfirmed = l.SlotConfirmedAt != null,
+                    SlotConfirmedAt = l.SlotConfirmedAt,
                     Plate = l.AlprPlateNumber,
                     PlateMatched = l.AlprMatched
                 })

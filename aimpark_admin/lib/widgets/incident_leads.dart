@@ -11,6 +11,7 @@ import '../screens/violations_screen.dart' show showIssueViolationDialog;
 import '../theme/theme.dart';
 import 'parking/slot_history.dart';
 import 'review_summary.dart';
+import 'slot_confirmation_pill.dart';
 import 'ui/ui.dart';
 import 'user_picker.dart';
 
@@ -194,6 +195,13 @@ class _Lead {
           : StatusIntent.warning;
 }
 
+String _confirmation(SlotSession s, String slotCode) =>
+    switch (SlotConfirmation.of(confirmedAt: s.confirmedAt, exitTime: s.exitTime)) {
+      SlotConfirmation.confirmed => 'confirmed $slotCode',
+      SlotConfirmation.late => 'confirmed $slotCode after leaving',
+      SlotConfirmation.none => 'did not confirm the bay',
+    };
+
 String _ago(Duration d) {
   if (d.inMinutes < 60) return '${d.inMinutes} min';
   final h = d.inHours;
@@ -374,7 +382,7 @@ class _PersonCard extends ConsumerWidget {
     final when = '${s.plateNumber == null ? '' : '${s.plateNumber} · '}'
         'in ${_time.format(manila(s.entryTime))}'
         '${s.exitTime == null ? ', still inside' : ', out ${_time.format(manila(s.exitTime!))}'}'
-        ' · ${s.isConfirmed ? 'confirmed $slotCode' : 'did not confirm the bay'}';
+        ' · ${_confirmation(s, slotCode)}';
 
     final userId = s.userId;
 

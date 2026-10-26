@@ -53,6 +53,31 @@ class _ParkingScreenState extends ConsumerState<ParkingScreen> {
     ]);
   }
 
+  /// Tells the server the driver parked in [slot] for [session]. Returns whether
+  /// it worked, so the sheet knows to close; a refusal is shown here, in the
+  /// server's own words (for example, someone else already confirmed that bay).
+  Future<bool> _confirmSlot(
+    ParkingHistoryEntry session,
+    ParkingSlot slot,
+  ) async {
+    try {
+      await ref
+          .read(parkingRepositoryProvider)
+          .confirmSlot(logId: session.logId, slotId: slot.slotId);
+      // Invalidate rather than refresh(): refresh() puts the history into a
+      // loading state, which blinks the whole screen for a one-field change.
+      ref.invalidate(parkingHistoryNotifierProvider);
+      ref.invalidate(parkingAvailabilityNotifierProvider);
+      if (mounted) {
+        showAppMessage(context, '${slot.slotCode} confirmed as your bay.');
+      }
+      return true;
+    } catch (e) {
+      if (mounted) showApiError(context, e);
+      return false;
+    }
+  }
+
   Future<void> _findSlot() async {
     setState(() => _isFinding = true);
     try {
@@ -68,10 +93,11 @@ class _ParkingScreenState extends ConsumerState<ParkingScreen> {
   @override
   Widget build(BuildContext context) {
     final availabilityAsync = ref.watch(parkingAvailabilityNotifierProvider);
-    final current = ref
-        .watch(parkingHistoryNotifierProvider)
-        .valueOrNull
-        ?.currentlyParked;
+    final history = ref.watch(parkingHistoryNotifierProvider).valueOrNull;
+    final current = history?.currentlyParked;
+    // The session a tap on the map is about: the one the driver is in, or one
+    // from earlier today that they have not said a bay for.
+    final confirmTarget = current ?? history?.awaitingSlotConfirmation();
     final vehicles =
         ref.watch(myVehiclesProvider).valueOrNull ?? const <Vehicle>[];
 
@@ -142,9 +168,26 @@ class _ParkingScreenState extends ConsumerState<ParkingScreen> {
                   'Tap a bay for details. It updates by itself every few '
                   'seconds.',
             ),
+            if (confirmTarget != null && !confirmTarget.slotConfirmed) ...[
+              AppNotice(
+                intent: StatusIntent.info,
+                message: confirmTarget.isOpen
+                    ? 'Tap the bay you parked in and confirm it, so the guards '
+                          'know it was you.'
+                    : 'You left earlier today. Tap the bay you used and confirm '
+                          'it — this is open until midnight.',
+              ),
+              const SizedBox(height: AppSpacing.md),
+            ],
             ParkingMap(
               availability: availability,
               suggestedCode: suggested,
+              confirmedCode: confirmTarget != null && confirmTarget.slotConfirmed
+                  ? confirmTarget.slotCode
+                  : null,
+              onConfirmSlot: confirmTarget == null
+                  ? null
+                  : (slot) => _confirmSlot(confirmTarget, slot),
               userHasCar: userHasCar,
               userHasMotorcycle: userHasMotorcycle,
             ),
@@ -174,8 +217,9 @@ class _CurrentSessionCard extends StatelessWidget {
 
   final ParkingHistoryEntry entry;
 
-  /// No bay on this card, on purpose. The lot knows which bays have a car in
-  /// them, not whose car, so it cannot say where this driver parked.
+  /// The bay is named only once the driver has confirmed it. Until then
+  /// [ParkingHistoryEntry.slotCode] is just the gate's suggestion, and the lot
+  /// cannot tell whose car is in which bay.
   @override
   Widget build(BuildContext context) {
     final t = context.tokens;
@@ -220,6 +264,13 @@ class _CurrentSessionCard extends StatelessWidget {
             'The amount is calculated at exit from the gate reading.',
             style: context.text.bodySmall,
           ),
+          if (entry.slotConfirmed && entry.slotCode != null) ...[
+            const SizedBox(height: AppSpacing.sm),
+            Text(
+              'Your bay: ${entry.slotCode}',
+              style: context.text.titleSmall,
+            ),
+          ],
         ],
       ),
     );

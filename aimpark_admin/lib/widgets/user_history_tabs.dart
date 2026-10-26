@@ -9,6 +9,7 @@ import '../providers/investigation_provider.dart';
 import '../providers/user_history_provider.dart';
 import '../theme/theme.dart';
 import '../screens/incidents_screen.dart' show openIncidentReport;
+import 'slot_confirmation_pill.dart';
 import 'ui/ui.dart';
 import 'violation_detail_dialog.dart';
 
@@ -139,7 +140,11 @@ class _SummaryCards extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final inside = summary.isInside
-        ? (summary.insideSlotCode == null ? 'Inside' : 'Slot ${summary.insideSlotCode}')
+        // A bay the driver has not confirmed is only the gate's suggestion, so
+        // it is not named as if it were where they are.
+        ? (summary.insideSlotCode == null || !summary.insideSlotConfirmed
+            ? 'Inside'
+            : 'Slot ${summary.insideSlotCode}')
         : 'Not parked';
 
     return Wrap(
@@ -157,6 +162,16 @@ class _SummaryCards extends StatelessWidget {
           value: '${summary.sessions}',
           icon: Icons.history,
           intent: StatusIntent.info,
+        ),
+        _Metric(
+          label: 'Bay confirmed',
+          value: '${summary.sessionsConfirmed} of ${summary.sessions}',
+          icon: Icons.pin_drop_outlined,
+          // Someone who never says where they parked cannot be placed when
+          // something happens, so a record of never doing it is worth noticing.
+          intent: summary.sessions >= 3 && summary.sessionsConfirmed == 0
+              ? StatusIntent.warning
+              : StatusIntent.info,
         ),
         _Metric(
           label: 'Violations',
@@ -411,16 +426,9 @@ class _SessionRow extends StatelessWidget {
             StatusPill.of(session.slotCode!,
                 intent: StatusIntent.accent, showDot: false, dense: true),
             const SizedBox(width: AppSpacing.x2),
-            Tooltip(
-              message: session.slotConfirmed
-                  ? 'The driver confirmed this bay in the app.'
-                  : 'The driver did not confirm. This is the bay the gate suggested.',
-              child: StatusPill.of(
-                session.slotConfirmed ? 'Confirmed' : 'Unconfirmed',
-                intent: session.slotConfirmed ? StatusIntent.success : StatusIntent.warning,
-                showDot: false,
-                dense: true,
-              ),
+            SlotConfirmationPill(
+              confirmedAt: session.slotConfirmedAt,
+              exitTime: session.exitTime,
             ),
           ],
         ],

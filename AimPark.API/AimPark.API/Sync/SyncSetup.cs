@@ -127,6 +127,8 @@ namespace AimPark.API.Sync
             services.AddSingleton<SentPushLedger>();
             // Clock-driven pushes: due tomorrow, overdue, suspension start/end.
             services.AddHostedService<AimPark.API.Services.NotificationReminderService>();
+            // Drivers who are inside and have not said which bay they are in.
+            services.AddHostedService<AimPark.API.Services.SlotConfirmReminderService>();
             // Issued violations past their appeal deadline become Accountable.
             services.AddHostedService<AimPark.API.Services.ViolationDeadlineService>();
             // Tap photos sent up from the guard PC are kept for 30 days.

@@ -12,6 +12,12 @@ namespace AimPark.API.DTOs
     {
         public Guid LogId { get; set; }
         public string? SlotCode { get; set; }
+
+        /// <summary>
+        /// True when the driver said this is the bay they parked in. False means
+        /// <see cref="SlotCode"/> is only the bay the gate suggested.
+        /// </summary>
+        public bool SlotConfirmed { get; set; }
         public DateTime EntryTime { get; set; }
         public DateTime? ExitTime { get; set; }
 

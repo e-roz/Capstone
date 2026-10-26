@@ -53,6 +53,41 @@ public class UserHistoryTests
         Assert.IsType<T>(Assert.IsType<OkObjectResult>(result.Result).Value);
 
     [Fact]
+    public async Task The_summary_says_how_many_sessions_had_a_confirmed_bay_and_whether_the_current_one_is()
+    {
+        var db = NewDb();
+        var juan = Person(db, "Juan");
+        var m3 = Bay(db, "M3");
+        db.AddRange(
+            Session(juan, m3, Noon.AddDays(-2), Noon.AddDays(-2).AddHours(1), confirmed: true),
+            Session(juan, m3, Noon.AddDays(-1), Noon.AddDays(-1).AddHours(1), confirmed: false),
+            Session(juan, m3, Noon, null, confirmed: false));
+        await db.SaveChangesAsync();
+
+        var s = Ok(await Service(db).GetSummaryAsync(juan.Id, default));
+
+        Assert.Equal(3, s.Sessions);
+        Assert.Equal(1, s.SessionsConfirmed);
+        Assert.True(s.IsInside);
+        Assert.False(s.InsideSlotConfirmed);
+    }
+
+    [Fact]
+    public async Task A_session_list_row_carries_when_the_bay_was_confirmed()
+    {
+        var db = NewDb();
+        var juan = Person(db, "Juan");
+        var m3 = Bay(db, "M3");
+        var log = Session(juan, m3, Noon, Noon.AddHours(1), confirmed: true);
+        db.Add(log);
+        await db.SaveChangesAsync();
+
+        var page = Ok(await Service(db).GetSessionsAsync(juan.Id, 1, 20, null, null, null, default));
+
+        Assert.Equal(log.SlotConfirmedAt, Assert.Single(page.Items).SlotConfirmedAt);
+    }
+
+    [Fact]
     public async Task The_summary_counts_each_list_and_the_money()
     {
         var db = NewDb();

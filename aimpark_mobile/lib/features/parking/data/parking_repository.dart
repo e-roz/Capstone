@@ -37,4 +37,17 @@ class ParkingRepository {
     final response = await _dio.post(ApiEndpoints.parkingRecommend);
     return SlotRecommendation.fromJson(response.data as Map<String, dynamic>);
   }
+
+  /// The driver says which bay they parked in. Safe to call again to change it.
+  /// A refusal (bay already confirmed by someone else, session too old) comes
+  /// back as a 400 whose message the caller shows as it is.
+  Future<void> confirmSlot({
+    required String logId,
+    required String slotId,
+  }) async {
+    await _dio.post(
+      ApiEndpoints.parkingConfirmSlot,
+      data: {'logId': logId, 'slotId': slotId},
+    );
+  }
 }

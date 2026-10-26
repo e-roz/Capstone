@@ -3,6 +3,7 @@ class ParkingHistoryEntry {
     required this.logId,
     required this.entryTime,
     this.slotCode,
+    this.slotConfirmed = false,
     this.exitTime,
     this.paymentId,
     this.alprPlateNumber,
@@ -11,6 +12,10 @@ class ParkingHistoryEntry {
 
   final String logId;
   final String? slotCode;
+
+  /// True when the driver said this is the bay they parked in. False means
+  /// [slotCode] is only the bay the gate suggested.
+  final bool slotConfirmed;
   final DateTime entryTime;
   final DateTime? exitTime;
 
@@ -37,6 +42,7 @@ class ParkingHistoryEntry {
     return ParkingHistoryEntry(
       logId: json['logId'] as String,
       slotCode: json['slotCode'] as String?,
+      slotConfirmed: json['slotConfirmed'] as bool? ?? false,
       entryTime: DateTime.parse(json['entryTime'] as String),
       exitTime: json['exitTime'] == null ? null : DateTime.parse(json['exitTime'] as String),
       paymentId: json['paymentId'] as String?,
@@ -56,6 +62,22 @@ class ParkingHistoryResult {
   ParkingHistoryEntry? get currentlyParked {
     for (final log in logs) {
       if (log.isOpen) return log;
+    }
+    return null;
+  }
+
+  /// The latest session the driver has not said a bay for: one still open, or
+  /// one that ended today, which the server still accepts a bay for. Null when
+  /// there is nothing to ask.
+  ParkingHistoryEntry? awaitingSlotConfirmation({DateTime? now}) {
+    final today = (now ?? DateTime.now());
+    for (final log in logs) {
+      if (log.slotConfirmed) continue;
+      if (log.isOpen) return log;
+      final t = log.entryTime.toLocal();
+      if (t.year == today.year && t.month == today.month && t.day == today.day) {
+        return log;
+      }
     }
     return null;
   }

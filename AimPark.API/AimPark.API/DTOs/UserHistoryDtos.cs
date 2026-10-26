@@ -16,6 +16,10 @@ namespace AimPark.API.DTOs
     public class UserHistorySummary
     {
         public int Sessions { get; set; }
+
+        /// <summary>How many of <see cref="Sessions"/> the driver said a bay for.</summary>
+        public int SessionsConfirmed { get; set; }
+
         public int Violations { get; set; }
         public int IncidentsFiled { get; set; }
 
@@ -30,6 +34,9 @@ namespace AimPark.API.DTOs
 
         /// <summary>The bay they are in now, or null when not parked or the bay is unknown.</summary>
         public string? InsideSlotCode { get; set; }
+
+        /// <summary>False means <see cref="InsideSlotCode"/> is only the bay the gate suggested.</summary>
+        public bool InsideSlotConfirmed { get; set; }
         public bool IsInside { get; set; }
         public DateTime? InsideSince { get; set; }
     }
@@ -44,6 +51,9 @@ namespace AimPark.API.DTOs
 
         /// <summary>False means the bay is only the one the gate suggested.</summary>
         public bool SlotConfirmed { get; set; }
+
+        /// <summary>When the driver confirmed it. After <see cref="ExitTime"/> means they confirmed late.</summary>
+        public DateTime? SlotConfirmedAt { get; set; }
 
         public string? Plate { get; set; }
         public bool? PlateMatched { get; set; }

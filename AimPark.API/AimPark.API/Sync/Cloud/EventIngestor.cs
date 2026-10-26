@@ -60,7 +60,7 @@ namespace AimPark.API.Sync.Cloud
             steps.AddRange(batch.IncidentEvidence.Select(e => ($"incident attachment {e.Id}", (Func<CancellationToken, Task>)(c => InsertOnceAsync(e, e.Id, c)))));
             steps.AddRange(batch.IncidentFollowUps.Select(u => ($"incident follow-up {u.Id}", (Func<CancellationToken, Task>)(c => InsertOnceAsync(u, u.Id, c)))));
             steps.AddRange(batch.AlprReadings.Select(r => ($"plate read {r.Id}", (Func<CancellationToken, Task>)(c => UpsertAsync(r, r.Id, c)))));
-            steps.AddRange(batch.ParkingLogs.Select(l => ($"parking log {l.Id}", (Func<CancellationToken, Task>)(c => UpsertAsync(l, l.Id, c)))));
+            steps.AddRange(batch.ParkingLogs.Select(l => ($"parking log {l.Id}", (Func<CancellationToken, Task>)(c => StageParkingLogAsync(l, c)))));
             steps.AddRange(batch.SlotStatuses.Select(s => ($"slot {s.Id}", (Func<CancellationToken, Task>)(c => StageSlotStatusAsync(s, c)))));
             steps.AddRange(batch.GateAccessAttempts.Select(a => ($"gate attempt {a.Id}", (Func<CancellationToken, Task>)(c => UpsertAsync(a, a.Id, c)))));
             steps.AddRange(batch.PaymentTransactions.Select(p => ($"payment {p.Id}", (Func<CancellationToken, Task>)(c => InsertOnceAsync(p, p.Id, c)))));
@@ -114,6 +114,43 @@ namespace AimPark.API.Sync.Cloud
                 _db.Set<T>().Add(incoming);
             else
                 _db.Entry(existing).CurrentValues.SetValues(incoming);
+        }
+
+        /// <summary>
+        /// A session is opened and closed at the site, but the driver confirms
+        /// their bay from the phone, which only reaches the cloud. The site
+        /// sends the whole row again (on exit, for one), and its copy has no
+        /// confirmation, so taking it as it stands would wipe the driver's word.
+        /// A confirmed bay therefore survives a copy that has none.
+        /// </summary>
+        private async Task StageParkingLogAsync(ParkingLog incoming, CancellationToken ct)
+        {
+            var existing = await _db.Set<ParkingLog>().FindAsync([incoming.Id], ct);
+            if (existing is null)
+            {
+                _db.Set<ParkingLog>().Add(incoming);
+                return;
+            }
+
+            MergeParkingLog(_db, existing, incoming);
+        }
+
+        /// <summary>
+        /// Takes the site's copy of a session, except for a bay the driver has
+        /// confirmed, which only the cloud knows about.
+        /// </summary>
+        public static void MergeParkingLog(AppDbContext db, ParkingLog existing, ParkingLog incoming)
+        {
+            var confirmedSlotId = existing.SlotId;
+            var confirmedAt = existing.SlotConfirmedAt;
+
+            db.Entry(existing).CurrentValues.SetValues(incoming);
+
+            if (confirmedAt is not null && incoming.SlotConfirmedAt is null)
+            {
+                existing.SlotId = confirmedSlotId;
+                existing.SlotConfirmedAt = confirmedAt;
+            }
         }
 
         /// <summary>
