@@ -93,7 +93,7 @@ class PaymentDueCard extends StatelessWidget {
       intent: entryBlocked ? StatusIntent.danger : StatusIntent.warning,
       eyebrow: 'Payment due',
       message: entryBlocked
-          ? "You can't enter until this is paid. You can still leave the lot."
+          ? "You can't enter until this is paid."
           : null,
       action: AppButton(label: label, onPressed: onPressed),
       child: Column(
@@ -339,6 +339,39 @@ class _StrikeDot extends StatelessWidget {
         shape: BoxShape.circle,
         color: filled ? fill : Colors.transparent,
         border: Border.all(color: filled ? fill : outline, width: 2),
+      ),
+    );
+  }
+}
+
+/// Shown while the driver is held at the exit barrier with a fee to pay.
+///
+/// They have tapped their card to leave; the gate stays shut until the fee is
+/// settled, in the app or in cash at the guard post, and then the next tap opens
+/// it. The one thing to do is pay, so the card says so and nothing else.
+class PayToLeaveCard extends StatelessWidget {
+  const PayToLeaveCard({super.key, required this.session});
+
+  /// The open session waiting at the exit. Never one without a bill.
+  final ParkingHistoryEntry session;
+
+  @override
+  Widget build(BuildContext context) {
+    final amount = session.exitAmountDue ?? 0;
+    final billId = session.paymentId;
+
+    return AppAlertCard(
+      intent: StatusIntent.warning,
+      eyebrow: 'Pay to leave',
+      icon: Icons.logout_rounded,
+      title: Formatters.peso(amount),
+      message: 'The gate stays shut until this is paid. Pay here, or pay cash to '
+          'the guard, then tap your card again.',
+      action: AppButton(
+        label: 'Pay now',
+        onPressed: billId == null
+            ? null
+            : () => context.push('/home/user/payments/$billId'),
       ),
     );
   }

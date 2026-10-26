@@ -25,6 +25,11 @@ namespace AimPark.API.DTOs
         // driver can always leave the lot.
         public const string UnpaidBalance = "UNPAID_BALANCE";
 
+        // A driver tapping out owes this session's parking fee. The barrier stays
+        // shut and the session stays open until the bill is settled; the next tap
+        // after that opens it. Returned with HTTP 402.
+        public const string PaymentDue = "PAYMENT_DUE";
+
         // An expired licence stops every vehicle of that driver; an expired
         // registration stops only the vehicle it belongs to. Entry only, like
         // the balance above. Only returned while Gate:EnforceExpiredDocuments is on.

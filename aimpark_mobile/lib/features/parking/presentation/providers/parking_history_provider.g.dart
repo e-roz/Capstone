@@ -382,7 +382,7 @@ final parkingAvailabilityNotifierProvider =
 typedef _$ParkingAvailabilityNotifier =
     AutoDisposeAsyncNotifier<ParkingAvailability>;
 String _$parkingHistoryNotifierHash() =>
-    r'de1a2a68146a34a444c9ae863dc935443d844d6f';
+    r'91faee3fcb2074b82f02f9a5a60920e9d24d34b7';
 
 /// See also [ParkingHistoryNotifier].
 @ProviderFor(ParkingHistoryNotifier)

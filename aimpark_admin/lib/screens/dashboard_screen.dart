@@ -21,6 +21,7 @@ import '../models/investigation.dart';
 import '../widgets/investigation_panel.dart';
 import '../widgets/overview_search.dart';
 import '../widgets/period_picker.dart';
+import '../widgets/waiting_to_leave_card.dart';
 
 final _money = NumberFormat.currency(symbol: '₱', decimalDigits: 0);
 final _clock = DateFormat('h:mm a');
@@ -73,6 +74,9 @@ class DashboardScreen extends ConsumerWidget {
         data: (summary) => Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+            // Only while somebody is held at the exit; the guard's own screen
+            // keeps it on show.
+            const WaitingToLeaveCard(),
             _AttentionSection(summary: summary),
             const SizedBox(height: AppSpacing.gutter),
             _TwoUp(

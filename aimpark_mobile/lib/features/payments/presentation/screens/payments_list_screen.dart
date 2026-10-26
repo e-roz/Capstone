@@ -367,7 +367,7 @@ class _Summary extends StatelessWidget {
       intent: entryBlocked ? StatusIntent.danger : StatusIntent.warning,
       eyebrow: 'Total due',
       message: entryBlocked
-          ? "You can't enter until this is paid. You can still leave the lot."
+          ? "You can't enter until this is paid."
           : null,
       action: Column(
         mainAxisSize: MainAxisSize.min,

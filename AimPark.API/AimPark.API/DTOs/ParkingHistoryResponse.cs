@@ -26,6 +26,12 @@ namespace AimPark.API.DTOs
         // transaction is only created on exit.
         public Guid? PaymentId { get; set; }
 
+        // True while the driver is at the exit with a fee to pay, so the app can
+        // say "pay to leave" instead of "you are parked". The amount is the fee
+        // frozen when they tapped out.
+        public bool WaitingToLeave { get; set; }
+        public decimal? ExitAmountDue { get; set; }
+
         // The ALPR-confirmed plate for this session. Null for a manually
         // logged entry (no camera involved) — never a mismatched plate, since
         // a mismatch is refused at the gate and never becomes a log at all.
@@ -64,5 +70,24 @@ namespace AimPark.API.DTOs
         /// of anybody else in the list.
         /// </summary>
         public bool IsVisitor { get; set; }
+
+        /// <summary>The gate this car came in through, when known.</summary>
+        public int? Gate { get; set; }
+
+        /// <summary>This session's bill, once the driver has tapped out and been asked to pay.</summary>
+        public Guid? PaymentId { get; set; }
+        public decimal? AmountDue { get; set; }
+
+        /// <summary>Pending, Processing, Paid or Waived. Null until a bill exists.</summary>
+        public string? PaymentStatus { get; set; }
+
+        /// <summary>When the bill was raised, which is when they tapped out.</summary>
+        public DateTime? WaitingSince { get; set; }
+
+        /// <summary>
+        /// The driver has tapped out, owes a fee, and the barrier is shut until it
+        /// is settled. The guard post lists these.
+        /// </summary>
+        public bool WaitingToLeave { get; set; }
     }
 }

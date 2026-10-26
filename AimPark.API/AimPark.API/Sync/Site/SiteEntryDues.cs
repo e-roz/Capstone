@@ -64,7 +64,18 @@ namespace AimPark.API.Sync.Site
             if (copy is null)
                 return [];
 
+            // Cash taken at the guard post settles the site's own row, but the
+            // cloud hears of it a moment later. Until then its list still has the
+            // bill, and the driver must not be turned away at the next entry for
+            // money already in the drawer.
+            var settledHere = await _db.Set<PaymentTransaction>().AsNoTracking()
+                .Where(p => p.UserId == userId
+                            && (p.Status == PaymentStatus.Paid || p.Status == PaymentStatus.Waived))
+                .Select(p => p.Id)
+                .ToListAsync(ct);
+
             var bills = copy.ByUser[userId]
+                .Where(d => !settledHere.Contains(d.Id))
                 .Select(d => new PaymentTransaction
                 {
                     Id = d.Id,
@@ -87,6 +98,21 @@ namespace AimPark.API.Sync.Site
 
             bills.AddRange(local.Where(p => !copy.UnpaidIds.Contains(p.Id) && !copy.SettledIds.Contains(p.Id)));
             return bills;
+        }
+
+        /// <remarks>
+        /// Settled when the site's own row says so (cash taken here), or when the
+        /// cloud says so: a payment made in the app settles the cloud's row, and
+        /// the site only ever learns it through the snapshot's settled list.
+        /// </remarks>
+        public async Task<bool> IsSettledAsync(Guid paymentId, CancellationToken ct)
+        {
+            if (_dues.Current?.SettledIds.Contains(paymentId) == true)
+                return true;
+
+            return await _db.Set<PaymentTransaction>().AsNoTracking()
+                .AnyAsync(p => p.Id == paymentId
+                               && (p.Status == PaymentStatus.Paid || p.Status == PaymentStatus.Waived), ct);
         }
     }
 }

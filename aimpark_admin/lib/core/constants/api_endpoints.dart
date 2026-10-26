@@ -124,6 +124,15 @@ class ApiEndpoints {
   static const siteStatus = '/api/site/status';
   static const siteUpdateInstall = '/api/site/update/install';
   static const gateReaders = '/api/site/gate-readers';
+
+  // A driver held at the exit with a fee to pay: the guard takes cash, or lets
+  // them out still owing. Under /api/site so the guard post answers it itself,
+  // even with the internet down.
+  static String sitePaymentCash(String paymentId) =>
+      '/api/site/payments/$paymentId/cash';
+  static String sitePaymentRelease(String paymentId) =>
+      '/api/site/payments/$paymentId/release';
+  static const sitePaymentsCashSummary = '/api/site/payments/cash-summary';
   static String gateReader(String port) => '/api/site/gate-readers/$port';
   static String openGateReader(String port) =>
       '/api/site/gate-readers/$port/open';

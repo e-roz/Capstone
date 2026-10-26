@@ -118,8 +118,13 @@ class UserDashboardScreen extends ConsumerWidget {
         violationsAsync.valueOrNull?.violations ?? const <ViolationSummary>[];
     final openViolations = allViolations.where((v) => v.isOpen).toList();
 
+    // At the exit with a fee to pay: asked for on its own card, so it is not
+    // listed a second time as an ordinary bill.
+    final waitingToLeave = history?.waitingToLeave;
+
     final unpaid = (paymentsAsync.valueOrNull?.payments ?? const <Payment>[])
         .where((p) => !p.isPaid && p.status.toLowerCase() != 'waived')
+        .where((p) => p.paymentId != waitingToLeave?.paymentId)
         .toList();
 
     final recentLogs =
@@ -178,9 +183,14 @@ class UserDashboardScreen extends ConsumerWidget {
               // waiting on an admin. Draws nothing when there is nothing to say.
               const ExpiryBanner(),
 
+              if (waitingToLeave != null) ...[
+                PayToLeaveCard(session: waitingToLeave),
+                gap,
+              ],
+
               _hero(context, ref, availabilityAsync, vehicles),
 
-              if (awaitingSlot != null) ...[
+              if (awaitingSlot != null && waitingToLeave == null) ...[
                 gap,
                 ConfirmSlotCard(session: awaitingSlot),
               ],
