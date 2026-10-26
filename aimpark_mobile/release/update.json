@@ -1,11 +1,11 @@
 {
-  "version": "1.0.13",
-  "build": 14,
-  "apk_url": "https://github.com/e-roz/Capstone/releases/download/v1.0.13/app-release.apk",
-  "apk_sha256": "271475fc354096c8f0d1c8e324582f30671fdd52fa564877e8356cb187ace2d2",
-  "apk_size_bytes": 94333449,
+  "version": "1.0.14",
+  "build": 15,
+  "apk_url": "https://github.com/e-roz/Capstone/releases/download/v1.0.14/app-release.apk",
+  "apk_sha256": "10e075478c204904001fea45bdb37860cd85cc82ea8630fd2d6e8485aaf5ee4f",
+  "apk_size_bytes": 94398985,
   "mandatory": false,
   "release_notes": [
-    "Fixed times showing 8 hours behind in Parking and History"
+    "You can now confirm which bay you parked in"
   ]
 }
