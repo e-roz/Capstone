@@ -85,6 +85,7 @@ namespace AimPark.API.Services
                 {
                     LogId = l.Id,
                     SlotCode = l.Slot != null ? l.Slot.SlotCode : null,
+                    SlotConfirmed = l.SlotConfirmedAt != null,
                     EntryTime = l.EntryTime,
                     ExitTime = l.ExitTime,
                     PaymentId = _db.Set<PaymentTransaction>()

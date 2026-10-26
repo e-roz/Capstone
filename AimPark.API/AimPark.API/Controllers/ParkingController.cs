@@ -14,15 +14,18 @@ namespace AimPark.API.Controllers
         private readonly IParkingSlotService _parkingSlotService;
         private readonly IParkingHistoryService _parkingHistoryService;
         private readonly IParkingAllocationService _allocationService;
+        private readonly ISlotConfirmationService _slotConfirmation;
 
         public ParkingController(
             IParkingSlotService parkingSlotService,
             IParkingHistoryService parkingHistoryService,
-            IParkingAllocationService allocationService)
+            IParkingAllocationService allocationService,
+            ISlotConfirmationService slotConfirmation)
         {
             _parkingSlotService = parkingSlotService;
             _parkingHistoryService = parkingHistoryService;
             _allocationService = allocationService;
+            _slotConfirmation = slotConfirmation;
         }
 
         [HttpGet("slots")]
@@ -46,6 +49,20 @@ namespace AimPark.API.Controllers
             [FromQuery] Guid? vehicleId = null,
             CancellationToken ct = default)
             => _parkingHistoryService.GetMyHistoryAsync(GetUserId(), vehicleId, page, pageSize, ct);
+
+        /// <summary>
+        /// The driver says which bay they parked in. A refusal is a 400 with the
+        /// outcome code in <c>result</c> and a sentence in <c>message</c>.
+        /// </summary>
+        [HttpPost("confirm-slot")]
+        public async Task<IActionResult> ConfirmSlot(
+            [FromBody] ConfirmSlotRequest request, CancellationToken ct)
+        {
+            var outcome = await _slotConfirmation.ConfirmAsync(GetUserId(), request, ct);
+            return outcome.Result == SlotConfirmResult.Confirmed
+                ? Ok(outcome)
+                : BadRequest(new { result = outcome.Result, message = outcome.Message });
+        }
 
         private Guid GetUserId()
             => Guid.Parse(User.FindFirst(ClaimTypes.NameIdentifier)!.Value);

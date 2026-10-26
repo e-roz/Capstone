@@ -214,6 +214,7 @@ builder.Services.AddScoped<IUserHistoryService, UserHistoryService>();
 builder.Services.Configure<GateOptions>(builder.Configuration.GetSection(GateOptions.Section));
 builder.Services.AddScoped<IParkingHistoryService, ParkingHistoryService>();
 builder.Services.AddScoped<IParkingAllocationService, ParkingAllocationService>();
+builder.Services.AddScoped<ISlotConfirmationService, SlotConfirmationService>();
 builder.Services.AddScoped<IGateDeviceService, GateDeviceService>();
 builder.Services.AddScoped<IAlprService, AlprService>();
 builder.Services.AddScoped<IGateAccessAttemptService, GateAccessAttemptService>();
