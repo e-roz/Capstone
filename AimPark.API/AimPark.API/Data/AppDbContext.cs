@@ -558,9 +558,9 @@ namespace AimPark.API.Data
             {
                 entity.HasKey(p => p.Id);
 
-                entity.HasIndex(p => p.ParkingLogId)
-                      .IsUnique()
-                      .HasFilter("\"ParkingLogId\" IS NOT NULL");
+                // Not unique: a driver who paid ahead and stayed past the grace
+                // window gets a second bill on the same session for the extra time.
+                entity.HasIndex(p => p.ParkingLogId);
 
                 entity.HasIndex(p => p.ViolationId)
                       .IsUnique()

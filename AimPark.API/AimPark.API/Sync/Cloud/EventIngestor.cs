@@ -196,6 +196,19 @@ namespace AimPark.API.Sync.Cloud
             if (existing.Status is PaymentStatus.Paid or PaymentStatus.Waived)
                 return false;
 
+            // Paid ahead from the app but not before the driver reached the gate:
+            // the site held them for it and priced it up to the tap.
+            if (existing.PaidAhead && !incoming.PaidAhead)
+            {
+                existing.PaidAhead = false;
+                if (existing.Status == PaymentStatus.Pending)
+                {
+                    existing.DurationMinutes = incoming.DurationMinutes;
+                    existing.RatePerHourApplied = incoming.RatePerHourApplied;
+                    existing.AmountDue = incoming.AmountDue;
+                }
+            }
+
             if (incoming.Status == PaymentStatus.Paid)
             {
                 existing.Status = PaymentStatus.Paid;

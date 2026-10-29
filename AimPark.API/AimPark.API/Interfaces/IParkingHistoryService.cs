@@ -17,5 +17,11 @@ namespace AimPark.API.Interfaces
 
         Task<ActionResult<object>> LogExitAsync(
             LogParkingExitDto dto, Guid? loggedByUserId, Guid? loggedByDeviceId, CancellationToken ct);
+
+        /// <summary>
+        /// Prices the caller's open session up to now and returns the bill to pay
+        /// it with, so they can pay before driving to the gate.
+        /// </summary>
+        Task<ActionResult<PayAheadResponse>> PayAheadAsync(Guid userId, Guid logId, CancellationToken ct);
     }
 }

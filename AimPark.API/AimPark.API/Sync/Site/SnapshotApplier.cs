@@ -42,9 +42,68 @@ namespace AimPark.API.Sync.Site
             await ApplyVisitorCardsAsync(snapshot.VisitorCards, ct);
             await ApplyIncidentsAsync(snapshot.Incidents, snapshot.IncidentEvidence, snapshot.IncidentFollowUps, ct);
             await ApplyWrongBayFlagsAsync(snapshot.WrongBayFlags, ct);
+            if (snapshot.PaidAheadBills is not null)
+                await ApplyPaidAheadBillsAsync(snapshot.PaidAheadBills, ct);
 
             // Last, so a snapshot that fails half way leaves the old list in force.
             _dues.Set(snapshot);
+        }
+
+        /// <summary>
+        /// Bills paid, or about to be paid, from the app by drivers still inside.
+        /// </summary>
+        /// <remarks>
+        /// The cloud settles them; the site holds the session. So a settlement is
+        /// always taken, and a new price is taken only while the site has not yet
+        /// held the driver at the gate for it — from then on the site's copy is
+        /// the one in charge, as with any bill raised here. Never un-settles one.
+        /// </remarks>
+        private async Task ApplyPaidAheadBillsAsync(List<PaymentTransaction> bills, CancellationToken ct)
+        {
+            var ids = bills.Select(b => b.Id).ToList();
+            var local = await _db.Set<PaymentTransaction>()
+                .Where(p => ids.Contains(p.Id))
+                .ToDictionaryAsync(p => p.Id, ct);
+            var logIds = bills.Where(b => b.ParkingLogId != null).Select(b => b.ParkingLogId!.Value).ToList();
+            var logsHere = (await _db.Set<ParkingLog>()
+                .Where(l => logIds.Contains(l.Id))
+                .Select(l => l.Id)
+                .ToListAsync(ct)).ToHashSet();
+
+            foreach (var source in bills)
+            {
+                if (!local.TryGetValue(source.Id, out var bill))
+                {
+                    // A session this site never saw is not one its gate will close.
+                    if (source.ParkingLogId is Guid logId && logsHere.Contains(logId))
+                        _db.Set<PaymentTransaction>().Add(source);
+                    continue;
+                }
+
+                if (bill.Status is PaymentStatus.Paid or PaymentStatus.Waived)
+                    continue;
+
+                if (source.Status is PaymentStatus.Paid or PaymentStatus.Waived)
+                {
+                    bill.Status = source.Status;
+                    bill.PaidAt = source.PaidAt;
+                    bill.Method = source.Method;
+                    bill.Provider = source.Provider;
+                    bill.ProviderPaymentId = source.ProviderPaymentId;
+                    bill.ReferenceNumber = source.ReferenceNumber;
+                    bill.ConfirmedByUserId = source.ConfirmedByUserId;
+                }
+                else if (bill.PaidAhead)
+                {
+                    bill.Status = source.Status;
+                    bill.DurationMinutes = source.DurationMinutes;
+                    bill.RatePerHourApplied = source.RatePerHourApplied;
+                    bill.AmountDue = source.AmountDue;
+                    bill.CheckoutStartedAt = source.CheckoutStartedAt;
+                }
+            }
+
+            await _db.SaveChangesAsync(ct);
         }
 
         private async Task ApplyWrongBayFlagsAsync(List<WrongBayFlag> flags, CancellationToken ct)

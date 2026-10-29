@@ -20,5 +20,16 @@ namespace AimPark.API.Services
         /// barrier and the only person who can fix it is a guard.
         /// </remarks>
         public bool EnforceExpiredDocuments { get; set; }
+
+        /// <summary>
+        /// How long a driver has, after paying, to reach the exit and tap out.
+        /// </summary>
+        /// <remarks>
+        /// A driver can pay from the app while still parked. The fee covers the
+        /// time up to the payment; this is the walk back to the car and the drive
+        /// to the gate. Tapping out later than this raises a second bill for the
+        /// time after it, and the barrier waits for that one.
+        /// </remarks>
+        public int PaidExitGraceMinutes { get; set; } = 15;
     }
 }

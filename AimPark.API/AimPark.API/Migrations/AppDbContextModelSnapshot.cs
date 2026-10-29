@@ -1117,6 +1117,9 @@ namespace AimPark.API.Migrations
                     b.Property<DateTime?>("OverdueNoticeSentAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<bool>("PaidAhead")
+                        .HasColumnType("boolean");
+
                     b.Property<DateTime?>("PaidAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -1154,9 +1157,7 @@ namespace AimPark.API.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("ParkingLogId")
-                        .IsUnique()
-                        .HasFilter("\"ParkingLogId\" IS NOT NULL");
+                    b.HasIndex("ParkingLogId");
 
                     b.HasIndex("ProviderPaymentId");
 

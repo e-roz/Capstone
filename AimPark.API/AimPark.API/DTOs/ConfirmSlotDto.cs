@@ -16,12 +16,29 @@ namespace AimPark.API.DTOs
 
         /// <summary>Another driver's confirmed session already holds that bay at the same time.</summary>
         public const string SlotTaken = "SLOT_TAKEN";
+
+        /// <summary>The bay is for the other kind of vehicle from the one that came in.</summary>
+        public const string WrongVehicleType = "WRONG_VEHICLE_TYPE";
+
+        /// <summary>
+        /// The account has a car and a motorcycle, no plate was read at the gate,
+        /// and the driver has not said which one they brought.
+        /// </summary>
+        public const string VehicleNeeded = "VEHICLE_NEEDED";
+
+        public const string VehicleNotFound = "VEHICLE_NOT_FOUND";
     }
 
     public class ConfirmSlotRequest
     {
         public Guid LogId { get; set; }
         public Guid SlotId { get; set; }
+
+        /// <summary>
+        /// Which of the driver's vehicles they brought. Only read when the gate
+        /// could not tell: an account with both kinds and no plate read.
+        /// </summary>
+        public Guid? VehicleId { get; set; }
     }
 
     public class ConfirmSlotResponse
