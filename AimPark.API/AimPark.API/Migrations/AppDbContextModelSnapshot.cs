@@ -1308,6 +1308,43 @@ namespace AimPark.API.Migrations
                     b.ToTable("RfidCards");
                 });
 
+            modelBuilder.Entity("AimPark.API.Entities.SlotConfirmCorrection", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CorrectedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("CorrectedByUserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("FromSlotId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("ParkingLogId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Reason")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<Guid>("ToSlotId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("FromSlotId");
+
+                    b.HasIndex("ToSlotId");
+
+                    b.HasIndex("ParkingLogId", "CorrectedAt");
+
+                    b.ToTable("SlotConfirmCorrections");
+                });
+
             modelBuilder.Entity("AimPark.API.Entities.SlotWatch", b =>
                 {
                     b.Property<Guid>("Id")
@@ -2133,6 +2170,33 @@ namespace AimPark.API.Migrations
                     b.Navigation("User");
 
                     b.Navigation("Violation");
+                });
+
+            modelBuilder.Entity("AimPark.API.Entities.SlotConfirmCorrection", b =>
+                {
+                    b.HasOne("AimPark.API.Entities.ParkingSlot", "FromSlot")
+                        .WithMany()
+                        .HasForeignKey("FromSlotId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("AimPark.API.Entities.ParkingLog", "ParkingLog")
+                        .WithMany()
+                        .HasForeignKey("ParkingLogId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("AimPark.API.Entities.ParkingSlot", "ToSlot")
+                        .WithMany()
+                        .HasForeignKey("ToSlotId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("FromSlot");
+
+                    b.Navigation("ParkingLog");
+
+                    b.Navigation("ToSlot");
                 });
 
             modelBuilder.Entity("AimPark.API.Entities.SlotWatch", b =>

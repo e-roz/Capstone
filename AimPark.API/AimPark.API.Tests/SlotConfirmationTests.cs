@@ -176,19 +176,120 @@ public class SlotConfirmationTests
     }
 
     [Fact]
-    public async Task Changing_your_own_bay_replaces_the_earlier_confirmation()
+    public async Task A_confirmed_bay_is_final_for_the_driver()
     {
         var db = NewDb();
         var user = NewUser(db);
         var first = NewSlot(db, "M2");
         var second = NewSlot(db, "M3");
-        var log = NewLog(db, user, DateTime.UtcNow.AddMinutes(-20), slot: first, confirmed: DateTime.UtcNow.AddMinutes(-15));
+        var confirmedAt = DateTime.UtcNow.AddMinutes(-15);
+        var log = NewLog(db, user, DateTime.UtcNow.AddMinutes(-20), slot: first, confirmed: confirmedAt);
         await db.SaveChangesAsync();
 
         var result = await Confirm(db, user.Id, log.Id, second.Id);
 
-        Assert.Equal(SlotConfirmResult.Confirmed, result.Result);
-        Assert.Equal(second.Id, (await db.Set<ParkingLog>().AsNoTracking().SingleAsync()).SlotId);
+        Assert.Equal(SlotConfirmResult.AlreadyConfirmed, result.Result);
+        Assert.Contains("M2", result.Message);
+        var saved = await db.Set<ParkingLog>().AsNoTracking().SingleAsync();
+        Assert.Equal(first.Id, saved.SlotId);
+        Assert.Equal(confirmedAt, saved.SlotConfirmedAt);
+    }
+
+    // ---- an admin correcting a confirm ----------------------------------
+
+    private static Task<CorrectBayResponse> Correct(AppDbContext db, Guid adminId, Guid logId, Guid slotId, string reason = "Car seen in the other bay")
+        => new SlotConfirmationService(db).CorrectAsync(
+            adminId, logId, new CorrectBayRequest { SlotId = slotId, Reason = reason }, CancellationToken.None);
+
+    [Fact]
+    public async Task An_admin_correction_moves_the_bay_and_keeps_the_drivers_answer()
+    {
+        var db = NewDb();
+        var user = NewUser(db);
+        var admin = NewUser(db);
+        var said = NewSlot(db, "C3");
+        var real = NewSlot(db, "C2");
+        var confirmedAt = DateTime.UtcNow.AddMinutes(-15);
+        var log = NewLog(db, user, DateTime.UtcNow.AddMinutes(-20), slot: said, confirmed: confirmedAt);
+        await db.SaveChangesAsync();
+
+        var result = await Correct(db, admin.Id, log.Id, real.Id);
+
+        Assert.Equal(BayCorrectResult.Corrected, result.Result);
+        var saved = await db.Set<ParkingLog>().AsNoTracking().SingleAsync();
+        Assert.Equal(real.Id, saved.SlotId);
+        Assert.Equal(confirmedAt, saved.SlotConfirmedAt);
+        var correction = await db.Set<SlotConfirmCorrection>().AsNoTracking().SingleAsync();
+        Assert.Equal(said.Id, correction.FromSlotId);
+        Assert.Equal(real.Id, correction.ToSlotId);
+        Assert.Equal(admin.Id, correction.CorrectedByUserId);
+        Assert.Equal("Car seen in the other bay", correction.Reason);
+        var audit = await db.Set<AdminAuditLog>().AsNoTracking().SingleAsync();
+        Assert.Equal(user.Id, audit.TargetUserId);
+        Assert.Equal("C3", audit.OldValue);
+        Assert.Equal("C2", audit.NewValue);
+
+        var history = await new SlotConfirmationService(db).GetHistoryAsync(log.Id, CancellationToken.None);
+        Assert.NotNull(history);
+        Assert.Equal("C3", history!.DriverSlotCode);
+        Assert.Equal("C2", history.CurrentSlotCode);
+        var item = Assert.Single(history.Corrections);
+        Assert.Equal("C3", item.FromSlotCode);
+        Assert.Equal("C2", item.ToSlotCode);
+    }
+
+    [Fact]
+    public async Task A_correction_needs_a_reason_and_a_confirmed_session()
+    {
+        var db = NewDb();
+        var user = NewUser(db);
+        var admin = NewUser(db);
+        var bay = NewSlot(db, "C3");
+        var other = NewSlot(db, "C2");
+        var confirmed = NewLog(db, user, DateTime.UtcNow.AddMinutes(-20), slot: bay, confirmed: DateTime.UtcNow.AddMinutes(-15));
+        var unconfirmed = NewLog(db, user, DateTime.UtcNow.AddHours(-3), DateTime.UtcNow.AddHours(-2), slot: bay);
+        await db.SaveChangesAsync();
+
+        Assert.Equal(BayCorrectResult.ReasonRequired, (await Correct(db, admin.Id, confirmed.Id, other.Id, "  ")).Result);
+        Assert.Equal(BayCorrectResult.NotConfirmed, (await Correct(db, admin.Id, unconfirmed.Id, other.Id)).Result);
+        Assert.Equal(BayCorrectResult.SameBay, (await Correct(db, admin.Id, confirmed.Id, bay.Id)).Result);
+        Assert.Empty(await db.Set<SlotConfirmCorrection>().ToListAsync());
+    }
+
+    [Fact]
+    public async Task A_correction_into_a_bay_another_driver_confirmed_at_the_same_time_is_refused()
+    {
+        var db = NewDb();
+        var user = NewUser(db);
+        var other = NewUser(db);
+        var admin = NewUser(db);
+        var said = NewSlot(db, "C3");
+        var taken = NewSlot(db, "C2");
+        var log = NewLog(db, user, DateTime.UtcNow.AddMinutes(-20), slot: said, confirmed: DateTime.UtcNow.AddMinutes(-15));
+        NewLog(db, other, DateTime.UtcNow.AddMinutes(-30), slot: taken, confirmed: DateTime.UtcNow.AddMinutes(-25));
+        await db.SaveChangesAsync();
+
+        var result = await Correct(db, admin.Id, log.Id, taken.Id);
+
+        Assert.Equal(BayCorrectResult.SlotTaken, result.Result);
+        Assert.Equal(said.Id, (await db.Set<ParkingLog>().AsNoTracking().SingleAsync(l => l.Id == log.Id)).SlotId);
+    }
+
+    // ---- where a session stands --------------------------------------------
+
+    [Fact]
+    public void A_sessions_confirm_state_follows_the_rules()
+    {
+        var user = Guid.NewGuid();
+        var entry = Now.AddHours(-2);
+
+        Assert.Equal(BayConfirmState.NotYet, SlotConfirmPolicy.StateOf(user, entry, null, null));
+        Assert.Equal(BayConfirmState.Unconfirmed, SlotConfirmPolicy.StateOf(user, entry, entry.AddHours(1), null));
+        Assert.Equal(BayConfirmState.Confirmed, SlotConfirmPolicy.StateOf(user, entry, entry.AddHours(1), entry.AddMinutes(5)));
+        Assert.Equal(BayConfirmState.ConfirmedLate, SlotConfirmPolicy.StateOf(user, entry, entry.AddHours(1), entry.AddHours(2)));
+        // A visitor has no app; a short stay never really parked.
+        Assert.Equal(BayConfirmState.NotCounted, SlotConfirmPolicy.StateOf(null, entry, entry.AddHours(1), null));
+        Assert.Equal(BayConfirmState.NotCounted, SlotConfirmPolicy.StateOf(user, entry, entry.AddMinutes(5), null));
     }
 
     [Fact]
@@ -313,6 +414,108 @@ public class SlotConfirmationTests
         var sent = await SlotConfirmReminderService.RemindAsync(db, new Recorder(db), Now, CancellationToken.None);
 
         Assert.Equal(0, sent);
+    }
+
+    // ---- leaving without confirming, again and again --------------------
+
+    private static readonly SlotConfirmPolicyOptions Policy = new()
+    {
+        CountFrom = Now.AddDays(-60),
+        StrikesFrom = Now.AddDays(-60),
+    };
+
+    /// <summary>One unconfirmed hour-long visit a day, starting <paramref name="daysAgo"/> days back.</summary>
+    private static void UnconfirmedVisits(AppDbContext db, User user, int count, int daysAgo = 1)
+    {
+        for (var i = 0; i < count; i++)
+        {
+            var entry = Now.AddDays(-(daysAgo + i));
+            NewLog(db, user, entry, entry.AddHours(1));
+        }
+    }
+
+    [Fact]
+    public async Task Three_unconfirmed_visits_bring_one_warning()
+    {
+        var db = NewDb();
+        var user = NewUser(db);
+        UnconfirmedVisits(db, user, 3);
+        await db.SaveChangesAsync();
+        var notices = new Recorder(db);
+        var staff = new StaffRecorder();
+
+        var first = await UnconfirmedParkingService.RunAsync(db, notices, staff, Policy, Now, CancellationToken.None);
+        var second = await UnconfirmedParkingService.RunAsync(db, notices, staff, Policy, Now.AddHours(1), CancellationToken.None);
+
+        Assert.Equal((1, 0), first);
+        Assert.Equal((0, 0), second);
+        Assert.Equal("UnconfirmedWarning", Assert.Single(notices.Sent).Data!["kind"]);
+        Assert.Empty(staff.Raised);
+    }
+
+    [Fact]
+    public async Task Five_unconfirmed_visits_go_to_an_admin_once_strikes_have_started()
+    {
+        var db = NewDb();
+        var user = NewUser(db);
+        UnconfirmedVisits(db, user, 5);
+        await db.SaveChangesAsync();
+        var staff = new StaffRecorder();
+
+        var graceOnly = new SlotConfirmPolicyOptions { CountFrom = Policy.CountFrom, StrikesFrom = Now.AddDays(1) };
+        var inGrace = await UnconfirmedParkingService.RunAsync(db, new Recorder(db), staff, graceOnly, Now, CancellationToken.None);
+        Assert.Equal((1, 0), inGrace);
+        Assert.Empty(staff.Raised);
+
+        var after = await UnconfirmedParkingService.RunAsync(db, new Recorder(db), staff, Policy, Now, CancellationToken.None);
+        Assert.Equal((0, 1), after);
+        Assert.Equal((StaffAlertKind.UnconfirmedParking, user.Id), Assert.Single(staff.Raised));
+    }
+
+    [Fact]
+    public async Task Confirmed_short_visitor_todays_and_old_visits_are_not_counted()
+    {
+        var db = NewDb();
+        var user = NewUser(db);
+        var bay = NewSlot(db, "C1");
+        var day = Now.AddDays(-2);
+        NewLog(db, user, day, day.AddHours(1), slot: bay, confirmed: day.AddMinutes(5)); // confirmed
+        NewLog(db, user, day, day.AddHours(1), slot: bay, confirmed: day.AddHours(2));   // confirmed late
+        NewLog(db, user, day, day.AddMinutes(5));                                        // short stay
+        NewLog(db, user, Now.AddHours(-2), Now.AddHours(-1));                            // today: can still confirm
+        NewLog(db, user, Now.AddDays(-40), Now.AddDays(-40).AddHours(1));                // outside the window
+        db.Add(new ParkingLog { Id = Guid.NewGuid(), EntryTime = day, ExitTime = day.AddHours(1), VisitorPassId = Guid.NewGuid() });
+        await db.SaveChangesAsync();
+
+        var counts = await UnconfirmedParkingService.CountAsync(db, Policy, Now, CancellationToken.None);
+
+        Assert.Empty(counts);
+    }
+
+    [Fact]
+    public async Task Nothing_counts_before_the_policy_starts()
+    {
+        var db = NewDb();
+        var user = NewUser(db);
+        UnconfirmedVisits(db, user, 5);
+        await db.SaveChangesAsync();
+
+        var off = await UnconfirmedParkingService.CountAsync(db, new SlotConfirmPolicyOptions(), Now, CancellationToken.None);
+        var notYet = await UnconfirmedParkingService.CountAsync(db, new SlotConfirmPolicyOptions { CountFrom = Now }, Now, CancellationToken.None);
+
+        Assert.Empty(off);
+        Assert.Empty(notYet);
+    }
+
+    private sealed class StaffRecorder : IStaffAlerts
+    {
+        public List<(StaffAlertKind Kind, Guid UserId)> Raised { get; } = [];
+
+        public Task RaiseAsync(StaffAlertKind kind, Guid aboutUserId, CancellationToken ct)
+        {
+            Raised.Add((kind, aboutUserId));
+            return Task.CompletedTask;
+        }
     }
 
     /// <summary>Writes the notification row the way the real service does, so the "already sent" check has something to find.</summary>
