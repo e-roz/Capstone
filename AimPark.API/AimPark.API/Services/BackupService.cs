@@ -87,6 +87,7 @@ namespace AimPark.API.Services
             Table<GateAccessAttempt>("GateAccessAttempts"),
             Table<WrongBayFlag>("WrongBayFlags"),
             Table<SlotWatch>("SlotWatches"),
+            Table<SlotConfirmCorrection>("SlotConfirmCorrections"),
             // No foreign keys, so the position is free.
             Table<RfidCard>("RfidCards"),
             Table<VisitorCard>("VisitorCards"),

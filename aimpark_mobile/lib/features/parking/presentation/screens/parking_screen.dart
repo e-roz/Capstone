@@ -267,9 +267,11 @@ class _ParkingScreenState extends ConsumerState<ParkingScreen> {
                 intent: StatusIntent.info,
                 message: confirmTarget.isOpen
                     ? 'Tap the bay you parked in and confirm it, so the guards '
-                          'know it was you.'
+                          'know it was you. Leaving without confirming counts '
+                          'against you.'
                     : 'You left earlier today. Tap the bay you used and confirm '
-                          'it — this is open until midnight.',
+                          'it — this is open until midnight, after which it '
+                          'counts as unconfirmed.',
               ),
               const SizedBox(height: AppSpacing.md),
             ],
@@ -279,7 +281,9 @@ class _ParkingScreenState extends ConsumerState<ParkingScreen> {
               confirmedCode: confirmTarget != null && confirmTarget.slotConfirmed
                   ? confirmTarget.slotCode
                   : null,
-              onConfirmSlot: confirmTarget == null
+              // A confirm is final, so once given the map is only for looking.
+              onConfirmSlot:
+                  confirmTarget == null || confirmTarget.slotConfirmed
                   ? null
                   : (slot) => _confirmSlot(confirmTarget, slot, vehicles),
               userHasCar: userHasCar,

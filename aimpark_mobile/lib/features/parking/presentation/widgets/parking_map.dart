@@ -815,7 +815,8 @@ class _BaySheet extends StatelessWidget {
       'Suggested for you. It is not held, so it may be taken before you '
           'arrive.',
     BayState.confirmed =>
-      'You said you parked here. To change it, tap another bay.',
+      "You confirmed this bay, so you're responsible for it until you leave. "
+          "It can't be changed here; if it's wrong, ask the parking office.",
   };
 
   @override
@@ -906,6 +907,9 @@ class _BaySheet extends StatelessWidget {
 /// Confirms the bay and closes the sheet when it worked. Stays open on failure,
 /// where the caller has already shown why, so the driver can try again or pick
 /// another bay.
+///
+/// Asks first: a confirm is final and makes the driver answerable for the
+/// bay, and the bays are small enough on a phone to tap the wrong one.
 class _ConfirmBayButton extends StatefulWidget {
   const _ConfirmBayButton({required this.slot, required this.onConfirm});
 
@@ -920,6 +924,29 @@ class _ConfirmBayButtonState extends State<_ConfirmBayButton> {
   bool _busy = false;
 
   Future<void> _run() async {
+    final code = widget.slot.slotCode;
+    final sure = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text('Confirm bay $code?'),
+        content: Text(
+          "You'll be responsible for $code until you leave. This can't be "
+          'changed after you confirm.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: Text('Confirm $code'),
+          ),
+        ],
+      ),
+    );
+    if (sure != true || !mounted) return;
+
     setState(() => _busy = true);
     var ok = false;
     try {

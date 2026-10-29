@@ -37,12 +37,35 @@ namespace AimPark.API.DTOs
         public DateTime EntryTime { get; set; }
         public DateTime? ExitTime { get; set; }
 
+        /// <summary>
+        /// The bay the driver confirmed they parked in. Null until they confirm:
+        /// the bay suggested at entry is never shown here, since it is only a guess.
+        /// </summary>
+        public string? ConfirmedSlotCode { get; set; }
+
+        /// <summary>When the driver confirmed; later than <see cref="ExitTime"/> when confirmed after leaving.</summary>
+        public DateTime? SlotConfirmedAt { get; set; }
+
+        /// <summary>One of <see cref="Services.BayConfirmState"/>.</summary>
+        public string ConfirmState { get; set; } = string.Empty;
+
+        /// <summary>True when an administrator moved the driver's confirmed bay.</summary>
+        public bool BayCorrected { get; set; }
+
         public DateTime CreatedAt { get; set; }
     }
 
     public class RfidAccessLogListResponse
     {
         public List<RfidAccessLogEntryResponse> Logs { get; set; } = [];
+
+        /// <summary>
+        /// False at the guard post. Drivers confirm their bay in the cloud and the
+        /// guard post never hears of it, so there every session would read as
+        /// unconfirmed; the page hides the column instead.
+        /// </summary>
+        public bool ConfirmationsTracked { get; set; } = true;
+
         public int TotalCount { get; set; }
         public int Page { get; set; }
         public int PageSize { get; set; }

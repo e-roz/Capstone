@@ -41,6 +41,7 @@ namespace AimPark.API.Data
         public DbSet<GateTapEvent> GateTapEvents { get; set; }
         public DbSet<SlotWatch> SlotWatches { get; set; }
         public DbSet<WrongBayFlag> WrongBayFlags { get; set; }
+        public DbSet<SlotConfirmCorrection> SlotConfirmCorrections { get; set; }
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -498,6 +499,33 @@ namespace AimPark.API.Data
                       .WithMany()
                       .HasForeignKey(f => f.SlotId)
                       .OnDelete(DeleteBehavior.Cascade);
+            });
+
+            modelBuilder.Entity<SlotConfirmCorrection>(entity =>
+            {
+                entity.HasKey(c => c.Id);
+
+                // A session's corrections, oldest first, on the Parking Logs page.
+                entity.HasIndex(c => new { c.ParkingLogId, c.CorrectedAt });
+
+                entity.Property(c => c.Reason).HasMaxLength(500).IsRequired();
+
+                entity.HasOne(c => c.ParkingLog)
+                      .WithMany()
+                      .HasForeignKey(c => c.ParkingLogId)
+                      .OnDelete(DeleteBehavior.Cascade);
+
+                // A bay with corrections on record is history; it is not deleted
+                // out from under them.
+                entity.HasOne(c => c.FromSlot)
+                      .WithMany()
+                      .HasForeignKey(c => c.FromSlotId)
+                      .OnDelete(DeleteBehavior.Restrict);
+
+                entity.HasOne(c => c.ToSlot)
+                      .WithMany()
+                      .HasForeignKey(c => c.ToSlotId)
+                      .OnDelete(DeleteBehavior.Restrict);
             });
 
             modelBuilder.Entity<IncidentEvidence>(entity =>

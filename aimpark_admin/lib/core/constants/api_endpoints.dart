@@ -68,6 +68,10 @@ class ApiEndpoints {
 
   // Admin – System Logs
   static const parkingLogs = '/api/admin/logs/parking';
+  static String parkingLogBayConfirm(String logId) =>
+      '/api/admin/logs/parking/$logId/bay-confirm';
+  static String parkingLogCorrectBay(String logId) =>
+      '/api/admin/logs/parking/$logId/correct-bay';
   static const userActivityLogs = '/api/admin/logs/user-activity';
   static const systemErrorLogs = '/api/admin/logs/errors';
 
