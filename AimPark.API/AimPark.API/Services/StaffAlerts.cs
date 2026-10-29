@@ -13,7 +13,10 @@ namespace AimPark.API.Services
         Registration,
         Renewal,
         Appeal,
-        Incident
+        Incident,
+
+        /// <summary>A driver keeps leaving without confirming their bay: a possible strike to review.</summary>
+        UnconfirmedParking
     }
 
     /// <summary>
@@ -74,6 +77,11 @@ namespace AimPark.API.Services
                         "New violation appeal",
                         $"{who} has appealed a violation.",
                         "/violations"),
+                    StaffAlertKind.UnconfirmedParking => (
+                        NotificationType.Violation,
+                        "Possible strike to review",
+                        $"{who} left without confirming their bay {SlotConfirmPolicy.ReviewAt} times in {SlotConfirmPolicy.Window.Days} days. Review their parking history and decide whether to issue a violation.",
+                        $"/users/{aboutUserId}"),
                     _ => (
                         NotificationType.Incident,
                         "New incident report",
@@ -81,7 +89,7 @@ namespace AimPark.API.Services
                         "/incidents")
                 };
 
-                var data = new Dictionary<string, string> { ["route"] = route };
+                var data = new Dictionary<string, string> { ["route"] = route, ["kind"] = kind.ToString(), ["userId"] = aboutUserId.ToString() };
 
                 _db.Set<Notification>().Add(new Notification
                 {

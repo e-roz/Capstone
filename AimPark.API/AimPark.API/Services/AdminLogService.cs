@@ -3,8 +3,10 @@ using AimPark.API.DTOs;
 using AimPark.API.Entities;
 using AimPark.API.Enums;
 using AimPark.API.Interfaces;
+using AimPark.API.Sync;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 
 namespace AimPark.API.Services
 {
@@ -12,9 +14,19 @@ namespace AimPark.API.Services
     {
         private readonly AppDbContext _db;
 
+        /// <summary>False at the guard post, which never hears of a confirm.</summary>
+        private readonly bool _confirmationsTracked;
+
+        public AdminLogService(AppDbContext db, IOptions<SiteOptions> site)
+            : this(db)
+        {
+            _confirmationsTracked = site.Value.IsCloud;
+        }
+
         public AdminLogService(AppDbContext db)
         {
             _db = db;
+            _confirmationsTracked = true;
         }
 
         // GET /api/admin/logs/parking?page=1&pageSize=20&search=ABC&gate=1&vehicleType=Car&visitor=true&from=...&to=...
@@ -98,7 +110,10 @@ namespace AimPark.API.Services
                             : null,
                     VisitorPlate = l.VisitorPass != null ? l.VisitorPass.PlateNumber : null,
                     VisitorType = l.VisitorPass != null ? (VehicleType?)l.VisitorPass.VehicleType : null,
-                    Purpose = l.VisitorPass != null ? l.VisitorPass.Purpose : null
+                    Purpose = l.VisitorPass != null ? l.VisitorPass.Purpose : null,
+                    l.SlotConfirmedAt,
+                    ConfirmedSlotCode = l.SlotConfirmedAt != null && l.Slot != null ? l.Slot.SlotCode : null,
+                    BayCorrected = _db.Set<SlotConfirmCorrection>().Any(c => c.ParkingLogId == l.Id)
                 })
                 .ToListAsync(ct);
 
@@ -152,6 +167,10 @@ namespace AimPark.API.Services
                     Gate = l.Gate,
                     EntryTime = l.EntryTime,
                     ExitTime = l.ExitTime,
+                    ConfirmedSlotCode = l.ConfirmedSlotCode,
+                    SlotConfirmedAt = l.SlotConfirmedAt,
+                    ConfirmState = SlotConfirmPolicy.StateOf(l.UserId, l.EntryTime, l.ExitTime, l.SlotConfirmedAt),
+                    BayCorrected = l.BayCorrected,
                     CreatedAt = l.CreatedAt
                 };
             }).ToList();
@@ -159,6 +178,7 @@ namespace AimPark.API.Services
             return new OkObjectResult(new RfidAccessLogListResponse
             {
                 Logs = response,
+                ConfirmationsTracked = _confirmationsTracked,
                 TotalCount = totalCount,
                 Page = page,
                 PageSize = pageSize

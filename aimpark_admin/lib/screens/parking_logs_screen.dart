@@ -9,6 +9,7 @@ import '../providers/parking_logs_provider.dart';
 import '../router/destinations.dart';
 import '../theme/theme.dart';
 import '../widgets/live_refresh.dart';
+import '../widgets/parking/bay_confirm.dart';
 import '../widgets/ui/ui.dart';
 
 final _stamp = DateFormat('MMM d, yyyy HH:mm');
@@ -30,9 +31,11 @@ const _visitorKinds = [
 
 /// Every vehicle that came in or out, with who, what and when.
 ///
-/// Shows the gate rather than a bay: the bay is only the one the system
-/// suggested, and the driver may have parked in another, but the gate is where
-/// the vehicle was actually seen.
+/// Shows the gate, and the bay only once the driver has confirmed it: the bay
+/// given at entry is only the one the system suggested, and the driver may have
+/// parked in another. A confirmed bay opens its history, where an admin can
+/// correct it. The guard post never hears of confirms, so there the column is
+/// left out rather than calling everyone unconfirmed.
 ///
 /// For Security it is live: today's list refreshes itself every few seconds, and
 /// a new row is lit for a moment. Picking an earlier day stops that, since a day
@@ -86,7 +89,11 @@ class _ParkingLogsScreenState extends ConsumerState<ParkingLogsScreen>
             icon: const Icon(Icons.download_outlined, size: AppSizes.iconSm),
             label: const Text('Export CSV'),
             onPressed: async.hasValue
-                ? () => _export(context, async.requireValue.logs)
+                ? () => _export(
+                    context,
+                    async.requireValue.logs,
+                    withConfirmed: async.requireValue.confirmationsTracked,
+                  )
                 : null,
           ),
           IconButton(
@@ -141,8 +148,8 @@ class _ParkingLogsScreenState extends ConsumerState<ParkingLogsScreen>
           value: async,
           onRetry: () => ref.invalidate(parkingLogsProvider),
           loading: const SkeletonTable(
-            columns: 7,
-            columnWidths: [160, 100, 110, 80, 150, 150, 90],
+            columns: 8,
+            columnWidths: [160, 100, 110, 80, 120, 150, 150, 90],
           ),
           isEmpty: (page) => page.logs.isEmpty,
           empty: const AppEmptyState(
@@ -153,19 +160,27 @@ class _ParkingLogsScreenState extends ConsumerState<ParkingLogsScreen>
                 'is recorded here with its timestamps.',
           ),
           data: (page) => AppDataTable(
-            minWidth: 1000,
-            columns: const [
-              DataColumn(label: Text('User')),
-              DataColumn(label: Text('Vehicle')),
-              DataColumn(label: Text('Plate')),
-              DataColumn(label: Text('Gate')),
-              DataColumn(label: Text('Entry')),
-              DataColumn(label: Text('Exit')),
-              DataColumn(label: Text('Duration')),
+            minWidth: page.confirmationsTracked ? 1120 : 1000,
+            columns: [
+              const DataColumn(label: Text('User')),
+              const DataColumn(label: Text('Vehicle')),
+              const DataColumn(label: Text('Plate')),
+              const DataColumn(label: Text('Gate')),
+              if (page.confirmationsTracked)
+                const DataColumn(label: Text('Confirmed')),
+              const DataColumn(label: Text('Entry')),
+              const DataColumn(label: Text('Exit')),
+              const DataColumn(label: Text('Duration')),
             ],
             rows: [
               for (final entry in page.logs)
-                _row(context, entry, fresh: freshIds.contains(entry.id)),
+                _row(
+                  context,
+                  entry,
+                  fresh: freshIds.contains(entry.id),
+                  showConfirmed: page.confirmationsTracked,
+                  canCorrect: !isSecurity,
+                ),
             ],
             footer: AppPagination(
               page: page.page,
@@ -184,6 +199,8 @@ class _ParkingLogsScreenState extends ConsumerState<ParkingLogsScreen>
     BuildContext context,
     ParkingLogEntry entry, {
     bool fresh = false,
+    bool showConfirmed = true,
+    bool canCorrect = false,
   }) {
     final t = context.tokens;
     final text = Theme.of(context).textTheme;
@@ -242,6 +259,15 @@ class _ParkingLogsScreenState extends ConsumerState<ParkingLogsScreen>
               ? dim('—')
               : Text('Gate ${entry.gate}', style: text.bodyMedium),
         ),
+        if (showConfirmed)
+          DataCell(
+            BayConfirmCell(
+              entry: entry,
+              onOpen: entry.confirmState.isConfirmed
+                  ? () => _openBayConfirm(context, entry, canCorrect)
+                  : null,
+            ),
+          ),
         DataCell(
           Text(_stamp.format(entry.entryTime.toLocal()), style: text.bodySmall),
         ),
@@ -269,6 +295,30 @@ class _ParkingLogsScreenState extends ConsumerState<ParkingLogsScreen>
     );
   }
 
+  Future<void> _openBayConfirm(
+    BuildContext context,
+    ParkingLogEntry entry,
+    bool canCorrect,
+  ) async {
+    final corrected =
+        await showBayConfirmDialog(context, entry, canCorrect: canCorrect);
+    if (!corrected || !context.mounted) return;
+    ref.invalidate(parkingLogsProvider);
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('Bay corrected.')));
+  }
+
+  static String _confirmedLabel(ParkingLogEntry l) => switch (l.confirmState) {
+    BayConfirmState.confirmed =>
+      l.bayCorrected ? 'Corrected by admin' : 'Confirmed',
+    BayConfirmState.confirmedLate =>
+      l.bayCorrected ? 'Corrected by admin' : 'Confirmed late',
+    BayConfirmState.unconfirmed => 'Unconfirmed',
+    BayConfirmState.notYet => 'Not yet',
+    BayConfirmState.notCounted => '',
+  };
+
   static String _durationLabel(Duration? d) {
     if (d == null) return '—';
     final hours = d.inHours;
@@ -278,16 +328,21 @@ class _ParkingLogsScreenState extends ConsumerState<ParkingLogsScreen>
 
   /// Covers the page on screen, which is the only set of rows the person
   /// exporting has actually reviewed.
-  void _export(BuildContext context, List<ParkingLogEntry> logs) {
+  void _export(
+    BuildContext context,
+    List<ParkingLogEntry> logs, {
+    bool withConfirmed = true,
+  }) {
     CsvExport.save(
       fileName: 'aimpark-parking-logs-${_fileStamp()}.csv',
-      headers: const [
+      headers: [
         'User',
         'Visitor',
         'RFID tag',
         'Vehicle',
         'Plate',
         'Gate',
+        if (withConfirmed) ...['Confirmed bay', 'Confirm status', 'Confirmed at'],
         'Entry',
         'Exit',
         'Duration',
@@ -301,6 +356,13 @@ class _ParkingLogsScreenState extends ConsumerState<ParkingLogsScreen>
             l.vehicleType ?? '',
             l.plateNumber ?? '',
             l.gate?.toString() ?? '',
+            if (withConfirmed) ...[
+              l.confirmedSlotCode ?? '',
+              _confirmedLabel(l),
+              l.slotConfirmedAt == null
+                  ? ''
+                  : _isoStamp.format(l.slotConfirmedAt!.toLocal()),
+            ],
             _isoStamp.format(l.entryTime.toLocal()),
             l.exitTime == null ? '' : _isoStamp.format(l.exitTime!.toLocal()),
             _durationLabel(l.duration),
