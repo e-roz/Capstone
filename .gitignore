@@ -465,3 +465,8 @@ firmware/host_bridge/*.spec
 
 # PlatformIO build output and local project state
 firmware/.pio/
+
+# Local AI-tool files, not part of the project
+.agents/
+skills-lock.json
+*.riv
