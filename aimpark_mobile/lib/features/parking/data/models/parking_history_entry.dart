@@ -6,10 +6,12 @@ class ParkingHistoryEntry {
     this.slotConfirmed = false,
     this.waitingToLeave = false,
     this.exitAmountDue,
+    this.leaveBy,
     this.exitTime,
     this.paymentId,
     this.alprPlateNumber,
     this.vehicleId,
+    this.vehicleType,
   });
 
   final String logId;
@@ -25,11 +27,16 @@ class ParkingHistoryEntry {
 
   /// The fee they are being asked for, frozen when they tapped out.
   final double? exitAmountDue;
+
+  /// The session is paid and still open: the barrier opens on a tap until this
+  /// time. Later than that, the rest of the stay is billed at the gate.
+  final DateTime? leaveBy;
   final DateTime entryTime;
   final DateTime? exitTime;
 
-  /// The fee raised for this session. Null while the session is still open —
-  /// the transaction is only created on exit.
+  /// The fee raised for this session. Null while the session is still open,
+  /// unless the driver tapped out or paid ahead from the app. The latest one
+  /// when a stay past the paid time added a second.
   final String? paymentId;
 
   /// The ALPR-confirmed plate for this session. Null for a manually logged
@@ -43,7 +50,19 @@ class ParkingHistoryEntry {
   /// plate that no longer matches any vehicle on file).
   final String? vehicleId;
 
+  /// `Car` or `Motorcycle`: what came in, as the gate recorded it, or as the
+  /// driver said when confirming a bay. Null when the account has both kinds
+  /// and nothing has told them apart yet.
+  final String? vehicleType;
+
+  /// What came in, when known. Null means ask the driver.
+  bool? get cameInOnMotorcycle => vehicleType?.toLowerCase().contains('motor');
+
   bool get isOpen => exitTime == null;
+
+  /// Paid and still inside, with time left to reach the gate.
+  bool isPaidToLeave({DateTime? now}) =>
+      isOpen && leaveBy != null && (now ?? DateTime.now()).isBefore(leaveBy!);
 
   Duration get duration => (exitTime ?? DateTime.now()).difference(entryTime);
 
@@ -54,11 +73,40 @@ class ParkingHistoryEntry {
       slotConfirmed: json['slotConfirmed'] as bool? ?? false,
       waitingToLeave: json['waitingToLeave'] as bool? ?? false,
       exitAmountDue: (json['exitAmountDue'] as num?)?.toDouble(),
+      leaveBy: json['leaveBy'] == null ? null : DateTime.parse(json['leaveBy'] as String),
       entryTime: DateTime.parse(json['entryTime'] as String),
       exitTime: json['exitTime'] == null ? null : DateTime.parse(json['exitTime'] as String),
       paymentId: json['paymentId'] as String?,
       alprPlateNumber: json['alprPlateNumber'] as String?,
       vehicleId: json['vehicleId'] as String?,
+      vehicleType: json['vehicleType'] as String?,
+    );
+  }
+}
+
+/// What `POST /api/parking/sessions/{logId}/pay-ahead` came back with.
+class PayAheadResult {
+  const PayAheadResult({
+    this.paymentId,
+    this.amountDue = 0,
+    this.paid = false,
+    this.leaveBy,
+  });
+
+  /// The bill to pay. Null when there is nothing to pay.
+  final String? paymentId;
+  final double amountDue;
+
+  /// Already paid: nothing to do but leave by [leaveBy].
+  final bool paid;
+  final DateTime? leaveBy;
+
+  factory PayAheadResult.fromJson(Map<String, dynamic> json) {
+    return PayAheadResult(
+      paymentId: json['paymentId'] as String?,
+      amountDue: (json['amountDue'] as num?)?.toDouble() ?? 0,
+      paid: json['paid'] as bool? ?? false,
+      leaveBy: json['leaveBy'] == null ? null : DateTime.parse(json['leaveBy'] as String),
     );
   }
 }

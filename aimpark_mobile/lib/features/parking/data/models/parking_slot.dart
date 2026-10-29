@@ -13,6 +13,13 @@ class ParkingSlot {
   final String? vehicleType;
   final String status;
 
+  bool get isMotorcycle => (vehicleType ?? '').toLowerCase().contains('motor');
+
+  /// Whether a vehicle of this kind may be confirmed into this bay. A bay with
+  /// no kind set takes either, as the server does.
+  bool takes({required bool motorcycle}) =>
+      vehicleType == null || isMotorcycle == motorcycle;
+
   factory ParkingSlot.fromJson(Map<String, dynamic> json) {
     return ParkingSlot(
       slotId: json['slotId'] as String,

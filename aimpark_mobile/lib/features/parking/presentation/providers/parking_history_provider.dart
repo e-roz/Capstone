@@ -59,13 +59,20 @@ class ParkingHistoryNotifier extends _$ParkingHistoryNotifier {
   /// and a car is sitting at a shut barrier.
   static const waitingPollEvery = Duration(seconds: 5);
 
+  /// How often to look again while the driver is parked. The tap that holds
+  /// them at the exit is news the phone may not hear by push (no signal, a
+  /// lost notification, a site server still syncing), and they need the "Pay
+  /// to leave" card without having to pull to refresh.
+  static const parkedPollEvery = Duration(seconds: 20);
+
   Timer? _timer;
   bool _disposed = false;
+  int _ticks = 0;
 
   @override
   Future<ParkingHistoryResult> build() {
     _disposed = false;
-    _timer = Timer.periodic(waitingPollEvery, (_) => _pollWhileWaiting());
+    _timer = Timer.periodic(waitingPollEvery, (_) => _pollWhileInside());
     ref.onDispose(() {
       _disposed = true;
       _timer?.cancel();
@@ -73,11 +80,16 @@ class ParkingHistoryNotifier extends _$ParkingHistoryNotifier {
     return ref.read(parkingRepositoryProvider).getHistory();
   }
 
-  /// Only does anything while a session is waiting to leave, and only with the
-  /// app in front. Replaces the answer in place, so nothing blinks.
-  Future<void> _pollWhileWaiting() async {
+  /// Only does anything while the driver is inside, and only with the app in
+  /// front: every tick while held at the exit, less often while just parked.
+  /// Replaces the answer in place, so nothing blinks.
+  Future<void> _pollWhileInside() async {
     if (WidgetsBinding.instance.lifecycleState != AppLifecycleState.resumed) return;
-    if (state.isLoading || state.valueOrNull?.waitingToLeave == null) return;
+    final current = state.valueOrNull;
+    if (state.isLoading || current?.currentlyParked == null) return;
+    _ticks++;
+    final everyTicks = parkedPollEvery.inSeconds ~/ waitingPollEvery.inSeconds;
+    if (current!.waitingToLeave == null && _ticks % everyTicks != 0) return;
     try {
       final fresh = await ref.read(parkingRepositoryProvider).getHistory();
       if (!_disposed) state = AsyncData(fresh);

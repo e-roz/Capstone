@@ -39,15 +39,27 @@ class ParkingRepository {
   }
 
   /// The driver says which bay they parked in. Safe to call again to change it.
-  /// A refusal (bay already confirmed by someone else, session too old) comes
-  /// back as a 400 whose message the caller shows as it is.
+  /// A refusal (bay already confirmed by someone else, a bay for the other kind
+  /// of vehicle, session too old) comes back as a 400 whose message the caller
+  /// shows as it is.
+  ///
+  /// [vehicleId] is the vehicle the driver says they brought, sent only when
+  /// the gate could not tell (both kinds on the account, no plate read).
   Future<void> confirmSlot({
     required String logId,
     required String slotId,
+    String? vehicleId,
   }) async {
     await _dio.post(
       ApiEndpoints.parkingConfirmSlot,
-      data: {'logId': logId, 'slotId': slotId},
+      data: {'logId': logId, 'slotId': slotId, 'vehicleId': ?vehicleId},
     );
+  }
+
+  /// Prices the open session up to now so the driver can pay before driving
+  /// to the gate. Once paid, the barrier opens on a tap for a short while.
+  Future<PayAheadResult> payAhead(String logId) async {
+    final response = await _dio.post(ApiEndpoints.parkingPayAhead(logId));
+    return PayAheadResult.fromJson(response.data as Map<String, dynamic>);
   }
 }
