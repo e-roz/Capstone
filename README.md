@@ -7,14 +7,32 @@ Built solo as a capstone project, and used as a real system, not a demo.
 
 **Live admin panel:** https://aim-park.web.app
 
-<!--
-SCREENSHOTS — add these, then delete this comment.
-Put images in docs/screenshots/ and show 3–4 of them side by side:
+## See it
 
-| Admin overview | Parking map | Mobile home | Registration review |
-|---|---|---|---|
-| ![](docs/screenshots/admin-overview.png) | ![](docs/screenshots/parking-map.png) | ![](docs/screenshots/mobile-home.png) | ![](docs/screenshots/registration-review.png) |
--->
+All screens below use made-up drivers, plates and numbers.
+
+**Admin panel: the whole lot at a glance.** What needs attention, live bays, who was refused at the gate and why.
+
+![Admin overview](docs/screenshots/admin-overview.png)
+
+**Registration review.** The phone reads each document, the server cross-checks them, and the admin sees what matches, what was edited and what needs a closer look before any card is issued.
+
+![Registration review](docs/screenshots/registration-review.png)
+
+**Live parking map.** Each bay is driven by its own ultrasonic sensor, over ESP-NOW, into the site server. A wrong-vehicle warning and the gate health sit on the same page.
+
+![Live parking map](docs/screenshots/parking-map.png)
+
+<table>
+<tr>
+<td width="50%"><b>Guard post.</b> The guard's own screen on the site server: open the gate, take cash, confirm a wrong-bay alert, watch both cameras.<br><img src="docs/screenshots/guard-post-overview.png" alt="Guard post overview"></td>
+<td width="50%"><b>ESP-NOW hub.</b> The wireless gate boards and every slot sensor, with live readings, link status and a connection test.<br><img src="docs/screenshots/gate-readers-esp-now.png" alt="ESP-NOW hub and gate readers"></td>
+</tr>
+</table>
+
+**Reports.** Entries and exits, peak hours, revenue split into fees and fines, and gate outcomes.
+
+![Reports](docs/screenshots/reports.png)
 
 ## What it does
 
