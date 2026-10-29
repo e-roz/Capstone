@@ -36,6 +36,24 @@ namespace AimPark.API.Interfaces
         /// </summary>
         Task<PaymentTransaction> RaiseExitBillAsync(ParkingLog log, DateTime at, CancellationToken ct);
 
+        /// <summary>
+        /// Raises the bill for a session the driver wants to pay while still
+        /// parked, priced up to <paramref name="at"/>. A paid-ahead bill not yet
+        /// paid is priced again; any other bill already on the session is
+        /// returned as it is. Null when there is nothing to pay.
+        /// </summary>
+        Task<PaymentTransaction?> RaiseAheadAsync(ParkingLog log, DateTime at, CancellationToken ct);
+
+        /// <summary>
+        /// Bills a driver who paid but tapped out after the grace window for the
+        /// rest of the stay: what it costs up to <paramref name="at"/>, less what
+        /// the session was billed already. Null when that is nothing.
+        /// <paramref name="paidAhead"/> when the driver asked for it from the app
+        /// while still parked, rather than being held for it at the gate.
+        /// </summary>
+        Task<PaymentTransaction?> RaiseOverstayBillAsync(
+            ParkingLog log, DateTime at, bool paidAhead, CancellationToken ct);
+
         // Internal — called by ViolationService when a violation carrying a penalty is issued.
         Task<PaymentTransaction> CreateForViolationAsync(Violation violation, CancellationToken ct);
 

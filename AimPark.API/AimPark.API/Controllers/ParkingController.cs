@@ -64,6 +64,15 @@ namespace AimPark.API.Controllers
                 : BadRequest(new { result = outcome.Result, message = outcome.Message });
         }
 
+        /// <summary>
+        /// The driver wants to pay while still parked. Returns the bill to pay,
+        /// priced up to now; once it is paid the exit opens on a tap for a short
+        /// while.
+        /// </summary>
+        [HttpPost("sessions/{logId:guid}/pay-ahead")]
+        public Task<ActionResult<PayAheadResponse>> PayAhead(Guid logId, CancellationToken ct)
+            => _parkingHistoryService.PayAheadAsync(GetUserId(), logId, ct);
+
         private Guid GetUserId()
             => Guid.Parse(User.FindFirst(ClaimTypes.NameIdentifier)!.Value);
     }

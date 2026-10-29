@@ -1,6 +1,7 @@
 using AimPark.API.Data;
 using AimPark.API.DTOs;
 using AimPark.API.Entities;
+using AimPark.API.Enums;
 using AimPark.API.Interfaces;
 using Microsoft.EntityFrameworkCore;
 
@@ -14,10 +15,11 @@ namespace AimPark.API.Services
     /// bay is occupied is the sensors' to say, and a driver's word must never
     /// hide a sensor fault or fake an occupied bay.
     ///
-    /// The bay may be in either column and of either kind. The lot is one lane
-    /// and a driver may park wherever they like; a bay of the wrong kind is
-    /// still flagged by the sensor-driven wrong-bay check, so refusing it here
-    /// would only stop the driver from telling the truth.
+    /// The bay may be in either column, but must be of the kind of vehicle that
+    /// came in: a motorcycle cannot be confirmed into a car bay, nor a car into
+    /// a motorcycle bay. What came in is what the gate recorded on the session;
+    /// when it could not tell (both kinds on the account, no plate read), the
+    /// driver says which vehicle they brought.
     /// </summary>
     public class SlotConfirmationService : ISlotConfirmationService
     {
@@ -58,6 +60,15 @@ namespace AimPark.API.Services
             if (slot is null)
                 return Refuse(SlotConfirmResult.SlotNotFound, "That bay does not exist.");
 
+            var kind = await VehicleKindAsync(userId, log, request.VehicleId, ct);
+            if (kind.Refusal is not null)
+                return kind.Refusal;
+
+            // A bay with no kind set takes either.
+            if (kind.Type is VehicleType type && slot.VehicleType is VehicleType bayType && bayType != type)
+                return Refuse(SlotConfirmResult.WrongVehicleType,
+                    $"{slot.SlotCode} is a {Describe(bayType)} bay, and you came in on a {Describe(type)}. Pick a {Describe(type)} bay.");
+
             var now = DateTime.UtcNow;
 
             // An open session can always be confirmed. After leaving, the driver
@@ -71,6 +82,8 @@ namespace AimPark.API.Services
 
             log.SlotId = slot.Id;
             log.SlotConfirmedAt = now;
+            // The driver's word, kept for when the gate could not tell.
+            log.VehicleType ??= kind.Type;
             await _db.SaveChangesAsync(ct);
 
             return new ConfirmSlotResponse
@@ -81,6 +94,42 @@ namespace AimPark.API.Services
                 Late = log.ExitTime is not null,
             };
         }
+
+        /// <summary>
+        /// What this session came in on: the gate's record, else the vehicle the
+        /// driver names, else the only kind on the account.
+        /// </summary>
+        private async Task<(VehicleType? Type, ConfirmSlotResponse? Refusal)> VehicleKindAsync(
+            Guid userId, ParkingLog log, Guid? vehicleId, CancellationToken ct)
+        {
+            if (log.VehicleType is VehicleType recorded)
+                return (recorded, null);
+
+            var vehicles = await _db.Set<Vehicle>().AsNoTracking()
+                .Where(v => v.UserId == userId)
+                .Select(v => new { v.Id, v.VehicleType })
+                .ToListAsync(ct);
+
+            if (vehicleId is Guid id)
+            {
+                var named = vehicles.FirstOrDefault(v => v.Id == id);
+                return named is null
+                    ? (null, Refuse(SlotConfirmResult.VehicleNotFound, "That vehicle is not on your account."))
+                    : (named.VehicleType, null);
+            }
+
+            var kinds = vehicles.Select(v => v.VehicleType).Distinct().ToList();
+            return kinds.Count switch
+            {
+                // Nothing on file to go by; the bay's kind cannot be checked.
+                0 => (null, null),
+                1 => (kinds[0], null),
+                _ => (null, Refuse(SlotConfirmResult.VehicleNeeded, "Tell us which vehicle you brought today, then confirm the bay."))
+            };
+        }
+
+        private static string Describe(VehicleType type)
+            => type == VehicleType.Motorcycle ? "motorcycle" : "car";
 
         public async Task<CorrectBayResponse> CorrectAsync(
             Guid adminUserId, Guid logId, CorrectBayRequest request, CancellationToken ct)

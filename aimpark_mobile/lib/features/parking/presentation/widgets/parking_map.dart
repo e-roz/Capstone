@@ -77,6 +77,10 @@ enum BayState {
 /// If the account has only one kind of vehicle, bays for the other kind are
 /// dimmed rather than hidden — the lot stays whole and the driver's own bays are
 /// the ones that stand out.
+///
+/// A bay for the other kind from the vehicle that came in
+/// ([cameInOnMotorcycle]) cannot be confirmed: a motorcycle is not confirmed
+/// into a car bay, nor a car into a motorcycle bay.
 class ParkingMap extends StatelessWidget {
   const ParkingMap({
     super.key,
@@ -86,6 +90,7 @@ class ParkingMap extends StatelessWidget {
     this.onConfirmSlot,
     this.userHasCar = false,
     this.userHasMotorcycle = false,
+    this.cameInOnMotorcycle,
   });
 
   final ParkingAvailability availability;
@@ -103,6 +108,11 @@ class ParkingMap extends StatelessWidget {
   final bool userHasCar;
   final bool userHasMotorcycle;
 
+  /// What came in for the session being confirmed: true for a motorcycle,
+  /// false for a car. Null when it is not known yet, and the caller asks the
+  /// driver before confirming.
+  final bool? cameInOnMotorcycle;
+
   static const double _bayHeight = 56;
   static const double _gap = 8;
   static const double _lane = 40;
@@ -112,17 +122,20 @@ class ParkingMap extends StatelessWidget {
   /// no kind of bay to prefer.
   bool get _knowsOneKind => userHasCar != userHasMotorcycle;
 
-  static bool _isMotorcycle(ParkingSlot s) =>
-      (s.vehicleType ?? '').toLowerCase().contains('motor');
+  /// The kind of vehicle the bays are judged against: what came in, else the
+  /// only kind on the account. Null when there is nothing to go by.
+  bool? get _kind =>
+      cameInOnMotorcycle ?? (_knowsOneKind ? userHasMotorcycle : null);
 
   bool _isDimmed(ParkingSlot slot, BayState state) {
-    if (!_knowsOneKind) return false;
+    final kind = _kind;
+    if (kind == null) return false;
     // A bay that is already greyed out — out of service, or silent — is not faded
     // a second time for being the wrong kind. Two fades on top of each other and
     // the bay is gone, which is exactly what happened when the whole lot went
     // quiet.
     if (state != BayState.free && state != BayState.taken) return false;
-    return userHasMotorcycle != _isMotorcycle(slot);
+    return !slot.takes(motorcycle: kind);
   }
 
   void _openSheet(BuildContext context, ParkingSlot slot, BayState state) {
@@ -133,7 +146,12 @@ class ParkingMap extends StatelessWidget {
         state: state,
         onConfirm: onConfirmSlot,
         wrongKindFor: _isDimmed(slot, state)
-            ? (userHasMotorcycle ? 'motorcycle' : 'car')
+            ? (_kind! ? 'motorcycle' : 'car')
+            : null,
+        refusedFor: onConfirmSlot != null &&
+                cameInOnMotorcycle != null &&
+                !slot.takes(motorcycle: cameInOnMotorcycle!)
+            ? (cameInOnMotorcycle! ? 'motorcycle' : 'car')
             : null,
       ),
     );
@@ -741,6 +759,7 @@ class _BaySheet extends StatelessWidget {
     required this.slot,
     required this.state,
     required this.wrongKindFor,
+    this.refusedFor,
     this.onConfirm,
   });
 
@@ -753,8 +772,13 @@ class _BaySheet extends StatelessWidget {
   /// Out-of-service bays cannot be parked in, so there is nothing to confirm.
   bool get _canConfirm =>
       onConfirm != null &&
+      refusedFor == null &&
       state != BayState.outOfService &&
       state != BayState.confirmed;
+
+  /// Set to `car` or `motorcycle` when the vehicle that came in is the other
+  /// kind from this bay, so it cannot be confirmed here.
+  final String? refusedFor;
 
   /// Set to `car` or `motorcycle` when this bay is for the other kind from the
   /// only kind of vehicle on the account.
@@ -773,12 +797,12 @@ class _BaySheet extends StatelessWidget {
 
   String get _message => switch (state) {
     // Asking where the driver parked: the sentence is about them, not the bay.
-    BayState.free when onConfirm != null =>
+    BayState.free when _canConfirm =>
       'Parked here? Confirm it so the guards know which bay is yours.',
-    BayState.taken when onConfirm != null =>
+    BayState.taken when _canConfirm =>
       'The sensor says a vehicle is here. If it is yours, confirm it — the '
           'sensor is sometimes wrong.',
-    BayState.noSignal when onConfirm != null =>
+    BayState.noSignal when _canConfirm =>
       "This bay's sensor is not reporting. If you are parked here, confirm it.",
     BayState.free =>
       'Free right now. Looking at a bay does not hold it for you — entry '
@@ -855,7 +879,16 @@ class _BaySheet extends StatelessWidget {
               const SizedBox(height: AppSpacing.md),
               _ConfirmBayButton(slot: slot, onConfirm: onConfirm!),
             ],
-            if (wrongKindFor != null && state == BayState.free) ...[
+            if (refusedFor != null) ...[
+              const SizedBox(height: AppSpacing.md),
+              AppNotice(
+                intent: StatusIntent.warning,
+                message:
+                    'This bay is for ${_isMotorcycle ? 'motorcycles' : 'cars'}, '
+                    'and you came in on a $refusedFor. Pick a $refusedFor bay '
+                    'to confirm.',
+              ),
+            ] else if (wrongKindFor != null && state == BayState.free) ...[
               const SizedBox(height: AppSpacing.sm),
               AppNotice(
                 intent: StatusIntent.warning,

@@ -80,6 +80,15 @@ namespace AimPark.API.Sync
         /// the site learns that one has since been paid.
         /// </summary>
         public List<Guid>? SettledPaymentIds { get; set; }
+
+        /// <summary>
+        /// Bills a driver opened from the app while still parked, for sessions
+        /// still open. Unlike <see cref="Dues"/> these are copied into the site's
+        /// PaymentTransactions: the gate looks a session's bill up there, and
+        /// without the copy it would raise a second one for a fee already paid.
+        /// Null from an older cloud.
+        /// </summary>
+        public List<PaymentTransaction>? PaidAheadBills { get; set; }
     }
 
     /// <summary>The part of an unpaid <see cref="PaymentTransaction"/> an entry check reads.</summary>

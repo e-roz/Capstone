@@ -123,14 +123,13 @@ public class SlotConfirmationTests
     }
 
     [Fact]
-    public async Task A_bay_in_the_other_column_or_of_the_other_kind_is_still_accepted()
+    public async Task A_bay_in_the_other_column_is_still_accepted()
     {
-        // The lot is one lane. The driver may be in any bay; the sensors flag a
-        // wrong kind on their own, and refusing would stop the truth being told.
+        // The lot is one lane. The driver may be in any bay of their kind.
         var db = NewDb();
         var user = NewUser(db);
-        var far = NewSlot(db, "C5", gate: 2);
-        far.VehicleType = VehicleType.Car;
+        var far = NewSlot(db, "M5", gate: 2);
+        far.VehicleType = VehicleType.Motorcycle;
         var log = NewLog(db, user, DateTime.UtcNow.AddMinutes(-5));
         log.Gate = 1;
         log.VehicleType = VehicleType.Motorcycle;
@@ -139,6 +138,87 @@ public class SlotConfirmationTests
         var result = await Confirm(db, user.Id, log.Id, far.Id);
 
         Assert.Equal(SlotConfirmResult.Confirmed, result.Result);
+    }
+
+    [Theory]
+    [InlineData(VehicleType.Motorcycle, VehicleType.Car)]
+    [InlineData(VehicleType.Car, VehicleType.Motorcycle)]
+    public async Task A_bay_for_the_other_kind_of_vehicle_is_refused(VehicleType cameIn, VehicleType bay)
+    {
+        var db = NewDb();
+        var user = NewUser(db);
+        var slot = NewSlot(db, "C5");
+        slot.VehicleType = bay;
+        var log = NewLog(db, user, DateTime.UtcNow.AddMinutes(-5));
+        log.VehicleType = cameIn;
+        await db.SaveChangesAsync();
+
+        var result = await Confirm(db, user.Id, log.Id, slot.Id);
+
+        Assert.Equal(SlotConfirmResult.WrongVehicleType, result.Result);
+        Assert.Null((await db.Set<ParkingLog>().AsNoTracking().SingleAsync()).SlotConfirmedAt);
+    }
+
+    [Fact]
+    public async Task With_one_kind_on_the_account_that_kind_is_what_came_in()
+    {
+        var db = NewDb();
+        var user = NewUser(db);
+        db.Add(new Vehicle { Id = Guid.NewGuid(), UserId = user.Id, PlateNumber = "123ABC", VehicleType = VehicleType.Motorcycle });
+        var car = NewSlot(db, "C1");
+        car.VehicleType = VehicleType.Car;
+        var log = NewLog(db, user, DateTime.UtcNow.AddMinutes(-5));
+        await db.SaveChangesAsync();
+
+        var result = await Confirm(db, user.Id, log.Id, car.Id);
+
+        Assert.Equal(SlotConfirmResult.WrongVehicleType, result.Result);
+    }
+
+    [Fact]
+    public async Task With_both_kinds_and_no_plate_read_the_driver_must_say_which_one()
+    {
+        var db = NewDb();
+        var user = NewUser(db);
+        var moto = new Vehicle { Id = Guid.NewGuid(), UserId = user.Id, PlateNumber = "123ABC", VehicleType = VehicleType.Motorcycle };
+        var sedan = new Vehicle { Id = Guid.NewGuid(), UserId = user.Id, PlateNumber = "XYZ789", VehicleType = VehicleType.Car };
+        db.AddRange(moto, sedan);
+        var bay = NewSlot(db, "M1");
+        bay.VehicleType = VehicleType.Motorcycle;
+        var log = NewLog(db, user, DateTime.UtcNow.AddMinutes(-5));
+        await db.SaveChangesAsync();
+        var service = new SlotConfirmationService(db);
+
+        var unsaid = await Confirm(db, user.Id, log.Id, bay.Id);
+        var withCar = await service.ConfirmAsync(user.Id,
+            new ConfirmSlotRequest { LogId = log.Id, SlotId = bay.Id, VehicleId = sedan.Id }, default);
+        var withMoto = await service.ConfirmAsync(user.Id,
+            new ConfirmSlotRequest { LogId = log.Id, SlotId = bay.Id, VehicleId = moto.Id }, default);
+
+        Assert.Equal(SlotConfirmResult.VehicleNeeded, unsaid.Result);
+        Assert.Equal(SlotConfirmResult.WrongVehicleType, withCar.Result);
+        Assert.Equal(SlotConfirmResult.Confirmed, withMoto.Result);
+        // Kept, so the next bay check knows without asking again.
+        Assert.Equal(VehicleType.Motorcycle, (await db.Set<ParkingLog>().AsNoTracking().SingleAsync()).VehicleType);
+    }
+
+    [Fact]
+    public async Task What_the_gate_read_wins_over_the_vehicle_the_driver_names()
+    {
+        var db = NewDb();
+        var user = NewUser(db);
+        var sedan = new Vehicle { Id = Guid.NewGuid(), UserId = user.Id, PlateNumber = "XYZ789", VehicleType = VehicleType.Car };
+        db.Add(sedan);
+        var bay = NewSlot(db, "C1");
+        bay.VehicleType = VehicleType.Car;
+        var log = NewLog(db, user, DateTime.UtcNow.AddMinutes(-5));
+        log.VehicleType = VehicleType.Motorcycle;
+        await db.SaveChangesAsync();
+
+        var result = await new SlotConfirmationService(db).ConfirmAsync(user.Id,
+            new ConfirmSlotRequest { LogId = log.Id, SlotId = bay.Id, VehicleId = sedan.Id }, default);
+
+        Assert.Equal(SlotConfirmResult.WrongVehicleType, result.Result);
     }
 
     [Fact]

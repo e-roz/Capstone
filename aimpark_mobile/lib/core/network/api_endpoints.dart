@@ -38,6 +38,9 @@ class ApiEndpoints {
   static const parkingRecommend = '/api/parking/recommend';
   static const parkingConfirmSlot = '/api/parking/confirm-slot';
 
+  static String parkingPayAhead(String logId) =>
+      '/api/parking/sessions/$logId/pay-ahead';
+
   static const vehicles = '/api/vehicles';
   // A vehicle added after registration is proved the same way the first one was:
   // the receipt is read for the plate and the photo confirms it on the metal.

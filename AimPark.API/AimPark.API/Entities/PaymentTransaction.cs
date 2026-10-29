@@ -9,7 +9,9 @@ namespace AimPark.API.Entities
         // Exactly one of ParkingLogId/ViolationId is set, enforced in PaymentService.
         public PaymentSource Source { get; set; } = PaymentSource.ParkingFee;
 
-        //Foreign key to ParkingLog (one transaction per completed session, when Source == ParkingFee)
+        // Foreign key to ParkingLog (when Source == ParkingFee). Usually one bill per
+        // session; a second one is raised only when a driver who paid ahead stays
+        // past the grace window, for the time after it.
         public Guid? ParkingLogId { get; set; }
         public ParkingLog? ParkingLog { get; set; }
 
@@ -29,6 +31,17 @@ namespace AimPark.API.Entities
         public decimal AmountDue { get; set; }
 
         public PaymentStatus Status { get; set; } = PaymentStatus.Pending;
+
+        /// <summary>
+        /// Raised from the app while the driver was still parked, so they could
+        /// pay before driving to the gate. False once the gate has held them for
+        /// it, and for every bill raised at the exit.
+        /// </summary>
+        /// <remarks>
+        /// Tells "paid and on the way out" apart from "stuck at the barrier": a
+        /// pending bill of this kind is not a driver waiting at the exit.
+        /// </remarks>
+        public bool PaidAhead { get; set; }
 
         // When settlement is expected. Without a deadline a pending fee reads as
         // optional, which is how violation penalties went unpaid indefinitely.

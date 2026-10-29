@@ -12,6 +12,7 @@ import '../../../parking/data/models/parking_slot.dart';
 import '../../../parking/presentation/providers/parking_history_provider.dart';
 import '../../../parking/presentation/widgets/availability_hero.dart';
 import '../../../parking/presentation/widgets/parking_session_row.dart';
+import '../../../parking/presentation/widgets/pay_ahead_action.dart';
 import '../../../payments/data/models/payment.dart';
 import '../../../payments/presentation/providers/payments_provider.dart';
 import '../../../vehicles/data/models/vehicle.dart';
@@ -122,9 +123,13 @@ class UserDashboardScreen extends ConsumerWidget {
     // listed a second time as an ordinary bill.
     final waitingToLeave = history?.waitingToLeave;
 
+    // Still parked: the bill for this stay, if they asked to pay ahead, is
+    // offered on the card that asked for it, not as a debt.
+    final parked = history?.currentlyParked;
+
     final unpaid = (paymentsAsync.valueOrNull?.payments ?? const <Payment>[])
         .where((p) => !p.isPaid && p.status.toLowerCase() != 'waived')
-        .where((p) => p.paymentId != waitingToLeave?.paymentId)
+        .where((p) => p.paymentId != parked?.paymentId)
         .toList();
 
     final recentLogs =
@@ -189,6 +194,20 @@ class UserDashboardScreen extends ConsumerWidget {
               ],
 
               _hero(context, ref, availabilityAsync, vehicles),
+
+              // Parked and not yet at the gate: they can pay from here and
+              // drive straight out.
+              if (parked != null && waitingToLeave == null) ...[
+                gap,
+                AppAlertCard(
+                  intent: parked.isPaidToLeave()
+                      ? StatusIntent.success
+                      : StatusIntent.info,
+                  eyebrow: 'You are parked',
+                  icon: Icons.local_parking_rounded,
+                  child: PayAheadAction(session: parked),
+                ),
+              ],
 
               if (awaitingSlot != null && waitingToLeave == null) ...[
                 gap,

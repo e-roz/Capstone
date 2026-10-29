@@ -87,11 +87,38 @@ namespace AimPark.API.Sync.Cloud
                 .Select(p => p.Id)
                 .ToListAsync(ct);
 
+            // Only the bill's own columns: the row is copied into the site's table.
+            var paidAhead = await _db.Set<PaymentTransaction>().AsNoTracking()
+                .Where(p => p.PaidAhead && p.ParkingLog != null && p.ParkingLog.ExitTime == null)
+                .Select(p => new PaymentTransaction
+                {
+                    Id = p.Id,
+                    Source = p.Source,
+                    ParkingLogId = p.ParkingLogId,
+                    UserId = p.UserId,
+                    DurationMinutes = p.DurationMinutes,
+                    RatePerHourApplied = p.RatePerHourApplied,
+                    AmountDue = p.AmountDue,
+                    Status = p.Status,
+                    PaidAhead = p.PaidAhead,
+                    DueAt = p.DueAt,
+                    CreatedAt = p.CreatedAt,
+                    PaidAt = p.PaidAt,
+                    Method = p.Method,
+                    Provider = p.Provider,
+                    ProviderPaymentId = p.ProviderPaymentId,
+                    ReferenceNumber = p.ReferenceNumber,
+                    CheckoutStartedAt = p.CheckoutStartedAt,
+                    ConfirmedByUserId = p.ConfirmedByUserId
+                })
+                .ToListAsync(ct);
+
             return new SiteSnapshot
             {
                 GeneratedAt = now,
                 Dues = dues,
                 SettledPaymentIds = settled,
+                PaidAheadBills = paidAhead,
                 Users = users,
                 Vehicles = vehicles,
                 VisitorPasses = await _db.Set<VisitorPass>().AsNoTracking().ToListAsync(ct),

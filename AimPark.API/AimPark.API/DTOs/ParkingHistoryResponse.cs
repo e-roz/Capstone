@@ -22,8 +22,9 @@ namespace AimPark.API.DTOs
         public DateTime? ExitTime { get; set; }
 
         // The fee raised for this session, so the app can link a history row
-        // straight to its payment. Null while the session is still open — the
-        // transaction is only created on exit.
+        // straight to its payment. Null while the session is still open, unless
+        // the driver has tapped out or paid ahead from the app. The latest one
+        // when a stay past the paid-ahead window added a second.
         public Guid? PaymentId { get; set; }
 
         // True while the driver is at the exit with a fee to pay, so the app can
@@ -31,6 +32,15 @@ namespace AimPark.API.DTOs
         // frozen when they tapped out.
         public bool WaitingToLeave { get; set; }
         public decimal? ExitAmountDue { get; set; }
+
+        // The session is paid and still open: the barrier opens on a tap until
+        // this time. Later than that, the rest of the stay is billed at the gate.
+        public DateTime? LeaveBy { get; set; }
+
+        // What came in, as the gate recorded it: the type of the plate read, or
+        // the only type on the account. Null when the account has both and no
+        // plate was read. The app only offers bays of this kind to confirm.
+        public string? VehicleType { get; set; }
 
         // The ALPR-confirmed plate for this session. Null for a manually
         // logged entry (no camera involved) — never a mismatched plate, since
@@ -89,5 +99,29 @@ namespace AimPark.API.DTOs
         /// is settled. The guard post lists these.
         /// </summary>
         public bool WaitingToLeave { get; set; }
+
+        /// <summary>
+        /// The bill was opened by the driver from the app while still parked, so
+        /// an unpaid one is not a driver at the barrier.
+        /// </summary>
+        public bool PaidAhead { get; set; }
+    }
+
+    /// <summary>
+    /// What a driver still parked is asked to pay before driving to the gate.
+    /// </summary>
+    public class PayAheadResponse
+    {
+        /// <summary>The bill to pay. Null when there is nothing to pay.</summary>
+        public Guid? PaymentId { get; set; }
+
+        public decimal AmountDue { get; set; }
+        public int DurationMinutes { get; set; }
+
+        /// <summary>Already paid: nothing more to do but leave by <see cref="LeaveBy"/>.</summary>
+        public bool Paid { get; set; }
+
+        /// <summary>When a paid session stops opening the barrier on its own.</summary>
+        public DateTime? LeaveBy { get; set; }
     }
 }

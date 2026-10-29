@@ -14,6 +14,7 @@ import '../providers/parking_history_provider.dart';
 import '../widgets/availability_freshness.dart';
 import '../widgets/availability_hero.dart';
 import '../widgets/parking_map.dart';
+import '../widgets/pay_ahead_action.dart';
 
 /// The Parking tab: how full the lot is, where you are in it, and the lot itself.
 ///
@@ -46,6 +47,13 @@ class _ParkingScreenState extends ConsumerState<ParkingScreen> {
   SlotRecommendation? _recommendation;
   bool _isFinding = false;
 
+  /// The vehicle the driver said they brought, for the session that is in
+  /// [_broughtFor]. Only asked when the gate could not tell (a car and a
+  /// motorcycle on the account, no plate read), and kept so they are not
+  /// asked again for every bay they tap.
+  Vehicle? _brought;
+  String? _broughtFor;
+
   Future<void> _refresh() async {
     ref.invalidate(parkingAvailabilityNotifierProvider);
     await Future.wait([
@@ -57,14 +65,43 @@ class _ParkingScreenState extends ConsumerState<ParkingScreen> {
   /// Tells the server the driver parked in [slot] for [session]. Returns whether
   /// it worked, so the sheet knows to close; a refusal is shown here, in the
   /// server's own words (for example, someone else already confirmed that bay).
+  ///
+  /// When the gate could not tell which vehicle came in, the driver is asked
+  /// first, and a bay for the other kind is refused here without asking the
+  /// server.
   Future<bool> _confirmSlot(
     ParkingHistoryEntry session,
     ParkingSlot slot,
+    List<Vehicle> vehicles,
   ) async {
+    Vehicle? brought;
+    final kinds = vehicles.map((v) => v.isMotorcycle).toSet();
+    if (session.cameInOnMotorcycle == null && kinds.length > 1) {
+      brought = _broughtFor == session.logId ? _brought : null;
+      brought ??= await _askWhichVehicle(vehicles);
+      if (brought == null || !mounted) return false;
+      setState(() {
+        _brought = brought;
+        _broughtFor = session.logId;
+      });
+      if (!slot.takes(motorcycle: brought.isMotorcycle)) {
+        showAppMessage(
+          context,
+          '${slot.slotCode} is a ${slot.isMotorcycle ? 'motorcycle' : 'car'} '
+          'bay. Pick a ${brought.isMotorcycle ? 'motorcycle' : 'car'} bay for '
+          '${brought.plateNumber}.',
+          isError: true,
+        );
+        return false;
+      }
+    }
+
     try {
-      await ref
-          .read(parkingRepositoryProvider)
-          .confirmSlot(logId: session.logId, slotId: slot.slotId);
+      await ref.read(parkingRepositoryProvider).confirmSlot(
+        logId: session.logId,
+        slotId: slot.slotId,
+        vehicleId: brought?.id,
+      );
       // Invalidate rather than refresh(): refresh() puts the history into a
       // loading state, which blinks the whole screen for a one-field change.
       ref.invalidate(parkingHistoryNotifierProvider);
@@ -77,6 +114,48 @@ class _ParkingScreenState extends ConsumerState<ParkingScreen> {
       if (mounted) showApiError(context, e);
       return false;
     }
+  }
+
+  Future<Vehicle?> _askWhichVehicle(List<Vehicle> vehicles) {
+    return showModalBottomSheet<Vehicle>(
+      context: context,
+      builder: (sheetContext) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(
+            AppSpacing.lg,
+            AppSpacing.sm,
+            AppSpacing.lg,
+            AppSpacing.lg,
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Which vehicle did you bring?',
+                style: context.text.titleMedium,
+              ),
+              const SizedBox(height: AppSpacing.xs),
+              Text(
+                'The gate did not read your plate, so it does not know. You '
+                'can only confirm a bay for the vehicle you brought.',
+                style: context.text.bodySmall,
+              ),
+              const SizedBox(height: AppSpacing.md),
+              for (final v in vehicles)
+                AppListRow(
+                  icon: v.isMotorcycle
+                      ? Icons.two_wheeler_rounded
+                      : Icons.directions_car_rounded,
+                  title: v.plateNumber,
+                  subtitle: v.isMotorcycle ? 'Motorcycle' : 'Car',
+                  onTap: () => Navigator.of(sheetContext).pop(v),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   Future<void> _findSlot() async {
@@ -104,6 +183,17 @@ class _ParkingScreenState extends ConsumerState<ParkingScreen> {
 
     final userHasCar = vehicles.any((v) => !v.isMotorcycle);
     final userHasMotorcycle = vehicles.any((v) => v.isMotorcycle);
+
+    // What came in for the session the map is about: the gate's record, else
+    // the vehicle the driver said, else the only kind on the account. Null
+    // until the driver is asked, with both kinds and no plate read.
+    final bool? cameInOnMotorcycle = confirmTarget == null
+        ? null
+        : confirmTarget.cameInOnMotorcycle ??
+              (_broughtFor == confirmTarget.logId
+                  ? _brought?.isMotorcycle
+                  : null) ??
+              (userHasCar != userHasMotorcycle ? userHasMotorcycle : null);
 
     final body = AsyncView(
       value: availabilityAsync,
@@ -195,9 +285,10 @@ class _ParkingScreenState extends ConsumerState<ParkingScreen> {
               onConfirmSlot:
                   confirmTarget == null || confirmTarget.slotConfirmed
                   ? null
-                  : (slot) => _confirmSlot(confirmTarget, slot),
+                  : (slot) => _confirmSlot(confirmTarget, slot, vehicles),
               userHasCar: userHasCar,
               userHasMotorcycle: userHasMotorcycle,
+              cameInOnMotorcycle: cameInOnMotorcycle,
             ),
             const SizedBox(height: AppSpacing.lg),
             // Said plainly, because the map looks exactly like a seat picker and
@@ -263,16 +354,6 @@ class _CurrentSessionCard extends StatelessWidget {
             Formatters.sessionRange(entry.entryTime, null, entry.duration),
             style: AppTypography.tabular(context.text.headlineMedium!),
           ),
-          const SizedBox(height: AppSpacing.sm),
-          // No running fee estimate here, on purpose. Nothing in the app knows
-          // the lot's rate — ratePerHourApplied only exists on a payment, which
-          // is created at exit — so any figure here would be the app inventing
-          // a number the server has not agreed to.
-          Text(
-            'You pay when you leave. Tap your card at the gate and the fee '
-            'shows here.',
-            style: context.text.bodySmall,
-          ),
           if (entry.slotConfirmed && entry.slotCode != null) ...[
             const SizedBox(height: AppSpacing.sm),
             Text(
@@ -280,6 +361,12 @@ class _CurrentSessionCard extends StatelessWidget {
               style: context.text.titleSmall,
             ),
           ],
+          const SizedBox(height: AppSpacing.md),
+          // No running fee estimate here, on purpose. Nothing in the app knows
+          // the lot's rate, so any figure would be the app inventing a number
+          // the server has not agreed to. Asking to pay is what gets the real
+          // one.
+          PayAheadAction(session: entry),
         ],
       ),
     );
