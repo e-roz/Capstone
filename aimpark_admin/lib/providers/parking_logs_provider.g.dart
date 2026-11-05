@@ -6,7 +6,7 @@ part of 'parking_logs_provider.dart';
 // RiverpodGenerator
 // **************************************************************************
 
-String _$parkingLogsHash() => r'566767471322f2a0d4c4699dcebee75c3a514fea';
+String _$parkingLogsHash() => r'79ea81600a36c169b4f7f611dd86a51d94ac28a8';
 
 /// See also [parkingLogs].
 @ProviderFor(parkingLogs)
@@ -24,7 +24,7 @@ final parkingLogsProvider = AutoDisposeFutureProvider<ParkingLogPage>.internal(
 // ignore: unused_element
 typedef ParkingLogsRef = AutoDisposeFutureProviderRef<ParkingLogPage>;
 String _$parkingLogsQueryNotifierHash() =>
-    r'3d20915521e6c23b4dc6e4448aaf2f754a3b2a04';
+    r'9b022a7cef83c2cc2fb002a62cba9d5c3f80202e';
 
 /// See also [ParkingLogsQueryNotifier].
 @ProviderFor(ParkingLogsQueryNotifier)

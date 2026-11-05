@@ -6,10 +6,12 @@ part of 'exit_payment_provider.dart';
 // RiverpodGenerator
 // **************************************************************************
 
-String _$waitingToLeaveHash() => r'02bd2af36f09de0a12d9d36dbe03854d59a6fdf4';
+String _$waitingToLeaveHash() => r'59a3e72eb245d0c096db12a32d6d28d50a528a19';
 
 /// Drivers who tapped out, owe this session's fee, and are held at the barrier
-/// until it is settled. Oldest first, since they have waited longest.
+/// until it is settled, oldest first since they have waited longest. Followed in
+/// the same list by drivers still inside whose bill is paid, so the guard can see
+/// that a payment arrived (the card tells the two apart by `waitingToLeave`).
 ///
 /// Copied from [waitingToLeave].
 @ProviderFor(waitingToLeave)
