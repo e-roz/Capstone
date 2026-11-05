@@ -80,7 +80,7 @@ namespace AimPark.API.Services
                     StaffAlertKind.UnconfirmedParking => (
                         NotificationType.Violation,
                         "Possible strike to review",
-                        $"{who} left without confirming their bay {SlotConfirmPolicy.ReviewAt} times in {SlotConfirmPolicy.Window.Days} days. Review their parking history and decide whether to issue a violation.",
+                        $"{who} left without confirming their bay more than once in {SlotConfirmPolicy.Window.Days} days. Review their parking history.",
                         $"/users/{aboutUserId}"),
                     _ => (
                         NotificationType.Incident,
