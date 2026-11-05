@@ -16,7 +16,9 @@ part 'exit_payment_provider.g.dart';
 const waitingToLeaveEvery = Duration(seconds: 3);
 
 /// Drivers who tapped out, owe this session's fee, and are held at the barrier
-/// until it is settled. Oldest first, since they have waited longest.
+/// until it is settled, oldest first since they have waited longest. Followed in
+/// the same list by drivers still inside whose bill is paid, so the guard can see
+/// that a payment arrived (the card tells the two apart by `waitingToLeave`).
 @riverpod
 Future<List<ActiveParkingSession>> waitingToLeave(Ref ref) async {
   // Auto-disposed, so this only runs while a card is on screen.
@@ -26,9 +28,12 @@ Future<List<ActiveParkingSession>> waitingToLeave(Ref ref) async {
   final response = await ref.watch(dioProvider).get(ApiEndpoints.activeParkingSessions);
   final waiting = (response.data as List<dynamic>)
       .map((s) => ActiveParkingSession.fromJson(s as Map<String, dynamic>))
-      .where((s) => s.waitingToLeave)
+      .where((s) => s.waitingToLeave || (s.paymentId != null && s.paymentStatus == 'Paid'))
       .toList()
-    ..sort((a, b) => (a.waitingSince ?? a.entryTime).compareTo(b.waitingSince ?? b.entryTime));
+    ..sort((a, b) {
+      if (a.waitingToLeave != b.waitingToLeave) return a.waitingToLeave ? -1 : 1;
+      return (a.waitingSince ?? a.entryTime).compareTo(b.waitingSince ?? b.entryTime);
+    });
   return waiting;
 }
 

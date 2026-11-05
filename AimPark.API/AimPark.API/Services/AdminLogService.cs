@@ -39,12 +39,21 @@ namespace AimPark.API.Services
             bool? visitor,
             DateTime? from,
             DateTime? to,
-            CancellationToken ct)
+            CancellationToken ct,
+            string? slot = null)
         {
             page = Math.Max(1, page);
             pageSize = Math.Clamp(pageSize, 1, 100);
 
             var query = _db.Set<ParkingLog>().AsNoTracking();
+
+            // The bay the driver confirmed: the only one the page shows. The bay
+            // the gate suggested is a guess, so it does not count here.
+            if (!string.IsNullOrWhiteSpace(slot))
+            {
+                var code = slot.Trim();
+                query = query.Where(l => l.SlotConfirmedAt != null && l.Slot != null && l.Slot.SlotCode == code);
+            }
 
             if (gate is int g)
                 query = query.Where(l => l.Gate == g);

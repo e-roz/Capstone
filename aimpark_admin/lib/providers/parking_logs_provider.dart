@@ -22,6 +22,9 @@ class ParkingLogsQuery {
 
   /// True for visitors only, false for members only, null for both.
   final bool? visitor;
+
+  /// A bay code; matches sessions where the driver confirmed that bay.
+  final String? slot;
   final DateTime? from;
   final DateTime? to;
 
@@ -32,6 +35,7 @@ class ParkingLogsQuery {
     this.gate,
     this.vehicleType,
     this.visitor,
+    this.slot,
     this.from,
     this.to,
   });
@@ -61,6 +65,7 @@ class ParkingLogsQueryNotifier extends _$ParkingLogsQueryNotifier {
     int? gate,
     String? vehicleType,
     bool? visitor,
+    String? slot,
     DateTime? from,
     DateTime? to,
   }) =>
@@ -71,6 +76,7 @@ class ParkingLogsQueryNotifier extends _$ParkingLogsQueryNotifier {
         gate: gate,
         vehicleType: vehicleType,
         visitor: visitor,
+        slot: slot,
         from: from,
         to: to,
       );
@@ -81,6 +87,7 @@ class ParkingLogsQueryNotifier extends _$ParkingLogsQueryNotifier {
         gate: state.gate,
         vehicleType: state.vehicleType,
         visitor: state.visitor,
+        slot: state.slot,
         from: state.from,
         to: state.to,
       );
@@ -90,6 +97,7 @@ class ParkingLogsQueryNotifier extends _$ParkingLogsQueryNotifier {
         gate: state.gate,
         vehicleType: state.vehicleType,
         visitor: state.visitor,
+        slot: state.slot,
         from: state.from,
         to: state.to,
       );
@@ -99,6 +107,7 @@ class ParkingLogsQueryNotifier extends _$ParkingLogsQueryNotifier {
         gate: gate,
         vehicleType: state.vehicleType,
         visitor: state.visitor,
+        slot: state.slot,
         from: state.from,
         to: state.to,
       );
@@ -108,6 +117,7 @@ class ParkingLogsQueryNotifier extends _$ParkingLogsQueryNotifier {
         gate: state.gate,
         vehicleType: vehicleType,
         visitor: state.visitor,
+        slot: state.slot,
         from: state.from,
         to: state.to,
       );
@@ -117,6 +127,17 @@ class ParkingLogsQueryNotifier extends _$ParkingLogsQueryNotifier {
         gate: state.gate,
         vehicleType: state.vehicleType,
         visitor: visitor,
+        slot: state.slot,
+        from: state.from,
+        to: state.to,
+      );
+
+  void setSlot(String? slot) => _set(
+        search: state.search,
+        gate: state.gate,
+        vehicleType: state.vehicleType,
+        visitor: state.visitor,
+        slot: slot,
         from: state.from,
         to: state.to,
       );
@@ -132,6 +153,7 @@ class ParkingLogsQueryNotifier extends _$ParkingLogsQueryNotifier {
         gate: state.gate,
         vehicleType: state.vehicleType,
         visitor: state.visitor,
+        slot: state.slot,
         from: from,
         to: to,
       );
@@ -149,6 +171,7 @@ Future<ParkingLogPage> parkingLogs(Ref ref) async {
     'gate': ?query.gate,
     'vehicleType': ?query.vehicleType,
     'visitor': ?query.visitor,
+    'slot': ?query.slot,
     // UTC, so the server reads the same moment the picker meant.
     'from': ?query.from?.toUtc().toIso8601String(),
     'to': ?query.to?.toUtc().toIso8601String(),

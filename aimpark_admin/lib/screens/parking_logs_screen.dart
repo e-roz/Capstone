@@ -4,8 +4,10 @@ import 'package:intl/intl.dart';
 
 import '../core/utils/csv_export.dart';
 import '../models/parking_log.dart';
+import '../models/parking_slot.dart';
 import '../providers/auth_provider.dart';
 import '../providers/parking_logs_provider.dart';
+import '../providers/parking_provider.dart';
 import '../router/destinations.dart';
 import '../theme/theme.dart';
 import '../widgets/live_refresh.dart';
@@ -28,6 +30,19 @@ const _visitorKinds = [
   AppFilterOption(false, 'Members'),
   AppFilterOption(true, 'Visitors'),
 ];
+
+/// The bays a driver can have confirmed, in code order (M1, M2, ... C10), for
+/// the Bay filter. Empty until the bay list has loaded.
+List<AppFilterOption<String>> _bayOptions(ParkingAvailability? bays) {
+  final codes = {for (final s in bays?.slots ?? const <ParkingSlot>[]) s.slotCode}.toList()
+    ..sort((a, b) {
+      final na = int.tryParse(a.replaceAll(RegExp(r'\D'), '')) ?? 0;
+      final nb = int.tryParse(b.replaceAll(RegExp(r'\D'), '')) ?? 0;
+      final byLetter = a.codeUnitAt(0).compareTo(b.codeUnitAt(0));
+      return byLetter != 0 ? byLetter : na.compareTo(nb);
+    });
+  return [for (final c in codes) AppFilterOption(c, c)];
+}
 
 /// Every vehicle that came in or out, with who, what and when.
 ///
@@ -130,6 +145,15 @@ class _ParkingLogsScreenState extends ConsumerState<ParkingLogsScreen>
               allLabel: 'All',
               onChanged: notifier.setVisitor,
             ),
+            // The guard post never hears of bay confirms, so there is nothing to filter.
+            if (!isSecurity)
+              AppFilterDropdown<String>(
+                label: 'Bay',
+                value: query.slot,
+                options: _bayOptions(ref.watch(parkingSlotsProvider).valueOrNull),
+                allLabel: 'All bays',
+                onChanged: notifier.setSlot,
+              ),
             if (isSecurity)
               AppDayFilter(
                 day: query.from ?? DateTime.now(),

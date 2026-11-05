@@ -1021,7 +1021,10 @@ namespace AimPark.API.Services
                 paymentId = (Guid?)bill.Id,
                 amountDue = bill.AmountDue,
                 durationMinutes = bill.DurationMinutes,
-                collectInCash = true
+                // The driver can pay in the app or in cash. Saying "cash" here made
+                // the guard panel tell the guard to collect cash from someone who was
+                // about to pay on their phone.
+                collectInCash = false
             })
             { StatusCode = 402 };
         }
