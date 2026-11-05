@@ -501,104 +501,180 @@ public class SlotConfirmationTests
     private static readonly SlotConfirmPolicyOptions Policy = new()
     {
         CountFrom = Now.AddDays(-60),
-        StrikesFrom = Now.AddDays(-60),
     };
 
     /// <summary>One unconfirmed hour-long visit a day, starting <paramref name="daysAgo"/> days back.</summary>
-    private static void UnconfirmedVisits(AppDbContext db, User user, int count, int daysAgo = 1)
+    private static List<ParkingLog> UnconfirmedVisits(AppDbContext db, User user, int count, int daysAgo = 1)
     {
+        var logs = new List<ParkingLog>();
         for (var i = 0; i < count; i++)
         {
             var entry = Now.AddDays(-(daysAgo + i));
-            NewLog(db, user, entry, entry.AddHours(1));
+            logs.Add(NewLog(db, user, entry, entry.AddHours(1)));
         }
+        return logs;
+    }
+
+    /// <summary>A plain driver. <see cref="NewUser"/> leaves the role at its default, which is Admin.</summary>
+    private static User NewDriver(AppDbContext db)
+    {
+        var user = NewUser(db);
+        user.Role = UserRole.User;
+        return user;
+    }
+
+    private static User NewAdmin(AppDbContext db)
+    {
+        var admin = new User { Id = Guid.NewGuid(), FullName = "Admin", Email = $"{Guid.NewGuid()}@x.test", Role = UserRole.Admin, CreatedAt = DateTime.UtcNow.AddYears(-1) };
+        db.Add(admin);
+        return admin;
     }
 
     [Fact]
-    public async Task Three_unconfirmed_visits_bring_one_warning()
+    public async Task The_first_unconfirmed_visit_is_only_a_warning()
     {
         var db = NewDb();
-        var user = NewUser(db);
-        UnconfirmedVisits(db, user, 3);
+        var user = NewDriver(db);
+        NewAdmin(db);
+        var visits = UnconfirmedVisits(db, user, 1);
         await db.SaveChangesAsync();
         var notices = new Recorder(db);
-        var staff = new StaffRecorder();
+        var violations = new ViolationRecorder(db);
 
-        var first = await UnconfirmedParkingService.RunAsync(db, notices, staff, Policy, Now, CancellationToken.None);
-        var second = await UnconfirmedParkingService.RunAsync(db, notices, staff, Policy, Now.AddHours(1), CancellationToken.None);
+        var first = await UnconfirmedParkingService.RunAsync(db, notices, violations, Policy, Now, CancellationToken.None);
+        var second = await UnconfirmedParkingService.RunAsync(db, notices, violations, Policy, Now.AddHours(1), CancellationToken.None);
 
         Assert.Equal((1, 0), first);
         Assert.Equal((0, 0), second);
-        Assert.Equal("UnconfirmedWarning", Assert.Single(notices.Sent).Data!["kind"]);
-        Assert.Empty(staff.Raised);
+        var sent = Assert.Single(notices.Sent);
+        Assert.Equal("UnconfirmedWarning", sent.Data!["kind"]);
+        Assert.Equal(visits[0].Id.ToString(), sent.Data["logId"]);
+        Assert.Empty(violations.Issued);
     }
 
     [Fact]
-    public async Task Five_unconfirmed_visits_go_to_an_admin_once_strikes_have_started()
+    public async Task The_second_unconfirmed_visit_is_a_violation_issued_once()
     {
         var db = NewDb();
-        var user = NewUser(db);
-        UnconfirmedVisits(db, user, 5);
+        var user = NewDriver(db);
+        var admin = NewAdmin(db);
+        var visits = UnconfirmedVisits(db, user, 2); // visits[0] is the newer one
         await db.SaveChangesAsync();
-        var staff = new StaffRecorder();
+        var notices = new Recorder(db);
+        var violations = new ViolationRecorder(db);
 
-        var graceOnly = new SlotConfirmPolicyOptions { CountFrom = Policy.CountFrom, StrikesFrom = Now.AddDays(1) };
-        var inGrace = await UnconfirmedParkingService.RunAsync(db, new Recorder(db), staff, graceOnly, Now, CancellationToken.None);
-        Assert.Equal((1, 0), inGrace);
-        Assert.Empty(staff.Raised);
+        var first = await UnconfirmedParkingService.RunAsync(db, notices, violations, Policy, Now, CancellationToken.None);
+        var second = await UnconfirmedParkingService.RunAsync(db, notices, violations, Policy, Now.AddHours(1), CancellationToken.None);
 
-        var after = await UnconfirmedParkingService.RunAsync(db, new Recorder(db), staff, Policy, Now, CancellationToken.None);
-        Assert.Equal((0, 1), after);
-        Assert.Equal((StaffAlertKind.UnconfirmedParking, user.Id), Assert.Single(staff.Raised));
+        Assert.Equal((1, 1), first);
+        Assert.Equal((0, 0), second);
+        var issued = Assert.Single(violations.Issued);
+        Assert.Equal(user.Id, issued.Dto.UserId);
+        Assert.Equal(visits[0].Id, issued.Dto.ParkingLogId);
+        Assert.Equal(admin.Id, issued.AdminUserId);
+
+        var rule = await db.Set<PolicyRule>().SingleAsync();
+        Assert.Equal(SlotConfirmPolicy.RuleTitle, rule.Title);
+        Assert.Equal(20m, rule.DefaultPenaltyAmount);
+        Assert.Equal(SuspensionType.None, rule.DefaultSuspensionType);
+        Assert.Equal(rule.Id, issued.Dto.PolicyRuleId);
     }
 
     [Fact]
-    public async Task Confirmed_short_visitor_todays_and_old_visits_are_not_counted()
+    public async Task A_deactivated_rule_switches_the_violations_off()
     {
         var db = NewDb();
-        var user = NewUser(db);
+        var user = NewDriver(db);
+        NewAdmin(db);
+        db.Add(new PolicyRule { Title = SlotConfirmPolicy.RuleTitle, IsActive = false });
+        UnconfirmedVisits(db, user, 2);
+        await db.SaveChangesAsync();
+        var violations = new ViolationRecorder(db);
+
+        var result = await UnconfirmedParkingService.RunAsync(db, new Recorder(db), violations, Policy, Now, CancellationToken.None);
+
+        Assert.Equal((1, 0), result);
+        Assert.Empty(violations.Issued);
+    }
+
+    [Fact]
+    public async Task Nothing_happens_before_the_policy_starts()
+    {
+        var db = NewDb();
+        var user = NewDriver(db);
+        NewAdmin(db);
+        UnconfirmedVisits(db, user, 3);
+        await db.SaveChangesAsync();
+        var notices = new Recorder(db);
+        var violations = new ViolationRecorder(db);
+
+        var off = await UnconfirmedParkingService.RunAsync(db, notices, violations, new SlotConfirmPolicyOptions(), Now, CancellationToken.None);
+        var notYet = await UnconfirmedParkingService.RunAsync(db, notices, violations, new SlotConfirmPolicyOptions { CountFrom = Now }, Now, CancellationToken.None);
+
+        Assert.Equal((0, 0), off);
+        Assert.Equal((0, 0), notYet);
+        Assert.Empty(notices.Sent);
+        Assert.Empty(violations.Issued);
+    }
+
+    [Fact]
+    public async Task Confirmed_short_visitor_and_old_visits_are_not_counted_but_one_that_just_ended_is()
+    {
+        var db = NewDb();
+        var user = NewDriver(db);
         var bay = NewSlot(db, "C1");
         var day = Now.AddDays(-2);
         NewLog(db, user, day, day.AddHours(1), slot: bay, confirmed: day.AddMinutes(5)); // confirmed
-        NewLog(db, user, day, day.AddHours(1), slot: bay, confirmed: day.AddHours(2));   // confirmed late
         NewLog(db, user, day, day.AddMinutes(5));                                        // short stay
-        NewLog(db, user, Now.AddHours(-2), Now.AddHours(-1));                            // today: can still confirm
         NewLog(db, user, Now.AddDays(-40), Now.AddDays(-40).AddHours(1));                // outside the window
         db.Add(new ParkingLog { Id = Guid.NewGuid(), EntryTime = day, ExitTime = day.AddHours(1), VisitorPassId = Guid.NewGuid() });
         await db.SaveChangesAsync();
 
-        var counts = await UnconfirmedParkingService.CountAsync(db, Policy, Now, CancellationToken.None);
+        Assert.Empty(await UnconfirmedParkingService.CountAsync(db, Policy, Now, CancellationToken.None));
 
-        Assert.Empty(counts);
-    }
-
-    [Fact]
-    public async Task Nothing_counts_before_the_policy_starts()
-    {
-        var db = NewDb();
-        var user = NewUser(db);
-        UnconfirmedVisits(db, user, 5);
+        // Confirming is closed once the car has left, so a session that has just ended is final.
+        NewLog(db, user, Now.AddHours(-2), Now.AddHours(-1));
         await db.SaveChangesAsync();
 
-        var off = await UnconfirmedParkingService.CountAsync(db, new SlotConfirmPolicyOptions(), Now, CancellationToken.None);
-        var notYet = await UnconfirmedParkingService.CountAsync(db, new SlotConfirmPolicyOptions { CountFrom = Now }, Now, CancellationToken.None);
-
-        Assert.Empty(off);
-        Assert.Empty(notYet);
+        var counts = await UnconfirmedParkingService.CountAsync(db, Policy, Now, CancellationToken.None);
+        Assert.Equal(1, counts[user.Id]);
     }
 
-    private sealed class StaffRecorder : IStaffAlerts
+    private sealed class ViolationRecorder(AppDbContext db) : IViolationService
     {
-        public List<(StaffAlertKind Kind, Guid UserId)> Raised { get; } = [];
+        public List<(IssueViolationDto Dto, Guid AdminUserId)> Issued { get; } = [];
 
-        public Task RaiseAsync(StaffAlertKind kind, Guid aboutUserId, CancellationToken ct)
+        public async Task<ActionResult<object>> IssueAsync(IssueViolationDto dto, Guid adminUserId, CancellationToken ct)
         {
-            Raised.Add((kind, aboutUserId));
-            return Task.CompletedTask;
+            Issued.Add((dto, adminUserId));
+            db.Add(new Violation
+            {
+                Id = Guid.NewGuid(),
+                UserId = dto.UserId,
+                PolicyRuleId = dto.PolicyRuleId,
+                ParkingLogId = dto.ParkingLogId,
+                Description = dto.Description,
+                IssuedByUserId = adminUserId,
+            });
+            await db.SaveChangesAsync(ct);
+            return new OkObjectResult(new { message = "Violation issued." });
         }
+
+        public Task<ActionResult<List<PolicyRuleResponse>>> ListPolicyRulesAsync(CancellationToken ct) => throw new NotImplementedException();
+        public Task<ActionResult<object>> CreatePolicyRuleAsync(UpsertPolicyRuleDto dto, CancellationToken ct) => throw new NotImplementedException();
+        public Task<ActionResult<object>> UpdatePolicyRuleAsync(Guid ruleId, UpsertPolicyRuleDto dto, CancellationToken ct) => throw new NotImplementedException();
+        public Task<ActionResult<ViolationListResponse>> GetMyViolationsAsync(Guid userId, int page, int pageSize, CancellationToken ct) => throw new NotImplementedException();
+        public Task<ActionResult<ViolationDetailResponse>> GetMyViolationDetailAsync(Guid userId, Guid violationId, CancellationToken ct) => throw new NotImplementedException();
+        public Task<ActionResult<ViolationListResponse>> ListAllAsync(string? status, string? search, Guid? userId, Guid? ruleId, int page, int pageSize, CancellationToken ct) => throw new NotImplementedException();
+        public Task<ActionResult<ViolationDetailResponse>> GetDetailForAdminAsync(Guid violationId, CancellationToken ct) => throw new NotImplementedException();
+        public Task<ActionResult<object>> DismissAsync(Guid violationId, Guid adminUserId, ViolationReasonDto dto, CancellationToken ct) => throw new NotImplementedException();
+        public Task<ActionResult<object>> MakeAccountableAsync(Guid violationId, Guid adminUserId, ViolationReasonDto dto, CancellationToken ct) => throw new NotImplementedException();
+        public Task<int> PromoteLapsedAsync(DateTime now, CancellationToken ct) => throw new NotImplementedException();
+        public Task<ActionResult<object>> SubmitAppealAsync(Guid userId, Guid violationId, SubmitAppealDto dto, CancellationToken ct) => throw new NotImplementedException();
+        public Task<ActionResult<ViolationAppealListResponse>> ListAppealsAsync(string? status, int page, int pageSize, CancellationToken ct) => throw new NotImplementedException();
+        public Task<ActionResult<object>> DecideAppealAsync(Guid appealId, Guid adminUserId, DecideAppealDto dto, CancellationToken ct) => throw new NotImplementedException();
     }
 
-    /// <summary>Writes the notification row the way the real service does, so the "already sent" check has something to find.</summary>
     private sealed class Recorder(AppDbContext db) : INotificationService
     {
         public List<(Guid UserId, IDictionary<string, string>? Data)> Sent { get; } = [];

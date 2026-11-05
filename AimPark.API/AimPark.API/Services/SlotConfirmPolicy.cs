@@ -34,11 +34,16 @@ namespace AimPark.API.Services
         /// </summary>
         public static readonly TimeSpan ShortStay = TimeSpan.FromMinutes(10);
 
-        /// <summary>Unconfirmed sessions in <see cref="Window"/> that bring a warning.</summary>
-        public const int WarnAt = 3;
+        /// <summary>
+        /// Unconfirmed sessions in <see cref="Window"/> that only bring a warning.
+        /// Every one after the last warning is a violation.
+        /// </summary>
+        public const int Warnings = 1;
 
-        /// <summary>Unconfirmed sessions in <see cref="Window"/> that are sent to an admin as a possible strike.</summary>
-        public const int ReviewAt = 5;
+        /// <summary>Title of the policy rule behind the automatic violation. Created on first use.</summary>
+        public const string RuleTitle = "Left without confirming bay";
+
+        public const decimal PenaltyAmount = 20m;
 
         public static readonly TimeSpan Window = TimeSpan.FromDays(30);
 
@@ -60,13 +65,6 @@ namespace AimPark.API.Services
 
             return exit is null ? BayConfirmState.NotYet : BayConfirmState.Unconfirmed;
         }
-
-        /// <summary>
-        /// A driver may still confirm until midnight of the day they came in, so
-        /// an unconfirmed session is only final, and only counted, after that.
-        /// </summary>
-        public static bool IsFinal(DateTime entry, DateTime now)
-            => ManilaDay(now) > ManilaDay(entry);
 
         public static DateOnly ManilaDay(DateTime utc)
             => DateOnly.FromDateTime(DateTime.SpecifyKind(utc, DateTimeKind.Utc).Add(Manila));
