@@ -73,7 +73,8 @@ namespace AimPark.API.Controllers
         /// Vehicle entry and exit as recorded at the gates, most recent first.
         /// Optional filters: `search` (name or plate), `gate`, `vehicleType`,
         /// `visitor` (true for visitors only, false for members only), and an
-        /// entry-time range `from` to `to` (both inclusive).
+        /// entry-time range `from` to `to` (both inclusive). `slot` is a bay code and
+        /// matches sessions where the driver confirmed that bay.
         /// </summary>
         [HttpGet("parking")]
         public Task<ActionResult<RfidAccessLogListResponse>> ListParkingLogs(
@@ -85,8 +86,9 @@ namespace AimPark.API.Controllers
             [FromQuery] bool? visitor = null,
             [FromQuery] DateTime? from = null,
             [FromQuery] DateTime? to = null,
+            [FromQuery] string? slot = null,
             CancellationToken ct = default)
-            => _logService.ListRfidAccessAsync(page, pageSize, search, gate, vehicleType, visitor, from, to, ct);
+            => _logService.ListRfidAccessAsync(page, pageSize, search, gate, vehicleType, visitor, from, to, ct, slot);
 
         /// <summary>
         /// Account activity — logins, failed logins, registrations and status

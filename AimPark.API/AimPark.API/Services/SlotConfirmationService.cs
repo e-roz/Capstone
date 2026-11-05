@@ -71,11 +71,11 @@ namespace AimPark.API.Services
 
             var now = DateTime.UtcNow;
 
-            // An open session can always be confirmed. After leaving, the driver
-            // has until the end of the day they came in: past that, nobody
-            // remembers reliably and a confirm would only add noise.
-            if (log.ExitTime is not null && ManilaDay(now) != ManilaDay(log.EntryTime))
-                return Refuse(SlotConfirmResult.TooLate, "That session ended on an earlier day, so the bay can no longer be confirmed.");
+            // Only a driver still inside can confirm. Once the car has left, the
+            // session stands as it is: a driver who left without confirming has
+            // not confirmed, and cannot make up for it afterwards.
+            if (log.ExitTime is not null)
+                return Refuse(SlotConfirmResult.TooLate, "You've already left, so the bay can no longer be confirmed. Confirm your bay before you drive out next time.");
 
             if (await HeldByAnotherAsync(log, slot.Id, ct))
                 return Refuse(SlotConfirmResult.SlotTaken, $"{slot.SlotCode} is already confirmed by someone else. Check the bay and try again.");

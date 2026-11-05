@@ -373,7 +373,7 @@ public class SlotConfirmationTests
     }
 
     [Fact]
-    public async Task After_leaving_the_same_day_a_confirm_is_accepted_and_marked_late()
+    public async Task After_leaving_even_the_same_day_a_confirm_is_too_late()
     {
         var db = NewDb();
         var user = NewUser(db);
@@ -384,8 +384,8 @@ public class SlotConfirmationTests
 
         var result = await Confirm(db, user.Id, log.Id, bay.Id);
 
-        Assert.Equal(SlotConfirmResult.Confirmed, result.Result);
-        Assert.True(result.Late);
+        Assert.Equal(SlotConfirmResult.TooLate, result.Result);
+        Assert.Null((await db.Set<ParkingLog>().AsNoTracking().SingleAsync()).SlotConfirmedAt);
     }
 
     [Fact]

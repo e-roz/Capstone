@@ -19,7 +19,8 @@ namespace AimPark.API.Interfaces
             bool? visitor,
             DateTime? from,
             DateTime? to,
-            CancellationToken ct);
+            CancellationToken ct,
+            string? slot = null);
 
         Task<ActionResult<UserActivityLogListResponse>> ListUserActivityAsync(
             int page,

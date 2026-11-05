@@ -61,13 +61,16 @@ class WaitingToLeaveCard extends ConsumerWidget {
               ),
             )
           : const SizedBox.shrink(),
-      data: (rows) {
-        if (rows.isEmpty && !alwaysShow) return const SizedBox.shrink();
+      data: (all) {
+        // Held drivers first, then those who have paid and are free to go.
+        final rows = all.where((s) => s.waitingToLeave).toList();
+        final paid = all.where((s) => !s.waitingToLeave).toList();
+        if (rows.isEmpty && paid.isEmpty && !alwaysShow) return const SizedBox.shrink();
 
         return AppSectionCard(
           title: 'Waiting to leave',
           subtitle: rows.isEmpty
-              ? 'Nobody is held at the exit.'
+              ? (paid.isEmpty ? 'Nobody is held at the exit.' : 'Nobody is held. Paid drivers are listed below.')
               : 'Held at the barrier until the fee is paid. Updates every few seconds.',
           icon: Icons.logout,
           actions: [
@@ -79,6 +82,7 @@ class WaitingToLeaveCard extends ConsumerWidget {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               for (final s in rows) _Row(session: s),
+              for (final s in paid) _PaidRow(session: s),
               if (cash != null && (alwaysShow || cash.count > 0)) ...[
                 if (rows.isNotEmpty) const Divider(height: AppSpacing.x4),
                 _CashLine(cash: cash),
@@ -114,6 +118,45 @@ class _CashLine extends StatelessWidget {
           style: text.bodySmall?.copyWith(fontWeight: FontWeight.w600),
         ),
       ],
+    );
+  }
+}
+
+/// A driver still inside whose fee is paid: nothing for the guard to do, but it
+/// shows that the payment reached the gate.
+class _PaidRow extends StatelessWidget {
+  const _PaidRow({required this.session});
+
+  final ActiveParkingSession session;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = context.tokens;
+    final text = Theme.of(context).textTheme;
+    final where = [
+      if (session.plateNumber != null) session.plateNumber!,
+      if (session.gate != null) 'Gate ${session.gate}',
+    ].join(' · ');
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: AppSpacing.x2),
+      child: Row(
+        children: [
+          Icon(Icons.check_circle_outline, size: AppSizes.iconSm, color: t.status.success.fg),
+          const SizedBox(width: AppSpacing.x2),
+          Expanded(
+            child: Text(
+              where.isEmpty ? session.userName : '${session.userName} · $where',
+              style: text.bodyMedium,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+          Text(
+            'Paid ${_peso.format(session.amountDue ?? 0)} · can leave',
+            style: text.bodySmall?.copyWith(color: t.status.success.fg),
+          ),
+        ],
+      ),
     );
   }
 }
