@@ -209,6 +209,8 @@ builder.Services.AddScoped<IAdminAuditLogService, AdminAuditLogService>();
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<IAdminLogService, AdminLogService>();
 builder.Services.AddScoped<IUserActivityLogger, UserActivityLogger>();
+builder.Services.AddScoped<GuardPostFeed>();
+builder.Services.AddScoped<ISensorFeed>(sp => sp.GetRequiredService<GuardPostFeed>());
 builder.Services.AddScoped<IParkingSlotService, ParkingSlotService>();
 builder.Services.AddScoped<IUserHistoryService, UserHistoryService>();
 builder.Services.Configure<GateOptions>(builder.Configuration.GetSection(GateOptions.Section));

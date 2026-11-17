@@ -5,6 +5,7 @@ class ParkingSlot {
     required this.status,
     this.gate = 1,
     this.vehicleType,
+    this.claimed = false,
   });
 
   final String slotId;
@@ -12,6 +13,20 @@ class ParkingSlot {
   final int gate;
   final String? vehicleType;
   final String status;
+
+  /// Another driver still inside has already confirmed this bay.
+  final bool claimed;
+
+  /// The sensor sees a vehicle here, or cannot tell (No signal). These are
+  /// the bays a driver may confirm; the server checks the same thing.
+  bool get sensorAllowsConfirm {
+    final s = status.toLowerCase();
+    return s == 'occupied' || s == 'nosignal';
+  }
+
+  /// The sensor reads the bay as empty. A driver who is really parked here
+  /// can still confirm it by saying the sensor missed them.
+  bool get sensorReadsEmpty => status.toLowerCase() == 'available';
 
   bool get isMotorcycle => (vehicleType ?? '').toLowerCase().contains('motor');
 
@@ -27,6 +42,7 @@ class ParkingSlot {
       gate: (json['gate'] as num?)?.toInt() ?? 1,
       vehicleType: json['vehicleType'] as String?,
       status: json['status'] as String,
+      claimed: json['claimed'] as bool? ?? false,
     );
   }
 }
@@ -41,17 +57,21 @@ abstract final class AllocationResult {
 }
 
 class SlotOption {
-  const SlotOption({required this.slotId, required this.slotCode, required this.gate});
+  const SlotOption({
+    required this.slotId,
+    required this.slotCode,
+    required this.gate,
+  });
 
   final String slotId;
   final String slotCode;
   final int gate;
 
   factory SlotOption.fromJson(Map<String, dynamic> json) => SlotOption(
-        slotId: json['slotId'] as String,
-        slotCode: json['slotCode'] as String,
-        gate: (json['gate'] as num?)?.toInt() ?? 1,
-      );
+    slotId: json['slotId'] as String,
+    slotCode: json['slotCode'] as String,
+    gate: (json['gate'] as num?)?.toInt() ?? 1,
+  );
 }
 
 class SlotRecommendation {

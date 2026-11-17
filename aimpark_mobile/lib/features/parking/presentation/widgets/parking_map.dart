@@ -70,9 +70,15 @@ enum BayState {
 /// A bay is a button. Tapping one opens a small sheet saying what it is.
 ///
 /// When [onConfirmSlot] is given the sheet also offers to record that the driver
-/// parked there. A bay the sensor calls taken stays confirmable: sensors
-/// sometimes report a car that is not there, and the driver's word is what the
-/// guards rely on.
+/// parked there. Only a bay the sensor sees a vehicle in (or cannot read: No
+/// signal), that no other driver has claimed, can be confirmed, so the driver's
+/// word is backed by the sensor's. Every other bay is faded while the driver
+/// still has to confirm, so the ones they can pick stand out.
+///
+/// A sensor can miss a car. Tapping a bay that reads empty still opens its
+/// sheet, which offers "My car is here — sensor missed it": that confirms the
+/// bay and reports the sensor to the parking office, so a broken sensor never
+/// costs the driver a warning or a fine.
 ///
 /// If the account has only one kind of vehicle, bays for the other kind are
 /// dimmed rather than hidden — the lot stays whole and the driver's own bays are
@@ -101,9 +107,12 @@ class ParkingMap extends StatelessWidget {
   /// The bay the driver has said they are parked in, if they have.
   final String? confirmedCode;
 
-  /// Records that the driver parked in the given bay. Returns whether it
-  /// worked; the caller shows any error itself. Null hides the confirm button.
-  final Future<bool> Function(ParkingSlot slot)? onConfirmSlot;
+  /// Records that the driver parked in the given bay. The flag is true when the
+  /// driver says the sensor missed them (the bay reads empty). Returns whether
+  /// it worked; the caller shows any error itself. Null hides the confirm
+  /// button, and the map is only for looking.
+  final Future<bool> Function(ParkingSlot slot, bool sensorMissed)?
+  onConfirmSlot;
 
   final bool userHasCar;
   final bool userHasMotorcycle;
@@ -127,15 +136,36 @@ class ParkingMap extends StatelessWidget {
   bool? get _kind =>
       cameInOnMotorcycle ?? (_knowsOneKind ? userHasMotorcycle : null);
 
+  /// The driver still has to say which bay they are in.
+  bool get _confirming => onConfirmSlot != null;
+
+  /// A bay this driver can confirm straight away: the sensor sees a vehicle in
+  /// it (or cannot tell), nobody else has claimed it, and it is their kind.
+  bool _canPick(ParkingSlot slot) {
+    final kind = _kind;
+    return slot.sensorAllowsConfirm &&
+        !slot.claimed &&
+        (kind == null || slot.takes(motorcycle: kind));
+  }
+
   bool _isDimmed(ParkingSlot slot, BayState state) {
+    // A bay that is already greyed out — out of service, or silent — is not faded
+    // a second time. Two fades on top of each other and the bay is gone, which
+    // is exactly what happened when the whole lot went quiet.
+    if (state != BayState.free && state != BayState.taken) return false;
+    // While confirming, everything but the bays the driver can pick is faded.
+    if (_confirming) return !_canPick(slot);
     final kind = _kind;
     if (kind == null) return false;
-    // A bay that is already greyed out — out of service, or silent — is not faded
-    // a second time for being the wrong kind. Two fades on top of each other and
-    // the bay is gone, which is exactly what happened when the whole lot went
-    // quiet.
-    if (state != BayState.free && state != BayState.taken) return false;
     return !slot.takes(motorcycle: kind);
+  }
+
+  /// Set to `car` or `motorcycle` when this bay is for the other kind from the
+  /// only kind of vehicle on the account.
+  String? _wrongKindFor(ParkingSlot slot) {
+    final kind = _kind;
+    if (kind == null || slot.takes(motorcycle: kind)) return null;
+    return kind ? 'motorcycle' : 'car';
   }
 
   void _openSheet(BuildContext context, ParkingSlot slot, BayState state) {
@@ -145,10 +175,9 @@ class ParkingMap extends StatelessWidget {
         slot: slot,
         state: state,
         onConfirm: onConfirmSlot,
-        wrongKindFor: _isDimmed(slot, state)
-            ? (_kind! ? 'motorcycle' : 'car')
-            : null,
-        refusedFor: onConfirmSlot != null &&
+        wrongKindFor: _wrongKindFor(slot),
+        refusedFor:
+            onConfirmSlot != null &&
                 cameInOnMotorcycle != null &&
                 !slot.takes(motorcycle: cameInOnMotorcycle!)
             ? (cameInOnMotorcycle! ? 'motorcycle' : 'car')
@@ -767,14 +796,25 @@ class _BaySheet extends StatelessWidget {
   final BayState state;
 
   /// Null when the map is only for looking.
-  final Future<bool> Function(ParkingSlot slot)? onConfirm;
+  final Future<bool> Function(ParkingSlot slot, bool sensorMissed)? onConfirm;
 
-  /// Out-of-service bays cannot be parked in, so there is nothing to confirm.
-  bool get _canConfirm =>
+  /// Could this driver confirm this bay at all: confirming, the right kind,
+  /// not already theirs, and not someone else's.
+  bool get _mayConfirmHere =>
       onConfirm != null &&
       refusedFor == null &&
-      state != BayState.outOfService &&
+      !slot.claimed &&
       state != BayState.confirmed;
+
+  /// The sensor sees a vehicle (or cannot tell): a plain confirm.
+  bool get _canConfirm => _mayConfirmHere && slot.sensorAllowsConfirm;
+
+  /// The sensor reads the bay as empty: only "the sensor missed me".
+  bool get _canReportMissed => _mayConfirmHere && slot.sensorReadsEmpty;
+
+  /// Someone else is in this bay by their own word.
+  bool get _claimedByOther =>
+      onConfirm != null && slot.claimed && state != BayState.confirmed;
 
   /// Set to `car` or `motorcycle` when the vehicle that came in is the other
   /// kind from this bay, so it cannot be confirmed here.
@@ -796,12 +836,17 @@ class _BaySheet extends StatelessWidget {
   };
 
   String get _message => switch (state) {
+    _ when _claimedByOther =>
+      'Another driver has already confirmed this bay. If you are parked here, '
+          'ask the parking office.',
     // Asking where the driver parked: the sentence is about them, not the bay.
-    BayState.free when _canConfirm =>
-      'Parked here? Confirm it so the guards know which bay is yours.',
+    _ when _canReportMissed =>
+      "The sensor doesn't see a vehicle here, so this bay can't be confirmed "
+          'the usual way. If you are parked here, the sensor missed you: '
+          "report it below and we'll confirm it as your bay.",
     BayState.taken when _canConfirm =>
-      'The sensor says a vehicle is here. If it is yours, confirm it — the '
-          'sensor is sometimes wrong.',
+      'The sensor sees a vehicle here. If it is yours, confirm it so the '
+          'guards know which bay is yours.',
     BayState.noSignal when _canConfirm =>
       "This bay's sensor is not reporting. If you are parked here, confirm it.",
     BayState.free =>
@@ -878,6 +923,13 @@ class _BaySheet extends StatelessWidget {
             if (_canConfirm) ...[
               const SizedBox(height: AppSpacing.md),
               _ConfirmBayButton(slot: slot, onConfirm: onConfirm!),
+            ] else if (_canReportMissed) ...[
+              const SizedBox(height: AppSpacing.md),
+              _ConfirmBayButton(
+                slot: slot,
+                onConfirm: onConfirm!,
+                sensorMissed: true,
+              ),
             ],
             if (refusedFor != null) ...[
               const SizedBox(height: AppSpacing.md),
@@ -911,10 +963,18 @@ class _BaySheet extends StatelessWidget {
 /// Asks first: a confirm is final and makes the driver answerable for the
 /// bay, and the bays are small enough on a phone to tap the wrong one.
 class _ConfirmBayButton extends StatefulWidget {
-  const _ConfirmBayButton({required this.slot, required this.onConfirm});
+  const _ConfirmBayButton({
+    required this.slot,
+    required this.onConfirm,
+    this.sensorMissed = false,
+  });
 
   final ParkingSlot slot;
-  final Future<bool> Function(ParkingSlot slot) onConfirm;
+  final Future<bool> Function(ParkingSlot slot, bool sensorMissed) onConfirm;
+
+  /// "My car is here — sensor missed it": confirms a bay that reads empty and
+  /// reports the sensor.
+  final bool sensorMissed;
 
   @override
   State<_ConfirmBayButton> createState() => _ConfirmBayButtonState();
@@ -925,13 +985,21 @@ class _ConfirmBayButtonState extends State<_ConfirmBayButton> {
 
   Future<void> _run() async {
     final code = widget.slot.slotCode;
+    final missed = widget.sensorMissed;
     final sure = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        title: Text('Confirm bay $code?'),
+        title: Text(
+          missed ? 'Report sensor and confirm $code?' : 'Confirm bay $code?',
+        ),
         content: Text(
-          "You'll be responsible for $code until you leave. This can't be "
-          'changed after you confirm.',
+          missed
+              ? "The sensor doesn't see a vehicle in $code. We'll confirm it "
+                    'as your bay and ask the parking office to check the '
+                    "sensor. You'll be responsible for $code until you leave, "
+                    "and this can't be changed after you confirm."
+              : "You'll be responsible for $code until you leave. This can't "
+                    'be changed after you confirm.',
         ),
         actions: [
           TextButton(
@@ -950,7 +1018,7 @@ class _ConfirmBayButtonState extends State<_ConfirmBayButton> {
     setState(() => _busy = true);
     var ok = false;
     try {
-      ok = await widget.onConfirm(widget.slot);
+      ok = await widget.onConfirm(widget.slot, widget.sensorMissed);
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -962,8 +1030,17 @@ class _ConfirmBayButtonState extends State<_ConfirmBayButton> {
     return SizedBox(
       width: double.infinity,
       child: AppButton(
-        label: 'Confirm parking slot',
-        icon: const Icon(Icons.check_circle_outline_rounded),
+        label: widget.sensorMissed
+            ? 'My car is here — sensor missed it'
+            : 'Confirm parking slot',
+        style: widget.sensorMissed
+            ? AppButtonStyle.secondary
+            : AppButtonStyle.primary,
+        icon: Icon(
+          widget.sensorMissed
+              ? Icons.sensors_off_rounded
+              : Icons.check_circle_outline_rounded,
+        ),
         isLoading: _busy,
         onPressed: _busy ? null : _run,
       ),

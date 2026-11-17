@@ -15,27 +15,16 @@ namespace AimPark.API.Services
     {
         private readonly IRepository<ParkingSlot> _slots;
         private readonly AppDbContext _db;
-        private readonly SiteLinkState _link;
-        private readonly SiteOptions _site;
-
-        /// <summary>
-        /// Without a word from the guard post for this long, the bays are not
-        /// trusted. The guard post reports every 15 s; the admin map uses the
-        /// same 60 s.
-        /// </summary>
-        private static readonly TimeSpan GuardPostSilentAfter = TimeSpan.FromSeconds(60);
-        private static readonly DateTime ProcessStartedAt = DateTime.UtcNow;
+        private readonly GuardPostFeed _feed;
 
         public ParkingSlotService(
             IRepository<ParkingSlot> slots,
             AppDbContext db,
-            SiteLinkState link,
-            IOptions<SiteOptions> site)
+            GuardPostFeed feed)
         {
             _slots = slots;
             _db = db;
-            _link = link;
-            _site = site.Value;
+            _feed = feed;
         }
 
         // GET /api/parking/slots — what the mobile app reads.
@@ -50,27 +39,11 @@ namespace AimPark.API.Services
         {
             var response = await BuildResponseAsync(_db.Set<ParkingSlot>().AsNoTracking(), ct);
 
-            // At the guard post the sensors are read directly; there is no link
-            // to be silent.
-            if (!_site.IsCloud) return response;
-
-            var link = _link.Snapshot();
-            var heardAt = new[] { link.LastPushAt, link.HealthAt }.Max();
-            response.LastHeardAt = heardAt;
+            response.LastHeardAt = _feed.LastHeardAt;
 
             // The sensors are read by the guard post, so no guard post means no
-            // sensor feed and the stored bays are only a memory. What the cloud
-            // has heard is held in memory, and a restart forgets it — which used
-            // to read as "never heard, so maybe there is no guard post" and put
-            // the last known "9 free" back on screen with the hardware dead. The
-            // guard post reports at least every 15 seconds, so if the cloud has
-            // been up longer than the silence window and heard nothing, it is off.
-            var silent = heardAt is null
-                ? _site.TreatUnheardGuardPostAsSilent
-                  || DateTime.UtcNow - ProcessStartedAt > GuardPostSilentAfter
-                : DateTime.UtcNow - heardAt.Value > GuardPostSilentAfter;
-
-            if (!silent) return response;
+            // sensor feed and the stored bays are only a memory. See GuardPostFeed.
+            if (!_feed.IsSilent) return response;
 
             foreach (var slot in response.Slots)
                 slot.Status = ParkingSlotStatus.NoSignal.ToString();
@@ -318,7 +291,11 @@ namespace AimPark.API.Services
                     SlotCode = s.SlotCode,
                     Gate = s.Gate,
                     VehicleType = s.VehicleType == null ? null : s.VehicleType.ToString(),
-                    Status = s.Status.ToString()
+                    Status = s.Status.ToString(),
+                    // A driver still inside has confirmed this bay. Only a yes or
+                    // no: whose car it is stays with the admin panel.
+                    Claimed = _db.Set<ParkingLog>().Any(l =>
+                        l.SlotId == s.Id && l.SlotConfirmedAt != null && l.ExitTime == null)
                 })
                 .ToListAsync(ct);
 

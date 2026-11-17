@@ -49,5 +49,11 @@ namespace AimPark.API.DTOs
         public int Gate { get; set; }
         public string? VehicleType { get; set; }
         public string Status { get; set; } = string.Empty;
+
+        /// <summary>
+        /// Another driver still inside has confirmed this bay, so it cannot be
+        /// confirmed again. The phone greys it out.
+        /// </summary>
+        public bool Claimed { get; set; }
     }
 }
