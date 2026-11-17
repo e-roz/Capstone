@@ -3,7 +3,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/theme/theme.dart';
 import '../../../../core/utils/app_flushbar.dart';
-import '../../../../core/utils/formatters.dart';
 import '../../../../core/widgets/widgets.dart';
 import '../../../dashboard/presentation/widgets/home_attention_cards.dart';
 import '../../../vehicles/data/models/vehicle.dart';
@@ -14,6 +13,8 @@ import '../providers/parking_history_provider.dart';
 import '../widgets/availability_freshness.dart';
 import '../widgets/availability_hero.dart';
 import '../widgets/parking_map.dart';
+import '../widgets/live_fee_card.dart';
+import '../widgets/parked_clock.dart';
 import '../widgets/pay_ahead_action.dart';
 
 /// The Parking tab: how full the lot is, where you are in it, and the lot itself.
@@ -350,10 +351,7 @@ class _CurrentSessionCard extends StatelessWidget {
             ],
           ),
           const SizedBox(height: AppSpacing.sm),
-          Text(
-            Formatters.sessionRange(entry.entryTime, null, entry.duration),
-            style: AppTypography.tabular(context.text.headlineMedium!),
-          ),
+          ParkedClock(entryTime: entry.entryTime),
           if (entry.slotConfirmed && entry.slotCode != null) ...[
             const SizedBox(height: AppSpacing.sm),
             Text(
@@ -362,10 +360,10 @@ class _CurrentSessionCard extends StatelessWidget {
             ),
           ],
           const SizedBox(height: AppSpacing.md),
-          // No running fee estimate here, on purpose. Nothing in the app knows
-          // the lot's rate, so any figure would be the app inventing a number
-          // the server has not agreed to. Asking to pay is what gets the real
-          // one.
+          // The fee is the server's, never worked out here: it prices the stay
+          // the same way as pay-ahead and the exit gate.
+          LiveFeeCard(session: entry),
+          const SizedBox(height: AppSpacing.md),
           PayAheadAction(session: entry),
         ],
       ),

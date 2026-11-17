@@ -23,5 +23,11 @@ namespace AimPark.API.Interfaces
         /// it with, so they can pay before driving to the gate.
         /// </summary>
         Task<ActionResult<PayAheadResponse>> PayAheadAsync(Guid userId, Guid logId, CancellationToken ct);
+
+        /// <summary>
+        /// What the driver's open session costs right now, without raising a
+        /// bill. Polled by the app's live fee card.
+        /// </summary>
+        Task<ActionResult<LiveFeeResponse>> GetLiveFeeAsync(Guid userId, Guid logId, CancellationToken ct);
     }
 }

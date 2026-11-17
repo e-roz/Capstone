@@ -65,6 +65,14 @@ namespace AimPark.API.Controllers
         }
 
         /// <summary>
+        /// What the open session costs right now, for the app's live fee card.
+        /// Read only: polling it never raises or reprices a bill.
+        /// </summary>
+        [HttpGet("sessions/{logId:guid}/live-fee")]
+        public Task<ActionResult<LiveFeeResponse>> LiveFee(Guid logId, CancellationToken ct)
+            => _parkingHistoryService.GetLiveFeeAsync(GetUserId(), logId, ct);
+
+        /// <summary>
         /// The driver wants to pay while still parked. Returns the bill to pay,
         /// priced up to now; once it is paid the exit opens on a tap for a short
         /// while.

@@ -41,6 +41,9 @@ class ApiEndpoints {
   static String parkingPayAhead(String logId) =>
       '/api/parking/sessions/$logId/pay-ahead';
 
+  static String parkingLiveFee(String logId) =>
+      '/api/parking/sessions/$logId/live-fee';
+
   static const vehicles = '/api/vehicles';
   // A vehicle added after registration is proved the same way the first one was:
   // the receipt is read for the plate and the photo confirms it on the metal.

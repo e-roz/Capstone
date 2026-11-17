@@ -124,4 +124,52 @@ namespace AimPark.API.DTOs
         /// <summary>When a paid session stops opening the barrier on its own.</summary>
         public DateTime? LeaveBy { get; set; }
     }
+
+    /// <summary>
+    /// What an open session costs right now, for the app's live fee card. Read
+    /// only: asking never raises or reprices a bill.
+    /// </summary>
+    public class LiveFeeResponse
+    {
+        public Guid LogId { get; set; }
+        public DateTime EntryTime { get; set; }
+
+        /// <summary>The server's clock when this was priced. The phone counts time from here, not from its own clock.</summary>
+        public DateTime AsOf { get; set; }
+
+        /// <summary>Minutes charged so far. A started minute counts as a whole one.</summary>
+        public int DurationMinutes { get; set; }
+
+        public decimal RatePerHour { get; set; }
+
+        /// <summary>The least a stay costs once anything is charged.</summary>
+        public decimal MinimumFee { get; set; }
+
+        /// <summary>What the whole stay would cost if the driver left now.</summary>
+        public decimal TotalSoFar { get; set; }
+
+        /// <summary>
+        /// Minutes × rate, before the minimum. Equal to <see cref="TotalSoFar"/>
+        /// unless the minimum raised it. The app shows it as the working.
+        /// </summary>
+        public decimal MeteredSoFar { get; set; }
+
+        /// <summary>Paid or waived already for this session.</summary>
+        public decimal AlreadyPaid { get; set; }
+
+        /// <summary><see cref="TotalSoFar"/> less <see cref="AlreadyPaid"/>, never below zero.</summary>
+        public decimal OwedNow { get; set; }
+
+        /// <summary>A checkout for this session is open and the provider has not answered yet.</summary>
+        public bool PaymentProcessing { get; set; }
+
+        /// <summary>Paid ahead: the barrier opens on a tap until this time. Null when not in that window.</summary>
+        public DateTime? LeaveBy { get; set; }
+
+        /// <summary>When <see cref="TotalSoFar"/> next goes up. Null when it never will (no rate set).</summary>
+        public DateTime? NextChangeAt { get; set; }
+
+        /// <summary>What <see cref="TotalSoFar"/> goes up to at <see cref="NextChangeAt"/>.</summary>
+        public decimal? NextTotal { get; set; }
+    }
 }
