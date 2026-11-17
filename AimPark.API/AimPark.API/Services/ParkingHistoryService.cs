@@ -1070,6 +1070,68 @@ namespace AimPark.API.Services
             });
         }
 
+        // GET /api/parking/sessions/{logId}/live-fee
+        //
+        // Read-only on purpose: the app polls this, and a poll must never raise
+        // or reprice a bill. Priced by the same QuoteAsync as pay-ahead and the
+        // exit gate, so the number on the phone is the number at the barrier.
+        public async Task<ActionResult<LiveFeeResponse>> GetLiveFeeAsync(Guid userId, Guid logId, CancellationToken ct)
+        {
+            var log = await _db.Set<ParkingLog>().AsNoTracking()
+                .FirstOrDefaultAsync(l => l.Id == logId && l.UserId == userId, ct);
+            if (log is null)
+                return new NotFoundObjectResult(new { message = "We could not find that parking session." });
+            if (log.ExitTime is not null)
+                return new BadRequestObjectResult(new { message = "You have already left. Any fee is in your payments." });
+
+            var now = DateTime.UtcNow;
+            var quote = await _paymentService.QuoteAsync(log, now, ct);
+            var (ratePerHour, minimumFee) = await _paymentService.RateForAsync(log, ct);
+
+            var bills = await _db.Set<PaymentTransaction>().AsNoTracking()
+                .Where(p => p.ParkingLogId == log.Id)
+                .Select(p => new { p.AmountDue, p.Status, p.PaidAt, p.Provider })
+                .ToListAsync(ct);
+
+            // Waived counts as covered, as it does for the overstay bill: someone
+            // decided that time was not to be charged.
+            var settled = bills.Where(b => b.Status is PaymentStatus.Paid or PaymentStatus.Waived).ToList();
+            var covered = settled.Sum(b => b.AmountDue);
+            var processing = bills.Any(b => b.Status == PaymentStatus.Processing
+                                            && b.Provider != ExitPayment.ReleasedProvider);
+
+            // Paid ahead and still inside the walk-to-the-car window: the barrier
+            // opens on a tap until then.
+            DateTime? leaveBy = null;
+            var lastPaidAt = settled.Max(b => b.PaidAt);
+            if (lastPaidAt is DateTime paidAt && now <= paidAt + _paidExitGrace)
+                leaveBy = paidAt + _paidExitGrace;
+
+            var next = ParkingFeeMath.NextChange(ratePerHour, minimumFee, log.EntryTime, now);
+
+            // Marked UTC, so every time in the reply serialises the same way and
+            // the phone can subtract them from AsOf without a timezone slip.
+            static DateTime? Utc(DateTime? t) => t is DateTime v ? DateTime.SpecifyKind(v, DateTimeKind.Utc) : null;
+
+            return new OkObjectResult(new LiveFeeResponse
+            {
+                LogId = log.Id,
+                EntryTime = Utc(log.EntryTime)!.Value,
+                AsOf = now,
+                DurationMinutes = quote.DurationMinutes,
+                RatePerHour = ratePerHour,
+                MinimumFee = minimumFee,
+                TotalSoFar = quote.AmountDue,
+                MeteredSoFar = ParkingFeeMath.Metered(ratePerHour, quote.DurationMinutes),
+                AlreadyPaid = covered,
+                OwedNow = Math.Max(0m, quote.AmountDue - covered),
+                PaymentProcessing = processing,
+                LeaveBy = Utc(leaveBy),
+                NextChangeAt = Utc(next?.At),
+                NextTotal = next?.Amount,
+            });
+        }
+
         // POST /api/admin/parking/log-exit
         public async Task<ActionResult<object>> LogExitAsync(
             LogParkingExitDto dto, Guid? loggedByUserId, Guid? loggedByDeviceId, CancellationToken ct)

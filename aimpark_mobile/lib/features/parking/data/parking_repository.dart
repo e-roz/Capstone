@@ -1,6 +1,7 @@
 import 'package:dio/dio.dart';
 
 import '../../../core/network/api_endpoints.dart';
+import 'models/live_fee.dart';
 import 'models/parking_history_entry.dart';
 import 'models/parking_slot.dart';
 
@@ -70,6 +71,13 @@ class ParkingRepository {
 
   /// Prices the open session up to now so the driver can pay before driving
   /// to the gate. Once paid, the barrier opens on a tap for a short while.
+  /// What the open session costs right now. Read only: asking never raises
+  /// or reprices a bill, so the live fee card can ask as often as it needs.
+  Future<LiveFee> liveFee(String logId) async {
+    final response = await _dio.get(ApiEndpoints.parkingLiveFee(logId));
+    return LiveFee.fromJson(response.data as Map<String, dynamic>);
+  }
+
   Future<PayAheadResult> payAhead(String logId) async {
     final response = await _dio.post(ApiEndpoints.parkingPayAhead(logId));
     return PayAheadResult.fromJson(response.data as Map<String, dynamic>);
