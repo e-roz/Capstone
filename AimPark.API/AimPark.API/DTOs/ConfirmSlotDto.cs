@@ -34,6 +34,16 @@ namespace AimPark.API.DTOs
         /// correct a genuine mistake.
         /// </summary>
         public const string AlreadyConfirmed = "ALREADY_CONFIRMED";
+
+        /// <summary>
+        /// The sensor reads the bay as empty. Only a bay the sensor sees a car
+        /// in can be confirmed, unless the driver says the sensor missed them
+        /// (<see cref="ConfirmSlotRequest.SensorMissed"/>).
+        /// </summary>
+        public const string SlotNotOccupied = "SLOT_NOT_OCCUPIED";
+
+        /// <summary>The bay is closed, so nobody can have parked in it.</summary>
+        public const string SlotOutOfService = "SLOT_OUT_OF_SERVICE";
     }
 
     public class ConfirmSlotRequest
@@ -46,6 +56,13 @@ namespace AimPark.API.DTOs
         /// could not tell: an account with both kinds and no plate read.
         /// </summary>
         public Guid? VehicleId { get; set; }
+
+        /// <summary>
+        /// "My car is here — sensor missed it": the driver is in a bay the sensor reads as
+        /// empty. The confirm goes through and an incident is filed so an admin
+        /// checks the sensor. Ignored when the sensor already sees a car.
+        /// </summary>
+        public bool SensorMissed { get; set; }
     }
 
     public class ConfirmSlotResponse
@@ -56,6 +73,9 @@ namespace AimPark.API.DTOs
 
         /// <summary>True when the driver confirmed after leaving.</summary>
         public bool Late { get; set; }
+
+        /// <summary>True when the confirm also filed a "sensor missed my car" report.</summary>
+        public bool SensorReported { get; set; }
 
         public string? Message { get; set; }
     }

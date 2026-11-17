@@ -24,7 +24,7 @@ public class SlotHistoryTests
         .Options);
 
     private static ParkingSlotService Service(AppDbContext db) => new(
-        new Repository<ParkingSlot>(db), db, new SiteLinkState(), Options.Create(new SiteOptions()));
+        new Repository<ParkingSlot>(db), db, new GuardPostFeed(new SiteLinkState(), Options.Create(new SiteOptions())));
 
     private static (User user, ParkingSlot slot) Seed(AppDbContext db, string name = "Juan Cruz")
     {

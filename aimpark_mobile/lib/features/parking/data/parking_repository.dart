@@ -39,22 +39,34 @@ class ParkingRepository {
     return SlotRecommendation.fromJson(response.data as Map<String, dynamic>);
   }
 
-  /// The driver says which bay they parked in. Safe to call again to change it.
-  /// A refusal (bay already confirmed by someone else, a bay for the other kind
-  /// of vehicle, session too old) comes back as a 400 whose message the caller
-  /// shows as it is.
+  /// The driver says which bay they parked in. Final: a second confirm is
+  /// refused. A refusal (bay already confirmed by someone else, a bay for the
+  /// other kind of vehicle, a bay the sensor reads as empty, already left)
+  /// comes back as a 400 whose message the caller shows as it is.
   ///
   /// [vehicleId] is the vehicle the driver says they brought, sent only when
   /// the gate could not tell (both kinds on the account, no plate read).
-  Future<void> confirmSlot({
+  ///
+  /// [sensorMissed] is "my bay isn't lit up": the driver is in a bay the sensor
+  /// reads as empty. The server confirms it and files a report for the parking
+  /// office to check the sensor. Returns whether that report was filed.
+  Future<bool> confirmSlot({
     required String logId,
     required String slotId,
     String? vehicleId,
+    bool sensorMissed = false,
   }) async {
-    await _dio.post(
+    final response = await _dio.post(
       ApiEndpoints.parkingConfirmSlot,
-      data: {'logId': logId, 'slotId': slotId, 'vehicleId': ?vehicleId},
+      data: {
+        'logId': logId,
+        'slotId': slotId,
+        'vehicleId': ?vehicleId,
+        if (sensorMissed) 'sensorMissed': true,
+      },
     );
+    final data = response.data;
+    return data is Map && data['sensorReported'] == true;
   }
 
   /// Prices the open session up to now so the driver can pay before driving
