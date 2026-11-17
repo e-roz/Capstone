@@ -26,6 +26,9 @@ namespace AimPark.API.Interfaces
         /// </summary>
         Task<ParkingFeeQuote> QuoteAsync(ParkingLog log, DateTime at, CancellationToken ct);
 
+        /// <summary>The hourly rate and minimum fee this session is priced at.</summary>
+        Task<(decimal RatePerHour, decimal MinimumFee)> RateForAsync(ParkingLog log, CancellationToken ct);
+
         /// <summary>The bill for this session, if one has been raised yet.</summary>
         Task<PaymentTransaction?> FindForLogAsync(Guid parkingLogId, CancellationToken ct);
 

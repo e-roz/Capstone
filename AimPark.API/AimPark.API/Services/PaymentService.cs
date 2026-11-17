@@ -2,6 +2,7 @@
 using AimPark.API.DTOs;
 using AimPark.API.Entities;
 using AimPark.API.Enums;
+using AimPark.API.Helpers;
 using AimPark.API.Interfaces;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -52,6 +53,14 @@ namespace AimPark.API.Services
 
         public async Task<ParkingFeeQuote> QuoteAsync(ParkingLog log, DateTime at, CancellationToken ct)
         {
+            var (ratePerHour, minimum) = await RateForAsync(log, ct);
+            var durationMinutes = ParkingFeeMath.ChargedMinutes(log.EntryTime, at);
+            var amountDue = ParkingFeeMath.Price(ratePerHour, minimum, durationMinutes);
+            return new ParkingFeeQuote(durationMinutes, ratePerHour, amountDue);
+        }
+
+        public async Task<(decimal RatePerHour, decimal MinimumFee)> RateForAsync(ParkingLog log, CancellationToken ct)
+        {
             VehicleType? vehicleType = null;
             if (log.SlotId is not null)
             {
@@ -71,28 +80,10 @@ namespace AimPark.API.Services
                     .FirstOrDefaultAsync(r => r.VehicleType == null, ct);
             }
 
-            var ratePerHour = rate?.RatePerHour ?? 0m;
-            // Rounded up, not to nearest: a started minute is a charged minute,
-            // which is how paid parking is billed everywhere. Rounding to
-            // nearest also billed people for less time than they parked - a
-            // 9:34:50 entry and a 9:36:10 exit is 1m20s, which came out as one
-            // minute on a receipt showing two different clock minutes.
-            var durationMinutes = Math.Max(0, (int)Math.Ceiling((at - log.EntryTime).TotalMinutes));
-            var metered = Math.Round(ratePerHour / 60m * durationMinutes, 2);
-
-            // A floor, not a fee on top. Twenty minutes at ₱15 an hour is five
-            // pesos, and no card or e-wallet gateway in the country will take a
-            // payment that small — so per-minute billing alone produced bills
-            // that literally could not be settled online. Priced the way parking
-            // is priced everywhere anyway: a flat first block, metered after it.
-            //
-            // A session that cost nothing stays nothing. There is no minimum to
-            // apply to a driver who was never charged — a waived session, a
-            // rate that has not been set.
-            var minimum = rate?.MinimumFee ?? 0m;
-            var amountDue = metered > 0m && metered < minimum ? minimum : metered;
-
-            return new ParkingFeeQuote(durationMinutes, ratePerHour, amountDue);
+            // No rate set: the session costs nothing, and has no minimum either.
+            // The arithmetic, and why it rounds minutes up and has a floor, is
+            // in ParkingFeeMath.
+            return (rate?.RatePerHour ?? 0m, rate?.MinimumFee ?? 0m);
         }
 
         public async Task<PaymentTransaction> CreateForCompletedLogAsync(ParkingLog log, CancellationToken ct)
