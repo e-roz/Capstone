@@ -40,6 +40,21 @@ Future<List<ActiveParkingSession>> activeParkingSessions(Ref ref) async {
       .toList();
 }
 
+/// Drivers inside who confirmed their bay in the app, for the names on the
+/// map. From the cloud even at the guard post, whose own copy of a session
+/// never hears of the confirmation.
+@riverpod
+Future<List<ActiveParkingSession>> bayOccupants(Ref ref) async {
+  final timer = Timer(const Duration(seconds: 15), ref.invalidateSelf);
+  ref.onDispose(timer.cancel);
+
+  final dio = ref.watch(dioProvider);
+  final response = await dio.get(ApiEndpoints.bayOccupants);
+  return (response.data as List<dynamic>)
+      .map((s) => ActiveParkingSession.fromJson(s as Map<String, dynamic>))
+      .toList();
+}
+
 /// Bays that may hold the wrong kind of vehicle. Read alongside the bays, on
 /// the map's own refresh.
 @riverpod

@@ -84,6 +84,7 @@ class ApiEndpoints {
   static const logParkingEntry = '/api/admin/parking/log-entry';
   static const logParkingExit = '/api/admin/parking/log-exit';
   static const activeParkingSessions = '/api/admin/parking/active-sessions';
+  static const bayOccupants = '/api/admin/parking/bay-occupants';
   static const wrongBayFlags = '/api/admin/parking/wrong-bay';
   static String reviewWrongBayFlag(String flagId) =>
       '/api/admin/parking/wrong-bay/$flagId/review';

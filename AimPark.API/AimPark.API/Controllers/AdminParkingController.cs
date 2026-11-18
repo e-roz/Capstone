@@ -79,6 +79,20 @@ namespace AimPark.API.Controllers
         public Task<ActionResult<List<ActiveParkingSessionResponse>>> ListActiveSessions(CancellationToken ct)
             => _parkingHistoryService.ListActiveSessionsAsync(ct);
 
+        /// <summary>
+        /// Drivers inside who have confirmed their bay in the app, for the names
+        /// on the parking map.
+        /// </summary>
+        /// <remarks>
+        /// Not answered by the guard post's server (see CloudForwarder): a bay is
+        /// confirmed in the app, which talks to the cloud, and the guard post's
+        /// copy of a session never learns of it. Offline, the map has no names.
+        /// </remarks>
+        [Authorize(Roles = "Admin,Security")]
+        [HttpGet("bay-occupants")]
+        public Task<List<ActiveParkingSessionResponse>> ListBayOccupants(CancellationToken ct)
+            => _parkingHistoryService.ListBayOccupantsAsync(ct);
+
         // The RFID gate posts here with a device key; Admin and Security can do
         // the same by hand from the panel, which is how it is driven until the
         // hardware exists.

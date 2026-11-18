@@ -44,6 +44,29 @@ final activeParkingSessionsProvider =
 // ignore: unused_element
 typedef ActiveParkingSessionsRef =
     AutoDisposeFutureProviderRef<List<ActiveParkingSession>>;
+String _$bayOccupantsHash() => r'655208430009f3dd7cf1a57a7501b8f8f585c3a5';
+
+/// Drivers inside who confirmed their bay in the app, for the names on the
+/// map. From the cloud even at the guard post, whose own copy of a session
+/// never hears of the confirmation.
+///
+/// Copied from [bayOccupants].
+@ProviderFor(bayOccupants)
+final bayOccupantsProvider =
+    AutoDisposeFutureProvider<List<ActiveParkingSession>>.internal(
+      bayOccupants,
+      name: r'bayOccupantsProvider',
+      debugGetCreateSourceHash: const bool.fromEnvironment('dart.vm.product')
+          ? null
+          : _$bayOccupantsHash,
+      dependencies: null,
+      allTransitiveDependencies: null,
+    );
+
+@Deprecated('Will be removed in 3.0. Use Ref instead')
+// ignore: unused_element
+typedef BayOccupantsRef =
+    AutoDisposeFutureProviderRef<List<ActiveParkingSession>>;
 String _$wrongBayFlagsHash() => r'b65f9ea7aca177e56a7eb10307bab3480f8c4a01';
 
 /// Bays that may hold the wrong kind of vehicle. Read alongside the bays, on

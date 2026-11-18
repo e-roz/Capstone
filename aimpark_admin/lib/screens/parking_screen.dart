@@ -34,6 +34,7 @@ class ParkingScreen extends ConsumerWidget {
           onPressed: () {
             ref.invalidate(parkingSlotsProvider);
             ref.invalidate(activeParkingSessionsProvider);
+            ref.invalidate(bayOccupantsProvider);
           },
         ),
       ],
