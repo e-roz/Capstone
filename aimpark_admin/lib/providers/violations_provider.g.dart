@@ -294,7 +294,7 @@ final appealsQueryNotifierProvider =
     );
 
 typedef _$AppealsQueryNotifier = AutoDisposeNotifier<AppealsQuery>;
-String _$violationActionsHash() => r'1656db3320449abb4edcd059517ca32e6becb3d7';
+String _$violationActionsHash() => r'68c5ce8a4eb07ad5950ba9b22f00a29bf72dab72';
 
 /// See also [ViolationActions].
 @ProviderFor(ViolationActions)
