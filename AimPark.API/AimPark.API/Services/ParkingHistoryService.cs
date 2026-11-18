@@ -221,6 +221,38 @@ namespace AimPark.API.Services
             return vehicles.Count == 1 ? vehicles[0].Id : null;
         }
 
+        // GET /api/admin/parking/bay-occupants — who is in which bay, by the
+        // driver's own word. Only confirmed bays: the gate's suggestion is a
+        // guess, and a name on it points the guard at the wrong car.
+        public Task<List<ActiveParkingSessionResponse>> ListBayOccupantsAsync(CancellationToken ct) =>
+            _db.Set<ParkingLog>().AsNoTracking()
+                .Where(l => l.ExitTime == null && l.SlotId != null && l.SlotConfirmedAt != null)
+                .OrderByDescending(l => l.EntryTime)
+                .Select(l => new ActiveParkingSessionResponse
+                {
+                    LogId = l.Id,
+                    UserId = l.UserId,
+                    UserName = l.User != null
+                        ? l.User.FullName
+                        : l.VisitorPass != null
+                            ? l.VisitorPass.VisitorName
+                            : "Unknown",
+                    PlateNumber = l.AlprPlateNumber
+                        ?? (l.VisitorPass != null
+                            ? l.VisitorPass.PlateNumber
+                            : _db.Set<Vehicle>()
+                                .Where(v => v.UserId == l.UserId)
+                                .Select(v => v.PlateNumber)
+                                .FirstOrDefault()),
+                    SlotId = l.SlotId,
+                    SlotCode = l.Slot != null ? l.Slot.SlotCode : null,
+                    SlotConfirmedAt = l.SlotConfirmedAt,
+                    EntryTime = l.EntryTime,
+                    IsVisitor = l.VisitorPassId != null,
+                    Gate = l.Gate
+                })
+                .ToListAsync(ct);
+
         // GET /api/admin/parking/active-sessions — vehicles currently inside
         public async Task<ActionResult<List<ActiveParkingSessionResponse>>> ListActiveSessionsAsync(CancellationToken ct)
         {

@@ -7,6 +7,9 @@ namespace AimPark.API.Interfaces
     {
         Task<ActionResult<ParkingHistoryResponse>> GetMyHistoryAsync(Guid userId, Guid? vehicleId, int page, int pageSize, CancellationToken ct);
         Task<ActionResult<List<ActiveParkingSessionResponse>>> ListActiveSessionsAsync(CancellationToken ct);
+
+        /// <summary>Open sessions whose driver has confirmed the bay in the app.</summary>
+        Task<List<ActiveParkingSessionResponse>> ListBayOccupantsAsync(CancellationToken ct);
         /// <summary>
         /// Records a vehicle entering. Exactly one of the two caller ids is set:
         /// a staff account working the admin panel, or a gate device reporting

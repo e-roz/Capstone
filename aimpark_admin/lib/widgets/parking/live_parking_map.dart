@@ -136,10 +136,10 @@ class _LiveParkingMapCardState extends ConsumerState<LiveParkingMapCard> {
     // A server too old to know about warnings answers 404: no warnings.
     final wrongBays = ref.watch(wrongBayFlagsProvider).valueOrNull ?? const <WrongBayFlag>[];
     final link = ref.watch(siteLinkProvider).valueOrNull;
-    // Who is in each bay. Missing (still loading, or refused) just leaves the
-    // bays without names; the map itself does not wait for it.
+    // Who is in each bay. Missing (still loading, offline, or an older cloud)
+    // just leaves the bays without names; the map itself does not wait for it.
     final occupants = _Occupants.byBay(
-        ref.watch(activeParkingSessionsProvider).valueOrNull ?? const []);
+        ref.watch(bayOccupantsProvider).valueOrNull ?? const []);
 
     // At the guard post its own server answers and the map is first-hand.
     // Online, gate devices come from the list the guard post relays through
