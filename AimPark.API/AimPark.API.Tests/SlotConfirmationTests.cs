@@ -57,9 +57,9 @@ public class SlotConfirmationTests
     }
 
     private static Task<ConfirmSlotResponse> Confirm(AppDbContext db, Guid userId, Guid logId, Guid slotId,
-        bool sensorMissed = false, ISensorFeed? feed = null)
+        ISensorFeed? feed = null)
         => new SlotConfirmationService(db, feed).ConfirmAsync(
-            userId, new ConfirmSlotRequest { LogId = logId, SlotId = slotId, SensorMissed = sensorMissed },
+            userId, new ConfirmSlotRequest { LogId = logId, SlotId = slotId },
             CancellationToken.None);
 
     private sealed class FakeFeed(bool silent) : ISensorFeed
@@ -92,13 +92,13 @@ public class SlotConfirmationTests
     {
         var db = NewDb();
         var user = NewUser(db);
-        var parked = NewSlot(db, "M2", status: ParkingSlotStatus.Available);
+        var parked = NewSlot(db, "M2", status: ParkingSlotStatus.Occupied);
         var log = NewLog(db, user, DateTime.UtcNow.AddMinutes(-5));
         await db.SaveChangesAsync();
 
-        await Confirm(db, user.Id, log.Id, parked.Id, sensorMissed: true);
+        await Confirm(db, user.Id, log.Id, parked.Id);
 
-        Assert.Equal(ParkingSlotStatus.Available, (await db.Set<ParkingSlot>().AsNoTracking().SingleAsync()).Status);
+        Assert.Equal(ParkingSlotStatus.Occupied, (await db.Set<ParkingSlot>().AsNoTracking().SingleAsync()).Status);
     }
 
     [Fact]
@@ -730,47 +730,11 @@ public class SlotConfirmationTests
     }
 
     [Fact]
-    public async Task Saying_the_sensor_missed_you_confirms_the_empty_bay_and_files_a_report()
+    public async Task A_bay_the_sensor_sees_a_vehicle_in_is_confirmed()
     {
         var db = NewDb();
         var user = NewUser(db);
-        var empty = NewSlot(db, "C4", status: ParkingSlotStatus.Available);
-        var log = NewLog(db, user, DateTime.UtcNow.AddMinutes(-5));
-        await db.SaveChangesAsync();
-
-        var result = await Confirm(db, user.Id, log.Id, empty.Id, sensorMissed: true);
-
-        Assert.Equal(SlotConfirmResult.Confirmed, result.Result);
-        Assert.True(result.SensorReported);
-        Assert.NotNull((await db.Set<ParkingLog>().AsNoTracking().SingleAsync()).SlotConfirmedAt);
-        var report = await db.Set<Incident>().AsNoTracking().SingleAsync();
-        Assert.Equal(user.Id, report.ReportedByUserId);
-        Assert.Equal(empty.Id, report.SlotId);
-        Assert.Equal(IncidentStatus.Submitted, report.Status);
-    }
-
-    [Fact]
-    public async Task Saying_the_sensor_missed_you_on_an_occupied_bay_files_nothing()
-    {
-        var db = NewDb();
-        var user = NewUser(db);
-        var bay = NewSlot(db, "C4");
-        var log = NewLog(db, user, DateTime.UtcNow.AddMinutes(-5));
-        await db.SaveChangesAsync();
-
-        var result = await Confirm(db, user.Id, log.Id, bay.Id, sensorMissed: true);
-
-        Assert.Equal(SlotConfirmResult.Confirmed, result.Result);
-        Assert.False(result.SensorReported);
-        Assert.Empty(db.Set<Incident>());
-    }
-
-    [Fact]
-    public async Task A_bay_with_no_signal_can_be_confirmed_without_a_report()
-    {
-        var db = NewDb();
-        var user = NewUser(db);
-        var bay = NewSlot(db, "C4", status: ParkingSlotStatus.NoSignal);
+        var bay = NewSlot(db, "C4", status: ParkingSlotStatus.Occupied);
         var log = NewLog(db, user, DateTime.UtcNow.AddMinutes(-5));
         await db.SaveChangesAsync();
 
@@ -781,25 +745,38 @@ public class SlotConfirmationTests
     }
 
     [Fact]
-    public async Task With_the_guard_post_silent_an_empty_reading_counts_as_no_signal()
+    public async Task A_bay_with_no_signal_is_refused()
+    {
+        var db = NewDb();
+        var user = NewUser(db);
+        var bay = NewSlot(db, "C4", status: ParkingSlotStatus.NoSignal);
+        var log = NewLog(db, user, DateTime.UtcNow.AddMinutes(-5));
+        await db.SaveChangesAsync();
+
+        var result = await Confirm(db, user.Id, log.Id, bay.Id);
+
+        Assert.Equal(SlotConfirmResult.SlotNoSignal, result.Result);
+        Assert.Null((await db.Set<ParkingLog>().AsNoTracking().SingleAsync()).SlotConfirmedAt);
+    }
+
+    [Fact]
+    public async Task With_the_guard_post_silent_even_an_occupied_reading_is_refused()
     {
         // The map shows every bay as No signal then, so the server must agree.
         var db = NewDb();
         var user = NewUser(db);
-        var stale = NewSlot(db, "C4", status: ParkingSlotStatus.Available);
+        var stale = NewSlot(db, "C4", status: ParkingSlotStatus.Occupied);
         var log = NewLog(db, user, DateTime.UtcNow.AddMinutes(-5));
         await db.SaveChangesAsync();
 
         var result = await Confirm(db, user.Id, log.Id, stale.Id, feed: new FakeFeed(silent: true));
 
-        Assert.Equal(SlotConfirmResult.Confirmed, result.Result);
-        Assert.Empty(db.Set<Incident>());
+        Assert.Equal(SlotConfirmResult.SlotNoSignal, result.Result);
+        Assert.Null((await db.Set<ParkingLog>().AsNoTracking().SingleAsync()).SlotConfirmedAt);
     }
 
-    [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public async Task A_closed_bay_is_refused_even_if_the_driver_says_the_sensor_missed_them(bool sensorMissed)
+    [Fact]
+    public async Task A_closed_bay_is_refused()
     {
         var db = NewDb();
         var user = NewUser(db);
@@ -807,9 +784,8 @@ public class SlotConfirmationTests
         var log = NewLog(db, user, DateTime.UtcNow.AddMinutes(-5));
         await db.SaveChangesAsync();
 
-        var result = await Confirm(db, user.Id, log.Id, closed.Id, sensorMissed);
+        var result = await Confirm(db, user.Id, log.Id, closed.Id);
 
         Assert.Equal(SlotConfirmResult.SlotOutOfService, result.Result);
-        Assert.Empty(db.Set<Incident>());
     }
 }

@@ -17,16 +17,9 @@ class ParkingSlot {
   /// Another driver still inside has already confirmed this bay.
   final bool claimed;
 
-  /// The sensor sees a vehicle here, or cannot tell (No signal). These are
-  /// the bays a driver may confirm; the server checks the same thing.
-  bool get sensorAllowsConfirm {
-    final s = status.toLowerCase();
-    return s == 'occupied' || s == 'nosignal';
-  }
-
-  /// The sensor reads the bay as empty. A driver who is really parked here
-  /// can still confirm it by saying the sensor missed them.
-  bool get sensorReadsEmpty => status.toLowerCase() == 'available';
+  /// The sensor sees a vehicle here. Only these bays may be confirmed; the
+  /// server checks the same thing.
+  bool get sensorAllowsConfirm => status.toLowerCase() == 'occupied';
 
   bool get isMotorcycle => (vehicleType ?? '').toLowerCase().contains('motor');
 

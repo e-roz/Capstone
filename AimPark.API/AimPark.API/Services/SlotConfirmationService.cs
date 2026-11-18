@@ -21,12 +21,10 @@ namespace AimPark.API.Services
     /// when it could not tell (both kinds on the account, no plate read), the
     /// driver says which vehicle they brought.
     ///
-    /// Only a bay the sensor sees a car in can be confirmed, so the driver's word
-    /// is backed by the sensor's. Two ways round a sensor that is wrong: a bay
-    /// with No signal can always be confirmed (nothing to check it against), and
-    /// a driver in a bay the sensor calls empty can say so ("My bay isn't lit
-    /// up"), which confirms it and files an incident for an admin to look at.
-    /// A broken sensor must never earn a driver a warning or a fine.
+    /// Only a bay the sensor sees a vehicle in can be confirmed, so the driver's
+    /// word is always backed by the sensor's. A bay that reads empty, has No
+    /// signal, or is closed is refused; there is no way round it from the app.
+    /// A driver whose bay is misread goes to the parking office.
     /// </summary>
     public class SlotConfirmationService : ISlotConfirmationService
     {
@@ -35,13 +33,11 @@ namespace AimPark.API.Services
 
         private readonly AppDbContext _db;
         private readonly ISensorFeed? _feed;
-        private readonly IStaffAlerts? _staffAlerts;
 
-        public SlotConfirmationService(AppDbContext db, ISensorFeed? feed = null, IStaffAlerts? staffAlerts = null)
+        public SlotConfirmationService(AppDbContext db, ISensorFeed? feed = null)
         {
             _db = db;
             _feed = feed;
-            _staffAlerts = staffAlerts;
         }
 
         public async Task<ConfirmSlotResponse> ConfirmAsync(
@@ -97,24 +93,21 @@ namespace AimPark.API.Services
             if (sensor == ParkingSlotStatus.OutOfService)
                 return Refuse(SlotConfirmResult.SlotOutOfService, $"{slot.SlotCode} is closed, so it can't be confirmed. Pick the bay you parked in.");
 
-            // An empty reading is only accepted when the driver says the sensor missed them.
-            var sensorMissed = sensor == ParkingSlotStatus.Available;
-            if (sensorMissed && !request.SensorMissed)
+            // Only a bay the sensor sees a vehicle in. The driver's word alone
+            // never confirms a bay.
+            if (sensor == ParkingSlotStatus.NoSignal)
+                return Refuse(SlotConfirmResult.SlotNoSignal,
+                    $"{slot.SlotCode}'s sensor is not reporting right now, so it can't be confirmed. Wait for the sensor to see your vehicle, or ask the parking office.");
+            if (sensor != ParkingSlotStatus.Occupied)
                 return Refuse(SlotConfirmResult.SlotNotOccupied,
-                    $"The sensor shows {slot.SlotCode} as empty. Pick a bay where the sensor sees your vehicle. If the sensor missed you, update the app and tap \"My car is here — sensor missed it\" on your bay, or ask the parking office.");
+                    $"The sensor shows {slot.SlotCode} as empty. Pick the bay where the sensor sees your vehicle. If your vehicle is there and the bay isn't lit up, ask the parking office.");
 
             log.SlotId = slot.Id;
             log.SlotConfirmedAt = now;
             // The driver's word, kept for when the gate could not tell.
             log.VehicleType ??= kind.Type;
 
-            if (sensorMissed)
-                FileSensorReport(userId, slot, now);
-
             await _db.SaveChangesAsync(ct);
-
-            if (sensorMissed && _staffAlerts is not null)
-                await _staffAlerts.RaiseAsync(StaffAlertKind.Incident, userId, ct);
 
             return new ConfirmSlotResponse
             {
@@ -122,30 +115,7 @@ namespace AimPark.API.Services
                 SlotId = slot.Id,
                 SlotCode = slot.SlotCode,
                 Late = log.ExitTime is not null,
-                SensorReported = sensorMissed,
             };
-        }
-
-        /// <summary>
-        /// Files "the sensor missed my car" as an ordinary incident, so it lands
-        /// in the admin's incident queue and syncs like any other report. Uses
-        /// the existing Other category rather than a new one, so a guard post
-        /// that has not updated yet still reads it.
-        /// </summary>
-        private void FileSensorReport(Guid userId, ParkingSlot slot, DateTime now)
-        {
-            _db.Set<Incident>().Add(new Incident
-            {
-                Id = Guid.NewGuid(),
-                ReportedByUserId = userId,
-                Category = IncidentCategory.Other,
-                Description = $"Sensor missed a parked vehicle: the driver confirmed {slot.SlotCode}, but its sensor read the bay as empty. Check the sensor.",
-                Location = slot.SlotCode,
-                SlotId = slot.Id,
-                Status = IncidentStatus.Submitted,
-                CreatedAt = now,
-                UpdatedAt = now,
-            });
         }
 
         /// <summary>
