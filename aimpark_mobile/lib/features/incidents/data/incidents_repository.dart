@@ -27,12 +27,14 @@ class IncidentsRepository {
     required String category,
     required String description,
     String? location,
+    String? slotId,
     List<String> evidencePaths = const [],
   }) async {
     final formData = FormData.fromMap({
       'Category': category,
       'Description': description,
       if (location != null && location.isNotEmpty) 'Location': location,
+      'SlotId': ?slotId,
     });
     for (final path in evidencePaths) {
       formData.files.add(MapEntry('Evidence', await MultipartFile.fromFile(path)));

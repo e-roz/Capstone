@@ -7,8 +7,10 @@ import 'package:go_router/go_router.dart';
 import '../../../../core/theme/theme.dart';
 import '../../../../core/utils/app_flushbar.dart';
 import '../../../../core/widgets/widgets.dart';
+import '../../../parking/data/models/parking_slot.dart';
 import '../incident_categories.dart';
 import '../providers/incidents_provider.dart';
+import '../widgets/bay_picker.dart';
 
 class ReportIncidentScreen extends ConsumerStatefulWidget {
   const ReportIncidentScreen({super.key});
@@ -35,6 +37,9 @@ class _ReportIncidentScreenState extends ConsumerState<ReportIncidentScreen> {
   /// which is "Vandalism" — a serious accusation the form was making on their
   /// behalf, and one a hurried report would send unread.
   String? _category;
+
+  /// The bay the report is about, if the person picked one on the map.
+  ParkingSlot? _bay;
   List<String> _photos = const [];
   List<String> _pdfs = const [];
   bool _isSubmitting = false;
@@ -90,6 +95,7 @@ class _ReportIncidentScreenState extends ConsumerState<ReportIncidentScreen> {
             category: category,
             description: description,
             location: _location.text.trim(),
+            slotId: _bay?.slotId,
             evidencePaths: files,
           );
       ref.invalidate(incidentsNotifierProvider);
@@ -216,11 +222,19 @@ class _ReportIncidentScreenState extends ConsumerState<ReportIncidentScreen> {
             },
           ),
           const SizedBox(height: AppSpacing.md),
+          BayPickerField(
+            value: _bay,
+            enabled: !_isSubmitting,
+            onChanged: (bay) => setState(() => _bay = bay),
+          ),
+          const SizedBox(height: AppSpacing.md),
           AppTextField(
             label: 'Location',
             requirement: FieldRequirement.optional,
             controller: _location,
-            hintText: 'Slot C2 or near the gate',
+            hintText: _bay == null
+                ? 'Near the gate, exit lane…'
+                : 'Anything else about where (optional)',
             enabled: !_isSubmitting,
             textCapitalization: TextCapitalization.sentences,
             textInputAction: TextInputAction.done,

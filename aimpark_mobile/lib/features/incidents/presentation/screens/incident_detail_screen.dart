@@ -244,6 +244,10 @@ class _Report extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               AppInfoRow(label: 'Description', value: incident.description),
+              if (incident.slotCode != null) ...[
+                const SizedBox(height: AppSpacing.md),
+                AppInfoRow(label: 'Bay', value: incident.slotCode!),
+              ],
               if (incident.location != null &&
                   incident.location!.trim().isNotEmpty) ...[
                 const SizedBox(height: AppSpacing.md),

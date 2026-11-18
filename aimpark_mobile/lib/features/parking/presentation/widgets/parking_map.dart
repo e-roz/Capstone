@@ -90,6 +90,7 @@ class ParkingMap extends StatelessWidget {
     this.suggestedCode,
     this.confirmedCode,
     this.onConfirmSlot,
+    this.onPickSlot,
     this.userHasCar = false,
     this.userHasMotorcycle = false,
     this.cameInOnMotorcycle,
@@ -107,6 +108,11 @@ class ParkingMap extends StatelessWidget {
   /// worked; the caller shows any error itself. Null hides the confirm button,
   /// and the map is only for looking.
   final Future<bool> Function(ParkingSlot slot)? onConfirmSlot;
+
+  /// Pick mode: a tap hands the bay back here instead of opening its sheet.
+  /// Every bay can be picked, whatever its sensor says. Used to say which bay
+  /// an incident report is about.
+  final ValueChanged<ParkingSlot>? onPickSlot;
 
   final bool userHasCar;
   final bool userHasMotorcycle;
@@ -198,7 +204,9 @@ class ParkingMap extends StatelessWidget {
         width: w,
         height: _bayHeight,
         dimmed: _isDimmed(slot, state),
-        onTap: () => _openSheet(context, slot, state),
+        onTap: onPickSlot != null
+            ? () => onPickSlot!(slot)
+            : () => _openSheet(context, slot, state),
       );
     }
 
