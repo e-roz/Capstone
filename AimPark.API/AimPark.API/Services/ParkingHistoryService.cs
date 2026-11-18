@@ -240,13 +240,18 @@ namespace AimPark.API.Services
                         : l.VisitorPass != null
                             ? l.VisitorPass.VisitorName
                             : "Unknown",
-                    PlateNumber = l.VisitorPass != null
-                        ? l.VisitorPass.PlateNumber
-                        : _db.Set<Vehicle>()
-                            .Where(v => v.UserId == l.UserId)
-                            .Select(v => v.PlateNumber)
-                            .FirstOrDefault(),
+                    // What the camera read is what actually came in; a registered
+                    // plate is only a guess for a holder with several vehicles.
+                    PlateNumber = l.AlprPlateNumber
+                        ?? (l.VisitorPass != null
+                            ? l.VisitorPass.PlateNumber
+                            : _db.Set<Vehicle>()
+                                .Where(v => v.UserId == l.UserId)
+                                .Select(v => v.PlateNumber)
+                                .FirstOrDefault()),
+                    SlotId = l.SlotId,
                     SlotCode = l.Slot != null ? l.Slot.SlotCode : null,
+                    SlotConfirmedAt = l.SlotConfirmedAt,
                     EntryTime = l.EntryTime,
                     IsVisitor = l.VisitorPassId != null,
                     Gate = l.Gate,

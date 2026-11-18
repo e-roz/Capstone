@@ -86,8 +86,19 @@ class ActiveParkingSession {
   final String userName;
 
   final String? plateNumber;
+
+  /// The bay on this session: the one the driver confirmed, or only the one
+  /// the gate suggested. Null from a server older than this field.
+  final String? slotId;
   final String? slotCode;
+
+  /// When the driver confirmed the bay in the app. Null = only the gate's
+  /// suggestion, which is not proof of where they parked.
+  final DateTime? slotConfirmedAt;
+
   final DateTime entryTime;
+
+  bool get isSlotConfirmed => slotConfirmedAt != null;
 
   /// Whether this car got in on a card lent to a guest. The guard needs it:
   /// a visitor pays cash on the way out and hands the card back, and neither
@@ -115,7 +126,9 @@ class ActiveParkingSession {
     required this.userId,
     required this.userName,
     required this.plateNumber,
+    this.slotId,
     required this.slotCode,
+    this.slotConfirmedAt,
     required this.entryTime,
     this.isVisitor = false,
     this.gate,
@@ -132,7 +145,11 @@ class ActiveParkingSession {
         userId: json['userId']?.toString() ?? '',
         userName: json['userName']?.toString() ?? '',
         plateNumber: json['plateNumber']?.toString(),
+        slotId: json['slotId']?.toString(),
         slotCode: json['slotCode']?.toString(),
+        slotConfirmedAt: json['slotConfirmedAt'] == null
+            ? null
+            : DateTime.parse(json['slotConfirmedAt'].toString()),
         entryTime: DateTime.parse(json['entryTime'].toString()),
         isVisitor: json['isVisitor'] as bool? ?? false,
         gate: (json['gate'] as num?)?.toInt(),

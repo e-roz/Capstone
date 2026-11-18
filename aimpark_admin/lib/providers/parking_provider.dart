@@ -28,6 +28,11 @@ Future<ParkingAvailability> parkingSlots(Ref ref) async {
 
 @riverpod
 Future<List<ActiveParkingSession>> activeParkingSessions(Ref ref) async {
+  // Slower than the bays: a name on the map can trail its car by a few
+  // seconds, and this list costs more to build than the bay statuses.
+  final timer = Timer(const Duration(seconds: 15), ref.invalidateSelf);
+  ref.onDispose(timer.cancel);
+
   final dio = ref.watch(dioProvider);
   final response = await dio.get(ApiEndpoints.activeParkingSessions);
   return (response.data as List<dynamic>)

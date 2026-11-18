@@ -9,8 +9,10 @@ import '../../providers/slot_history_provider.dart';
 import '../../theme/theme.dart';
 import '../slot_confirmation_pill.dart';
 import '../ui/ui.dart';
+import 'time_parked.dart';
 
 final _short = DateFormat('MMM d, h:mm a');
+final _time = DateFormat('h:mm a');
 final _peso = NumberFormat.currency(symbol: '₱', decimalDigits: 0);
 
 /// How far back the bay's history reaches in the dialog.
@@ -157,7 +159,7 @@ class SlotHistoryBody extends ConsumerWidget {
               Text('Nobody has claimed this bay.',
                   style: text.bodyMedium?.copyWith(color: t.text.secondary))
             else
-              _SessionRow(session: h.current!),
+              _CurrentOccupant(session: h.current!),
             const SizedBox(height: AppSpacing.x4),
           ],
           _Label('Sessions · ${h.sessions.length}${h.truncated ? '+' : ''}'),
@@ -266,15 +268,103 @@ class _SessionRow extends StatelessWidget {
           ),
           if (session.plateNumber != null)
             Padding(
-              padding: const EdgeInsets.only(right: AppSpacing.x2),
+              padding: const EdgeInsets.only(right: AppSpacing.x3),
               child: Text(session.plateNumber!,
-                  style: text.labelMedium?.copyWith(color: t.text.secondary)),
+                  style: AppTypography.tabular(
+                      text.labelMedium!.copyWith(color: t.text.secondary))),
             ),
+          // How long they stayed, or have stayed so far.
+          SizedBox(
+            width: 64,
+            child: Align(
+              alignment: Alignment.centerRight,
+              child: Padding(
+                padding: const EdgeInsets.only(right: AppSpacing.x3),
+                child: TimeParked(
+                  since: session.entryTime,
+                  until: session.exitTime,
+                  style: AppTypography.tabular(text.labelMedium!),
+                ),
+              ),
+            ),
+          ),
           // The bay on an unconfirmed session is only the gate's suggestion,
           // so it must not read as proof of where the car was.
           SlotConfirmationPill(
             confirmedAt: session.confirmedAt,
             exitTime: session.exitTime,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Whoever is in the bay right now, set apart from the history: name, plate,
+/// when they came in and confirmed the bay, and a running time.
+class _CurrentOccupant extends StatelessWidget {
+  const _CurrentOccupant({required this.session});
+
+  final SlotSession session;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = context.tokens;
+    final text = Theme.of(context).textTheme;
+    final c = t.status.of(StatusIntents.slot('Occupied'));
+    final name = session.isVisitor ? '${session.userName} (visitor)' : session.userName;
+    final initials = session.userName
+        .split(RegExp(r'\s+'))
+        .where((w) => w.isNotEmpty)
+        .take(2)
+        .map((w) => w[0].toUpperCase())
+        .join();
+    final details = [
+      ?session.plateNumber,
+      'In ${_time.format(manila(session.entryTime))}',
+      session.confirmedAt == null
+          ? 'bay not confirmed'
+          : 'confirmed ${_time.format(manila(session.confirmedAt!))}',
+    ].join(' · ');
+
+    return Container(
+      padding: const EdgeInsets.all(AppSpacing.x3),
+      decoration: BoxDecoration(
+        color: c.bg,
+        border: Border.all(color: c.border),
+        borderRadius: AppRadii.smAll,
+      ),
+      child: Row(
+        children: [
+          CircleAvatar(
+            radius: 18,
+            backgroundColor: c.solid,
+            child: Text(initials.isEmpty ? '?' : initials,
+                style: text.labelLarge?.copyWith(color: t.text.onBrand)),
+          ),
+          const SizedBox(width: AppSpacing.x3),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(name,
+                    style: text.titleSmall?.copyWith(fontWeight: FontWeight.w700, color: c.fg)),
+                Text(details, style: text.bodySmall?.copyWith(color: c.fg)),
+              ],
+            ),
+          ),
+          const SizedBox(width: AppSpacing.x2),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              TimeParked(
+                since: session.entryTime,
+                style: AppTypography.tabular(
+                    text.titleLarge!.copyWith(fontWeight: FontWeight.w700, color: c.fg)),
+              ),
+              const SizedBox(height: 2),
+              SlotConfirmationPill(confirmedAt: session.confirmedAt, exitTime: null),
+            ],
           ),
         ],
       ),
