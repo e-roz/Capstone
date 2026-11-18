@@ -1348,9 +1348,7 @@ class _BayState extends State<_Bay> {
           ?occupant.plateNumber,
           'in ${formatStay(DateTime.now().difference(occupant.entryTime))}',
         ].join(' · '),
-        occupant.isSlotConfirmed
-            ? 'Bay confirmed by the driver at ${_clock.format(manila(occupant.slotConfirmedAt!))}'
-            : 'Bay suggested at the gate; the driver has not confirmed it',
+        'Bay confirmed by the driver at ${_clock.format(manila(occupant.slotConfirmedAt!))}',
       ],
       if (wrongBay != null)
         wrongBay.isConfirmed
@@ -1374,32 +1372,17 @@ class _BayState extends State<_Bay> {
     final align = widget.stallOnRight ? CrossAxisAlignment.end : CrossAxisAlignment.start;
     final textAlign = widget.stallOnRight ? TextAlign.right : TextAlign.left;
     // Who is in the bay, under its code: name and plate on the full map, only
-    // the time on the small one, where a name would not fit. An unconfirmed
-    // bay is only the gate's suggestion, so its name is marked and slanted.
+    // the time on the small one, where a name would not fit.
     final small = text.labelSmall!.copyWith(color: fg, height: 1.15);
     final occupantLines = occupant == null || widget.compact
         ? const <Widget>[]
         : [
-            Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                if (!occupant.isSlotConfirmed) ...[
-                  Icon(Icons.help_outline_rounded, size: 11, color: fg),
-                  const SizedBox(width: 2),
-                ],
-                Flexible(
-                  child: Text(
-                    occupant.isVisitor ? 'Visitor: ${occupant.userName}' : occupant.userName,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    textAlign: textAlign,
-                    style: small.copyWith(
-                      fontWeight: FontWeight.w600,
-                      fontStyle: occupant.isSlotConfirmed ? null : FontStyle.italic,
-                    ),
-                  ),
-                ),
-              ],
+            Text(
+              occupant.isVisitor ? 'Visitor: ${occupant.userName}' : occupant.userName,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              textAlign: textAlign,
+              style: small.copyWith(fontWeight: FontWeight.w600),
             ),
             if (occupant.plateNumber != null)
               Text(
@@ -2025,14 +2008,6 @@ class _Legend extends StatelessWidget {
             Text('Check: wrong vehicle type?', style: text.labelSmall?.copyWith(color: t.text.secondary)),
           ],
         ),
-        Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(Icons.help_outline_rounded, size: 12, color: t.text.secondary),
-            const SizedBox(width: AppSpacing.x2 - 2),
-            Text('Driver has not confirmed the bay', style: text.labelSmall?.copyWith(color: t.text.secondary)),
-          ],
-        ),
       ],
     );
   }
@@ -2145,10 +2120,11 @@ class _Coverage extends InheritedWidget {
 
 // ── Who is in each bay ───────────────────────────────────────────────────────
 
-/// The car inside on each bay, by bay id, for every bay on the map to read.
+/// The driver in each bay, by bay id, for every bay on the map to read.
 ///
-/// From the open sessions, not the sensors: a session's bay is the one the
-/// driver confirmed in the app, or only the one the gate suggested.
+/// Only bays the driver confirmed in the app. The bay the gate suggests is a
+/// guess, and drivers often park elsewhere, so a name on it would point the
+/// guard at the wrong car. An unconfirmed session shows on no bay at all.
 class _Occupants extends InheritedWidget {
   const _Occupants({required this.sessions, required super.child});
 
@@ -2160,20 +2136,15 @@ class _Occupants extends InheritedWidget {
     return sessions?[slot.slotId] ?? sessions?['code:${slot.slotCode}'];
   }
 
-  /// One session per bay. Two can name the same bay when the gate suggested a
-  /// bay somebody else had already taken: the confirmed one wins, then the
-  /// latest in.
+  /// One confirmed session per bay; should two ever claim one, the latest in.
   static Map<String, ActiveParkingSession> byBay(List<ActiveParkingSession> all) {
     final out = <String, ActiveParkingSession>{};
     for (final s in all) {
+      if (!s.isSlotConfirmed) continue;
       final key = s.slotId ?? (s.slotCode == null ? null : 'code:${s.slotCode}');
       if (key == null) continue;
       final held = out[key];
-      if (held == null ||
-          (s.isSlotConfirmed && !held.isSlotConfirmed) ||
-          (s.isSlotConfirmed == held.isSlotConfirmed && s.entryTime.isAfter(held.entryTime))) {
-        out[key] = s;
-      }
+      if (held == null || s.entryTime.isAfter(held.entryTime)) out[key] = s;
     }
     return out;
   }

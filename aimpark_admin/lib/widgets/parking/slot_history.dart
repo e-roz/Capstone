@@ -155,11 +155,21 @@ class SlotHistoryBody extends ConsumerWidget {
         children: [
           if (showCurrent) ...[
             _Label('In the bay now'),
-            if (h.current == null)
-              Text('Nobody has claimed this bay.',
-                  style: text.bodyMedium?.copyWith(color: t.text.secondary))
-            else
-              _CurrentOccupant(session: h.current!),
+            // Only a driver who confirmed the bay is "in" it. The gate's
+            // suggestion is said as such, since they may be parked elsewhere.
+            if (h.current case final current? when current.isConfirmed)
+              _CurrentOccupant(session: current)
+            else ...[
+              Text('No driver has confirmed this bay.',
+                  style: text.bodyMedium?.copyWith(color: t.text.secondary)),
+              if (h.current case final suggested?)
+                Text(
+                  'Suggested at the gate to ${suggested.userName}'
+                  '${suggested.plateNumber == null ? '' : ' (${suggested.plateNumber})'}, '
+                  'who has not confirmed it.',
+                  style: text.bodySmall?.copyWith(color: t.text.tertiary),
+                ),
+            ],
             const SizedBox(height: AppSpacing.x4),
           ],
           _Label('Sessions · ${h.sessions.length}${h.truncated ? '+' : ''}'),
