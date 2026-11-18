@@ -1,13 +1,12 @@
 {
-  "version": "1.0.16",
-  "build": 17,
-  "apk_url": "https://github.com/e-roz/Capstone/releases/download/v1.0.16/app-release.apk",
-  "apk_sha256": "6516dac2d46f1aaf4b706672e26368479cff6e662b1e944f3f8cd65e816b41ac",
-  "apk_size_bytes": 94579437,
+  "version": "1.0.17",
+  "build": 18,
+  "apk_url": "https://github.com/e-roz/Capstone/releases/download/v1.0.17/app-release.apk",
+  "apk_sha256": "39c70958a0e93a981ae521863bf8fbb4d0e15151994dc00859ac1b73c7ce034d",
+  "apk_size_bytes": 94513761,
   "mandatory": false,
   "release_notes": [
-    "See how long you've been parked and your fee so far, live",
-    "Only bays where the sensor sees a vehicle can be confirmed",
-    "Sensor missed your car? Report it and still confirm your bay"
+    "You can only confirm a bay when its sensor sees your vehicle",
+    "Bay not lit up? Ask the parking office to sort it out"
   ]
 }
