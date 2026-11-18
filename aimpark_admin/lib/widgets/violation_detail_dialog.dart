@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 import '../core/utils/responsive.dart';
 import '../models/violation.dart';
 import '../providers/violations_provider.dart';
+import '../screens/incidents_screen.dart' show openIncidentReport;
 import '../theme/theme.dart';
 import 'document_viewer.dart';
 import 'review_summary.dart';
@@ -293,14 +294,15 @@ class _RuleSection extends StatelessWidget {
   }
 }
 
-class _ViolationSection extends StatelessWidget {
+class _ViolationSection extends ConsumerWidget {
   const _ViolationSection({required this.v});
 
   final ViolationDetail v;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final text = Theme.of(context).textTheme;
+    final incidentId = v.incidentId;
 
     return AppSectionCard(
       title: 'Violation',
@@ -309,6 +311,20 @@ class _ViolationSection extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Text(v.description, style: text.bodyMedium),
+          if (incidentId != null) ...[
+            const SizedBox(height: AppSpacing.x2),
+            Align(
+              alignment: Alignment.centerLeft,
+              // Issued from a report: the photos and the reporter's words are
+              // there, one click away, for anyone weighing an appeal.
+              child: OutlinedButton.icon(
+                icon: const Icon(Icons.report_outlined, size: AppSizes.iconSm),
+                label: const Text('Open the incident report'),
+                onPressed: () =>
+                    openIncidentReport(context, ref, incidentId, 'UnderReview'),
+              ),
+            ),
+          ],
           const SizedBox(height: AppSpacing.x4),
           AppFieldGrid(
             minColumnWidth: 150,

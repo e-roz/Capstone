@@ -219,7 +219,7 @@ public class UserHistoryTests
         var juan = Person(db, "Juan");
         var carlo = Person(db, "Carlo");
         var m3 = Bay(db, "M3");
-        db.ParkingLogs.Add(Session(juan, m3, Noon.AddHours(-20), Noon.AddHours(-18)));
+        db.ParkingLogs.Add(Session(juan, m3, Noon.AddHours(-30), Noon.AddHours(-28)));
         db.Add(Report(carlo, m3, Noon));
         await db.SaveChangesAsync();
 
@@ -262,13 +262,14 @@ public class UserHistoryTests
     }
 
     [Fact]
-    public void The_involvement_window_reaches_back_six_hours_and_ends_at_the_report()
+    public void The_involvement_window_covers_the_day_of_the_report_and_ends_at_it()
     {
+        // Noon UTC is 8 pm in Manila, so the day began 20 hours earlier.
         var report = Noon;
 
         Assert.True(IncidentInvolvement.Overlaps(report.AddHours(-1), null, report));
-        Assert.True(IncidentInvolvement.Overlaps(report.AddHours(-9), report.AddHours(-6), report));
-        Assert.False(IncidentInvolvement.Overlaps(report.AddHours(-9), report.AddHours(-6).AddMinutes(-1), report));
+        Assert.True(IncidentInvolvement.Overlaps(report.AddHours(-22), report.AddHours(-20), report));
+        Assert.False(IncidentInvolvement.Overlaps(report.AddHours(-22), report.AddHours(-20).AddMinutes(-1), report));
         Assert.False(IncidentInvolvement.Overlaps(report.AddMinutes(1), null, report));
     }
 }

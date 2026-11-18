@@ -67,6 +67,7 @@ class ViolationsScreen extends ConsumerWidget {
 ///
 /// [user] and [parkingLogId] fill in who and which parking session, for when the
 /// admin comes from an incident or a bay's history and already knows.
+/// [incidentId] links the violation to the report it came from.
 ///
 /// Returns whether a violation was issued.
 Future<bool> showIssueViolationDialog(
@@ -75,6 +76,7 @@ Future<bool> showIssueViolationDialog(
   String? description,
   PickedUser? user,
   String? parkingLogId,
+  String? incidentId,
 }) async {
   final descriptionCtrl = TextEditingController(text: description);
   PickedUser? picked = user;
@@ -180,6 +182,7 @@ Future<bool> showIssueViolationDialog(
         policyRuleId: ruleId!,
         description: descriptionCtrl.text.trim(),
         parkingLogId: parkingLogId,
+        incidentId: incidentId,
       );
   if (!context.mounted) return false;
   ScaffoldMessenger.of(context)

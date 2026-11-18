@@ -266,6 +266,7 @@ class ViolationActions extends _$ViolationActions {
     required String policyRuleId,
     required String description,
     String? parkingLogId,
+    String? incidentId,
   }) =>
       _run(() async {
         final dio = ref.read(dioProvider);
@@ -274,6 +275,7 @@ class ViolationActions extends _$ViolationActions {
           'policyRuleId': policyRuleId,
           'description': description,
           'parkingLogId': ?parkingLogId,
+          'incidentId': ?incidentId,
         });
         return (res.data as Map<String, dynamic>)['message']?.toString();
       });

@@ -172,6 +172,10 @@ namespace AimPark.API.Services
                     return new NotFoundObjectResult(new { message = "Parking log not found." });
             }
 
+            if (dto.IncidentId is not null &&
+                !await _db.Set<Incident>().AnyAsync(i => i.Id == dto.IncidentId, ct))
+                return new NotFoundObjectResult(new { message = "Incident report not found." });
+
             // The rule is the penalty. No overrides: two people who broke the
             // same rule get the same consequence.
             var suspensionType = rule.DefaultSuspensionType;
@@ -187,6 +191,7 @@ namespace AimPark.API.Services
                 UserId = user.Id,
                 PolicyRuleId = rule.Id,
                 ParkingLogId = dto.ParkingLogId,
+                IncidentId = dto.IncidentId,
                 Description = dto.Description.Trim(),
                 PenaltyAmount = rule.DefaultPenaltyAmount,
                 SuspensionType = suspensionType,
@@ -977,6 +982,7 @@ namespace AimPark.API.Services
                 UpdatedAt = row.UpdatedAt,
                 AppealDeadline = row.AppealDeadline,
                 Rule = ToRuleResponse(row.PolicyRule),
+                IncidentId = forAdmin ? row.IncidentId : null,
                 UserId = row.UserId,
                 UserFullName = row.User.FullName,
                 StudentNumber = row.User.StudentNumber,

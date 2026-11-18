@@ -70,6 +70,12 @@ namespace AimPark.API.DTOs
         /// <summary>The full rule as it stands now — its description is what the admin judges against.</summary>
         public PolicyRuleResponse? Rule { get; set; }
 
+        /// <summary>
+        /// The incident report this was issued from. Admin only: the driver is
+        /// not told who reported them.
+        /// </summary>
+        public Guid? IncidentId { get; set; }
+
         // The user it was issued to.
         public Guid UserId { get; set; }
         public string UserFullName { get; set; } = string.Empty;

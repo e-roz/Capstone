@@ -934,6 +934,7 @@ Future<void> _showDetail(
                                   slotCode: detail.slotCode!,
                                   reportedAt: detail.createdAt,
                                   incidentLabel: _categoryLabel(detail.category),
+                                  incidentId: detail.incidentId,
                                 ),
                                 const SizedBox(height: AppSpacing.x3),
                                 IncidentSlotSummary(

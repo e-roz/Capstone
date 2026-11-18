@@ -18,6 +18,13 @@ namespace AimPark.API.Entities
         public Guid? ParkingLogId { get; set; }
         public ParkingLog? ParkingLog { get; set; }
 
+        /// <summary>
+        /// The incident report this violation was issued from, when it was. No
+        /// FK: a plain reference like <see cref="IssuedByUserId"/>, so the two
+        /// records never take each other with them.
+        /// </summary>
+        public Guid? IncidentId { get; set; }
+
         public string Description { get; set; } = string.Empty;
 
         // Snapshot from the rule at issue time, so later rule changes never
