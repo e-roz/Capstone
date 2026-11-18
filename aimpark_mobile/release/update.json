@@ -1,12 +1,12 @@
 {
-  "version": "1.0.17",
-  "build": 18,
-  "apk_url": "https://github.com/e-roz/Capstone/releases/download/v1.0.17/app-release.apk",
-  "apk_sha256": "39c70958a0e93a981ae521863bf8fbb4d0e15151994dc00859ac1b73c7ce034d",
-  "apk_size_bytes": 94513761,
+  "version": "1.0.18",
+  "build": 19,
+  "apk_url": "https://github.com/e-roz/Capstone/releases/download/v1.0.18/app-release.apk",
+  "apk_sha256": "1c0373da92dce6a73091ca632f9afe522b2f4893a282a31cbcbdb37baf753331",
+  "apk_size_bytes": 94677597,
   "mandatory": false,
   "release_notes": [
-    "You can only confirm a bay when its sensor sees your vehicle",
-    "Bay not lit up? Ask the parking office to sort it out"
+    "Reporting an incident? Pick the bay it happened at on the lot map",
+    "Your report shows the bay you picked"
   ]
 }
