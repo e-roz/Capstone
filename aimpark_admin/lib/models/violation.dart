@@ -213,6 +213,9 @@ class ViolationDetail {
   final String? rfidTagIdAtIssue;
   final String? rfidStatus;
 
+  /// The incident report this was issued from, when it was.
+  final String? incidentId;
+
   /// The user's Accountable violations, this one included if it is one.
   final int accountableCount;
 
@@ -260,6 +263,7 @@ class ViolationDetail {
     required this.rfidTagId,
     required this.rfidTagIdAtIssue,
     required this.rfidStatus,
+    this.incidentId,
     required this.accountableCount,
     required this.paymentStatus,
     required this.amountDue,
@@ -304,6 +308,7 @@ class ViolationDetail {
         rfidTagId: json['rfidTagId']?.toString(),
         rfidTagIdAtIssue: json['rfidTagIdAtIssue']?.toString(),
         rfidStatus: json['rfidStatus']?.toString(),
+        incidentId: json['incidentId']?.toString(),
         accountableCount: (json['accountableCount'] as num?)?.toInt() ?? 0,
         paymentStatus: json['paymentStatus']?.toString(),
         amountDue: (json['amountDue'] as num?)?.toDouble(),

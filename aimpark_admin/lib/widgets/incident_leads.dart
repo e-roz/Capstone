@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
+import '../core/utils/incident_window.dart';
 import '../core/utils/ph_time.dart';
 import '../models/parking_slot.dart';
 import '../models/slot_history.dart';
@@ -18,10 +19,15 @@ import 'user_picker.dart';
 final _time = DateFormat('h:mm a');
 final _when = DateFormat('MMM d, h:mm a');
 
-/// How far before a report the lookup reaches. Damage is usually found some
-/// time after it happened. The same six hours the user's page uses for
-/// "possibly involved", so the two never disagree.
-const incidentLookBack = Duration(hours: 6);
+/// Says how far back the lookup went: "since midnight", or "since 6:30 PM the
+/// day before" for a report made just after midnight.
+String _windowLabel(DateTime reportedAt) {
+  final start = incidentWindowStart(reportedAt);
+  final sameDay = manila(start).day == manila(reportedAt).day;
+  return sameDay
+      ? 'since midnight'
+      : 'since ${_time.format(manila(start))} the day before';
+}
 
 /// Who was in the bay an incident is about, when it was reported.
 ///
@@ -35,11 +41,15 @@ class IncidentLeadPanel extends ConsumerWidget {
     required this.slotCode,
     required this.reportedAt,
     required this.incidentLabel,
+    this.incidentId,
   });
 
   final String slotId;
   final String slotCode;
   final DateTime reportedAt;
+
+  /// The report, so a violation issued from here links back to it.
+  final String? incidentId;
 
   /// "Vehicle damage", for the violation's starting description.
   final String incidentLabel;
@@ -48,7 +58,7 @@ class IncidentLeadPanel extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final query = SlotHistoryQuery(
       slotId,
-      from: reportedAt.subtract(incidentLookBack),
+      from: incidentWindowStart(reportedAt),
       to: reportedAt,
     );
     final async = ref.watch(slotHistoryProvider(query));
@@ -71,7 +81,7 @@ class IncidentLeadPanel extends ConsumerWidget {
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            _Summary(slotCode: slotCode, leads: leads),
+            _Summary(slotCode: slotCode, leads: leads, reportedAt: reportedAt),
             const SizedBox(height: AppSpacing.x3),
             if (leads.isNotEmpty) ...[
               _Timeline(leads: leads, reportedAt: reportedAt),
@@ -81,6 +91,7 @@ class IncidentLeadPanel extends ConsumerWidget {
                   lead: lead,
                   slotCode: slotCode,
                   reportedAt: reportedAt,
+                  incidentId: incidentId,
                   violationDescription:
                       '$incidentLabel reported in $slotCode on ${_when.format(manila(reportedAt))}.',
                 ),
@@ -112,7 +123,7 @@ class IncidentSlotSummary extends ConsumerWidget {
     final history = ref
         .watch(slotHistoryProvider(SlotHistoryQuery(
           slotId,
-          from: reportedAt.subtract(incidentLookBack),
+          from: incidentWindowStart(reportedAt),
           to: reportedAt,
         )))
         .valueOrNull;
@@ -185,14 +196,40 @@ class _Lead {
   /// How long before the report they left, when they had.
   final Duration? leftBefore;
 
-  /// Inside at the time first, then the ones who left most recently.
-  int get rank => insideAtReport ? 0 : 1 + (leftBefore?.inMinutes ?? 0);
+  LeadStrength get strength => !session.isConfirmed
+      ? LeadStrength.weak
+      : insideAtReport
+          ? LeadStrength.strong
+          : LeadStrength.likely;
 
-  StatusIntent get intent => insideAtReport
-      ? StatusIntent.danger
-      : session.isConfirmed
-          ? StatusIntent.success
-          : StatusIntent.warning;
+  /// Strongest first; within a strength, inside at the time first, then the
+  /// ones who left most recently.
+  int get rank =>
+      strength.index * 1000000 +
+      (insideAtReport ? 0 : 1 + (leftBefore?.inMinutes ?? 0));
+
+  StatusIntent get intent => strength.intent;
+}
+
+/// How strongly a session points at someone.
+///
+/// A confirm counts for a lot: a driver can only confirm a bay the sensor sees
+/// a vehicle in, so "confirmed C1" means a vehicle really was in C1 and that
+/// driver said it was theirs. A bay the gate only suggested says nothing about
+/// where they actually parked.
+enum LeadStrength {
+  /// Confirmed this bay and was inside when it was reported.
+  strong('Strong lead', StatusIntent.danger),
+
+  /// Confirmed this bay earlier the same day, and had left.
+  likely('Possible lead', StatusIntent.warning),
+
+  /// Never confirmed this bay: the gate suggested it, nothing more.
+  weak('Weak lead', StatusIntent.neutral);
+
+  const LeadStrength(this.label, this.intent);
+  final String label;
+  final StatusIntent intent;
 }
 
 String _confirmation(SlotSession s, String slotCode) =>
@@ -210,23 +247,40 @@ String _ago(Duration d) {
 }
 
 class _Summary extends StatelessWidget {
-  const _Summary({required this.slotCode, required this.leads});
+  const _Summary({
+    required this.slotCode,
+    required this.leads,
+    required this.reportedAt,
+  });
 
   final String slotCode;
   final List<_Lead> leads;
+  final DateTime reportedAt;
 
   @override
   Widget build(BuildContext context) {
     final inside = leads.where((l) => l.insideAtReport).toList();
-    final hours = incidentLookBack.inHours;
+    final strong =
+        leads.where((l) => l.strength == LeadStrength.strong).toList();
+    final window = _windowLabel(reportedAt);
 
     final (intent, icon, headline, detail) = leads.isEmpty
         ? (
             StatusIntent.neutral,
             Icons.person_off_outlined,
-            'Nobody was recorded in $slotCode in the $hours hours before this report.',
+            'Nobody was recorded in $slotCode $window.',
             'The bay may have been used without a session being logged. Check the camera or ask the guard.',
           )
+        : strong.length == 1
+            ? (
+                StatusIntent.danger,
+                Icons.person_pin_circle_outlined,
+                '${strong.first.session.userName} confirmed $slotCode and was inside when this was reported.',
+                leads.length == 1
+                    ? 'The strongest lead. Still a lead, not a finding: check before issuing.'
+                    : 'The strongest lead; ${leads.length - 1} more used the bay $window. '
+                        'Still a lead, not a finding: check before issuing.',
+              )
         : inside.isNotEmpty
             ? (
                 StatusIntent.danger,
@@ -235,13 +289,13 @@ class _Summary extends StatelessWidget {
                     '${inside.length == 1 ? 'was' : 'were'} inside $slotCode when this was reported.',
                 leads.length == inside.length
                     ? 'This is a lead, not a finding.'
-                    : '${leads.length - inside.length} more used the bay in the $hours hours before. This is a lead, not a finding.',
+                    : '${leads.length - inside.length} more used the bay $window. This is a lead, not a finding.',
               )
             : (
                 StatusIntent.warning,
                 Icons.history_toggle_off,
                 'Nobody was inside $slotCode when this was reported.',
-                '${leads.length} ${leads.length == 1 ? 'person' : 'people'} used it in the $hours hours before; '
+                '${leads.length} ${leads.length == 1 ? 'person' : 'people'} used it $window; '
                     'the last left ${_ago(leads.first.leftBefore ?? Duration.zero)} earlier. This is a lead, not a finding.',
               );
 
@@ -249,8 +303,8 @@ class _Summary extends StatelessWidget {
   }
 }
 
-/// Six hours before the report, one bar per person, and a mark where it was
-/// reported. A bar touching the mark was there when it happened.
+/// From the start of the window to the report, one bar per person, and a mark
+/// where it was reported. A bar touching the mark was there when it happened.
 class _Timeline extends StatelessWidget {
   const _Timeline({required this.leads, required this.reportedAt});
 
@@ -263,8 +317,8 @@ class _Timeline extends StatelessWidget {
   Widget build(BuildContext context) {
     final t = context.tokens;
     final text = Theme.of(context).textTheme;
-    final start = reportedAt.subtract(incidentLookBack);
-    final span = incidentLookBack.inMilliseconds.toDouble();
+    final start = incidentWindowStart(reportedAt);
+    final span = reportedAt.difference(start).inMilliseconds.toDouble();
     final shown = leads.take(6).toList();
     final height = shown.length * _lane + 8;
 
@@ -362,12 +416,14 @@ class _PersonCard extends ConsumerWidget {
     required this.slotCode,
     required this.reportedAt,
     required this.violationDescription,
+    this.incidentId,
   });
 
   final _Lead lead;
   final String slotCode;
   final DateTime reportedAt;
   final String violationDescription;
+  final String? incidentId;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -385,6 +441,15 @@ class _PersonCard extends ConsumerWidget {
         ' · ${_confirmation(s, slotCode)}';
 
     final userId = s.userId;
+    final firstName = s.userName.trim().split(RegExp(r'\s+')).first;
+    void issue() => showIssueViolationDialog(
+          context,
+          ref,
+          description: violationDescription,
+          user: PickedUser(userId: userId!, fullName: s.userName, email: ''),
+          parkingLogId: s.logId,
+          incidentId: incidentId,
+        );
 
     return Container(
       margin: const EdgeInsets.only(bottom: AppSpacing.x2),
@@ -420,6 +485,12 @@ class _PersonCard extends ConsumerWidget {
                         Text(s.isVisitor ? '${s.userName} (visitor)' : s.userName,
                             style: text.bodyLarge?.copyWith(fontWeight: FontWeight.w700)),
                         StatusPill.of(
+                          lead.strength.label,
+                          intent: lead.strength.intent,
+                          showDot: true,
+                          dense: true,
+                        ),
+                        StatusPill.of(
                           lead.insideAtReport
                               ? 'Inside when reported'
                               : 'Left ${_ago(lead.leftBefore ?? Duration.zero)} before',
@@ -451,21 +522,28 @@ class _PersonCard extends ConsumerWidget {
                     router.go('/users/$userId');
                   },
                 ),
-                OutlinedButton.icon(
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: t.status.danger.fg,
-                    side: BorderSide(color: t.status.danger.border),
+                if (lead.strength == LeadStrength.strong)
+                  // The strong lead gets the one solid button on the panel, so
+                  // the obvious next step is the obvious button. It still opens
+                  // the form: an admin picks the rule and checks the wording.
+                  FilledButton.icon(
+                    style: FilledButton.styleFrom(
+                      backgroundColor: t.status.danger.solid,
+                    ),
+                    icon: const Icon(Icons.gavel_outlined, size: AppSizes.iconSm),
+                    label: Text('Issue to $firstName'),
+                    onPressed: issue,
+                  )
+                else
+                  OutlinedButton.icon(
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: t.status.danger.fg,
+                      side: BorderSide(color: t.status.danger.border),
+                    ),
+                    icon: const Icon(Icons.gavel_outlined, size: AppSizes.iconSm),
+                    label: const Text('Create violation'),
+                    onPressed: issue,
                   ),
-                  icon: const Icon(Icons.gavel_outlined, size: AppSizes.iconSm),
-                  label: const Text('Create violation'),
-                  onPressed: () => showIssueViolationDialog(
-                    context,
-                    ref,
-                    description: violationDescription,
-                    user: PickedUser(userId: userId, fullName: s.userName, email: ''),
-                    parkingLogId: s.logId,
-                  ),
-                ),
               ],
             ),
           ],

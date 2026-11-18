@@ -1710,6 +1710,9 @@ namespace AimPark.API.Migrations
                     b.Property<Guid?>("DismissedByUserId")
                         .HasColumnType("uuid");
 
+                    b.Property<Guid?>("IncidentId")
+                        .HasColumnType("uuid");
+
                     b.Property<Guid>("IssuedByUserId")
                         .HasColumnType("uuid");
 

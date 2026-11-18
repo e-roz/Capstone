@@ -11,5 +11,8 @@ namespace AimPark.API.DTOs
         public Guid PolicyRuleId { get; set; }
         public string Description { get; set; } = string.Empty;
         public Guid? ParkingLogId { get; set; }
+
+        /// <summary>The incident report this is issued from, if any.</summary>
+        public Guid? IncidentId { get; set; }
     }
 }
