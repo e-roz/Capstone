@@ -71,7 +71,17 @@ namespace AimPark.API.DTOs
         public string UserName { get; set; } = string.Empty;
 
         public string? PlateNumber { get; set; }
+
+        /// <summary>The bay on this session: the confirmed one, or only the gate's suggestion.</summary>
+        public Guid? SlotId { get; set; }
         public string? SlotCode { get; set; }
+
+        /// <summary>
+        /// When the driver confirmed <see cref="SlotId"/> in the app. Null = the
+        /// bay is only the one the gate suggested, which the map labels as such.
+        /// </summary>
+        public DateTime? SlotConfirmedAt { get; set; }
+
         public DateTime EntryTime { get; set; }
 
         /// <summary>

@@ -21,6 +21,7 @@ import '../../screens/violations_screen.dart';
 import '../../theme/theme.dart';
 import '../ui/ui.dart';
 import 'gate_status.dart';
+import 'time_parked.dart';
 
 final _clock = DateFormat('HH:mm');
 
@@ -135,6 +136,10 @@ class _LiveParkingMapCardState extends ConsumerState<LiveParkingMapCard> {
     // A server too old to know about warnings answers 404: no warnings.
     final wrongBays = ref.watch(wrongBayFlagsProvider).valueOrNull ?? const <WrongBayFlag>[];
     final link = ref.watch(siteLinkProvider).valueOrNull;
+    // Who is in each bay. Missing (still loading, or refused) just leaves the
+    // bays without names; the map itself does not wait for it.
+    final occupants = _Occupants.byBay(
+        ref.watch(activeParkingSessionsProvider).valueOrNull ?? const []);
 
     // At the guard post its own server answers and the map is first-hand.
     // Online, gate devices come from the list the guard post relays through
@@ -165,6 +170,8 @@ class _LiveParkingMapCardState extends ConsumerState<LiveParkingMapCard> {
           coverage: coverage,
           child: _WrongBays(
             flags: {for (final f in wrongBays) f.slotId: f},
+            child: _Occupants(
+            sessions: occupants,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
@@ -199,6 +206,7 @@ class _LiveParkingMapCardState extends ConsumerState<LiveParkingMapCard> {
                   ),
                 ),
               ],
+            ),
             ),
           ),
         ),
@@ -1318,6 +1326,7 @@ class _BayState extends State<_Bay> {
     final occupied = !silent && slot.status == 'Occupied';
     final free = !silent && slot.status == 'Available';
     final wrongBay = _WrongBays.of(context)[slot.slotId];
+    final occupant = _Occupants.of(context, slot);
     final warn = t.status.warning;
     final outOfService = slot.status == 'OutOfService';
     final fg = occupied
@@ -1333,6 +1342,16 @@ class _BayState extends State<_Bay> {
               : '${slot.slotCode} · Sensor has no signal (last seen ${_statusLabel(slot.status).toLowerCase()})'
           : '${slot.slotCode} · ${_statusLabel(slot.status)}',
       slot.isMotorcycle ? 'Motorcycle bay' : slot.vehicleType == 'Car' ? 'Four-wheel bay' : 'Any vehicle',
+      if (occupant != null) ...[
+        [
+          occupant.isVisitor ? '${occupant.userName} (visitor)' : occupant.userName,
+          ?occupant.plateNumber,
+          'in ${formatStay(DateTime.now().difference(occupant.entryTime))}',
+        ].join(' · '),
+        occupant.isSlotConfirmed
+            ? 'Bay confirmed by the driver at ${_clock.format(manila(occupant.slotConfirmedAt!))}'
+            : 'Bay suggested at the gate; the driver has not confirmed it',
+      ],
       if (wrongBay != null)
         wrongBay.isConfirmed
             ? 'Wrong kind of vehicle here (confirmed)'
@@ -1352,9 +1371,49 @@ class _BayState extends State<_Bay> {
       color: free ? t.text.secondary : fg,
     );
 
+    final align = widget.stallOnRight ? CrossAxisAlignment.end : CrossAxisAlignment.start;
+    final textAlign = widget.stallOnRight ? TextAlign.right : TextAlign.left;
+    // Who is in the bay, under its code: name and plate on the full map, only
+    // the time on the small one, where a name would not fit. An unconfirmed
+    // bay is only the gate's suggestion, so its name is marked and slanted.
+    final small = text.labelSmall!.copyWith(color: fg, height: 1.15);
+    final occupantLines = occupant == null || widget.compact
+        ? const <Widget>[]
+        : [
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (!occupant.isSlotConfirmed) ...[
+                  Icon(Icons.help_outline_rounded, size: 11, color: fg),
+                  const SizedBox(width: 2),
+                ],
+                Flexible(
+                  child: Text(
+                    occupant.isVisitor ? 'Visitor: ${occupant.userName}' : occupant.userName,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    textAlign: textAlign,
+                    style: small.copyWith(
+                      fontWeight: FontWeight.w600,
+                      fontStyle: occupant.isSlotConfirmed ? null : FontStyle.italic,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            if (occupant.plateNumber != null)
+              Text(
+                occupant.plateNumber!,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                textAlign: textAlign,
+                style: AppTypography.tabular(small),
+              ),
+          ];
+
     final label = Column(
       mainAxisAlignment: MainAxisAlignment.center,
-      crossAxisAlignment: widget.stallOnRight ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+      crossAxisAlignment: align,
       children: [
         Row(
           mainAxisSize: MainAxisSize.min,
@@ -1381,8 +1440,18 @@ class _BayState extends State<_Bay> {
                 ),
               ),
             ),
+            if (occupant != null) ...[
+              const SizedBox(width: AppSpacing.x2),
+              Icon(Icons.schedule_rounded, size: 11, color: fg),
+              const SizedBox(width: 2),
+              TimeParked(
+                since: occupant.entryTime,
+                style: AppTypography.tabular(small),
+              ),
+            ],
           ],
         ),
+        ...occupantLines,
       ],
     );
 
@@ -1416,11 +1485,16 @@ class _BayState extends State<_Bay> {
               right: widget.stallOnRight ? 2 : null,
               child: Icon(Icons.warning_rounded, size: widget.compact ? 12 : 14, color: warn.solid),
             ),
-          Row(
-            children: widget.stallOnRight
-                ? [icon, const SizedBox(width: AppSpacing.x2), Expanded(child: label)]
-                : [Expanded(child: label), const SizedBox(width: AppSpacing.x2), icon],
-          ),
+          // A named bay gives the icon's room to the name; the bay code
+          // already says what kind of bay it is.
+          if (occupant != null)
+            Row(children: [Expanded(child: label)])
+          else
+            Row(
+              children: widget.stallOnRight
+                  ? [icon, const SizedBox(width: AppSpacing.x2), Expanded(child: label)]
+                  : [Expanded(child: label), const SizedBox(width: AppSpacing.x2), icon],
+            ),
         ],
       ),
     );
@@ -1951,6 +2025,14 @@ class _Legend extends StatelessWidget {
             Text('Check: wrong vehicle type?', style: text.labelSmall?.copyWith(color: t.text.secondary)),
           ],
         ),
+        Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.help_outline_rounded, size: 12, color: t.text.secondary),
+            const SizedBox(width: AppSpacing.x2 - 2),
+            Text('Driver has not confirmed the bay', style: text.labelSmall?.copyWith(color: t.text.secondary)),
+          ],
+        ),
       ],
     );
   }
@@ -2059,6 +2141,53 @@ class _Coverage extends InheritedWidget {
     final (a, b) = (old.coverage.live, coverage.live);
     return a == null || b == null ? a != b : a.length != b.length || !a.containsAll(b);
   }
+}
+
+// ── Who is in each bay ───────────────────────────────────────────────────────
+
+/// The car inside on each bay, by bay id, for every bay on the map to read.
+///
+/// From the open sessions, not the sensors: a session's bay is the one the
+/// driver confirmed in the app, or only the one the gate suggested.
+class _Occupants extends InheritedWidget {
+  const _Occupants({required this.sessions, required super.child});
+
+  /// By slot id, or by slot code from a server that sends no id.
+  final Map<String, ActiveParkingSession> sessions;
+
+  static ActiveParkingSession? of(BuildContext context, ParkingSlot slot) {
+    final sessions = context.dependOnInheritedWidgetOfExactType<_Occupants>()?.sessions;
+    return sessions?[slot.slotId] ?? sessions?['code:${slot.slotCode}'];
+  }
+
+  /// One session per bay. Two can name the same bay when the gate suggested a
+  /// bay somebody else had already taken: the confirmed one wins, then the
+  /// latest in.
+  static Map<String, ActiveParkingSession> byBay(List<ActiveParkingSession> all) {
+    final out = <String, ActiveParkingSession>{};
+    for (final s in all) {
+      final key = s.slotId ?? (s.slotCode == null ? null : 'code:${s.slotCode}');
+      if (key == null) continue;
+      final held = out[key];
+      if (held == null ||
+          (s.isSlotConfirmed && !held.isSlotConfirmed) ||
+          (s.isSlotConfirmed == held.isSlotConfirmed && s.entryTime.isAfter(held.entryTime))) {
+        out[key] = s;
+      }
+    }
+    return out;
+  }
+
+  @override
+  bool updateShouldNotify(_Occupants old) =>
+      old.sessions.length != sessions.length ||
+      sessions.entries.any((e) {
+        final was = old.sessions[e.key];
+        return was == null ||
+            was.logId != e.value.logId ||
+            was.slotConfirmedAt != e.value.slotConfirmedAt ||
+            was.plateNumber != e.value.plateNumber;
+      });
 }
 
 // ── Wrong-bay warnings ───────────────────────────────────────────────────────
