@@ -54,6 +54,7 @@ class IncidentDetail {
     required this.evidenceUrls,
     this.evidenceUnavailable = 0,
     this.location,
+    this.slotCode,
     this.adminNotes,
   });
 
@@ -61,6 +62,9 @@ class IncidentDetail {
   final String category;
   final String description;
   final String? location;
+
+  /// The bay the reporter picked, e.g. `C2`. Null when none was picked.
+  final String? slotCode;
   final String status;
   final String? adminNotes;
   final DateTime createdAt;
@@ -88,6 +92,7 @@ class IncidentDetail {
       category: json['category'] as String,
       description: json['description'] as String,
       location: json['location'] as String?,
+      slotCode: json['slotCode'] as String?,
       status: json['status'] as String,
       adminNotes: json['adminNotes'] as String?,
       createdAt: DateTime.parse(json['createdAt'] as String).toLocal(),
