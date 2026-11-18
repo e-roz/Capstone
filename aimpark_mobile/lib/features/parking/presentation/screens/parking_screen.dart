@@ -70,14 +70,10 @@ class _ParkingScreenState extends ConsumerState<ParkingScreen> {
   /// When the gate could not tell which vehicle came in, the driver is asked
   /// first, and a bay for the other kind is refused here without asking the
   /// server.
-  ///
-  /// [sensorMissed] is "my car is here — sensor missed it" on a bay that reads
-  /// empty: the server confirms it and reports the sensor.
   Future<bool> _confirmSlot(
     ParkingHistoryEntry session,
     ParkingSlot slot,
     List<Vehicle> vehicles,
-    bool sensorMissed,
   ) async {
     Vehicle? brought;
     final kinds = vehicles.map((v) => v.isMotorcycle).toSet();
@@ -102,26 +98,19 @@ class _ParkingScreenState extends ConsumerState<ParkingScreen> {
     }
 
     try {
-      final reported = await ref
+      await ref
           .read(parkingRepositoryProvider)
           .confirmSlot(
             logId: session.logId,
             slotId: slot.slotId,
             vehicleId: brought?.id,
-            sensorMissed: sensorMissed,
           );
       // Invalidate rather than refresh(): refresh() puts the history into a
       // loading state, which blinks the whole screen for a one-field change.
       ref.invalidate(parkingHistoryNotifierProvider);
       ref.invalidate(parkingAvailabilityNotifierProvider);
       if (mounted) {
-        showAppMessage(
-          context,
-          reported
-              ? '${slot.slotCode} confirmed as your bay. We told the parking '
-                    'office its sensor missed your vehicle.'
-              : '${slot.slotCode} confirmed as your bay.',
-        );
+        showAppMessage(context, '${slot.slotCode} confirmed as your bay.');
       }
       return true;
     } catch (e) {
@@ -282,8 +271,8 @@ class _ParkingScreenState extends ConsumerState<ParkingScreen> {
                 message: confirmTarget.isOpen
                     ? 'Tap the bay you parked in and confirm it, so the guards '
                           'know it was you. Only bays where the sensor sees a '
-                          "vehicle can be picked. If yours isn't lit up, tap "
-                          'it anyway and report it. Leaving without confirming '
+                          "vehicle can be picked. If yours isn't lit up, ask "
+                          'the parking office. Leaving without confirming '
                           'counts against you.'
                     : 'You left earlier today. Tap the bay you used and confirm '
                           'it — this is open until midnight, after which it '
@@ -302,12 +291,7 @@ class _ParkingScreenState extends ConsumerState<ParkingScreen> {
               onConfirmSlot:
                   confirmTarget == null || confirmTarget.slotConfirmed
                   ? null
-                  : (slot, sensorMissed) => _confirmSlot(
-                      confirmTarget,
-                      slot,
-                      vehicles,
-                      sensorMissed,
-                    ),
+                  : (slot) => _confirmSlot(confirmTarget, slot, vehicles),
               userHasCar: userHasCar,
               userHasMotorcycle: userHasMotorcycle,
               cameInOnMotorcycle: cameInOnMotorcycle,
