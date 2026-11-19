@@ -79,6 +79,44 @@ namespace AimPark.API.Services
             }
         }
 
+        public async Task AnnounceAsync(NotificationType type, string title, string message, CancellationToken ct)
+        {
+            try
+            {
+                var notification = new Notification
+                {
+                    Id = Guid.NewGuid(),
+                    Title = title,
+                    Message = message,
+                    Type = type,
+                    TargetUserId = null, // everyone, like a broadcast
+                    TargetRole = null,
+                    CreatedByUserId = Guid.Empty, // raised by the system, not an admin
+                    CreatedAt = DateTime.UtcNow
+                };
+
+                await _notifications.AddAsync(notification, ct);
+                await _notifications.SaveAsync(ct);
+
+                await _pushSender.SendToRoleAsync(
+                    null,
+                    title,
+                    message,
+                    new Dictionary<string, string>
+                    {
+                        ["type"] = "notification",
+                        ["notificationId"] = notification.Id.ToString(),
+                    },
+                    ct);
+            }
+            catch (Exception ex)
+            {
+                // The change that caused the notice is already saved; a failed
+                // notice must not undo it.
+                _logger.LogError(ex, "Failed to announce \"{Title}\".", title);
+            }
+        }
+
         // POST /api/admin/notifications
         public async Task<ActionResult<object>> BroadcastAsync(BroadcastNotificationDto dto, Guid adminUserId, CancellationToken ct)
         {

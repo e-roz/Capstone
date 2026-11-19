@@ -685,6 +685,7 @@ public class SlotConfirmationTests
 
     private sealed class Recorder(AppDbContext db) : INotificationService
     {
+        public Task AnnounceAsync(NotificationType type, string title, string message, CancellationToken ct) => Task.CompletedTask;
         public List<(Guid UserId, IDictionary<string, string>? Data)> Sent { get; } = [];
 
         public async Task NotifyUserAsync(Guid userId, NotificationType type, string title, string message,

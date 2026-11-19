@@ -473,6 +473,7 @@ public class PayBeforeExitTests
 
     internal sealed class Notices : INotificationService
     {
+        public Task AnnounceAsync(NotificationType type, string title, string message, CancellationToken ct) => Task.CompletedTask;
         public Task NotifyUserAsync(Guid userId, NotificationType type, string title, string message,
             IDictionary<string, string>? data, CancellationToken ct) => Task.CompletedTask;
 

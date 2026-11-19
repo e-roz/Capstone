@@ -25,6 +25,12 @@ namespace AimPark.API.Controllers
             CancellationToken ct = default)
             => _paymentService.GetMyPaymentsAsync(GetUserId(), page, pageSize, ct);
 
+        /// <summary>The parking rates, so a driver knows the price before parking.</summary>
+        /// <remarks>Same list the admin panel reads; nothing in it is private.</remarks>
+        [HttpGet("rates")]
+        public Task<ActionResult<List<ParkingRateResponse>>> Rates(CancellationToken ct)
+            => _paymentService.ListRatesAsync(ct);
+
         [HttpGet("{paymentId:guid}")]
         public Task<ActionResult<PaymentResponse>> GetDetail(Guid paymentId, CancellationToken ct)
             => _paymentService.GetMyPaymentDetailAsync(GetUserId(), paymentId, ct);

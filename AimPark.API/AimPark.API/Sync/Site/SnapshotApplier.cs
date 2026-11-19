@@ -306,6 +306,10 @@ namespace AimPark.API.Sync.Site
                 rate.RatePerHour = source.RatePerHour;
                 rate.MinimumFee = source.MinimumFee;
                 rate.UpdatedAt = source.UpdatedAt;
+                // The exit bill is raised here, so the site needs the old rate
+                // too, for a car that came in before the change.
+                rate.PreviousRatePerHour = source.PreviousRatePerHour;
+                rate.PreviousMinimumFee = source.PreviousMinimumFee;
             }
 
             await _db.SaveChangesAsync(ct);

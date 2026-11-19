@@ -213,6 +213,7 @@ public class AccountStateGateTests
 
     private sealed class Notices : INotificationService
     {
+        public Task AnnounceAsync(NotificationType type, string title, string message, CancellationToken ct) => Task.CompletedTask;
         public List<(string Title, string Message)> Sent { get; } = [];
 
         public Task NotifyUserAsync(Guid userId, NotificationType type, string title, string message,

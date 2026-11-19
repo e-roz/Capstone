@@ -21,6 +21,19 @@ namespace AimPark.API.Entities
         /// </remarks>
         public decimal MinimumFee { get; set; } = 20.00m;
 
+        /// <summary>When the current rate and minimum took effect.</summary>
         public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
+
+        /// <summary>The hourly rate before the last change. Null if it never changed.</summary>
+        /// <remarks>
+        /// A car that came in before <see cref="UpdatedAt"/> keeps this rate
+        /// until it leaves: the price is the one in force at entry, not the one
+        /// in force at exit. Only one step back is kept, so a car inside through
+        /// two changes pays the rate from just before the latest one.
+        /// </remarks>
+        public decimal? PreviousRatePerHour { get; set; }
+
+        /// <summary>The minimum fee before the last change. Read with <see cref="PreviousRatePerHour"/>.</summary>
+        public decimal? PreviousMinimumFee { get; set; }
     }
 }

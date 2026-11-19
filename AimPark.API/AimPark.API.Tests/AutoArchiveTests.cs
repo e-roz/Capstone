@@ -35,6 +35,7 @@ public class AutoArchiveTests
     /// <summary>Records the pushes instead of sending them.</summary>
     private sealed class FakeNotifications : INotificationService
     {
+        public Task AnnounceAsync(NotificationType type, string title, string message, CancellationToken ct) => Task.CompletedTask;
         public List<(Guid UserId, string Title)> Sent { get; } = [];
 
         public Task NotifyUserAsync(Guid userId, NotificationType type, string title, string message,

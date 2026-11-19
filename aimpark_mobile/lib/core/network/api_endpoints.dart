@@ -60,6 +60,7 @@ class ApiEndpoints {
   static String violationAppeal(String violationId) => '/api/violations/$violationId/appeal';
 
   static const payments = '/api/payments';
+  static const paymentRates = '/api/payments/rates';
   static String paymentDetail(String paymentId) => '/api/payments/$paymentId';
   static String paymentCheckout(String paymentId) =>
       '/api/payments/$paymentId/checkout';
