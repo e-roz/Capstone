@@ -134,6 +134,24 @@ namespace AimPark.API.Controllers
             Guid runId, [FromBody] BulkArchiveAutoSettingsDto dto, CancellationToken ct)
             => _adminUserService.UpdateAutoArchiveAsync(GetAdminUserId(), runId, dto, ct);
 
+        /// <summary>
+        /// Restores many archived accounts at once. Needs a reason and the
+        /// administrator's password. Accounts come back with their status
+        /// unchanged and without a card, as with a single restore.
+        /// </summary>
+        [HttpPost("bulk-restore")]
+        public Task<ActionResult<BulkRestoreResponse>> BulkRestore([FromBody] BulkRestoreDto dto, CancellationToken ct)
+            => _adminUserService.BulkRestoreAsync(GetAdminUserId(), dto, ct);
+
+        /// <summary>
+        /// Restores everyone a bulk archive run archived (at the time and by
+        /// auto-archive since) and turns its auto-archive off. Once per run.
+        /// </summary>
+        [HttpPost("bulk-archive/runs/{runId:guid}/undo")]
+        public Task<ActionResult<BulkRestoreResponse>> UndoBulkArchive(
+            Guid runId, [FromBody] UndoBulkArchiveDto dto, CancellationToken ct)
+            => _adminUserService.UndoBulkArchiveAsync(GetAdminUserId(), runId, dto, ct);
+
         /// <summary>Takes one person off a run's "archive when clear" list.</summary>
         [HttpPost("bulk-archive/pending/{pendingId:guid}/cancel")]
         public Task<ActionResult<BulkArchiveLastRunResponse?>> CancelPendingArchive(Guid pendingId, CancellationToken ct)

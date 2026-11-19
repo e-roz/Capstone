@@ -23,6 +23,9 @@ namespace AimPark.API.Enums
         Cancelled,
 
         /// <summary>The run's end date passed while they were still waiting.</summary>
-        Expired
+        Expired,
+
+        /// <summary>Archived by auto-archive, then brought back by a restore or an undo.</summary>
+        Restored
     }
 }

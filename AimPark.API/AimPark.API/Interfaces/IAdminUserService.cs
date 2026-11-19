@@ -27,6 +27,9 @@ namespace AimPark.API.Interfaces
         Task<ActionResult<BulkArchiveLastRunResponse?>> UpdateAutoArchiveAsync(Guid adminUserId, Guid runId, BulkArchiveAutoSettingsDto dto, CancellationToken ct);
         Task<ActionResult<BulkArchiveLastRunResponse?>> CancelPendingArchiveAsync(Guid adminUserId, Guid pendingId, CancellationToken ct);
 
+        Task<ActionResult<BulkRestoreResponse>> BulkRestoreAsync(Guid adminUserId, BulkRestoreDto dto, CancellationToken ct);
+        Task<ActionResult<BulkRestoreResponse>> UndoBulkArchiveAsync(Guid adminUserId, Guid runId, UndoBulkArchiveDto dto, CancellationToken ct);
+
         /// <summary>One pass of "archive when clear" over every run that has it on.</summary>
         /// <returns>How many accounts were archived.</returns>
         Task<int> RunAutoArchivePassAsync(DateTime now, CancellationToken ct);

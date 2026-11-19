@@ -71,6 +71,9 @@ class _BulkArchiveDialogState extends ConsumerState<_BulkArchiveDialog> {
   bool _savingAuto = false;
   String? _autoError;
 
+  /// "Restored 9." after an undo, shown in the Last run box.
+  String? _undoMessage;
+
   static const _defaultGraceDays = 7;
 
   static DateTime _defaultUntil() {
@@ -300,6 +303,91 @@ class _BulkArchiveDialogState extends ConsumerState<_BulkArchiveDialog> {
     await _sendAuto((dio) => dio.put(ApiEndpoints.bulkArchiveAuto(run.runId), data: {'enabled': false}));
   }
 
+  /// Restores everyone the last run archived, after a reason and password.
+  Future<void> _undoRun(BulkArchiveLastRun run) async {
+    final confirmed = await showDialog<(String, String)>(
+      context: context,
+      builder: (_) => _UndoRunDialog(
+        count: run.restorableCount,
+        ranAt: run.ranAt,
+        autoOn: run.auto.enabled,
+      ),
+    );
+    if (confirmed == null) return;
+    final (reason, password) = confirmed;
+
+    setState(() {
+      _savingAuto = true;
+      _autoError = null;
+      _undoMessage = null;
+    });
+    try {
+      final dio = ref.read(dioProvider);
+      final res = await dio.post(ApiEndpoints.bulkArchiveUndo(run.runId),
+          data: {'reason': reason, 'password': password});
+      final result = BulkRestoreResult.fromJson(res.data as Map<String, dynamic>);
+      final again = await dio.get(ApiEndpoints.bulkArchiveLastRun);
+      if (!mounted) return;
+      setState(() {
+        _savingAuto = false;
+        _undoMessage = 'Restored ${result.restored}. Assign cards again where needed.';
+        if (again.data is Map<String, dynamic>) {
+          _lastRun = BulkArchiveLastRun.fromJson(again.data as Map<String, dynamic>);
+        }
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _savingAuto = false;
+        _autoError = _messageOf(e);
+      });
+    }
+  }
+
+  Widget _undoRow(BuildContext context, BulkArchiveLastRun run) {
+    final t = context.tokens;
+    final text = Theme.of(context).textTheme;
+
+    if (run.undoneAt != null) {
+      return Padding(
+        padding: const EdgeInsets.only(bottom: AppSpacing.x2),
+        child: Row(
+          children: [
+            Icon(Icons.undo, size: AppSizes.iconSm, color: t.text.tertiary),
+            const SizedBox(width: AppSpacing.x2),
+            Expanded(
+              child: Text(
+                _undoMessage ?? 'Undone ${_day.format(manila(run.undoneAt!))}',
+                style: text.bodyMedium?.copyWith(color: t.text.secondary),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+    if (!run.canUndo) return const SizedBox.shrink();
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: AppSpacing.x2),
+      child: Row(
+        children: [
+          Icon(Icons.undo, size: AppSizes.iconSm, color: t.text.secondary),
+          const SizedBox(width: AppSpacing.x2),
+          Expanded(
+            child: Text(
+              '${run.restorableCount} from this run still archived',
+              style: text.bodyMedium?.copyWith(color: t.text.secondary),
+            ),
+          ),
+          TextButton(
+            onPressed: _busy || _savingAuto ? null : () => _undoRun(run),
+            child: const Text('Undo this run'),
+          ),
+        ],
+      ),
+    );
+  }
+
   Future<void> _cancelPending(BulkArchivePending p) =>
       _sendAuto((dio) => dio.post(ApiEndpoints.bulkArchiveCancelPending(p.id)));
 
@@ -377,7 +465,9 @@ class _BulkArchiveDialogState extends ConsumerState<_BulkArchiveDialog> {
         if (_lastRun case final run?
             when run.ready.users.isNotEmpty ||
                 run.ready.skipped.isNotEmpty ||
-                run.pending.isNotEmpty) ...[
+                run.pending.isNotEmpty ||
+                run.canUndo ||
+                run.undoneAt != null) ...[
           _lastRunBox(context, run),
           const SizedBox(height: AppSpacing.x4),
         ],
@@ -492,6 +582,7 @@ class _BulkArchiveDialogState extends ConsumerState<_BulkArchiveDialog> {
           ),
           Divider(height: AppSpacing.x4, color: t.border.subtle),
           _autoSection(context, run),
+          _undoRow(context, run),
           // With auto-archive on, the job handles the ready ones itself.
           if (run.auto.enabled)
             const SizedBox.shrink()
@@ -585,6 +676,7 @@ class _BulkArchiveDialogState extends ConsumerState<_BulkArchiveDialog> {
                 (BulkArchivePending.kept, 'Kept', t.status.success),
                 (BulkArchivePending.cancelled, 'Cancelled', t.status.neutral),
                 (BulkArchivePending.expired, 'Expired', t.status.neutral),
+                (BulkArchivePending.restored, 'Restored', t.status.success),
               ])
                 if (run.count(state) > 0 ||
                     state == BulkArchivePending.waiting ||
@@ -635,6 +727,7 @@ class _BulkArchiveDialogState extends ConsumerState<_BulkArchiveDialog> {
       BulkArchivePending.kept => ('Kept', t.status.success),
       BulkArchivePending.cancelled => ('Cancelled', t.status.neutral),
       BulkArchivePending.expired => ('Expired', t.status.neutral),
+      BulkArchivePending.restored => ('Restored', t.status.success),
       _ => ('Waiting', t.status.neutral),
     };
 
@@ -1172,6 +1265,89 @@ class _AutoSettingsDialogState extends State<_AutoSettingsDialog> {
           onPressed: valid ? () => Navigator.pop(context, (_grace, _until)) : null,
           child: Text(widget.confirmLabel),
         ),
+      ],
+    );
+  }
+}
+
+/// Confirms "Undo this run" with a reason and the admin's password.
+/// Returns (reason, password), or null.
+class _UndoRunDialog extends StatefulWidget {
+  const _UndoRunDialog({required this.count, required this.ranAt, required this.autoOn});
+
+  final int count;
+  final DateTime ranAt;
+  final bool autoOn;
+
+  @override
+  State<_UndoRunDialog> createState() => _UndoRunDialogState();
+}
+
+class _UndoRunDialogState extends State<_UndoRunDialog> {
+  final _reason = TextEditingController(text: 'Undo bulk archive');
+  final _password = TextEditingController();
+  String? _error;
+
+  @override
+  void dispose() {
+    _reason.dispose();
+    _password.dispose();
+    super.dispose();
+  }
+
+  void _submit() {
+    if (_reason.text.trim().isEmpty) {
+      setState(() => _error = 'Give a reason.');
+      return;
+    }
+    if (_password.text.isEmpty) {
+      setState(() => _error = 'Enter your password to confirm.');
+      return;
+    }
+    Navigator.pop(context, (_reason.text.trim(), _password.text));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final t = context.tokens;
+    final text = Theme.of(context).textTheme;
+    final n = widget.count;
+    final ran = _day.format(manila(widget.ranAt));
+    final autoNote = widget.autoOn ? ' Auto-archive for this run is turned off.' : '';
+
+    return AlertDialog(
+      title: const Text('Undo this run?'),
+      content: SizedBox(
+        width: context.dialogWidth(440),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Restores the $n ${n == 1 ? 'account' : 'accounts'} the $ran run archived '
+              'that are still archived. They come back without a card.$autoNote',
+              style: text.bodyMedium?.copyWith(color: t.text.secondary),
+            ),
+            const SizedBox(height: AppSpacing.x4),
+            TextField(
+              controller: _reason,
+              decoration: const InputDecoration(labelText: 'Reason (kept in the audit log)'),
+            ),
+            const SizedBox(height: AppSpacing.x2),
+            TextField(
+              controller: _password,
+              obscureText: true,
+              autofocus: true,
+              decoration: const InputDecoration(labelText: 'Your password'),
+              onSubmitted: (_) => _submit(),
+            ),
+            if (_error != null) _ErrorText(_error!),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+        FilledButton(onPressed: _submit, child: Text('Restore $n')),
       ],
     );
   }

@@ -48,6 +48,9 @@ class ApiEndpoints {
   static const bulkArchiveLastRun = '/api/admin/users/bulk-archive/last-run';
   static String bulkArchiveAuto(String runId) =>
       '/api/admin/users/bulk-archive/runs/$runId/auto';
+  static const bulkRestore = '/api/admin/users/bulk-restore';
+  static String bulkArchiveUndo(String runId) =>
+      '/api/admin/users/bulk-archive/runs/$runId/undo';
   static String bulkArchiveCancelPending(String pendingId) =>
       '/api/admin/users/bulk-archive/pending/$pendingId/cancel';
 
