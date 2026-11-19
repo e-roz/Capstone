@@ -350,18 +350,31 @@ connection string back when done.
 
 ## 8. Landmines — things that will bite you eventually
 
-**1. Migrations do not run automatically.** There is no `Database.Migrate()`
-call anywhere in the app. If you add an EF migration and push, Render deploys
-happily and then *every* query 500s with `relation/column does not exist`. You
-must apply it yourself:
+**1. The cloud migrates itself on startup, but only migrations that add.**
+When Render starts a new version, the API applies its pending migrations to
+Supabase (`Data/CloudMigrations.cs`). It skips any migration whose `Up` drops,
+renames or alters a column or table, or runs raw SQL, and everything after it
+waits too, since migrations run in order. The API still starts, and the Render
+log says:
+
+```
+Migration <id> was NOT applied: it uses DropColumn, ...
+```
+
+Then apply it yourself:
 
 ```
 cd AimPark.API/AimPark.API
 dotnet ef database update --connection "<connection string from render-env-vars.txt>"
 ```
 
-Do this **before** or immediately after the deploy. This will look like a
-catastrophic outage and it's a one-command fix.
+Until you do, anything that reads the changed schema 500s with
+`relation/column does not exist`, so do it right after the deploy.
+
+It never runs in Development, so pointing a local build at the real database
+(section 7) can't push a branch's migrations into it. To turn it off on Render
+without a deploy, set the environment variable `Database__MigrateOnStartup` to
+`false`.
 
 **2. Changing `Jwt__Key` on Render logs everyone out instantly.** Every issued
 token becomes invalid. Never rotate it mid-test-session.

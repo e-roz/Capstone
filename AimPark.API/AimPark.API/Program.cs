@@ -317,6 +317,8 @@ var app = builder.Build();
 
 // Site: create or update the local tables before the first gate tap.
 app.PrepareSiteDatabase(siteOptions);
+// Cloud: apply this version's additive migrations to Supabase (never in Development).
+app.ApplyCloudMigrations(siteOptions);
 
 if (app.Environment.IsDevelopment())
 {
