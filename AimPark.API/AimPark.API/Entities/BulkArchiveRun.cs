@@ -22,5 +22,30 @@ namespace AimPark.API.Entities
 
         /// <summary>The accounts the run had to skip (unpaid, parked, open violation).</summary>
         public List<Guid> LeftAloneUserIds { get; set; } = [];
+
+        /// <summary>The reason the administrator gave, reused in the audit log for auto-archives.</summary>
+        public string Reason { get; set; } = string.Empty;
+
+        // ── Archive when clear ───────────────────────────────────────────────
+        //
+        // Off unless the administrator opted in. When on, each person left
+        // alone has a BulkArchivePending row and the AutoArchiveService works
+        // through them. Grace period and end date stay editable afterwards.
+
+        public bool AutoArchive { get; set; }
+
+        /// <summary>Days between the notice and the archive.</summary>
+        public int GraceDays { get; set; } = 7;
+
+        /// <summary>
+        /// After this, nobody new is warned and anyone still waiting is
+        /// dropped. Someone already warned still finishes their notice.
+        /// </summary>
+        public DateTime? AutoArchiveUntil { get; set; }
+
+        /// <summary>When the administrator turned it off, or a newer run replaced it.</summary>
+        public DateTime? AutoArchiveStoppedAt { get; set; }
+
+        public List<BulkArchivePending> Pending { get; set; } = [];
     }
 }

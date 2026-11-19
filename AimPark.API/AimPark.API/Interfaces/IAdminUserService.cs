@@ -24,6 +24,12 @@ namespace AimPark.API.Interfaces
         Task<ActionResult<BulkRevokeRfidResponse>> BulkRevokeRfidAsync(Guid adminUserId, BulkRevokeRfidDto dto, CancellationToken ct);
         Task<ActionResult<BulkArchiveResponse>> BulkArchiveAsync(Guid adminUserId, BulkArchiveDto dto, CancellationToken ct);
         Task<ActionResult<BulkArchiveLastRunResponse?>> GetLastBulkArchiveRunAsync(Guid adminUserId, CancellationToken ct);
+        Task<ActionResult<BulkArchiveLastRunResponse?>> UpdateAutoArchiveAsync(Guid adminUserId, Guid runId, BulkArchiveAutoSettingsDto dto, CancellationToken ct);
+        Task<ActionResult<BulkArchiveLastRunResponse?>> CancelPendingArchiveAsync(Guid adminUserId, Guid pendingId, CancellationToken ct);
+
+        /// <summary>One pass of "archive when clear" over every run that has it on.</summary>
+        /// <returns>How many accounts were archived.</returns>
+        Task<int> RunAutoArchivePassAsync(DateTime now, CancellationToken ct);
         Task<ActionResult<List<RfidCardResponse>>> ListRfidCardsAsync(string? state, bool includeAssigned, CancellationToken ct);
         Task<ActionResult<List<RfidCardHistoryEntry>>> GetRfidCardHistoryAsync(string tagId, CancellationToken ct);
     }

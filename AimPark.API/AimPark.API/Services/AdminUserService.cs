@@ -275,6 +275,16 @@ namespace AimPark.API.Services
                 // sign the person out, so a mistyped password would log them out.
                 if (string.IsNullOrEmpty(dto.Password) || !BCrypt.Net.BCrypt.Verify(dto.Password, admin.PasswordHash))
                     return new BadRequestObjectResult(new { message = "Incorrect password." });
+
+                if (dto.AutoArchive)
+                {
+                    var settingsError = ValidateAutoSettings(
+                        dto.GraceDays ?? DefaultGraceDays,
+                        dto.AutoArchiveUntil ?? DateTime.UtcNow.AddDays(DefaultAutoArchiveDays),
+                        DateTime.UtcNow);
+                    if (settingsError is not null)
+                        return new BadRequestObjectResult(new { message = settingsError });
+                }
             }
 
             var (response, eligible) = await ClassifyForArchiveAsync(
@@ -289,20 +299,8 @@ namespace AimPark.API.Services
                 var user = await _users.FindAsync(u => u.Id == id, ct);
                 if (user is null) continue;
 
-                if (hasCard)
-                {
-                    var (ok, _) = await RevokeCardAsync(
-                        user, adminUserId, RfidRevokeReason.NoLongerNeeded, $"Bulk archive: {reason}", ct);
-                    if (ok) response.CardsRevoked++;
-                }
-
-                user.IsDeleted = true;
-                user.DeletedAt = DateTime.UtcNow;
-                user.UpdatedAt = DateTime.UtcNow;
-                _users.Update(user);
-
-                await LogActionAsync(adminUserId, id, "Archive", "IsDeleted=false", "IsDeleted=true",
-                    $"Bulk archive: {reason}", ct);
+                if (await ArchiveForBulkAsync(user, adminUserId, hasCard, $"Bulk archive: {reason}", ct))
+                    response.CardsRevoked++;
             }
 
             // Remember who had to be skipped, so the panel can later say "1 of
@@ -315,17 +313,325 @@ namespace AimPark.API.Services
                 .Distinct()
                 .ToList();
 
-            _db.Set<BulkArchiveRun>().Add(new BulkArchiveRun
+            var now = DateTime.UtcNow;
+            var run = new BulkArchiveRun
             {
+                RanAt = now,
                 AdminUserId = adminUserId,
                 ArchivedCount = eligible.Count,
-                LeftAloneUserIds = leftAlone
-            });
+                LeftAloneUserIds = leftAlone,
+                Reason = reason
+            };
+            _db.Set<BulkArchiveRun>().Add(run);
+
+            if (dto.AutoArchive)
+            {
+                await StopOtherAutoArchivesAsync(run, now, ct);
+                run.AutoArchive = true;
+                run.GraceDays = dto.GraceDays ?? DefaultGraceDays;
+                run.AutoArchiveUntil = dto.AutoArchiveUntil ?? now.AddDays(DefaultAutoArchiveDays);
+                AddPending(run, response.Skipped.ToDictionary(s => s.UserId, s => s.Reason));
+            }
 
             await _users.SaveAsync(ct);
             await _db.SaveChangesAsync(ct);
             return new OkObjectResult(response);
         }
+
+        // ── Archive when clear ───────────────────────────────────────────────
+
+        private const int DefaultGraceDays = 7;
+        private const int DefaultAutoArchiveDays = 60;
+        private const int MaxGraceDays = 60;
+        private const int MaxAutoArchiveDays = 365;
+
+        private static string? ValidateAutoSettings(int graceDays, DateTime until, DateTime now)
+        {
+            if (graceDays < 1 || graceDays > MaxGraceDays)
+                return $"The notice period must be between 1 and {MaxGraceDays} days.";
+            if (until <= now)
+                return "The end date must be in the future.";
+            if (until > now.AddDays(MaxAutoArchiveDays))
+                return $"The end date can be at most {MaxAutoArchiveDays} days away.";
+            return null;
+        }
+
+        /// <summary>One Waiting row per person left alone, with today's reason as the note.</summary>
+        private void AddPending(BulkArchiveRun run, IReadOnlyDictionary<Guid, string> reasons)
+        {
+            var existing = run.Pending.Select(p => p.UserId).ToHashSet();
+            foreach (var id in run.LeftAloneUserIds.Where(id => !existing.Contains(id)))
+            {
+                // Added through the set, not only the run's list: on a run that
+                // is already saved, EF would take a row with its Id preset for
+                // an existing one and try to update it.
+                var pending = new BulkArchivePending
+                {
+                    RunId = run.Id,
+                    UserId = id,
+                    Note = reasons.TryGetValue(id, out var why) ? why : null
+                };
+                _db.Set<BulkArchivePending>().Add(pending);
+                run.Pending.Add(pending);
+            }
+        }
+
+        /// <summary>
+        /// Only one run's list is worked at a time: a newer run with
+        /// auto-archive on replaces any older one, so nobody gets two notices.
+        /// </summary>
+        private async Task StopOtherAutoArchivesAsync(BulkArchiveRun keep, DateTime now, CancellationToken ct)
+        {
+            var older = await _db.Set<BulkArchiveRun>()
+                .Include(r => r.Pending)
+                .Where(r => r.Id != keep.Id && r.AutoArchive && r.AutoArchiveStoppedAt == null)
+                .ToListAsync(ct);
+
+            foreach (var run in older)
+            {
+                run.AutoArchiveStoppedAt = now;
+                foreach (var p in run.Pending.Where(p => p.IsOpen))
+                    Resolve(p, PendingArchiveState.Cancelled, $"Replaced by the {PhDate(keep.RanAt)} run", now);
+            }
+        }
+
+        private static void Resolve(BulkArchivePending p, PendingArchiveState state, string note, DateTime now)
+        {
+            p.State = state;
+            p.Note = note;
+            p.ResolvedAt = now;
+            p.ArchiveAt = state == PendingArchiveState.Archived ? p.ArchiveAt : null;
+        }
+
+        private static readonly TimeSpan Manila = TimeSpan.FromHours(8);
+
+        private static string PhDate(DateTime utc) => (utc + Manila).ToString("MMM d", System.Globalization.CultureInfo.InvariantCulture);
+
+        /// <summary>
+        /// Archives one account the way a bulk archive does: card back to the
+        /// pool, marked archived, audited. Stages only; the caller saves.
+        /// </summary>
+        /// <returns>True when a card was handed back.</returns>
+        private async Task<bool> ArchiveForBulkAsync(User user, Guid adminUserId, bool hasCard, string auditReason, CancellationToken ct)
+        {
+            var revoked = false;
+            if (hasCard)
+                (revoked, _) = await RevokeCardAsync(user, adminUserId, RfidRevokeReason.NoLongerNeeded, auditReason, ct);
+
+            user.IsDeleted = true;
+            user.DeletedAt = DateTime.UtcNow;
+            user.UpdatedAt = DateTime.UtcNow;
+            _users.Update(user);
+
+            await LogActionAsync(adminUserId, user.Id, "Archive", "IsDeleted=false", "IsDeleted=true", auditReason, ct);
+            return revoked;
+        }
+
+        // PUT /api/admin/users/bulk-archive/runs/{runId}/auto
+        public async Task<ActionResult<BulkArchiveLastRunResponse?>> UpdateAutoArchiveAsync(
+            Guid adminUserId, Guid runId, BulkArchiveAutoSettingsDto dto, CancellationToken ct)
+        {
+            var run = await _db.Set<BulkArchiveRun>()
+                .Include(r => r.Pending)
+                .FirstOrDefaultAsync(r => r.Id == runId, ct);
+            if (run is null)
+                return new NotFoundObjectResult(new { message = "That bulk archive run no longer exists." });
+
+            var now = DateTime.UtcNow;
+            var enable = dto.Enabled ?? (run.AutoArchive && run.AutoArchiveStoppedAt == null);
+
+            if (!enable)
+            {
+                if (run.AutoArchive && run.AutoArchiveStoppedAt == null)
+                {
+                    run.AutoArchiveStoppedAt = now;
+                    foreach (var p in run.Pending.Where(p => p.IsOpen))
+                        Resolve(p, PendingArchiveState.Cancelled, "Auto-archive turned off", now);
+                    await LogActionAsync(adminUserId, adminUserId, "BulkArchiveAutoOff", null, null,
+                        $"Run of {PhDate(run.RanAt)}", ct);
+                }
+                await _db.SaveChangesAsync(ct);
+                return await GetLastBulkArchiveRunAsync(adminUserId, ct);
+            }
+
+            var grace = dto.GraceDays ?? run.GraceDays;
+            var until = dto.AutoArchiveUntil ?? run.AutoArchiveUntil ?? now.AddDays(DefaultAutoArchiveDays);
+            var error = ValidateAutoSettings(grace, until, now);
+            if (error is not null)
+                return new BadRequestObjectResult(new { message = error });
+
+            var turningOn = !run.AutoArchive || run.AutoArchiveStoppedAt != null;
+            if (turningOn)
+            {
+                await StopOtherAutoArchivesAsync(run, now, ct);
+                run.AutoArchive = true;
+                run.AutoArchiveStoppedAt = null;
+
+                // Reopen anyone the earlier stop cancelled, and add anyone missing.
+                foreach (var p in run.Pending.Where(p => p.State == PendingArchiveState.Cancelled))
+                {
+                    p.State = PendingArchiveState.Waiting;
+                    p.Note = null;
+                    p.ResolvedAt = null;
+                    p.WarnedAt = null;
+                    p.ArchiveAt = null;
+                }
+                AddPending(run, new Dictionary<Guid, string>());
+            }
+
+            // The grace period counts from each notice, so a change moves the
+            // date for everyone already warned.
+            if (grace != run.GraceDays)
+                foreach (var p in run.Pending.Where(p => p.State == PendingArchiveState.Warned && p.WarnedAt != null))
+                    p.ArchiveAt = p.WarnedAt!.Value.AddDays(grace);
+
+            run.GraceDays = grace;
+            run.AutoArchiveUntil = until;
+
+            await LogActionAsync(adminUserId, adminUserId, turningOn ? "BulkArchiveAutoOn" : "BulkArchiveAutoEdit", null,
+                $"GraceDays={grace}, Until={until:yyyy-MM-dd}", $"Run of {PhDate(run.RanAt)}", ct);
+            await _db.SaveChangesAsync(ct);
+
+            // Someone already clear should not wait an hour for the job to notice.
+            if (turningOn)
+                await RunAutoArchivePassAsync(now, ct);
+
+            return await GetLastBulkArchiveRunAsync(adminUserId, ct);
+        }
+
+        // POST /api/admin/users/bulk-archive/pending/{pendingId}/cancel
+        public async Task<ActionResult<BulkArchiveLastRunResponse?>> CancelPendingArchiveAsync(
+            Guid adminUserId, Guid pendingId, CancellationToken ct)
+        {
+            var pending = await _db.Set<BulkArchivePending>().FirstOrDefaultAsync(p => p.Id == pendingId, ct);
+            if (pending is null)
+                return new NotFoundObjectResult(new { message = "That person is no longer on the list." });
+            if (!pending.IsOpen)
+                return new BadRequestObjectResult(new { message = "That person is no longer waiting to be archived." });
+
+            Resolve(pending, PendingArchiveState.Cancelled, "Cancelled by an administrator", DateTime.UtcNow);
+            await LogActionAsync(adminUserId, pending.UserId, "BulkArchiveAutoCancel", null, null, null, ct);
+            await _db.SaveChangesAsync(ct);
+            return await GetLastBulkArchiveRunAsync(adminUserId, ct);
+        }
+
+        /// <summary>
+        /// One pass over every run with auto-archive on. Called hourly by
+        /// <see cref="AutoArchiveService"/>, and right away when it is turned on.
+        /// </summary>
+        /// <remarks>
+        /// For each person still open, in this order:
+        /// <list type="number">
+        /// <item>Parked since the run → Kept. They are still using the lot.</item>
+        /// <item>Archived some other way meanwhile → Archived.</item>
+        /// <item>Not clear → Waiting (a Warned person who got a new bill goes back).</item>
+        /// <item>Clear and Waiting → Warned, told the date, unless the run has ended.</item>
+        /// <item>Clear, Warned and the date has come → archived.</item>
+        /// </list>
+        /// Past the run's end date, anyone still Waiting is dropped as Expired.
+        /// </remarks>
+        /// <returns>How many accounts were archived.</returns>
+        public async Task<int> RunAutoArchivePassAsync(DateTime now, CancellationToken ct)
+        {
+            var runs = await _db.Set<BulkArchiveRun>()
+                .Include(r => r.Pending)
+                .Where(r => r.AutoArchive && r.AutoArchiveStoppedAt == null)
+                .ToListAsync(ct);
+
+            var archived = 0;
+            foreach (var run in runs)
+            {
+                var open = run.Pending.Where(p => p.IsOpen).ToList();
+                if (open.Count == 0) continue;
+
+                var ids = open.Select(p => p.UserId).ToList();
+                var ended = run.AutoArchiveUntil is DateTime until && now > until;
+
+                var parkedSince = await _db.Set<ParkingLog>().AsNoTracking()
+                    .Where(l => l.UserId != null && ids.Contains(l.UserId.Value) && l.EntryTime > run.RanAt)
+                    .GroupBy(l => l.UserId!.Value)
+                    .Select(g => new { UserId = g.Key, At = g.Min(l => l.EntryTime) })
+                    .ToDictionaryAsync(x => x.UserId, x => x.At, ct);
+
+                var users = await _db.Set<User>()
+                    .Where(u => ids.Contains(u.Id))
+                    .ToDictionaryAsync(u => u.Id, ct);
+
+                var (classified, eligible) = await ClassifyForArchiveAsync(run.AdminUserId, ids, null, null, ct);
+                var skipReason = classified.Skipped.ToDictionary(s => s.UserId, s => s.Reason);
+                var clear = eligible.ToDictionary(e => e.Id, e => e.HasCard);
+
+                foreach (var p in open)
+                {
+                    if (parkedSince.TryGetValue(p.UserId, out var parkedAt))
+                    {
+                        Resolve(p, PendingArchiveState.Kept, $"Parked again {PhDate(parkedAt)}", now);
+                        continue;
+                    }
+
+                    if (!users.TryGetValue(p.UserId, out var user) || user.IsDeleted)
+                    {
+                        Resolve(p, PendingArchiveState.Archived, "Archived by an administrator", now);
+                        continue;
+                    }
+
+                    if (!clear.TryGetValue(p.UserId, out var hasCard))
+                    {
+                        p.Note = skipReason.TryGetValue(p.UserId, out var why) ? why : p.Note;
+                        if (p.State == PendingArchiveState.Warned)
+                        {
+                            // Something new came up during the notice. Start over once it clears.
+                            p.State = PendingArchiveState.Waiting;
+                            p.WarnedAt = null;
+                            p.ArchiveAt = null;
+                        }
+                        if (ended)
+                            Resolve(p, PendingArchiveState.Expired, $"Still not clear when auto-archive ended: {p.Note}", now);
+                        continue;
+                    }
+
+                    if (p.State == PendingArchiveState.Waiting)
+                    {
+                        if (ended)
+                        {
+                            Resolve(p, PendingArchiveState.Expired, "Became clear after auto-archive ended", now);
+                            continue;
+                        }
+
+                        p.State = PendingArchiveState.Warned;
+                        p.WarnedAt = now;
+                        p.ArchiveAt = now.AddDays(run.GraceDays);
+                        p.Note = "Clear and away from the lot";
+                        await NotifyArchiveComingAsync(user, p.ArchiveAt.Value, ct);
+                        continue;
+                    }
+
+                    if (p.ArchiveAt is DateTime due && now >= due)
+                    {
+                        await ArchiveForBulkAsync(user, run.AdminUserId, hasCard,
+                            $"Auto-archive after bulk archive of {PhDate(run.RanAt)}: {run.Reason}", ct);
+                        p.State = PendingArchiveState.Archived;
+                        p.Note = "Archived automatically";
+                        p.ResolvedAt = now;
+                        archived++;
+                    }
+                }
+
+                await _users.SaveAsync(ct);
+                await _db.SaveChangesAsync(ct);
+            }
+
+            return archived;
+        }
+
+        private Task NotifyArchiveComingAsync(User user, DateTime archiveAt, CancellationToken ct) =>
+            _notificationService.NotifyUserAsync(
+                user.Id,
+                NotificationType.Account,
+                $"Your account will be archived {PhDate(archiveAt)}",
+                "You haven't used the parking lot since the end of the term. Park, or contact the admin office before then, to keep your account.",
+                new Dictionary<string, string> { ["screen"] = "profile" },
+                ct);
 
         // GET /api/admin/users/bulk-archive/last-run
         //
@@ -352,12 +658,39 @@ namespace AimPark.API.Services
                 : (await ClassifyForArchiveAsync(adminUserId, stillActive, null, null, ct)).Response;
             ready.DryRun = true;
 
+            var pending = await _db.Set<BulkArchivePending>().AsNoTracking()
+                .Where(p => p.RunId == run.Id)
+                .OrderBy(p => p.User.FullName)
+                .Select(p => new BulkArchivePendingItem
+                {
+                    Id = p.Id,
+                    UserId = p.UserId,
+                    FullName = p.User.FullName,
+                    Email = p.User.Email,
+                    State = p.State.ToString(),
+                    Note = p.Note,
+                    WarnedAt = p.WarnedAt,
+                    ArchiveAt = p.ArchiveAt,
+                    ResolvedAt = p.ResolvedAt
+                })
+                .ToListAsync(ct);
+
             return new OkObjectResult(new BulkArchiveLastRunResponse
             {
+                RunId = run.Id,
                 RanAt = run.RanAt,
+                Reason = run.Reason,
                 ArchivedCount = run.ArchivedCount,
                 LeftAloneCount = run.LeftAloneUserIds.Count,
-                Ready = ready
+                Ready = ready,
+                Auto = new BulkArchiveAutoSettings
+                {
+                    Enabled = run.AutoArchive && run.AutoArchiveStoppedAt == null,
+                    GraceDays = run.GraceDays,
+                    AutoArchiveUntil = run.AutoArchiveUntil,
+                    StoppedAt = run.AutoArchiveStoppedAt
+                },
+                Pending = pending
             });
         }
 

@@ -125,6 +125,20 @@ namespace AimPark.API.Controllers
         public Task<ActionResult<BulkArchiveLastRunResponse?>> GetLastBulkArchiveRun(CancellationToken ct)
             => _adminUserService.GetLastBulkArchiveRunAsync(GetAdminUserId(), ct);
 
+        /// <summary>
+        /// Turns a run's "archive when clear" on or off, or changes its notice
+        /// period or end date. Answers with the run as it now stands.
+        /// </summary>
+        [HttpPut("bulk-archive/runs/{runId:guid}/auto")]
+        public Task<ActionResult<BulkArchiveLastRunResponse?>> UpdateAutoArchive(
+            Guid runId, [FromBody] BulkArchiveAutoSettingsDto dto, CancellationToken ct)
+            => _adminUserService.UpdateAutoArchiveAsync(GetAdminUserId(), runId, dto, ct);
+
+        /// <summary>Takes one person off a run's "archive when clear" list.</summary>
+        [HttpPost("bulk-archive/pending/{pendingId:guid}/cancel")]
+        public Task<ActionResult<BulkArchiveLastRunResponse?>> CancelPendingArchive(Guid pendingId, CancellationToken ct)
+            => _adminUserService.CancelPendingArchiveAsync(GetAdminUserId(), pendingId, ct);
+
         private Guid GetAdminUserId()
             => Guid.Parse(User.FindFirst(ClaimTypes.NameIdentifier)!.Value);
     }

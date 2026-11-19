@@ -133,6 +133,48 @@ namespace AimPark.API.Migrations
                     b.ToTable("AppealEvidence");
                 });
 
+            modelBuilder.Entity("AimPark.API.Entities.BulkArchivePending", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("ArchiveAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Note")
+                        .HasMaxLength(300)
+                        .HasColumnType("character varying(300)");
+
+                    b.Property<DateTime?>("ResolvedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("RunId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("State")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("WarnedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("State");
+
+                    b.HasIndex("UserId");
+
+                    b.HasIndex("RunId", "UserId")
+                        .IsUnique();
+
+                    b.ToTable("BulkArchivePending");
+                });
+
             modelBuilder.Entity("AimPark.API.Entities.BulkArchiveRun", b =>
                 {
                     b.Property<Guid>("Id")
@@ -145,12 +187,31 @@ namespace AimPark.API.Migrations
                     b.Property<int>("ArchivedCount")
                         .HasColumnType("integer");
 
+                    b.Property<bool>("AutoArchive")
+                        .HasColumnType("boolean");
+
+                    b.Property<DateTime?>("AutoArchiveStoppedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("AutoArchiveUntil")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("GraceDays")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasDefaultValue(7);
+
                     b.Property<List<Guid>>("LeftAloneUserIds")
                         .IsRequired()
                         .HasColumnType("uuid[]");
 
                     b.Property<DateTime>("RanAt")
                         .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Reason")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
 
                     b.HasKey("Id");
 
@@ -1998,6 +2059,25 @@ namespace AimPark.API.Migrations
                     b.Navigation("Appeal");
                 });
 
+            modelBuilder.Entity("AimPark.API.Entities.BulkArchivePending", b =>
+                {
+                    b.HasOne("AimPark.API.Entities.BulkArchiveRun", "Run")
+                        .WithMany("Pending")
+                        .HasForeignKey("RunId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("AimPark.API.Entities.User", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Run");
+
+                    b.Navigation("User");
+                });
+
             modelBuilder.Entity("AimPark.API.Entities.DeviceToken", b =>
                 {
                     b.HasOne("AimPark.API.Entities.User", "User")
@@ -2298,6 +2378,11 @@ namespace AimPark.API.Migrations
                         .IsRequired();
 
                     b.Navigation("Slot");
+                });
+
+            modelBuilder.Entity("AimPark.API.Entities.BulkArchiveRun", b =>
+                {
+                    b.Navigation("Pending");
                 });
 #pragma warning restore 612, 618
         }
