@@ -350,18 +350,31 @@ connection string back when done.
 
 ## 8. Landmines — things that will bite you eventually
 
-**1. Migrations do not run automatically.** There is no `Database.Migrate()`
-call anywhere in the app. If you add an EF migration and push, Render deploys
-happily and then *every* query 500s with `relation/column does not exist`. You
-must apply it yourself:
+**1. The cloud API never migrates itself; the deploy workflow does it.** Only
+the guard PC runs `Database.Migrate()` at startup. For the cloud, the
+**Deploy API** workflow (`.github/workflows/deploy-api.yml`) applies pending
+migrations to Supabase *before* it triggers the Render deploy.
+
+It needs the repository secret **`CLOUD_DB_CONNECTION`**: the same Npgsql
+connection string Render uses (`ConnectionStrings__DefaultConnection`), with
+Supabase's **Session pooler** host. GitHub's runners have no IPv6, so the
+direct `db.<ref>.supabase.co` host can't be reached from there. Add it under
+Settings → Secrets and variables → Actions.
+
+It applies only migrations that **add** things. If a pending migration drops,
+renames or alters a column or table, or runs raw SQL, the workflow stops before
+changing anything and before deploying. Then apply that migration by hand and
+re-run **Deploy API** (Actions → Deploy API → Run workflow):
 
 ```
 cd AimPark.API/AimPark.API
 dotnet ef database update --connection "<connection string from render-env-vars.txt>"
 ```
 
-Do this **before** or immediately after the deploy. This will look like a
-catastrophic outage and it's a one-command fix.
+It also stops if it can't read the database's migration history (wrong
+password, wrong host), rather than deploying onto an unknown schema. If the
+API ever 500s with `relation/column does not exist` after a deploy, check that
+workflow's run first.
 
 **2. Changing `Jwt__Key` on Render logs everyone out instantly.** Every issued
 token becomes invalid. Never rotate it mid-test-session.

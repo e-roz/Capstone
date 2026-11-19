@@ -147,8 +147,9 @@ namespace AimPark.API.Sync
         /// <summary>
         /// Site: brings the local database up to date with this version's
         /// migrations, so neither a first install nor an update needs
-        /// <c>dotnet ef</c>. The cloud's migrations stay a deliberate, manual
-        /// step, since that database is shared.
+        /// <c>dotnet ef</c>. The cloud never migrates at startup: the Deploy API
+        /// workflow applies additive migrations before each deploy, and anything
+        /// destructive is left to a person, since that database is shared.
         /// </summary>
         /// <remarks>
         /// Waits for PostgreSQL rather than failing: after a power cut both

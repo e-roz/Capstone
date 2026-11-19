@@ -8,8 +8,21 @@ name: Deploy API
 # out is whoever opens the app. Turning Render's auto-deploy off and letting
 # this fire the deploy hook instead puts the tests in front of the deploy.
 #
+# Before the deploy, it brings the cloud database up to the code's migrations.
+# The cloud API never migrates itself at startup (only the guard PC does), so
+# without this step a merged migration left the live API on new code and the
+# old schema, and every request touching the new columns failed.
+#
+# Only additive migrations go through on their own. One that drops, renames or
+# alters a column or table, or runs raw SQL, stops the workflow before anything
+# changes: apply that one by hand, then re-run this workflow.
+#
 # Needs, in the repository settings:
 #   Secret RENDER_DEPLOY_HOOK_URL — Render → your service → Settings → Deploy Hook
+#   Secret CLOUD_DB_CONNECTION    — the Npgsql connection string the Render
+#                                   service uses (ConnectionStrings__DefaultConnection).
+#                                   Use Supabase's Session pooler host: GitHub's
+#                                   runners have no IPv6, so the direct host fails.
 #
 # And in Render itself: Settings → Build & Deploy → Auto-Deploy → No.
 # Leaving Render's auto-deploy on as well means every push deploys twice, and
@@ -27,7 +40,7 @@ concurrency:
 
 jobs:
   deploy:
-    name: Trigger Render deploy
+    name: Migrate and trigger Render deploy
     runs-on: ubuntu-latest
 
     # A manual run is a deliberate act and goes ahead. An automatic one only
@@ -45,6 +58,96 @@ jobs:
             echo "::error::Secret RENDER_DEPLOY_HOOK_URL is not set. Render → your service → Settings → Deploy Hook, then add it under Settings → Secrets and variables → Actions."
             exit 1
           fi
+
+      - name: Check the cloud database is configured
+        env:
+          CONN: ${{ secrets.CLOUD_DB_CONNECTION }}
+        run: |
+          if [ -z "$CONN" ]; then
+            echo "::error::Secret CLOUD_DB_CONNECTION is not set. Copy ConnectionStrings__DefaultConnection from the Render service (Supabase Session pooler host), then add it under Settings → Secrets and variables → Actions."
+            exit 1
+          fi
+
+      # The commit the API checks passed on, not whatever main is by now.
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+
+      # 8.0 and the same dotnet-ef as the project's EF Core, so the migrations
+      # run exactly as they do on a developer's machine.
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Install dotnet-ef
+        run: dotnet tool install --global dotnet-ef --version 8.0.28
+
+      # Production, so no developer settings are read. EF only needs the app
+      # to start far enough to find the DbContext; the connection comes below.
+      - name: Build the API
+        env:
+          ASPNETCORE_ENVIRONMENT: Production
+        run: dotnet build AimPark.API/AimPark.API/AimPark.API.csproj --configuration Release
+
+      - name: Find pending migrations
+        id: pending
+        working-directory: AimPark.API/AimPark.API
+        env:
+          ASPNETCORE_ENVIRONMENT: Production
+          CONN: ${{ secrets.CLOUD_DB_CONNECTION }}
+        run: |
+          dotnet ef migrations list --configuration Release --no-build --prefix-output \
+            --connection "$CONN" > migrations.txt
+          # When the database can't be reached, EF only warns and lists every
+          # migration without a status. Read as "nothing pending", that would
+          # deploy new code onto the old schema, so it has to stop here.
+          if grep -q 'Pending status not shown' migrations.txt; then
+            grep '^warn:' migrations.txt | sed 's/^warn: */  /'
+            echo "::error::Couldn't read the cloud database's migration history. Check the CLOUD_DB_CONNECTION secret (Session pooler host, password)."
+            exit 1
+          fi
+          # Lines look like "data:    20261119034928_AddBulkRestore (Pending)".
+          pending=$(grep '^data:' migrations.txt | grep '(Pending)' | awk '{print $2}' || true)
+          if [ -z "$pending" ]; then
+            echo "The cloud database is up to date."
+            echo "ids=" >> "$GITHUB_OUTPUT"
+          else
+            echo "Pending on the cloud database:"
+            echo "$pending" | sed 's/^/  /'
+            echo "ids=$(echo $pending | tr '\n' ' ')" >> "$GITHUB_OUTPUT"
+          fi
+
+      # The only automatic changes are additions. Anything that could lose data
+      # or break the running API mid-deploy is applied by a person.
+      - name: Refuse destructive migrations
+        if: steps.pending.outputs.ids != ''
+        working-directory: AimPark.API/AimPark.API/Migrations
+        env:
+          IDS: ${{ steps.pending.outputs.ids }}
+        run: |
+          blocked=""
+          for id in $IDS; do
+            # Only the Up method: Down always drops what Up added.
+            up=$(sed -n '/override void Up(/,/override void Down(/p' "$id.cs")
+            hits=$(echo "$up" | grep -oE '\b(DropTable|DropColumn|RenameTable|RenameColumn|AlterColumn|Sql)\(' | sort -u | tr -d '(' | tr '\n' ' ')
+            if [ -n "$hits" ]; then
+              blocked="$blocked\n  $id: $hits"
+            fi
+          done
+          if [ -n "$blocked" ]; then
+            echo -e "::error::These migrations change or remove existing data and must be applied by hand:$blocked"
+            echo "Apply them (see MD files/TROUBLESHOOTING.md), then re-run this workflow."
+            exit 1
+          fi
+          echo "All pending migrations only add."
+
+      - name: Apply migrations to the cloud database
+        if: steps.pending.outputs.ids != ''
+        working-directory: AimPark.API/AimPark.API
+        env:
+          ASPNETCORE_ENVIRONMENT: Production
+          CONN: ${{ secrets.CLOUD_DB_CONNECTION }}
+        run: dotnet ef database update --configuration Release --no-build --connection "$CONN"
 
       - name: Tell Render to deploy
         env:
