@@ -76,7 +76,7 @@ namespace AimPark.API.Controllers
             {
                 return StatusCode(StatusCodes.Status403Forbidden, new LoginResponse
                 {
-                    Message = "This account has been deleted. Please contact admin."
+                    Message = "This account has been archived. Please visit the parking office to restore it."
                 });
             }
 
@@ -201,7 +201,7 @@ namespace AimPark.API.Controllers
                 if (user.IsDeleted)
                     return StatusCode(StatusCodes.Status403Forbidden, new LoginResponse
                     {
-                        Message = "This account has been deleted. Please contact admin."
+                        Message = "This account has been archived. Please visit the parking office to restore it."
                     });
 
                 // Returning Google user: gate on account status first

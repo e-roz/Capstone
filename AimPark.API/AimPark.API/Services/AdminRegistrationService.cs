@@ -642,7 +642,7 @@ namespace AimPark.API.Services
                 return new NotFoundObjectResult(new { message = "User not found." });
 
             if (user.IsDeleted)
-                return new BadRequestObjectResult(new { message = "This account has been deleted." });
+                return new BadRequestObjectResult(new { message = "This account is archived. Restore it first." });
 
             if (user.AccountStatus is AccountStatus.Revoked)
                 return new BadRequestObjectResult(new

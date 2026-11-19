@@ -93,6 +93,15 @@ class AppPalette {
   static const amber600 = Color(0xFFAD7315);
   static const amber700 = Color(0xFF7D530F);
 
+  // ── Occupied — orange ─────────────────────────────────────────────────────
+  // A bay with a vehicle in it that no driver has confirmed yet. Same ramp as
+  // the mobile app, so a bay reads the same on both.
+  static const orange100 = Color(0xFFFCE1CC);
+  static const orange200 = Color(0xFFF8C29A);
+  static const orange400 = Color(0xFFEE8440);
+  static const orange600 = Color(0xFFBF5717);
+  static const orange700 = Color(0xFF8C4011);
+
   // ── Danger — coral ────────────────────────────────────────────────────────
   static const red50 = Color(0xFFFDEDEB);
   static const red100 = Color(0xFFFBDAD5);

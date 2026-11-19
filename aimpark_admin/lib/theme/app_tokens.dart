@@ -25,6 +25,7 @@ class AppTokens extends ThemeExtension<AppTokens> {
     required this.border,
     required this.brand,
     required this.status,
+    required this.lot,
     required this.chart,
   });
 
@@ -33,6 +34,9 @@ class AppTokens extends ThemeExtension<AppTokens> {
   final AppBorderTokens border;
   final AppBrandTokens brand;
   final AppStatusTokens status;
+
+  /// The live parking map's two occupied colours.
+  final AppLotTokens lot;
   final AppChartTokens chart;
 
   static const light = AppTokens(
@@ -41,6 +45,7 @@ class AppTokens extends ThemeExtension<AppTokens> {
     border: AppBorderTokens.light,
     brand: AppBrandTokens.light,
     status: AppStatusTokens.light,
+    lot: AppLotTokens.light,
     chart: AppChartTokens.light,
   );
 
@@ -50,6 +55,7 @@ class AppTokens extends ThemeExtension<AppTokens> {
     border: AppBorderTokens.dark,
     brand: AppBrandTokens.dark,
     status: AppStatusTokens.dark,
+    lot: AppLotTokens.dark,
     chart: AppChartTokens.dark,
   );
 
@@ -60,6 +66,7 @@ class AppTokens extends ThemeExtension<AppTokens> {
     AppBorderTokens? border,
     AppBrandTokens? brand,
     AppStatusTokens? status,
+    AppLotTokens? lot,
     AppChartTokens? chart,
   }) {
     return AppTokens(
@@ -68,6 +75,7 @@ class AppTokens extends ThemeExtension<AppTokens> {
       border: border ?? this.border,
       brand: brand ?? this.brand,
       status: status ?? this.status,
+      lot: lot ?? this.lot,
       chart: chart ?? this.chart,
     );
   }
@@ -81,6 +89,7 @@ class AppTokens extends ThemeExtension<AppTokens> {
       border: AppBorderTokens.lerp(border, other.border, t),
       brand: AppBrandTokens.lerp(brand, other.brand, t),
       status: AppStatusTokens.lerp(status, other.status, t),
+      lot: AppLotTokens.lerp(lot, other.lot, t),
       chart: AppChartTokens.lerp(chart, other.chart, t),
     );
   }
@@ -436,6 +445,55 @@ class StatusColors {
       solid: Color.lerp(a.solid, b.solid, t)!,
     );
   }
+}
+
+/// The live parking map's occupied bays, matching the mobile app's map.
+///
+/// Orange: the sensor sees a vehicle and no driver has confirmed the bay.
+/// Indigo: a driver has confirmed it, which is when the map shows who.
+@immutable
+class AppLotTokens {
+  const AppLotTokens({required this.taken, required this.confirmed});
+
+  final StatusColors taken;
+  final StatusColors confirmed;
+
+  // Solid fills carry white text, so the solids are dark enough for it:
+  // orange600 rather than a brighter orange.
+  static const light = AppLotTokens(
+    taken: StatusColors(
+      bg: AppPalette.orange100,
+      fg: AppPalette.orange700,
+      border: AppPalette.orange200,
+      solid: AppPalette.orange600,
+    ),
+    confirmed: StatusColors(
+      bg: AppPalette.brand100,
+      fg: AppPalette.brand700,
+      border: AppPalette.brand200,
+      solid: AppPalette.brand500,
+    ),
+  );
+
+  static const dark = AppLotTokens(
+    taken: StatusColors(
+      bg: Color(0x24EE8440),
+      fg: AppPalette.orange200,
+      border: Color(0x4DEE8440),
+      solid: AppPalette.orange600,
+    ),
+    confirmed: StatusColors(
+      bg: Color(0x333C46AE),
+      fg: AppPalette.brand200,
+      border: Color(0x4D6169C7),
+      solid: AppPalette.brand500,
+    ),
+  );
+
+  static AppLotTokens lerp(AppLotTokens a, AppLotTokens b, double t) => AppLotTokens(
+        taken: StatusColors.lerp(a.taken, b.taken, t),
+        confirmed: StatusColors.lerp(a.confirmed, b.confirmed, t),
+      );
 }
 
 /// Semantic intent of a piece of state, independent of which screen shows it.

@@ -1321,12 +1321,17 @@ class _BayState extends State<_Bay> {
     // sensor is heard from again.
     final coverage = _Coverage.of(context);
     final silent = coverage.silent(slot);
-    final c = silent ? t.status.neutral : t.status.of(StatusIntents.slot(slot.status));
-
     final occupied = !silent && slot.status == 'Occupied';
     final free = !silent && slot.status == 'Available';
     final wrongBay = _WrongBays.of(context)[slot.slotId];
     final occupant = _Occupants.of(context, slot);
+    // Occupied bays, as on the mobile map: orange until a driver confirms the
+    // bay, indigo once one has (which is also when the name appears).
+    final c = silent
+        ? t.status.neutral
+        : occupied
+            ? (occupant != null ? t.lot.confirmed : t.lot.taken)
+            : t.status.of(StatusIntents.slot(slot.status));
     final warn = t.status.warning;
     final outOfService = slot.status == 'OutOfService';
     final fg = occupied
@@ -1961,8 +1966,8 @@ class _Legend extends StatelessWidget {
     final t = context.tokens;
     final text = Theme.of(context).textTheme;
 
-    Widget entry(String status, String label, {bool filled = false}) {
-      final c = t.status.of(StatusIntents.slot(status));
+    Widget entry(String status, String label, {bool filled = false, StatusColors? colors}) {
+      final c = colors ?? t.status.of(StatusIntents.slot(status));
       return Row(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -1990,7 +1995,8 @@ class _Legend extends StatelessWidget {
       runSpacing: AppSpacing.x2,
       children: [
         entry('Available', 'Free'),
-        entry('Occupied', 'Occupied', filled: true),
+        entry('Occupied', 'Occupied', filled: true, colors: t.lot.taken),
+        entry('Occupied', 'Confirmed by driver', filled: true, colors: t.lot.confirmed),
         entry('OutOfService', 'Out of service'),
         Row(
           mainAxisSize: MainAxisSize.min,
