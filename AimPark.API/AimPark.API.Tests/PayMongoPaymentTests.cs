@@ -300,6 +300,7 @@ public class PayMongoPaymentTests
     /// <summary>Counts what a settlement tells the payer; everything else is not under test.</summary>
     private sealed class RecordingNotifications : INotificationService
     {
+        public Task AnnounceAsync(NotificationType type, string title, string message, CancellationToken ct) => Task.CompletedTask;
         public int Count { get; private set; }
 
         public Task NotifyUserAsync(Guid userId, NotificationType type, string title, string message,

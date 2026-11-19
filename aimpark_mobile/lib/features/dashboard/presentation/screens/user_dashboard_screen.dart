@@ -22,6 +22,7 @@ import '../../../violations/presentation/providers/violations_provider.dart';
 import '../../../renewals/presentation/widgets/expiry_banner.dart';
 import '../widgets/home_attention_cards.dart';
 import '../widgets/home_header.dart';
+import '../widgets/parking_rates_card.dart';
 import '../widgets/vehicle_status_card.dart';
 
 /// Home tab body inside [UserShell].
@@ -244,6 +245,10 @@ class UserDashboardScreen extends ConsumerWidget {
               gap,
               const VehicleStatusCard(),
 
+              // Next to the vehicle: what parking it costs.
+              gap,
+              ParkingRatesCard(vehicles: vehicles),
+
               // Above the shortcuts: where the car has been, and what each visit
               // cost, is something people check; the shortcuts are things they
               // do now and then.
@@ -347,6 +352,7 @@ class UserDashboardScreen extends ConsumerWidget {
       ref.refresh(parkingAvailabilityNotifierProvider.future),
       ref.refresh(myVehiclesProvider.future),
       ref.refresh(accessStatusProvider.future),
+      ref.refresh(parkingRatesProvider.future),
     ]);
     // Invalidating rather than refreshing: the family has one entry per
     // vehicle, and refresh() only targets a single one. invalidate() clears

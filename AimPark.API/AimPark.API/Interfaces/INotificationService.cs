@@ -25,6 +25,13 @@ namespace AimPark.API.Interfaces
             IDictionary<string, string>? data,
             CancellationToken ct);
 
+        /// <summary>
+        /// A notice to everyone, raised by the system rather than typed by an
+        /// admin: a parking rate changed. Best-effort and never throws, like
+        /// <see cref="NotifyUserAsync"/>.
+        /// </summary>
+        Task AnnounceAsync(NotificationType type, string title, string message, CancellationToken ct);
+
         Task<ActionResult<NotificationListResponse>> ListAllAsync(int page, int pageSize, CancellationToken ct);
         /// <summary>
         /// The latest notifications the system raised on its own (a violation,

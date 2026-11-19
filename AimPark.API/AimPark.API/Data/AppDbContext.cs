@@ -581,6 +581,12 @@ namespace AimPark.API.Data
                 entity.Property(r => r.UpdatedAt)
                       .HasDefaultValueSql("NOW()");
 
+                entity.Property(r => r.PreviousRatePerHour)
+                      .HasColumnType("decimal(10,2)");
+
+                entity.Property(r => r.PreviousMinimumFee)
+                      .HasColumnType("decimal(10,2)");
+
                 entity.HasData(ParkingRateSeed.GetSeedRates());
             });
 

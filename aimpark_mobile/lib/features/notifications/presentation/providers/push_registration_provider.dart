@@ -135,5 +135,7 @@ class PushRegistration extends _$PushRegistration {
     ref.invalidate(violationsNotifierProvider);
     ref.invalidate(paymentsNotifierProvider);
     ref.invalidate(parkingHistoryNotifierProvider);
+    // A rate change arrives as a notice; the rates card should show it at once.
+    ref.invalidate(parkingRatesProvider);
   }
 }

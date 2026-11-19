@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 
 import '../../../../core/network/dio_client.dart';
+import '../../data/models/parking_rate.dart';
 import '../../data/models/payment.dart';
 import '../../data/payments_repository.dart';
 
@@ -35,6 +36,13 @@ class PaymentsNotifier extends _$PaymentsNotifier {
     if (fresh.hasValue) state = fresh;
   }
 }
+
+/// The parking rates. A plain provider rather than a generated one, so adding
+/// it needed no build_runner step. Invalidated on every push (see
+/// `refreshAll`), so a rate change shows up as soon as its notice arrives.
+final parkingRatesProvider = FutureProvider.autoDispose<List<ParkingRate>>(
+  (ref) => ref.watch(paymentsRepositoryProvider).rates(),
+);
 
 @riverpod
 Future<Payment> paymentDetail(Ref ref, String paymentId) {

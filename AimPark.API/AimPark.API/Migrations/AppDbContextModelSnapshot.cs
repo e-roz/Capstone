@@ -928,6 +928,12 @@ namespace AimPark.API.Migrations
                         .HasColumnType("decimal(10,2)")
                         .HasDefaultValue(20.00m);
 
+                    b.Property<decimal?>("PreviousMinimumFee")
+                        .HasColumnType("decimal(10,2)");
+
+                    b.Property<decimal?>("PreviousRatePerHour")
+                        .HasColumnType("decimal(10,2)");
+
                     b.Property<decimal>("RatePerHour")
                         .HasColumnType("decimal(10,2)");
 

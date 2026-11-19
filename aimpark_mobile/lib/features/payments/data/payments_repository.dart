@@ -1,6 +1,7 @@
 import 'package:dio/dio.dart';
 
 import '../../../core/network/api_endpoints.dart';
+import 'models/parking_rate.dart';
 import 'models/payment.dart';
 
 class PaymentsRepository {
@@ -14,6 +15,14 @@ class PaymentsRepository {
       queryParameters: {'page': page, 'pageSize': pageSize},
     );
     return PaymentListResult.fromJson(response.data as Map<String, dynamic>);
+  }
+
+  /// The parking rates for each vehicle type.
+  Future<List<ParkingRate>> rates() async {
+    final response = await _dio.get(ApiEndpoints.paymentRates);
+    return (response.data as List<dynamic>)
+        .map((e) => ParkingRate.fromJson(e as Map<String, dynamic>))
+        .toList();
   }
 
   Future<Payment> getDetail(String paymentId) async {

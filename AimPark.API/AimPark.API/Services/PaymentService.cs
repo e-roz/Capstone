@@ -80,10 +80,20 @@ namespace AimPark.API.Services
                     .FirstOrDefaultAsync(r => r.VehicleType == null, ct);
             }
 
-            // No rate set: the session costs nothing, and has no minimum either.
-            // The arithmetic, and why it rounds minutes up and has a floor, is
-            // in ParkingFeeMath.
-            return (rate?.RatePerHour ?? 0m, rate?.MinimumFee ?? 0m);
+            if (rate is null)
+            {
+                // No rate set: the session costs nothing, and has no minimum either.
+                // The arithmetic, and why it rounds minutes up and has a floor, is
+                // in ParkingFeeMath.
+                return (0m, 0m);
+            }
+
+            // The rate is locked at entry: a car that was already inside when the
+            // rate changed pays what it was when it came in.
+            if (log.EntryTime < rate.UpdatedAt && rate.PreviousRatePerHour is decimal previous)
+                return (previous, rate.PreviousMinimumFee ?? rate.MinimumFee);
+
+            return (rate.RatePerHour, rate.MinimumFee);
         }
 
         public async Task<PaymentTransaction> CreateForCompletedLogAsync(ParkingLog log, CancellationToken ct)
@@ -666,10 +676,33 @@ namespace AimPark.API.Services
             var existing = await _rates.FindAsync(r => r.VehicleType == vehicleType, ct);
             if (existing is not null)
             {
+                var newMinimum = dto.MinimumFee ?? existing.MinimumFee;
+
+                // Saving the same numbers again is not a change: it must not move
+                // the date a parked car's rate is locked against, or tell
+                // everyone the rate changed when it did not.
+                if (existing.RatePerHour == dto.RatePerHour && existing.MinimumFee == newMinimum)
+                    return new OkObjectResult(new { message = "No change: the rate is already set to that." });
+
+                var oldRate = existing.RatePerHour;
+                var oldMinimum = existing.MinimumFee;
+
+                // Cars already inside keep the old rate (see RateForAsync).
+                existing.PreviousRatePerHour = oldRate;
+                existing.PreviousMinimumFee = oldMinimum;
                 existing.RatePerHour = dto.RatePerHour;
-                if (dto.MinimumFee is not null) existing.MinimumFee = dto.MinimumFee.Value;
+                existing.MinimumFee = newMinimum;
                 existing.UpdatedAt = DateTime.UtcNow;
                 _rates.Update(existing);
+                await _rates.SaveAsync(ct);
+
+                await _notificationService.AnnounceAsync(
+                    NotificationType.PolicyUpdate,
+                    $"{vehicleType} parking rate changed",
+                    RateChangeMessage(vehicleType, oldRate, oldMinimum, dto.RatePerHour, newMinimum),
+                    ct);
+
+                return new OkObjectResult(new { message = "Rate saved. Drivers have been notified." });
             }
             else
             {
@@ -685,7 +718,24 @@ namespace AimPark.API.Services
 
             await _rates.SaveAsync(ct);
 
-            return new OkObjectResult(new { message = "Rate saved." });
+            await _notificationService.AnnounceAsync(
+                NotificationType.PolicyUpdate,
+                $"{vehicleType} parking rate set",
+                $"{vehicleType} parking is now ₱{dto.RatePerHour:0.00} an hour " +
+                $"(minimum ₱{dto.MinimumFee ?? 20.00m:0.00}). Vehicles already parked keep the rate they came in with.",
+                ct);
+
+            return new OkObjectResult(new { message = "Rate saved. Drivers have been notified." });
+        }
+
+        /// <summary>"Car parking is now ₱20.00 an hour (was ₱15.00). ..."</summary>
+        private static string RateChangeMessage(
+            VehicleType type, decimal oldRate, decimal oldMinimum, decimal newRate, decimal newMinimum)
+        {
+            var message = $"{type} parking is now ₱{newRate:0.00} an hour (was ₱{oldRate:0.00}).";
+            if (newMinimum != oldMinimum)
+                message += $" The minimum fee is now ₱{newMinimum:0.00} (was ₱{oldMinimum:0.00}).";
+            return message + " Vehicles already parked keep the rate they came in with.";
         }
 
         // DELETE /api/admin/payments/rates/{rateId}
