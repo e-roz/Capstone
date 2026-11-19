@@ -262,7 +262,7 @@ namespace AimPark.API.Services
                 return new BadRequestObjectResult(new { message = "Password confirmation is unavailable for this admin account." });
 
             if (string.IsNullOrEmpty(password) || !BCrypt.Net.BCrypt.Verify(password, admin.PasswordHash))
-                return new UnauthorizedObjectResult(new { message = "Incorrect password." });
+                return new BadRequestObjectResult(new { message = "Incorrect password." });
 
             var (document, error) = await ReadUploadAsync(file, ct);
             if (document is null)

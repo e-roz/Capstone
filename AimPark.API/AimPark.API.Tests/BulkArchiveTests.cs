@@ -180,7 +180,9 @@ public class BulkArchiveTests
 
         var wrong = Real(ana.Id);
         wrong.Password = "nope";
-        Assert.IsType<UnauthorizedObjectResult>((await service.BulkArchiveAsync(admin.Id, wrong, default)).Result);
+        // 400, never 401: the admin panel reads any 401 as an expired session
+        // and signs the admin out, so a typo would log them out mid-archive.
+        Assert.IsType<BadRequestObjectResult>((await service.BulkArchiveAsync(admin.Id, wrong, default)).Result);
 
         var noReason = Real(ana.Id);
         noReason.Reason = "  ";

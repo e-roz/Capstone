@@ -73,7 +73,7 @@ namespace AimPark.API.Services
                 return new BadRequestObjectResult(new { message = "This account signs in via an external provider and has no password to change." });
 
             if (string.IsNullOrEmpty(dto.CurrentPassword) || !BCrypt.Net.BCrypt.Verify(dto.CurrentPassword, user.PasswordHash))
-                return new UnauthorizedObjectResult(new { message = "Current password is incorrect." });
+                return new BadRequestObjectResult(new { message = "Current password is incorrect." });
 
             if (string.IsNullOrWhiteSpace(dto.NewPassword) || dto.NewPassword.Length < 8)
                 return new BadRequestObjectResult(new { message = "New password must be at least 8 characters." });

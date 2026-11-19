@@ -216,7 +216,7 @@ namespace AimPark.API.Services
                 return new BadRequestObjectResult(new { message = "Password confirmation is unavailable for this admin account." });
 
             if (string.IsNullOrEmpty(dto.Password) || !BCrypt.Net.BCrypt.Verify(dto.Password, admin.PasswordHash))
-                return new UnauthorizedObjectResult(new { message = "Incorrect password." });
+                return new BadRequestObjectResult(new { message = "Incorrect password." });
 
             var user = await _users.FindAsync(u => u.Id == userId, ct);
             if (user is null)
@@ -271,8 +271,10 @@ namespace AimPark.API.Services
                 if (admin?.PasswordHash is null)
                     return new BadRequestObjectResult(new { message = "Password confirmation is unavailable for this admin account." });
 
+                // 400, not 401. Both apps treat a 401 as an expired session and
+                // sign the person out, so a mistyped password would log them out.
                 if (string.IsNullOrEmpty(dto.Password) || !BCrypt.Net.BCrypt.Verify(dto.Password, admin.PasswordHash))
-                    return new UnauthorizedObjectResult(new { message = "Incorrect password." });
+                    return new BadRequestObjectResult(new { message = "Incorrect password." });
             }
 
             var (response, eligible) = await ClassifyForArchiveAsync(
@@ -463,7 +465,7 @@ namespace AimPark.API.Services
                 return new BadRequestObjectResult(new { message = "Password confirmation is unavailable for this admin account." });
 
             if (string.IsNullOrEmpty(dto.Password) || !BCrypt.Net.BCrypt.Verify(dto.Password, admin.PasswordHash))
-                return new UnauthorizedObjectResult(new { message = "Incorrect password." });
+                return new BadRequestObjectResult(new { message = "Incorrect password." });
 
             var user = await _users.FindAsync(u => u.Id == userId, ct);
             if (user is null)
@@ -981,7 +983,7 @@ namespace AimPark.API.Services
                 return new BadRequestObjectResult(new { message = "Password confirmation is unavailable for this admin account." });
 
             if (string.IsNullOrEmpty(dto.Password) || !BCrypt.Net.BCrypt.Verify(dto.Password, admin.PasswordHash))
-                return new UnauthorizedObjectResult(new { message = "Incorrect password." });
+                return new BadRequestObjectResult(new { message = "Incorrect password." });
 
             var user = await _users.FindAsync(u => u.Id == userId, ct);
             if (user is null)
