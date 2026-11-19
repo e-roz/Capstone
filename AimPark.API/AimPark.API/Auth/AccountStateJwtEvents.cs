@@ -72,7 +72,7 @@ namespace AimPark.API.Auth
                 Reject(
                     context,
                     AccountUnavailableCode,
-                    "This account has been deleted. Please contact the administrator.");
+                    "This account has been archived. Please visit the parking office to restore it.");
                 return;
             }
 

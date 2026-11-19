@@ -26,6 +26,7 @@ class AppTokens extends ThemeExtension<AppTokens> {
     required this.brand,
     required this.accent,
     required this.tertiary,
+    required this.occupied,
     required this.status,
   });
 
@@ -44,6 +45,9 @@ class AppTokens extends ThemeExtension<AppTokens> {
   /// brand, so a mint tag never reads as "this is a button".
   final AppAccentTokens tertiary;
 
+  /// Orange. A parking bay with a vehicle in it, on every lot map.
+  final AppAccentTokens occupied;
+
   final AppStatusTokens status;
 
   static const light = AppTokens(
@@ -53,6 +57,7 @@ class AppTokens extends ThemeExtension<AppTokens> {
     brand: AppAccentTokens.brandLight,
     accent: AppAccentTokens.accentLight,
     tertiary: AppAccentTokens.tertiaryLight,
+    occupied: AppAccentTokens.occupiedLight,
     status: AppStatusTokens.light,
   );
 
@@ -63,6 +68,7 @@ class AppTokens extends ThemeExtension<AppTokens> {
     brand: AppAccentTokens.brandDark,
     accent: AppAccentTokens.accentDark,
     tertiary: AppAccentTokens.tertiaryDark,
+    occupied: AppAccentTokens.occupiedDark,
     status: AppStatusTokens.dark,
   );
 
@@ -74,6 +80,7 @@ class AppTokens extends ThemeExtension<AppTokens> {
     AppAccentTokens? brand,
     AppAccentTokens? accent,
     AppAccentTokens? tertiary,
+    AppAccentTokens? occupied,
     AppStatusTokens? status,
   }) {
     return AppTokens(
@@ -83,6 +90,7 @@ class AppTokens extends ThemeExtension<AppTokens> {
       brand: brand ?? this.brand,
       accent: accent ?? this.accent,
       tertiary: tertiary ?? this.tertiary,
+      occupied: occupied ?? this.occupied,
       status: status ?? this.status,
     );
   }
@@ -97,6 +105,7 @@ class AppTokens extends ThemeExtension<AppTokens> {
       brand: AppAccentTokens.lerp(brand, other.brand, t),
       accent: AppAccentTokens.lerp(accent, other.accent, t),
       tertiary: AppAccentTokens.lerp(tertiary, other.tertiary, t),
+      occupied: AppAccentTokens.lerp(occupied, other.occupied, t),
       status: AppStatusTokens.lerp(status, other.status, t),
     );
   }
@@ -426,6 +435,22 @@ class AppAccentTokens {
     pressed: AppPalette.mint600,
     subtle: Color(0x3322A67E),
     subtleText: AppPalette.mint200,
+    onSolid: AppPalette.neutral900,
+  );
+
+  static const occupiedLight = AppAccentTokens(
+    primary: AppPalette.orange500,
+    pressed: AppPalette.orange700,
+    subtle: AppPalette.orange100,
+    subtleText: AppPalette.orange700,
+    onSolid: AppPalette.neutral900,
+  );
+
+  static const occupiedDark = AppAccentTokens(
+    primary: AppPalette.orange400,
+    pressed: AppPalette.orange600,
+    subtle: Color(0x33E56E24),
+    subtleText: AppPalette.orange200,
     onSolid: AppPalette.neutral900,
   );
 

@@ -14,12 +14,21 @@ import '../../domain/lot_layout.dart';
 /// "Yours" is only ever the bay the driver said they parked in. The lot's
 /// sensors know which bays have a car in them, never whose, so the map cannot
 /// work it out for them.
+///
+/// Orange is a bay the sensor sees a vehicle in; indigo is a bay a driver has
+/// confirmed. The map never says *who* confirmed it: drivers get a yes/no from
+/// the server, and names are for the admin panel and the guard post only.
 enum BayState {
   free,
   taken,
   outOfService,
   noSignal,
   suggested,
+
+  /// Another driver has confirmed they are parked here.
+  claimed,
+
+  /// This driver's own confirmed bay.
   confirmed;
 
   static BayState of(
@@ -33,7 +42,13 @@ enum BayState {
     if (suggestedCode != null && slot.slotCode == suggestedCode) {
       return suggested;
     }
-    return switch (slot.status.toLowerCase()) {
+    final status = slot.status.toLowerCase();
+    // Confirmed by someone else. Only over a bay that has, or may have, a
+    // vehicle in it; an out-of-service bay still reads as out of service.
+    if (slot.claimed && (status == 'occupied' || status == 'nosignal')) {
+      return claimed;
+    }
+    return switch (status) {
       'available' => free,
       'occupied' => taken,
       'nosignal' => noSignal,
@@ -49,6 +64,7 @@ enum BayState {
     BayState.outOfService => 'Out of service',
     BayState.noSignal => 'No signal',
     BayState.suggested => 'Suggested',
+    BayState.claimed => 'Confirmed',
     BayState.confirmed => 'Your bay',
   };
 }
@@ -152,7 +168,11 @@ class ParkingMap extends StatelessWidget {
     // A bay that is already greyed out — out of service, or silent — is not faded
     // a second time. Two fades on top of each other and the bay is gone, which
     // is exactly what happened when the whole lot went quiet.
-    if (state != BayState.free && state != BayState.taken) return false;
+    if (state != BayState.free &&
+        state != BayState.taken &&
+        state != BayState.claimed) {
+      return false;
+    }
     // While confirming, everything but the bays the driver can pick is faded.
     if (_confirming) return !_canPick(slot);
     final kind = _kind;
@@ -267,6 +287,15 @@ class ParkingMap extends StatelessWidget {
             const SizedBox(height: AppSpacing.md),
             _Legend(
               showSuggested: suggestedCode != null,
+              showClaimed: availability.slots.any(
+                (s) =>
+                    BayState.of(
+                      s,
+                      suggestedCode: suggestedCode,
+                      confirmedCode: confirmedCode,
+                    ) ==
+                    BayState.claimed,
+              ),
               showConfirmed: confirmedCode != null,
             ),
             // Bays the drawing has no room for are listed rather than dropped.
@@ -336,19 +365,23 @@ class _Bay extends StatelessWidget {
         width: 24,
         height: 24,
         decoration: BoxDecoration(
-          color: t.brand.primary,
+          color: t.tertiary.pressed,
           shape: BoxShape.circle,
         ),
-        child: Icon(Icons.near_me_rounded, size: 14, color: t.brand.onSolid),
+        child: Icon(
+          Icons.near_me_rounded,
+          size: 14,
+          color: t.surface.card,
+        ),
       ),
       BayState.confirmed => Container(
         width: 24,
         height: 24,
         decoration: BoxDecoration(
-          color: t.status.success.solid,
+          color: t.brand.onSolid,
           shape: BoxShape.circle,
         ),
-        child: const Icon(Icons.check_rounded, size: 16, color: Colors.white),
+        child: Icon(Icons.check_rounded, size: 16, color: t.brand.primary),
       ),
       BayState.outOfService => Icon(
         Icons.block_rounded,
@@ -468,10 +501,18 @@ class _BayColors {
       t.tertiary.primary,
       t.tertiary.subtleText,
     ),
+    // Orange: the sensor sees a vehicle, and nobody has said it is theirs.
     BayState.taken => _BayColors(
-      t.surface.muted,
-      t.border.normal,
-      t.text.secondary,
+      t.occupied.subtle,
+      t.occupied.primary,
+      t.occupied.subtleText,
+    ),
+    // Indigo: a driver has confirmed it. A tint, so the driver's own bay,
+    // in solid indigo, still stands out from the rest.
+    BayState.claimed => _BayColors(
+      t.brand.subtle,
+      t.brand.primary,
+      t.brand.subtleText,
     ),
     BayState.outOfService || BayState.noSignal => _BayColors(
       t.surface.canvas,
@@ -479,16 +520,18 @@ class _BayColors {
       t.text.disabled,
       code: t.text.secondary,
     ),
+    // A free bay picked out: mint like any free bay, with a heavier edge, a
+    // badge and a pulse. Not indigo any more, which now means "confirmed".
     BayState.suggested => _BayColors(
       t.tertiary.subtle,
-      t.brand.primary,
-      t.brand.subtleText,
+      t.tertiary.pressed,
+      t.tertiary.subtleText,
       borderWidth: 2.5,
     ),
     BayState.confirmed => _BayColors(
-      t.status.success.bg,
-      t.status.success.solid,
-      t.status.success.fg,
+      t.brand.primary,
+      t.brand.pressed,
+      t.brand.onSolid,
       borderWidth: 2.5,
     ),
   };
@@ -713,11 +756,16 @@ class _DashPainter extends CustomPainter {
 // ── Legend ───────────────────────────────────────────────────────────────────
 
 class _Legend extends StatelessWidget {
-  const _Legend({required this.showSuggested, required this.showConfirmed});
+  const _Legend({
+    required this.showSuggested,
+    required this.showClaimed,
+    required this.showConfirmed,
+  });
 
   /// Only listed when the colour appears on the map. A key to something that is
   /// not there is noise.
   final bool showSuggested;
+  final bool showClaimed;
   final bool showConfirmed;
 
   @override
@@ -731,6 +779,7 @@ class _Legend extends StatelessWidget {
         const _LegendItem(state: BayState.outOfService),
         const _LegendItem(state: BayState.noSignal),
         if (showSuggested) const _LegendItem(state: BayState.suggested),
+        if (showClaimed) const _LegendItem(state: BayState.claimed),
         if (showConfirmed) const _LegendItem(state: BayState.confirmed),
       ],
     );
@@ -836,8 +885,8 @@ class _BaySheet extends StatelessWidget {
     BayState.free => StatusIntent.success,
     BayState.taken || BayState.outOfService => StatusIntent.neutral,
     BayState.noSignal => StatusIntent.warning,
-    BayState.suggested => StatusIntent.brand,
-    BayState.confirmed => StatusIntent.success,
+    BayState.suggested => StatusIntent.success,
+    BayState.claimed || BayState.confirmed => StatusIntent.brand,
   };
 
   String get _message => switch (state) {
@@ -858,6 +907,8 @@ class _BaySheet extends StatelessWidget {
       'Free right now. Looking at a bay does not hold it for you — entry '
           'is confirmed by your card at the gate.',
     BayState.taken => 'Someone is parked here.',
+    // Never who: that is for the parking office.
+    BayState.claimed => 'A driver has confirmed they are parked here.',
     BayState.outOfService => 'This bay is out of service.',
     BayState.noSignal =>
       "This bay's sensor is not reporting, so it is not counted as free.",

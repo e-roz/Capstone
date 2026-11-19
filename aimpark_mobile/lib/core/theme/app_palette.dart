@@ -103,6 +103,18 @@ class AppPalette {
   static const amber600 = Color(0xFFAD7315);
   static const amber700 = Color(0xFF7D530F);
 
+  // ── Occupied — orange ────────────────────────────────────────────────────
+  // A bay with a vehicle in it. Its own hue, between amber (a warning) and
+  // coral (danger), so a full lot reads as busy rather than as a problem.
+  static const orange50 = Color(0xFFFEF1E8);
+  static const orange100 = Color(0xFFFCE1CC);
+  static const orange200 = Color(0xFFF8C29A);
+  static const orange300 = Color(0xFFF3A066);
+  static const orange400 = Color(0xFFEE8440);
+  static const orange500 = Color(0xFFE56E24);
+  static const orange600 = Color(0xFFBF5717);
+  static const orange700 = Color(0xFF8C4011);
+
   // ── Danger — coral ───────────────────────────────────────────────────────
   // Warmer and less saturated than a pure stop-sign red, matching the
   // reference's "Pay now" / "Delete account" tone.

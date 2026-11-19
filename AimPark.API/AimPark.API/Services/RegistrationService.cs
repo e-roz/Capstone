@@ -1612,7 +1612,7 @@ namespace AimPark.API.Services
             {
                 if (existing.IsDeleted)
                 {
-                    return new ObjectResult(new { message = "This account has been deleted. Please contact admin." }) { StatusCode = 403 };
+                    return new ObjectResult(new { message = "This account has been archived. Please visit the parking office to restore it." }) { StatusCode = 403 };
                 }
 
                 if (existing.AuthProvider == AuthProvider.Local && existing.PasswordHash is not null)
