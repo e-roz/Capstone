@@ -133,6 +133,8 @@ namespace AimPark.API.Sync
             services.AddHostedService<AimPark.API.Services.UnconfirmedParkingService>();
             // Issued violations past their appeal deadline become Accountable.
             services.AddHostedService<AimPark.API.Services.ViolationDeadlineService>();
+            // Bulk archive's "archive when clear": warn, then archive after the notice.
+            services.AddHostedService<AimPark.API.Services.AutoArchiveService>();
             // Tap photos sent up from the guard PC are kept for 30 days.
             services.AddHostedService<AimPark.API.Services.TapPhotoCleanupService>();
             // A full backup every night at 2 AM, the last 14 kept.

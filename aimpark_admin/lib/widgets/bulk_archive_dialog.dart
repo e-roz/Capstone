@@ -58,6 +58,30 @@ class _BulkArchiveDialogState extends ConsumerState<_BulkArchiveDialog> {
 
   BulkArchiveLastRun? _lastRun;
 
+  // "Archive when clear", chosen on the review step. Off unless ticked.
+  bool _autoArchive = false;
+  int _graceDays = _defaultGraceDays;
+  DateTime _autoUntil = _defaultUntil();
+
+  /// The review was opened from "Last run → Review": a late archive of people
+  /// who became clear, not a new sweep, so it doesn't offer a new auto plan.
+  bool _fromLastRun = false;
+
+  /// An auto-archive change or cancel is on its way to the server.
+  bool _savingAuto = false;
+  String? _autoError;
+
+  static const _defaultGraceDays = 7;
+
+  static DateTime _defaultUntil() {
+    final now = manilaNow();
+    return DateTime(now.year, now.month, now.day).add(const Duration(days: 60));
+  }
+
+  /// The end of that Manila day, as the instant the server stores.
+  static String _endOfManilaDay(DateTime d) =>
+      DateTime.utc(d.year, d.month, d.day, 15, 59, 59).toIso8601String();
+
   @override
   void initState() {
     super.initState();
@@ -80,6 +104,8 @@ class _BulkArchiveDialogState extends ConsumerState<_BulkArchiveDialog> {
   void _reviewReady(BulkArchiveLastRun run) {
     setState(() {
       _preview = run.ready;
+      _fromLastRun = true;
+      _autoArchive = false;
       _showSkipped = false;
       _error = null;
       _picked
@@ -146,6 +172,7 @@ class _BulkArchiveDialogState extends ConsumerState<_BulkArchiveDialog> {
       if (!mounted) return;
       setState(() {
         _preview = result;
+        _fromLastRun = false;
         _showSkipped = false;
         _picked
           ..clear()
@@ -170,6 +197,11 @@ class _BulkArchiveDialogState extends ConsumerState<_BulkArchiveDialog> {
       setState(() => _error = 'Enter your password to confirm.');
       return;
     }
+    final auto = _autoArchive && _offersAuto(_preview);
+    if (auto && (_graceDays < 1 || _graceDays > 60)) {
+      setState(() => _error = 'The notice period must be between 1 and 60 days.');
+      return;
+    }
     setState(() {
       _busy = true;
       _error = null;
@@ -183,6 +215,9 @@ class _BulkArchiveDialogState extends ConsumerState<_BulkArchiveDialog> {
         'leftAloneUserIds': [for (final s in _preview?.skipped ?? const <BulkArchiveSkip>[]) s.userId],
         'reason': _reason.text.trim(),
         'password': _password.text,
+        'autoArchive': auto,
+        if (auto) 'graceDays': _graceDays,
+        if (auto) 'autoArchiveUntil': _endOfManilaDay(_autoUntil),
       });
       if (!mounted) return;
       Navigator.pop(context, BulkArchiveResult.fromJson(res.data as Map<String, dynamic>));
@@ -194,6 +229,79 @@ class _BulkArchiveDialogState extends ConsumerState<_BulkArchiveDialog> {
       });
     }
   }
+
+  /// A fresh sweep that left people alone can hand them to "archive when clear".
+  bool _offersAuto(BulkArchiveResult? preview) =>
+      preview != null && preview.skipped.isNotEmpty && !_fromLastRun;
+
+  /// Sends a change to the last run's auto-archive and shows the run as the
+  /// server now has it. Errors stay in the box, not the main form.
+  Future<void> _sendAuto(Future<Response<dynamic>> Function(Dio dio) call) async {
+    setState(() {
+      _savingAuto = true;
+      _autoError = null;
+    });
+    try {
+      final res = await call(ref.read(dioProvider));
+      if (!mounted) return;
+      setState(() {
+        _savingAuto = false;
+        if (res.data is Map<String, dynamic>) {
+          _lastRun = BulkArchiveLastRun.fromJson(res.data as Map<String, dynamic>);
+        }
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _savingAuto = false;
+        _autoError = _messageOf(e);
+      });
+    }
+  }
+
+  Future<void> _editAuto(BulkArchiveLastRun run, {required bool turnOn}) async {
+    final picked = await showDialog<(int, DateTime)>(
+      context: context,
+      builder: (_) => _AutoSettingsDialog(
+        title: turnOn ? 'Turn on auto-archive' : 'Auto-archive settings',
+        confirmLabel: turnOn ? 'Turn on' : 'Save',
+        graceDays: run.auto.graceDays,
+        until: run.auto.until == null
+            ? _defaultUntil()
+            : () {
+                final m = manila(run.auto.until!);
+                return DateTime(m.year, m.month, m.day);
+              }(),
+      ),
+    );
+    if (picked == null) return;
+    final (grace, until) = picked;
+    await _sendAuto((dio) => dio.put(ApiEndpoints.bulkArchiveAuto(run.runId), data: {
+          'enabled': true,
+          'graceDays': grace,
+          'autoArchiveUntil': _endOfManilaDay(until),
+        }));
+  }
+
+  Future<void> _turnOffAuto(BulkArchiveLastRun run) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Turn off auto-archive?'),
+        content: const Text(
+            "Nobody else from this run will be archived automatically. People already archived stay archived."),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Keep it on')),
+          FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Turn off')),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    await _sendAuto((dio) => dio.put(ApiEndpoints.bulkArchiveAuto(run.runId), data: {'enabled': false}));
+  }
+
+  Future<void> _cancelPending(BulkArchivePending p) =>
+      _sendAuto((dio) => dio.post(ApiEndpoints.bulkArchiveCancelPending(p.id)));
 
   Future<void> _pickDate() async {
     final now = manilaNow();
@@ -267,7 +375,9 @@ class _BulkArchiveDialogState extends ConsumerState<_BulkArchiveDialog> {
         ),
         const SizedBox(height: AppSpacing.x4),
         if (_lastRun case final run?
-            when run.ready.users.isNotEmpty || run.ready.skipped.isNotEmpty) ...[
+            when run.ready.users.isNotEmpty ||
+                run.ready.skipped.isNotEmpty ||
+                run.pending.isNotEmpty) ...[
           _lastRunBox(context, run),
           const SizedBox(height: AppSpacing.x4),
         ],
@@ -381,7 +491,11 @@ class _BulkArchiveDialogState extends ConsumerState<_BulkArchiveDialog> {
             ],
           ),
           Divider(height: AppSpacing.x4, color: t.border.subtle),
-          if (ready == 0)
+          _autoSection(context, run),
+          // With auto-archive on, the job handles the ready ones itself.
+          if (run.auto.enabled)
+            const SizedBox.shrink()
+          else if (ready == 0)
             Text('None ready yet', style: text.bodyMedium?.copyWith(color: t.text.tertiary))
           else
             Row(
@@ -408,6 +522,226 @@ class _BulkArchiveDialogState extends ConsumerState<_BulkArchiveDialog> {
     );
   }
 
+  /// The last run's "archive when clear": on or off, its settings, the counts,
+  /// and everyone on the list with what is happening to them.
+  Widget _autoSection(BuildContext context, BulkArchiveLastRun run) {
+    final t = context.tokens;
+    final text = Theme.of(context).textTheme;
+    final auto = run.auto;
+    final open = run.pending.where((p) => p.isOpen).length;
+
+    final status = auto.enabled
+        ? 'Auto-archive on · ${auto.graceDays}-day notice'
+            '${auto.until == null ? '' : ' · ends ${_day.format(manila(auto.until!))}'}'
+        : run.pending.isEmpty
+            ? 'Auto-archive off'
+            : 'Auto-archive off since ${_day.format(manila(auto.stoppedAt ?? run.ranAt))}';
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Icon(auto.enabled ? Icons.schedule : Icons.schedule_outlined,
+                size: AppSizes.iconSm,
+                color: auto.enabled ? t.brand.primary : t.text.tertiary),
+            const SizedBox(width: AppSpacing.x2),
+            Expanded(
+              child: Text(status,
+                  style: text.bodyMedium?.copyWith(
+                      color: auto.enabled ? t.text.primary : t.text.secondary,
+                      fontWeight: auto.enabled ? FontWeight.w500 : FontWeight.w400)),
+            ),
+            if (_savingAuto)
+              const SizedBox(
+                  width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+            else if (auto.enabled) ...[
+              TextButton(
+                onPressed: _busy ? null : () => _editAuto(run, turnOn: false),
+                child: const Text('Edit'),
+              ),
+              TextButton(
+                style: TextButton.styleFrom(foregroundColor: t.status.danger.fg),
+                onPressed: _busy ? null : () => _turnOffAuto(run),
+                child: const Text('Turn off'),
+              ),
+            ] else if (run.leftAloneCount > 0)
+              TextButton(
+                onPressed: _busy ? null : () => _editAuto(run, turnOn: true),
+                child: const Text('Turn on'),
+              ),
+          ],
+        ),
+        if (run.pending.isNotEmpty) ...[
+          const SizedBox(height: AppSpacing.x2),
+          Wrap(
+            spacing: AppSpacing.x2,
+            runSpacing: AppSpacing.x1,
+            children: [
+              for (final (state, label, colors) in [
+                (BulkArchivePending.waiting, 'Waiting', t.status.neutral),
+                (BulkArchivePending.warned, 'Notice sent', t.status.warning),
+                (BulkArchivePending.archived, 'Archived', t.status.info),
+                (BulkArchivePending.kept, 'Kept', t.status.success),
+                (BulkArchivePending.cancelled, 'Cancelled', t.status.neutral),
+                (BulkArchivePending.expired, 'Expired', t.status.neutral),
+              ])
+                if (run.count(state) > 0 ||
+                    state == BulkArchivePending.waiting ||
+                    state == BulkArchivePending.warned)
+                  _Pill(label: '$label ${run.count(state)}', colors: colors),
+            ],
+          ),
+          const SizedBox(height: AppSpacing.x2),
+          // Its own short scroll, so a long list doesn't push the form away.
+          ConstrainedBox(
+            constraints: const BoxConstraints(maxHeight: 180),
+            child: Container(
+              decoration: BoxDecoration(
+                color: t.surface.card,
+                border: Border.all(color: t.border.subtle),
+                borderRadius: BorderRadius.circular(AppRadii.sm),
+              ),
+              child: ListView.separated(
+                shrinkWrap: true,
+                itemCount: run.pending.length,
+                separatorBuilder: (_, _) => Divider(height: 1, color: t.border.subtle),
+                itemBuilder: (context, i) => _pendingRow(context, run.pending[i]),
+              ),
+            ),
+          ),
+          if (open > 0 && auto.enabled)
+            Padding(
+              padding: const EdgeInsets.only(top: AppSpacing.x1),
+              child: Text(
+                'Checked every hour. Anyone who parks again is kept.',
+                style: text.bodySmall?.copyWith(color: t.text.tertiary),
+              ),
+            ),
+        ],
+        if (_autoError != null) _ErrorText(_autoError!),
+        const SizedBox(height: AppSpacing.x2),
+      ],
+    );
+  }
+
+  Widget _pendingRow(BuildContext context, BulkArchivePending p) {
+    final t = context.tokens;
+    final text = Theme.of(context).textTheme;
+
+    final (label, colors) = switch (p.state) {
+      BulkArchivePending.warned => ('Notice sent', t.status.warning),
+      BulkArchivePending.archived => ('Archived', t.status.info),
+      BulkArchivePending.kept => ('Kept', t.status.success),
+      BulkArchivePending.cancelled => ('Cancelled', t.status.neutral),
+      BulkArchivePending.expired => ('Expired', t.status.neutral),
+      _ => ('Waiting', t.status.neutral),
+    };
+
+    final detail = switch (p.state) {
+      BulkArchivePending.warned when p.archiveAt != null =>
+        'Archives ${_day.format(manila(p.archiveAt!))}',
+      _ => p.note ?? '',
+    };
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.x3, vertical: AppSpacing.x2),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Tooltip(
+                  message: p.email,
+                  child: Text(p.fullName,
+                      style: text.bodyMedium?.copyWith(fontWeight: FontWeight.w500)),
+                ),
+                if (detail.isNotEmpty)
+                  Text(detail, style: text.bodySmall?.copyWith(color: t.text.secondary)),
+              ],
+            ),
+          ),
+          _Pill(label: label, colors: colors),
+          if (p.isOpen)
+            IconButton(
+              tooltip: 'Take off the list',
+              icon: const Icon(Icons.close, size: AppSizes.iconSm),
+              onPressed: _savingAuto || _busy ? null : () => _cancelPending(p),
+            )
+          else
+            const SizedBox(width: 40),
+        ],
+      ),
+    );
+  }
+
+  /// The opt-in on the review step, with the notice period and end date
+  /// right under it once ticked.
+  Widget _autoOptIn(BuildContext context, BulkArchiveResult preview) {
+    final t = context.tokens;
+    final text = Theme.of(context).textTheme;
+    final n = preview.skipped.length;
+
+    return Container(
+      decoration: BoxDecoration(
+        color: _autoArchive ? t.brand.primary.withValues(alpha: 0.06) : null,
+        border: Border.all(color: _autoArchive ? t.brand.primary : t.border.subtle),
+        borderRadius: BorderRadius.circular(AppRadii.sm),
+      ),
+      padding: const EdgeInsets.fromLTRB(AppSpacing.x1, AppSpacing.x1, AppSpacing.x3, AppSpacing.x2),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          InkWell(
+            onTap: _busy ? null : () => setState(() => _autoArchive = !_autoArchive),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Checkbox(
+                  value: _autoArchive,
+                  onChanged: _busy ? null : (v) => setState(() => _autoArchive = v ?? false),
+                ),
+                Expanded(
+                  child: Padding(
+                    padding: const EdgeInsets.only(top: AppSpacing.x2),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Archive the $n ${n == 1 ? 'person' : 'people'} left alone once they\'re clear',
+                          style: text.bodyMedium?.copyWith(fontWeight: FontWeight.w500),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          'Only if they also stay away from the lot. Each gets a notice first.',
+                          style: text.bodySmall?.copyWith(color: t.text.secondary),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          if (_autoArchive)
+            Padding(
+              padding: const EdgeInsets.only(left: AppSpacing.x3, top: AppSpacing.x2),
+              child: _AutoSettingsFields(
+                graceDays: _graceDays,
+                until: _autoUntil,
+                enabled: !_busy,
+                onChanged: (grace, until) => setState(() {
+                  _graceDays = grace;
+                  _autoUntil = until;
+                }),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
   Widget _review(BuildContext context, BulkArchiveResult preview) {
     final t = context.tokens;
     final text = Theme.of(context).textTheme;
@@ -422,7 +756,9 @@ class _BulkArchiveDialogState extends ConsumerState<_BulkArchiveDialog> {
 
     // Follows the screen so the reason, password and buttons always fit;
     // only the list in the middle scrolls.
-    final height = (MediaQuery.sizeOf(context).height * 0.6).clamp(320.0, 460.0);
+    final offersAuto = _offersAuto(preview);
+    final extra = !offersAuto ? 0.0 : (_autoArchive ? 150.0 : 76.0);
+    final height = (MediaQuery.sizeOf(context).height * 0.6 + extra).clamp(320.0, 460.0 + extra);
 
     return SizedBox(
       height: height,
@@ -529,6 +865,10 @@ class _BulkArchiveDialogState extends ConsumerState<_BulkArchiveDialog> {
               ),
             ],
           ),
+          if (offersAuto) ...[
+            const SizedBox(height: AppSpacing.x3),
+            _autoOptIn(context, preview),
+          ],
           const SizedBox(height: AppSpacing.x4),
           TextField(
             controller: _reason,
@@ -668,6 +1008,171 @@ class _BulkArchiveDialogState extends ConsumerState<_BulkArchiveDialog> {
           ),
         );
       },
+    );
+  }
+}
+
+/// The notice period (days) and end date of "archive when clear". Used on the
+/// review step and in the settings dialog for an existing run.
+class _AutoSettingsFields extends StatefulWidget {
+  const _AutoSettingsFields({
+    required this.graceDays,
+    required this.until,
+    required this.onChanged,
+    this.enabled = true,
+  });
+
+  final int graceDays;
+
+  /// A Manila calendar date.
+  final DateTime until;
+  final bool enabled;
+  final void Function(int graceDays, DateTime until) onChanged;
+
+  @override
+  State<_AutoSettingsFields> createState() => _AutoSettingsFieldsState();
+}
+
+class _AutoSettingsFieldsState extends State<_AutoSettingsFields> {
+  late final _days = TextEditingController(text: '${widget.graceDays}');
+
+  @override
+  void dispose() {
+    _days.dispose();
+    super.dispose();
+  }
+
+  int get _parsed => int.tryParse(_days.text.trim()) ?? 0;
+
+  Future<void> _pickUntil() async {
+    final now = manilaNow();
+    final today = DateTime(now.year, now.month, now.day);
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: widget.until.isBefore(today) ? today.add(const Duration(days: 1)) : widget.until,
+      firstDate: today.add(const Duration(days: 1)),
+      lastDate: today.add(const Duration(days: 365)),
+      helpText: 'Stop auto-archive after',
+    );
+    if (picked != null) widget.onChanged(_parsed, picked);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final t = context.tokens;
+    final text = Theme.of(context).textTheme;
+    final days = _parsed;
+    final badDays = days < 1 || days > 60;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            SizedBox(
+              width: 150,
+              child: TextField(
+                controller: _days,
+                enabled: widget.enabled,
+                keyboardType: TextInputType.number,
+                inputFormatters: [FilteringTextInputFormatter.digitsOnly, LengthLimitingTextInputFormatter(2)],
+                decoration: InputDecoration(
+                  labelText: 'Notice',
+                  suffixText: days == 1 ? 'day' : 'days',
+                  errorText: badDays ? '1 to 60' : null,
+                  isDense: true,
+                ),
+                onChanged: (_) {
+                  setState(() {});
+                  widget.onChanged(_parsed, widget.until);
+                },
+              ),
+            ),
+            const SizedBox(width: AppSpacing.x3),
+            Expanded(
+              child: InkWell(
+                onTap: widget.enabled ? _pickUntil : null,
+                borderRadius: BorderRadius.circular(AppRadii.sm),
+                child: InputDecorator(
+                  decoration: const InputDecoration(
+                    labelText: 'Ends on',
+                    prefixIcon: Icon(Icons.event, size: AppSizes.iconSm),
+                    isDense: true,
+                  ),
+                  child: Text(_day.format(widget.until)),
+                ),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: AppSpacing.x1),
+        Text(
+          'Notice: days between the warning and the archive. After the end date nobody new is warned.',
+          style: text.bodySmall?.copyWith(color: t.text.tertiary),
+        ),
+      ],
+    );
+  }
+}
+
+/// Edits the notice period and end date of a run that already exists, or
+/// turns auto-archive on for it. Returns (days, Manila date), or null.
+class _AutoSettingsDialog extends StatefulWidget {
+  const _AutoSettingsDialog({
+    required this.title,
+    required this.confirmLabel,
+    required this.graceDays,
+    required this.until,
+  });
+
+  final String title;
+  final String confirmLabel;
+  final int graceDays;
+  final DateTime until;
+
+  @override
+  State<_AutoSettingsDialog> createState() => _AutoSettingsDialogState();
+}
+
+class _AutoSettingsDialogState extends State<_AutoSettingsDialog> {
+  late int _grace = widget.graceDays;
+  late DateTime _until = widget.until;
+
+  @override
+  Widget build(BuildContext context) {
+    final valid = _grace >= 1 && _grace <= 60;
+    return AlertDialog(
+      title: Text(widget.title),
+      content: SizedBox(
+        width: context.dialogWidth(420),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _AutoSettingsFields(
+              graceDays: _grace,
+              until: _until,
+              onChanged: (grace, until) => setState(() {
+                _grace = grace;
+                _until = until;
+              }),
+            ),
+            const SizedBox(height: AppSpacing.x2),
+            Text(
+              'People who already have a notice get their date moved to match.',
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(color: context.tokens.text.secondary),
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+        FilledButton(
+          onPressed: valid ? () => Navigator.pop(context, (_grace, _until)) : null,
+          child: Text(widget.confirmLabel),
+        ),
+      ],
     );
   }
 }

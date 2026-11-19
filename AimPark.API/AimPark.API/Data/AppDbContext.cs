@@ -43,6 +43,7 @@ namespace AimPark.API.Data
         public DbSet<WrongBayFlag> WrongBayFlags { get; set; }
         public DbSet<SlotConfirmCorrection> SlotConfirmCorrections { get; set; }
         public DbSet<BulkArchiveRun> BulkArchiveRuns { get; set; }
+        public DbSet<BulkArchivePending> BulkArchivePending { get; set; }
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -826,6 +827,32 @@ namespace AimPark.API.Data
 
                 // Stored as a Postgres uuid[] column; Npgsql maps List<Guid> natively.
                 entity.Property(r => r.LeftAloneUserIds).IsRequired();
+                entity.Property(r => r.Reason).HasMaxLength(500);
+                entity.Property(r => r.GraceDays).HasDefaultValue(7);
+            });
+
+            modelBuilder.Entity<BulkArchivePending>(entity =>
+            {
+                entity.HasKey(p => p.Id);
+                entity.Ignore(p => p.IsOpen);
+
+                entity.Property(p => p.State).HasConversion<string>().HasMaxLength(20);
+                entity.Property(p => p.Note).HasMaxLength(300);
+
+                entity.HasOne(p => p.Run)
+                      .WithMany(r => r.Pending)
+                      .HasForeignKey(p => p.RunId)
+                      .OnDelete(DeleteBehavior.Cascade);
+
+                entity.HasOne(p => p.User)
+                      .WithMany()
+                      .HasForeignKey(p => p.UserId)
+                      .OnDelete(DeleteBehavior.Cascade);
+
+                // One row per person per run.
+                entity.HasIndex(p => new { p.RunId, p.UserId }).IsUnique();
+                // The job only reads open rows.
+                entity.HasIndex(p => p.State);
             });
         }
     }

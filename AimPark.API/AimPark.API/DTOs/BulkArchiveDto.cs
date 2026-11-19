@@ -35,6 +35,55 @@ namespace AimPark.API.DTOs
         /// run so the panel can later tell which of them have become clear.
         /// </summary>
         public List<Guid> LeftAloneUserIds { get; set; } = [];
+
+        /// <summary>
+        /// On the real run: archive the people left alone later, once they are
+        /// clear and have stayed away from the lot. Off by default.
+        /// </summary>
+        public bool AutoArchive { get; set; }
+
+        /// <summary>Days of notice before an auto-archive. Defaults to 7.</summary>
+        public int? GraceDays { get; set; }
+
+        /// <summary>When auto-archive stops. Defaults to 60 days after the run.</summary>
+        public DateTime? AutoArchiveUntil { get; set; }
+    }
+
+    /// <summary>
+    /// Turns a run's "archive when clear" on or off, or changes its grace
+    /// period or end date. Fields left null keep their current value.
+    /// </summary>
+    public class BulkArchiveAutoSettingsDto
+    {
+        public bool? Enabled { get; set; }
+        public int? GraceDays { get; set; }
+        public DateTime? AutoArchiveUntil { get; set; }
+    }
+
+    /// <summary>A run's "archive when clear" settings as they stand.</summary>
+    public class BulkArchiveAutoSettings
+    {
+        public bool Enabled { get; set; }
+        public int GraceDays { get; set; }
+        public DateTime? AutoArchiveUntil { get; set; }
+        public DateTime? StoppedAt { get; set; }
+    }
+
+    /// <summary>One person on a run's "archive when clear" list.</summary>
+    public class BulkArchivePendingItem
+    {
+        public Guid Id { get; set; }
+        public Guid UserId { get; set; }
+        public string FullName { get; set; } = string.Empty;
+        public string Email { get; set; } = string.Empty;
+
+        /// <summary>Waiting, Warned, Archived, Kept, Cancelled or Expired.</summary>
+        public string State { get; set; } = string.Empty;
+
+        public string? Note { get; set; }
+        public DateTime? WarnedAt { get; set; }
+        public DateTime? ArchiveAt { get; set; }
+        public DateTime? ResolvedAt { get; set; }
     }
 
     /// <summary>
@@ -42,7 +91,16 @@ namespace AimPark.API.DTOs
     /// </summary>
     public class BulkArchiveLastRunResponse
     {
+        public Guid RunId { get; set; }
+
         public DateTime RanAt { get; set; }
+
+        public string Reason { get; set; } = string.Empty;
+
+        public BulkArchiveAutoSettings Auto { get; set; } = new();
+
+        /// <summary>The run's "archive when clear" list. Empty when it was never turned on.</summary>
+        public List<BulkArchivePendingItem> Pending { get; set; } = [];
 
         public int ArchivedCount { get; set; }
 

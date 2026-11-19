@@ -46,6 +46,10 @@ class ApiEndpoints {
   static const bulkRevokeRfid = '/api/admin/users/bulk-revoke-rfid';
   static const bulkArchive = '/api/admin/users/bulk-archive';
   static const bulkArchiveLastRun = '/api/admin/users/bulk-archive/last-run';
+  static String bulkArchiveAuto(String runId) =>
+      '/api/admin/users/bulk-archive/runs/$runId/auto';
+  static String bulkArchiveCancelPending(String pendingId) =>
+      '/api/admin/users/bulk-archive/pending/$pendingId/cancel';
 
   /// Physical cards revoked from a user and not yet reissued — Free ones
   /// ready to hand to someone else, Blocked ones that must not be. Add
