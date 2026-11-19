@@ -29,15 +29,42 @@ class BulkArchiveUser {
 
 /// An account the sweep leaves alone, and why.
 class BulkArchiveSkip {
+  final String userId;
   final String fullName;
   final String reason;
 
-  const BulkArchiveSkip({required this.fullName, required this.reason});
+  const BulkArchiveSkip({required this.userId, required this.fullName, required this.reason});
 
   factory BulkArchiveSkip.fromJson(Map<String, dynamic> json) =>
       BulkArchiveSkip(
+        userId: json['userId']?.toString() ?? '',
         fullName: json['fullName']?.toString() ?? '',
         reason: json['reason']?.toString() ?? '',
+      );
+}
+
+/// The newest real bulk archive, plus a fresh check of the people it left
+/// alone: [ready] is a preview where `users` are now clear to archive and
+/// `skipped` still are not.
+class BulkArchiveLastRun {
+  final DateTime ranAt;
+  final int archivedCount;
+  final int leftAloneCount;
+  final BulkArchiveResult ready;
+
+  const BulkArchiveLastRun({
+    required this.ranAt,
+    required this.archivedCount,
+    required this.leftAloneCount,
+    required this.ready,
+  });
+
+  factory BulkArchiveLastRun.fromJson(Map<String, dynamic> json) => BulkArchiveLastRun(
+        ranAt: DateTime.parse(json['ranAt'].toString()),
+        archivedCount: (json['archivedCount'] as num?)?.toInt() ?? 0,
+        leftAloneCount: (json['leftAloneCount'] as num?)?.toInt() ?? 0,
+        ready: BulkArchiveResult.fromJson(
+            json['ready'] as Map<String, dynamic>? ?? const <String, dynamic>{}),
       );
 }
 

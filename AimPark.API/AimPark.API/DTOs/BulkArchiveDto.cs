@@ -29,6 +29,31 @@ namespace AimPark.API.DTOs
 
         /// <summary>The acting administrator's password. Required to archive.</summary>
         public string Password { get; set; } = string.Empty;
+
+        /// <summary>
+        /// On the real run: the people the preview had to skip. Saved with the
+        /// run so the panel can later tell which of them have become clear.
+        /// </summary>
+        public List<Guid> LeftAloneUserIds { get; set; } = [];
+    }
+
+    /// <summary>
+    /// The newest real bulk archive, with a fresh look at the people it left alone.
+    /// </summary>
+    public class BulkArchiveLastRunResponse
+    {
+        public DateTime RanAt { get; set; }
+
+        public int ArchivedCount { get; set; }
+
+        /// <summary>How many were left alone at the time of the run.</summary>
+        public int LeftAloneCount { get; set; }
+
+        /// <summary>
+        /// A preview over those people as they stand today: Users are now clear
+        /// to archive, Skipped still are not (with today's reason).
+        /// </summary>
+        public BulkArchiveResponse Ready { get; set; } = new();
     }
 
     public class BulkArchiveUser

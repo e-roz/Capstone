@@ -116,6 +116,15 @@ namespace AimPark.API.Controllers
         public Task<ActionResult<BulkArchiveResponse>> BulkArchive([FromBody] BulkArchiveDto dto, CancellationToken ct)
             => _adminUserService.BulkArchiveAsync(GetAdminUserId(), dto, ct);
 
+        /// <summary>
+        /// The newest real bulk archive and a fresh check of the people it left
+        /// alone: who of them is now clear to archive, and who still is not.
+        /// Empty body when no bulk archive has ever run.
+        /// </summary>
+        [HttpGet("bulk-archive/last-run")]
+        public Task<ActionResult<BulkArchiveLastRunResponse?>> GetLastBulkArchiveRun(CancellationToken ct)
+            => _adminUserService.GetLastBulkArchiveRunAsync(GetAdminUserId(), ct);
+
         private Guid GetAdminUserId()
             => Guid.Parse(User.FindFirst(ClaimTypes.NameIdentifier)!.Value);
     }
