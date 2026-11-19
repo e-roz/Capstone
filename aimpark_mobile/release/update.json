@@ -1,12 +1,13 @@
 {
-  "version": "1.0.18",
-  "build": 19,
-  "apk_url": "https://github.com/e-roz/Capstone/releases/download/v1.0.18/app-release.apk",
-  "apk_sha256": "1c0373da92dce6a73091ca632f9afe522b2f4893a282a31cbcbdb37baf753331",
+  "version": "1.0.19",
+  "build": 20,
+  "apk_url": "https://github.com/e-roz/Capstone/releases/download/v1.0.19/app-release.apk",
+  "apk_sha256": "d2014ab66f1da352b02937391627809d19a6395d690fc14defe9c0aee6b6902b",
   "apk_size_bytes": 94677597,
   "mandatory": false,
   "release_notes": [
-    "Reporting an incident? Pick the bay it happened at on the lot map",
-    "Your report shows the bay you picked"
+    "See the parking rates on Home, with your vehicle's rate marked",
+    "Get notified when a parking rate changes. If you're parked, you keep the rate you came in with",
+    "Clearer lot map: orange = taken, indigo = confirmed by a driver, solid indigo = your bay"
   ]
 }
