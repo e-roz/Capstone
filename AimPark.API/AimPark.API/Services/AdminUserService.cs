@@ -275,9 +275,101 @@ namespace AimPark.API.Services
                     return new UnauthorizedObjectResult(new { message = "Incorrect password." });
             }
 
+            var (response, eligible) = await ClassifyForArchiveAsync(
+                adminUserId, dto.UserIds, affiliation, dto.InactiveBefore, ct);
+            response.DryRun = dto.DryRun;
+
+            if (dto.DryRun)
+                return new OkObjectResult(response);
+
+            foreach (var (id, hasCard) in eligible)
+            {
+                var user = await _users.FindAsync(u => u.Id == id, ct);
+                if (user is null) continue;
+
+                if (hasCard)
+                {
+                    var (ok, _) = await RevokeCardAsync(
+                        user, adminUserId, RfidRevokeReason.NoLongerNeeded, $"Bulk archive: {reason}", ct);
+                    if (ok) response.CardsRevoked++;
+                }
+
+                user.IsDeleted = true;
+                user.DeletedAt = DateTime.UtcNow;
+                user.UpdatedAt = DateTime.UtcNow;
+                _users.Update(user);
+
+                await LogActionAsync(adminUserId, id, "Archive", "IsDeleted=false", "IsDeleted=true",
+                    $"Bulk archive: {reason}", ct);
+            }
+
+            // Remember who had to be skipped, so the panel can later say "1 of
+            // them is now ready". The preview's skips come from the panel; the
+            // run's own skips cover anyone who changed between preview and confirm.
+            var archivedIds = eligible.Select(e => e.Id).ToHashSet();
+            var leftAlone = dto.LeftAloneUserIds
+                .Concat(response.Skipped.Select(s => s.UserId))
+                .Where(id => !archivedIds.Contains(id))
+                .Distinct()
+                .ToList();
+
+            _db.Set<BulkArchiveRun>().Add(new BulkArchiveRun
+            {
+                AdminUserId = adminUserId,
+                ArchivedCount = eligible.Count,
+                LeftAloneUserIds = leftAlone
+            });
+
+            await _users.SaveAsync(ct);
+            await _db.SaveChangesAsync(ct);
+            return new OkObjectResult(response);
+        }
+
+        // GET /api/admin/users/bulk-archive/last-run
+        //
+        // The newest real run, and a fresh preview of the people it left alone:
+        // who of them would now pass the same rules (Users) and who still
+        // would not, with today's reason (Skipped). Null when nothing has run yet.
+        public async Task<ActionResult<BulkArchiveLastRunResponse?>> GetLastBulkArchiveRunAsync(
+            Guid adminUserId, CancellationToken ct)
+        {
+            var run = await _db.Set<BulkArchiveRun>().AsNoTracking()
+                .OrderByDescending(r => r.RanAt)
+                .FirstOrDefaultAsync(ct);
+            if (run is null)
+                return new OkObjectResult(null);
+
+            // Anyone archived since (by hand, or by a later run) is no longer waiting.
+            var stillActive = await _db.Set<User>().AsNoTracking()
+                .Where(u => run.LeftAloneUserIds.Contains(u.Id) && !u.IsDeleted && u.Role == UserRole.User)
+                .Select(u => u.Id)
+                .ToListAsync(ct);
+
+            var ready = stillActive.Count == 0
+                ? new BulkArchiveResponse { DryRun = true }
+                : (await ClassifyForArchiveAsync(adminUserId, stillActive, null, null, ct)).Response;
+            ready.DryRun = true;
+
+            return new OkObjectResult(new BulkArchiveLastRunResponse
+            {
+                RanAt = run.RanAt,
+                ArchivedCount = run.ArchivedCount,
+                LeftAloneCount = run.LeftAloneUserIds.Count,
+                Ready = ready
+            });
+        }
+
+        /// <summary>
+        /// Splits the chosen accounts into who may be archived and who must be
+        /// skipped, and why. Shared by the preview, the real run and the
+        /// last-run check, so all three always apply the same rules.
+        /// </summary>
+        private async Task<(BulkArchiveResponse Response, List<(Guid Id, bool HasCard)> Eligible)> ClassifyForArchiveAsync(
+            Guid adminUserId, List<Guid> userIds, Affiliation? affiliation, DateTime? inactiveBefore, CancellationToken ct)
+        {
             var candidates = _db.Set<User>().AsNoTracking().AsQueryable();
-            if (dto.UserIds.Count > 0)
-                candidates = candidates.Where(u => dto.UserIds.Contains(u.Id));
+            if (userIds.Count > 0)
+                candidates = candidates.Where(u => userIds.Contains(u.Id));
             else
                 candidates = candidates.Where(u => !u.IsDeleted && u.Role == UserRole.User);
             if (affiliation is Affiliation wanted)
@@ -318,7 +410,7 @@ namespace AimPark.API.Services
                 .Where(v => BulkArchiveRules.IsOpen(v.Status))
                 .Select(v => v.UserId).ToHashSet();
 
-            var response = new BulkArchiveResponse { DryRun = dto.DryRun };
+            var response = new BulkArchiveResponse();
             var eligible = new List<(Guid Id, bool HasCard)>();
 
             foreach (var p in people.OrderBy(p => p.FullName))
@@ -332,7 +424,7 @@ namespace AimPark.API.Services
 
                 // The date filter only picks accounts when nobody was named. A
                 // named account that is too recent is a mismatch worth saying.
-                if (dto.UserIds.Count == 0 && dto.InactiveBefore is DateTime cutoff && lastActive >= cutoff)
+                if (userIds.Count == 0 && inactiveBefore is DateTime cutoff && lastActive >= cutoff)
                     continue;
 
                 var skip = BulkArchiveRules.SkipReason(
@@ -358,32 +450,7 @@ namespace AimPark.API.Services
                 });
             }
 
-            if (dto.DryRun)
-                return new OkObjectResult(response);
-
-            foreach (var (id, hasCard) in eligible)
-            {
-                var user = await _users.FindAsync(u => u.Id == id, ct);
-                if (user is null) continue;
-
-                if (hasCard)
-                {
-                    var (ok, _) = await RevokeCardAsync(
-                        user, adminUserId, RfidRevokeReason.NoLongerNeeded, $"Bulk archive: {reason}", ct);
-                    if (ok) response.CardsRevoked++;
-                }
-
-                user.IsDeleted = true;
-                user.DeletedAt = DateTime.UtcNow;
-                user.UpdatedAt = DateTime.UtcNow;
-                _users.Update(user);
-
-                await LogActionAsync(adminUserId, id, "Archive", "IsDeleted=false", "IsDeleted=true",
-                    $"Bulk archive: {reason}", ct);
-            }
-
-            await _users.SaveAsync(ct);
-            return new OkObjectResult(response);
+            return (response, eligible);
         }
 
         // POST /api/admin/users/{userId}/reset-password

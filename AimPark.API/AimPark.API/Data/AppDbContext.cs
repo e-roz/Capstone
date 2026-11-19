@@ -42,6 +42,7 @@ namespace AimPark.API.Data
         public DbSet<SlotWatch> SlotWatches { get; set; }
         public DbSet<WrongBayFlag> WrongBayFlags { get; set; }
         public DbSet<SlotConfirmCorrection> SlotConfirmCorrections { get; set; }
+        public DbSet<BulkArchiveRun> BulkArchiveRuns { get; set; }
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -814,6 +815,17 @@ namespace AimPark.API.Data
                 entity.Property(t => t.PersonName).HasMaxLength(200);
                 entity.Property(t => t.CameraPlate).HasMaxLength(20);
                 entity.Property(t => t.RegisteredPlates).HasMaxLength(200);
+            });
+
+            modelBuilder.Entity<BulkArchiveRun>(entity =>
+            {
+                entity.HasKey(r => r.Id);
+
+                // The panel only ever asks for the newest run.
+                entity.HasIndex(r => r.RanAt);
+
+                // Stored as a Postgres uuid[] column; Npgsql maps List<Guid> natively.
+                entity.Property(r => r.LeftAloneUserIds).IsRequired();
             });
         }
     }
