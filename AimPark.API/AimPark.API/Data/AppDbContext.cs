@@ -827,6 +827,7 @@ namespace AimPark.API.Data
 
                 // Stored as a Postgres uuid[] column; Npgsql maps List<Guid> natively.
                 entity.Property(r => r.LeftAloneUserIds).IsRequired();
+                entity.Property(r => r.ArchivedUserIds).IsRequired();
                 entity.Property(r => r.Reason).HasMaxLength(500);
                 entity.Property(r => r.GraceDays).HasDefaultValue(7);
             });

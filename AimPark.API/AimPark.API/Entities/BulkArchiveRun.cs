@@ -23,6 +23,15 @@ namespace AimPark.API.Entities
         /// <summary>The accounts the run had to skip (unpaid, parked, open violation).</summary>
         public List<Guid> LeftAloneUserIds { get; set; } = [];
 
+        /// <summary>
+        /// Everyone this run archived: at the time, and later by auto-archive.
+        /// What "Undo this run" restores. Empty on runs made before undo existed.
+        /// </summary>
+        public List<Guid> ArchivedUserIds { get; set; } = [];
+
+        /// <summary>When the run was undone. Null until then; a run is undone at most once.</summary>
+        public DateTime? UndoneAt { get; set; }
+
         /// <summary>The reason the administrator gave, reused in the audit log for auto-archives.</summary>
         public string Reason { get; set; } = string.Empty;
 

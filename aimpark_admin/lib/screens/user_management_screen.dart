@@ -12,6 +12,7 @@ import '../providers/auth_provider.dart';
 import '../providers/users_provider.dart';
 import '../theme/theme.dart';
 import '../widgets/bulk_archive_dialog.dart';
+import '../widgets/bulk_restore_dialog.dart';
 import '../widgets/rfid_revoke_dialog.dart';
 import '../widgets/ui/ui.dart';
 import '../widgets/user_actions.dart';
@@ -95,6 +96,7 @@ class _UserManagementScreenState extends ConsumerState<UserManagementScreen> {
         _MoreMenu(
           onBulkRevoke: () => _bulkRevokeRfid(context, ref),
           onBulkArchive: () => _bulkArchive(context, ref),
+          onBulkRestore: () => _bulkRestore(context, ref),
         ),
         const SizedBox(width: AppSpacing.x2),
         IconButton(
@@ -286,10 +288,15 @@ class _FilterChoiceChip extends StatelessWidget {
 /// Secondary page actions. Bulk revoke is a once-a-term job, so it no longer
 /// sits in the header at the weight of an everyday action.
 class _MoreMenu extends StatelessWidget {
-  const _MoreMenu({required this.onBulkRevoke, required this.onBulkArchive});
+  const _MoreMenu({
+    required this.onBulkRevoke,
+    required this.onBulkArchive,
+    required this.onBulkRestore,
+  });
 
   final VoidCallback onBulkRevoke;
   final VoidCallback onBulkArchive;
+  final VoidCallback onBulkRestore;
 
   @override
   Widget build(BuildContext context) {
@@ -305,6 +312,11 @@ class _MoreMenu extends StatelessWidget {
           leadingIcon: const Icon(Icons.archive_outlined, size: AppSizes.iconSm),
           onPressed: onBulkArchive,
           child: const Text('Bulk archive…'),
+        ),
+        MenuItemButton(
+          leadingIcon: const Icon(Icons.unarchive_outlined, size: AppSizes.iconSm),
+          onPressed: onBulkRestore,
+          child: const Text('Bulk restore…'),
         ),
       ],
       builder: (context, controller, _) => OutlinedButton.icon(
@@ -712,6 +724,9 @@ Future<void> _bulkRevokeRfid(BuildContext context, WidgetRef ref) async {
 
 Future<void> _bulkArchive(BuildContext context, WidgetRef ref) async {
   final result = await showBulkArchiveDialog(context);
+  // "Undo this run" and auto-archive changes happen inside the dialog, so
+  // the list is refreshed even when it closes without a new archive.
+  ref.invalidate(userListProvider);
   if (result == null || !context.mounted) return;
 
   final n = result.users.length;
@@ -725,6 +740,23 @@ Future<void> _bulkArchive(BuildContext context, WidgetRef ref) async {
   ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
   ref.invalidate(userListProvider);
   ref.invalidate(rfidCardsProvider);
+}
+
+// ── Bulk restore ─────────────────────────────────────────────────────────────
+
+Future<void> _bulkRestore(BuildContext context, WidgetRef ref) async {
+  final result = await showBulkRestoreDialog(context);
+  if (result == null || !context.mounted) return;
+
+  final n = result.restored;
+  final message = n == 0
+      ? 'Nobody was restored.'
+      : 'Restored $n user${n == 1 ? '' : 's'}'
+          '${result.skipped.isEmpty ? '' : ', skipped ${result.skipped.length}'}.'
+          ' Assign cards again where needed.';
+
+  ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+  ref.invalidate(userListProvider);
 }
 
 class _UserPickerDialog extends StatefulWidget {

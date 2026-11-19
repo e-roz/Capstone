@@ -319,6 +319,7 @@ namespace AimPark.API.Services
                 RanAt = now,
                 AdminUserId = adminUserId,
                 ArchivedCount = eligible.Count,
+                ArchivedUserIds = [.. archivedIds],
                 LeftAloneUserIds = leftAlone,
                 Reason = reason
             };
@@ -613,6 +614,8 @@ namespace AimPark.API.Services
                         p.State = PendingArchiveState.Archived;
                         p.Note = "Archived automatically";
                         p.ResolvedAt = now;
+                        // A new list, not Add: EF notices a replaced collection reliably.
+                        run.ArchivedUserIds = [.. run.ArchivedUserIds, user.Id];
                         archived++;
                     }
                 }
@@ -622,6 +625,138 @@ namespace AimPark.API.Services
             }
 
             return archived;
+        }
+
+        // ── Bulk restore ─────────────────────────────────────────────────────
+
+        private const int MaxBulkRestore = 500;
+
+        /// <summary>
+        /// The confirm-with-password check shared by the bulk actions. Returns
+        /// the refusal, or null when the reason and password are fine. 400,
+        /// never 401: both apps sign the person out on a 401.
+        /// </summary>
+        private async Task<ActionResult?> ConfirmAdminAsync(Guid adminUserId, string? reason, string? password, CancellationToken ct)
+        {
+            if (string.IsNullOrWhiteSpace(reason))
+                return new BadRequestObjectResult(new { message = "Give a reason." });
+
+            var admin = await _users.FindAsync(u => u.Id == adminUserId, ct);
+            if (admin?.PasswordHash is null)
+                return new BadRequestObjectResult(new { message = "Password confirmation is unavailable for this admin account." });
+
+            if (string.IsNullOrEmpty(password) || !BCrypt.Net.BCrypt.Verify(password, admin.PasswordHash))
+                return new BadRequestObjectResult(new { message = "Incorrect password." });
+
+            return null;
+        }
+
+        /// <summary>
+        /// Brings back the given accounts. Same as a single restore: the
+        /// account comes back with its status unchanged, and no card (that
+        /// went back to the pool and may be someone else's now). Stages only.
+        /// </summary>
+        private async Task<BulkRestoreResponse> RestoreManyAsync(
+            Guid adminUserId, IReadOnlyCollection<Guid> userIds, string auditReason, CancellationToken ct)
+        {
+            var response = new BulkRestoreResponse();
+            var users = await _db.Set<User>()
+                .Where(u => userIds.Contains(u.Id))
+                .ToDictionaryAsync(u => u.Id, ct);
+
+            foreach (var id in userIds.Distinct())
+            {
+                if (!users.TryGetValue(id, out var user))
+                {
+                    response.Skipped.Add(new BulkArchiveSkip { UserId = id, Reason = "Not found." });
+                    continue;
+                }
+                if (!user.IsDeleted)
+                {
+                    response.Skipped.Add(new BulkArchiveSkip { UserId = id, FullName = user.FullName, Reason = "Not archived." });
+                    continue;
+                }
+
+                var oldValue = $"IsDeleted=true, DeletedAt={user.DeletedAt:O}, AccountStatus={user.AccountStatus}";
+                user.IsDeleted = false;
+                user.DeletedAt = null;
+                user.UpdatedAt = DateTime.UtcNow;
+                _users.Update(user);
+
+                await LogActionAsync(adminUserId, id, "Restore", oldValue,
+                    $"IsDeleted=false, AccountStatus={user.AccountStatus}", auditReason, ct);
+                response.Restored.Add(new BulkRestoreUser { UserId = id, FullName = user.FullName });
+            }
+
+            // Anyone auto-archived from a run reads "Restored" there now, not
+            // "Archived", so the Last run box doesn't contradict the users list.
+            var restoredIds = response.Restored.Select(r => r.UserId).ToList();
+            var autoArchived = await _db.Set<BulkArchivePending>()
+                .Where(p => restoredIds.Contains(p.UserId) && p.State == PendingArchiveState.Archived)
+                .ToListAsync(ct);
+            foreach (var p in autoArchived)
+            {
+                p.State = PendingArchiveState.Restored;
+                p.Note = $"Restored {PhDate(DateTime.UtcNow)}";
+            }
+
+            return response;
+        }
+
+        // POST /api/admin/users/bulk-restore
+        public async Task<ActionResult<BulkRestoreResponse>> BulkRestoreAsync(
+            Guid adminUserId, BulkRestoreDto dto, CancellationToken ct)
+        {
+            if (dto.UserIds.Count == 0)
+                return new BadRequestObjectResult(new { message = "Choose who to restore." });
+            if (dto.UserIds.Count > MaxBulkRestore)
+                return new BadRequestObjectResult(new { message = $"Restore at most {MaxBulkRestore} at a time." });
+
+            var refusal = await ConfirmAdminAsync(adminUserId, dto.Reason, dto.Password, ct);
+            if (refusal is not null) return refusal;
+
+            var response = await RestoreManyAsync(adminUserId, dto.UserIds, $"Bulk restore: {dto.Reason.Trim()}", ct);
+            await _users.SaveAsync(ct);
+            await _db.SaveChangesAsync(ct);
+            return new OkObjectResult(response);
+        }
+
+        // POST /api/admin/users/bulk-archive/runs/{runId}/undo
+        //
+        // Restores everyone the run archived, at the time and since by
+        // auto-archive, and turns its auto-archive off so nobody else goes.
+        public async Task<ActionResult<BulkRestoreResponse>> UndoBulkArchiveAsync(
+            Guid adminUserId, Guid runId, UndoBulkArchiveDto dto, CancellationToken ct)
+        {
+            var run = await _db.Set<BulkArchiveRun>()
+                .Include(r => r.Pending)
+                .FirstOrDefaultAsync(r => r.Id == runId, ct);
+            if (run is null)
+                return new NotFoundObjectResult(new { message = "That bulk archive run no longer exists." });
+            if (run.UndoneAt is not null)
+                return new BadRequestObjectResult(new { message = "This run was already undone." });
+            if (run.ArchivedUserIds.Count == 0)
+                return new BadRequestObjectResult(new
+                {
+                    message = "This run didn't record who it archived. Use Bulk restore to pick them from the Archived list."
+                });
+
+            var refusal = await ConfirmAdminAsync(adminUserId, dto.Reason, dto.Password, ct);
+            if (refusal is not null) return refusal;
+
+            var now = DateTime.UtcNow;
+            var response = await RestoreManyAsync(adminUserId, run.ArchivedUserIds,
+                $"Undo bulk archive of {PhDate(run.RanAt)}: {dto.Reason.Trim()}", ct);
+
+            if (run.AutoArchive && run.AutoArchiveStoppedAt == null)
+                run.AutoArchiveStoppedAt = now;
+            foreach (var p in run.Pending.Where(p => p.IsOpen))
+                Resolve(p, PendingArchiveState.Cancelled, "Run undone", now);
+            run.UndoneAt = now;
+
+            await _users.SaveAsync(ct);
+            await _db.SaveChangesAsync(ct);
+            return new OkObjectResult(response);
         }
 
         private Task NotifyArchiveComingAsync(User user, DateTime archiveAt, CancellationToken ct) =>
@@ -675,11 +810,19 @@ namespace AimPark.API.Services
                 })
                 .ToListAsync(ct);
 
+            var restorable = run.ArchivedUserIds.Count == 0
+                ? 0
+                : await _db.Set<User>().AsNoTracking()
+                    .CountAsync(u => run.ArchivedUserIds.Contains(u.Id) && u.IsDeleted, ct);
+
             return new OkObjectResult(new BulkArchiveLastRunResponse
             {
                 RunId = run.Id,
                 RanAt = run.RanAt,
                 Reason = run.Reason,
+                RestorableCount = restorable,
+                CanUndo = run.UndoneAt == null && restorable > 0,
+                UndoneAt = run.UndoneAt,
                 ArchivedCount = run.ArchivedCount,
                 LeftAloneCount = run.LeftAloneUserIds.Count,
                 Ready = ready,

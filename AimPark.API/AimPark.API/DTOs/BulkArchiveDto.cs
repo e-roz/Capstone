@@ -49,6 +49,39 @@ namespace AimPark.API.DTOs
         public DateTime? AutoArchiveUntil { get; set; }
     }
 
+    /// <summary>Restores many archived accounts at once.</summary>
+    public class BulkRestoreDto
+    {
+        public List<Guid> UserIds { get; set; } = [];
+
+        /// <summary>Why, for the audit log. Required.</summary>
+        public string Reason { get; set; } = string.Empty;
+
+        /// <summary>The acting administrator's password. Required.</summary>
+        public string Password { get; set; } = string.Empty;
+    }
+
+    /// <summary>Restores everyone a bulk archive run archived.</summary>
+    public class UndoBulkArchiveDto
+    {
+        public string Reason { get; set; } = string.Empty;
+        public string Password { get; set; } = string.Empty;
+    }
+
+    public class BulkRestoreUser
+    {
+        public Guid UserId { get; set; }
+        public string FullName { get; set; } = string.Empty;
+    }
+
+    public class BulkRestoreResponse
+    {
+        public List<BulkRestoreUser> Restored { get; set; } = [];
+
+        /// <summary>Accounts asked for but not restored, and why (not archived, not found).</summary>
+        public List<BulkArchiveSkip> Skipped { get; set; } = [];
+    }
+
     /// <summary>
     /// Turns a run's "archive when clear" on or off, or changes its grace
     /// period or end date. Fields left null keep their current value.
@@ -96,6 +129,17 @@ namespace AimPark.API.DTOs
         public DateTime RanAt { get; set; }
 
         public string Reason { get; set; } = string.Empty;
+
+        /// <summary>
+        /// How many of the people this run archived are still archived, so
+        /// "Undo this run" can say how many it will bring back.
+        /// </summary>
+        public int RestorableCount { get; set; }
+
+        /// <summary>False once undone, and on runs made before undo existed.</summary>
+        public bool CanUndo { get; set; }
+
+        public DateTime? UndoneAt { get; set; }
 
         public BulkArchiveAutoSettings Auto { get; set; } = new();
 

@@ -367,4 +367,125 @@ public class AutoArchiveTests
         Assert.Equal("Kim", item.FullName);
         Assert.Equal("Waiting", item.State);
     }
+
+    // ── Bulk restore and undo ────────────────────────────────────────────────
+
+    private static async Task<IActionResult?> Restore(Db db, Guid adminId, string password, params Guid[] ids) =>
+        (await db.Service().BulkRestoreAsync(adminId,
+            new BulkRestoreDto { UserIds = [.. ids], Reason = "Archived by mistake", Password = password }, default)).Result;
+
+    private static async Task<IActionResult?> Undo(Db db, Guid adminId, Guid runId, string password = AdminPassword) =>
+        (await db.Service().UndoBulkArchiveAsync(adminId, runId,
+            new UndoBulkArchiveDto { Reason = "Wrong filter", Password = password }, default)).Result;
+
+    [Fact]
+    public async Task Bulk_restore_brings_back_archived_accounts_without_their_card()
+    {
+        var db = new Db();
+        var admin = Admin(db.Context);
+        var ana = Student(db.Context, "Ana", tag: "A1");
+        var ben = Student(db.Context, "Ben");
+        var active = Student(db.Context, "Active");
+        await db.Context.SaveChangesAsync();
+        await RunArchive(db, admin.Id, Real(false, ana.Id, ben.Id));
+
+        var result = await Restore(db, admin.Id, AdminPassword, ana.Id, ben.Id, active.Id);
+        var response = Assert.IsType<BulkRestoreResponse>(Assert.IsType<OkObjectResult>(result).Value);
+
+        Assert.Equal(2, response.Restored.Count);
+        Assert.Contains(response.Skipped, s => s.UserId == active.Id && s.Reason == "Not archived.");
+        var saved = (await db.Context.Users.FindAsync(ana.Id))!;
+        Assert.False(saved.IsDeleted);
+        Assert.Null(saved.DeletedAt);
+        Assert.Null(saved.RfidTagId);
+        Assert.Contains(db.Context.AdminAuditLogs, l =>
+            l.Action == "Restore" && l.TargetUserId == ben.Id && l.Reason!.Contains("Archived by mistake"));
+    }
+
+    [Fact]
+    public async Task Bulk_restore_with_a_wrong_password_is_a_400_and_changes_nothing()
+    {
+        var db = new Db();
+        var admin = Admin(db.Context);
+        var ana = Student(db.Context, "Ana");
+        await db.Context.SaveChangesAsync();
+        await RunArchive(db, admin.Id, Real(false, ana.Id));
+
+        Assert.IsType<BadRequestObjectResult>(await Restore(db, admin.Id, "nope", ana.Id));
+        Assert.True((await db.Context.Users.FindAsync(ana.Id))!.IsDeleted);
+    }
+
+    [Fact]
+    public async Task Undo_restores_everyone_the_run_archived_including_auto_archives_and_stops_it()
+    {
+        var db = new Db();
+        var admin = Admin(db.Context);
+        var ana = Student(db.Context, "Ana");
+        var kim = Student(db.Context, "Kim");
+        var owes = Student(db.Context, "Owes");
+        var kimBill = Bill(db.Context, kim);
+        Bill(db.Context, owes);
+        await db.Context.SaveChangesAsync();
+        await RunArchive(db, admin.Id, Real(true, ana.Id, kim.Id, owes.Id));
+
+        // Kim pays and is auto-archived a week later.
+        kimBill.Status = PaymentStatus.Paid;
+        await db.Context.SaveChangesAsync();
+        var paid = DateTime.UtcNow.AddDays(1);
+        await Pass(db, paid);
+        await Pass(db, paid.AddDays(7));
+        Assert.True((await db.Context.Users.FindAsync(kim.Id))!.IsDeleted);
+
+        var run = db.Context.Set<BulkArchiveRun>().Single();
+        Assert.Equal(2, run.ArchivedUserIds.Count);
+
+        var response = Assert.IsType<BulkRestoreResponse>(
+            Assert.IsType<OkObjectResult>(await Undo(db, admin.Id, run.Id)).Value);
+
+        Assert.Equal(2, response.Restored.Count);
+        Assert.False((await db.Context.Users.FindAsync(ana.Id))!.IsDeleted);
+        Assert.False((await db.Context.Users.FindAsync(kim.Id))!.IsDeleted);
+        Assert.NotNull(run.UndoneAt);
+        Assert.NotNull(run.AutoArchiveStoppedAt);
+        Assert.Equal(PendingArchiveState.Restored, PendingFor(db.Context, kim).State);
+        Assert.Equal(PendingArchiveState.Cancelled, PendingFor(db.Context, owes).State);
+
+        // Once only, and the job leaves them alone afterwards.
+        Assert.IsType<BadRequestObjectResult>(await Undo(db, admin.Id, run.Id));
+        Assert.Equal(0, await Pass(db, paid.AddDays(30)));
+    }
+
+    [Fact]
+    public async Task Undo_needs_the_right_password()
+    {
+        var db = new Db();
+        var admin = Admin(db.Context);
+        var ana = Student(db.Context, "Ana");
+        await db.Context.SaveChangesAsync();
+        await RunArchive(db, admin.Id, Real(false, ana.Id));
+        var run = db.Context.Set<BulkArchiveRun>().Single();
+
+        Assert.IsType<BadRequestObjectResult>(await Undo(db, admin.Id, run.Id, "nope"));
+        Assert.True((await db.Context.Users.FindAsync(ana.Id))!.IsDeleted);
+        Assert.Null(run.UndoneAt);
+    }
+
+    [Fact]
+    public async Task The_last_run_says_how_many_an_undo_would_bring_back()
+    {
+        var db = new Db();
+        var admin = Admin(db.Context);
+        var ana = Student(db.Context, "Ana");
+        var ben = Student(db.Context, "Ben");
+        await db.Context.SaveChangesAsync();
+        await RunArchive(db, admin.Id, Real(false, ana.Id, ben.Id));
+
+        // One of them was already brought back by hand.
+        await Restore(db, admin.Id, AdminPassword, ben.Id);
+
+        var result = await db.Service().GetLastBulkArchiveRunAsync(admin.Id, default);
+        var last = Assert.IsType<BulkArchiveLastRunResponse>(Assert.IsType<OkObjectResult>(result.Result).Value);
+        Assert.True(last.CanUndo);
+        Assert.Equal(1, last.RestorableCount);
+    }
 }

@@ -187,6 +187,10 @@ namespace AimPark.API.Migrations
                     b.Property<int>("ArchivedCount")
                         .HasColumnType("integer");
 
+                    b.Property<List<Guid>>("ArchivedUserIds")
+                        .IsRequired()
+                        .HasColumnType("uuid[]");
+
                     b.Property<bool>("AutoArchive")
                         .HasColumnType("boolean");
 
@@ -212,6 +216,9 @@ namespace AimPark.API.Migrations
                         .IsRequired()
                         .HasMaxLength(500)
                         .HasColumnType("character varying(500)");
+
+                    b.Property<DateTime?>("UndoneAt")
+                        .HasColumnType("timestamp with time zone");
 
                     b.HasKey("Id");
 

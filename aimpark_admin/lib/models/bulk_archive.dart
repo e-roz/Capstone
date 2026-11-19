@@ -55,6 +55,13 @@ class BulkArchiveLastRun {
   final BulkArchiveResult ready;
   final BulkArchiveAuto auto;
 
+  /// How many of the people this run archived are still archived.
+  final int restorableCount;
+
+  /// False once undone, and on runs made before undo existed.
+  final bool canUndo;
+  final DateTime? undoneAt;
+
   /// The run's "archive when clear" list. Empty when it was never turned on.
   final List<BulkArchivePending> pending;
 
@@ -67,6 +74,9 @@ class BulkArchiveLastRun {
     required this.ready,
     required this.auto,
     required this.pending,
+    this.restorableCount = 0,
+    this.canUndo = false,
+    this.undoneAt,
   });
 
   factory BulkArchiveLastRun.fromJson(Map<String, dynamic> json) => BulkArchiveLastRun(
@@ -83,6 +93,9 @@ class BulkArchiveLastRun {
           for (final p in json['pending'] as List<dynamic>? ?? const [])
             BulkArchivePending.fromJson(p as Map<String, dynamic>),
         ],
+        restorableCount: (json['restorableCount'] as num?)?.toInt() ?? 0,
+        canUndo: json['canUndo'] == true,
+        undoneAt: _date(json['undoneAt']),
       );
 
   int count(String state) => pending.where((p) => p.state == state).length;
@@ -119,6 +132,7 @@ class BulkArchivePending {
   static const kept = 'Kept';
   static const cancelled = 'Cancelled';
   static const expired = 'Expired';
+  static const restored = 'Restored';
 
   final String id;
   final String userId;
@@ -158,6 +172,28 @@ class BulkArchivePending {
 }
 
 DateTime? _date(Object? v) => v == null ? null : DateTime.tryParse(v.toString());
+
+/// The answer to a bulk restore or an undo: who came back, and who was
+/// asked for but not restored (not archived any more, not found).
+class BulkRestoreResult {
+  final List<String> restoredNames;
+  final List<BulkArchiveSkip> skipped;
+
+  const BulkRestoreResult({required this.restoredNames, required this.skipped});
+
+  int get restored => restoredNames.length;
+
+  factory BulkRestoreResult.fromJson(Map<String, dynamic> json) => BulkRestoreResult(
+        restoredNames: [
+          for (final r in json['restored'] as List<dynamic>? ?? const [])
+            (r as Map<String, dynamic>)['fullName']?.toString() ?? '',
+        ],
+        skipped: [
+          for (final s in json['skipped'] as List<dynamic>? ?? const [])
+            BulkArchiveSkip.fromJson(s as Map<String, dynamic>),
+        ],
+      );
+}
 
 /// The answer to a bulk archive: a preview, or the real run.
 class BulkArchiveResult {
