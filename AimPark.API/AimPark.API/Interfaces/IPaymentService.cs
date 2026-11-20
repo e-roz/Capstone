@@ -57,6 +57,13 @@ namespace AimPark.API.Interfaces
         Task<PaymentTransaction?> RaiseOverstayBillAsync(
             ParkingLog log, DateTime at, bool paidAhead, CancellationToken ct);
 
+        /// <summary>
+        /// Prices an unpaid bill again up to <paramref name="at"/>: the whole stay
+        /// less what the session's other bills already settled. Sets the fields
+        /// only; the caller saves.
+        /// </summary>
+        Task RepriceOpenBillAsync(PaymentTransaction bill, ParkingLog log, DateTime at, CancellationToken ct);
+
         // Internal — called by ViolationService when a violation carrying a penalty is issued.
         Task<PaymentTransaction> CreateForViolationAsync(Violation violation, CancellationToken ct);
 

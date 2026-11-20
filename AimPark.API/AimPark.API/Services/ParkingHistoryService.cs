@@ -1033,12 +1033,7 @@ namespace AimPark.API.Services
                 // here it is an ordinary hold. Priced again up to now, unless a
                 // checkout for the old amount is already open.
                 if (bill.Status == PaymentStatus.Pending)
-                {
-                    var quote = await _paymentService.QuoteAsync(log, now, ct);
-                    bill.DurationMinutes = quote.DurationMinutes;
-                    bill.RatePerHourApplied = quote.RatePerHour;
-                    bill.AmountDue = quote.AmountDue;
-                }
+                    await _paymentService.RepriceOpenBillAsync(bill, log, now, ct);
                 bill.PaidAhead = false;
                 await _db.SaveChangesAsync(ct);
 
