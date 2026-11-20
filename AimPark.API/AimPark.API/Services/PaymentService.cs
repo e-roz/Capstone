@@ -212,20 +212,19 @@ namespace AimPark.API.Services
                 && !(existing.PaidAhead && existing.Status == PaymentStatus.Pending))
                 return existing;
 
-            var (durationMinutes, ratePerHour, amountDue) = await QuoteAsync(log, at, ct);
-
             // A paid-ahead bill nobody paid yet is priced again, so a driver who
-            // asked an hour ago and pays now pays for that hour too.
+            // asked an hour ago and pays now pays for that hour too. Only for the
+            // rest of the stay, though: it may be the second bill on a session
+            // whose first was paid already.
             if (existing is not null)
             {
-                existing.DurationMinutes = durationMinutes;
-                existing.RatePerHourApplied = ratePerHour;
-                existing.AmountDue = amountDue;
+                await RepriceOpenBillAsync(existing, log, at, ct);
                 _payments.Update(existing);
                 await _payments.SaveAsync(ct);
                 return existing;
             }
 
+            var (durationMinutes, ratePerHour, amountDue) = await QuoteAsync(log, at, ct);
             if (amountDue <= 0m)
                 return null;
 
@@ -248,6 +247,23 @@ namespace AimPark.API.Services
             await _payments.AddAsync(transaction, ct);
             await _payments.SaveAsync(ct);
             return transaction;
+        }
+
+        public async Task RepriceOpenBillAsync(PaymentTransaction bill, ParkingLog log, DateTime at, CancellationToken ct)
+        {
+            var (durationMinutes, ratePerHour, amountDue) = await QuoteAsync(log, at, ct);
+
+            // Settled the same way the live fee counts it (Paid or Waived), so the
+            // bill matches the "still to pay" the app showed.
+            var settled = await _db.Set<PaymentTransaction>().AsNoTracking()
+                .Where(p => p.ParkingLogId == log.Id && p.Id != bill.Id
+                    && (p.Status == PaymentStatus.Paid || p.Status == PaymentStatus.Waived))
+                .Select(p => new { p.AmountDue, p.DurationMinutes })
+                .ToListAsync(ct);
+
+            bill.DurationMinutes = Math.Max(0, durationMinutes - settled.Sum(p => p.DurationMinutes));
+            bill.RatePerHourApplied = ratePerHour;
+            bill.AmountDue = Math.Max(0m, amountDue - settled.Sum(p => p.AmountDue));
         }
 
         public async Task<PaymentTransaction?> RaiseOverstayBillAsync(
