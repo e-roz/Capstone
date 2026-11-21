@@ -42,7 +42,8 @@ class ParkingRatesCard extends ConsumerWidget {
             for (final rate in rates)
               AppFact(
                 rate.vehicleType,
-                '${Formatters.peso(rate.ratePerHour)} / hour',
+                '${Formatters.peso(rate.ratePerHour)} first hour, then '
+                '${Formatters.peso(rate.ratePerHour / 60)} a minute',
                 intent: _isMine(rate, hasCar, hasMotorcycle)
                     ? StatusIntent.brand
                     : null,
@@ -64,7 +65,6 @@ class ParkingRatesCard extends ConsumerWidget {
     DateTime now,
   ) {
     final parts = <String>[
-      'Minimum ${Formatters.peso(rate.minimumFee)}',
       if (_isMine(rate, hasCar, hasMotorcycle)) 'Your vehicle',
       if (now.difference(rate.updatedAt) < _recent)
         'Changed ${Formatters.relativeTime(rate.updatedAt.toLocal()).toLowerCase()}',

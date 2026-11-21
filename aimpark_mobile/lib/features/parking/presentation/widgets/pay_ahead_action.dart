@@ -76,8 +76,7 @@ class _PayAheadActionState extends ConsumerState<PayAheadAction> {
         title: 'Paid',
         message:
             'Tap your card at the gate by ${Formatters.time(session.leaveBy!)} '
-            'and the barrier opens. After that, the extra time is charged at '
-            'the gate.',
+            'and the barrier opens. After that the meter starts again.',
       );
     }
 
@@ -89,7 +88,7 @@ class _PayAheadActionState extends ConsumerState<PayAheadAction> {
       children: [
         Text(
           ranOut
-              ? 'Your paid time ran out at ${Formatters.time(session.leaveBy!)}. '
+              ? 'Your paid time ended at ${Formatters.time(session.leaveBy!)}. '
                     'Pay the extra time before you go to the gate.'
               : 'Leaving soon? Pay now and the gate opens when you tap your '
                     'card. You can also pay at the gate.',
@@ -101,6 +100,12 @@ class _PayAheadActionState extends ConsumerState<PayAheadAction> {
           icon: const Icon(Icons.logout_rounded),
           isLoading: _busy,
           onPressed: _busy ? null : _payAhead,
+        ),
+        const SizedBox(height: AppSpacing.xs),
+        Text(
+          'After you pay, the meter pauses for 7 minutes so you can leave.',
+          textAlign: TextAlign.center,
+          style: context.text.bodySmall,
         ),
       ],
     );
