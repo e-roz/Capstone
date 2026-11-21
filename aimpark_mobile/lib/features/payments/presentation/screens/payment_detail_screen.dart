@@ -129,6 +129,23 @@ class _PaymentDetailScreenState extends ConsumerState<PaymentDetailScreen>
     }
   });
 
+  /// "Thu, Nov 19 · 3:32 PM": a bill can be paid on another day than the visit.
+  String _dateTime(DateTime t) =>
+      '${Formatters.date(t.toLocal())} · ${Formatters.time(t)}';
+
+  /// "90 × ₱20.00 ÷ 60 = ₱30.00", or with the flat first hour in front.
+  String _calculation(Payment p) {
+    final r = Formatters.peso(p.ratePerHourApplied);
+    final total = Formatters.peso(p.amountDue);
+    if (p.includesFirstHour) {
+      final extra = p.durationMinutes - 60;
+      return extra <= 0
+          ? 'First hour, flat = $total'
+          : 'First hour $r + $extra × $r ÷ 60 = $total';
+    }
+    return '${p.durationMinutes} × $r ÷ 60 = $total';
+  }
+
   Future<void> _showQr() => _startCheckout((checkout) async {
     if (!mounted) return;
     setState(() => _qr = checkout);
@@ -338,25 +355,46 @@ class _PaymentDetailScreenState extends ConsumerState<PaymentDetailScreen>
                       : 'How this was calculated',
               facts: [
                 if (!payment.isViolation) ...[
-                  AppFact(
-                    'Duration',
-                    Formatters.duration(
-                      Duration(minutes: payment.durationMinutes),
+                  if (payment.coversFrom != null && payment.coversTo != null)
+                    AppFact(
+                      'Covers',
+                      '${Formatters.time(payment.coversFrom!)} – '
+                          '${Formatters.time(payment.coversTo!)}',
                     ),
+                  AppFact(
+                    'Minutes',
+                    payment.coversFrom == null
+                        ? Formatters.duration(
+                            Duration(minutes: payment.durationMinutes),
+                          )
+                        : '${payment.durationMinutes} min',
                   ),
                   AppFact(
                     'Rate',
-                    '${Formatters.peso(payment.ratePerHourApplied)}/hr',
+                    '${Formatters.peso(payment.ratePerHourApplied)}/hr '
+                        '(${Formatters.peso(payment.ratePerHourApplied / 60)}/min)',
                   ),
+                  if (payment.coversFrom != null)
+                    AppFact('Calculation', _calculation(payment)),
+                  if (payment.graceUntil != null && payment.paidAt != null)
+                    AppFact(
+                      'Grace (meter paused)',
+                      '${Formatters.time(payment.paidAt!)} – '
+                          '${Formatters.time(payment.graceUntil!)}',
+                    ),
+                  if (payment.entryTime != null)
+                    AppFact('Entered', _dateTime(payment.entryTime!)),
+                  if (payment.exitTime != null)
+                    AppFact('Left', _dateTime(payment.exitTime!)),
                 ],
                 AppFact(
                   payment.isViolation ? 'Issued' : 'Created',
-                  Formatters.date(payment.createdAt.toLocal()),
+                  _dateTime(payment.createdAt),
                 ),
                 if (payment.paidAt != null)
                   AppFact(
                     'Paid',
-                    Formatters.date(payment.paidAt!.toLocal()),
+                    _dateTime(payment.paidAt!),
                     intent: StatusIntent.success,
                   ),
                 if (payment.method != null) AppFact('Method', payment.method!),
@@ -370,6 +408,28 @@ class _PaymentDetailScreenState extends ConsumerState<PaymentDetailScreen>
                 Formatters.peso(payment.amountDue),
               ),
             ),
+            if (!payment.isViolation &&
+                !payment.isPaid &&
+                !payment.isWaived &&
+                payment.exitTime == null) ...[
+              const SizedBox(height: AppSpacing.sm),
+              Text(
+                'If you wait before paying, this bill is priced again at your '
+                'next tap. The meter does not stop because you tapped.',
+                textAlign: TextAlign.center,
+                style: context.text.bodySmall,
+              ),
+            ],
+            if (!payment.isViolation && payment.parkingLogId != null)
+              Align(
+                child: AppTextLink(
+                  label: 'See whole visit',
+                  icon: Icons.chevron_right_rounded,
+                  onTap: () => context.push(
+                    '/home/user/parking/visits/${payment.parkingLogId}',
+                  ),
+                ),
+              ),
             if (payment.isViolation && payment.violationId != null)
               Align(
                 child: AppTextLink(

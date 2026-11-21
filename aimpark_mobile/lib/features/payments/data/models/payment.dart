@@ -16,6 +16,9 @@ class Payment {
     this.method,
     this.referenceNumber,
     this.provider,
+    this.coversFrom,
+    this.coversTo,
+    this.graceUntil,
   });
 
   final String paymentId;
@@ -32,6 +35,19 @@ class Payment {
   final DateTime createdAt;
   final DateTime? paidAt;
 
+  /// The stretch of the visit this bill pays for. Null on fines and on bills
+  /// made before the first-hour rule.
+  final DateTime? coversFrom;
+  final DateTime? coversTo;
+
+  /// A paid parking bill: the meter was paused until this time.
+  final DateTime? graceUntil;
+
+  /// The bill starts at entry, so it includes the flat first hour.
+  bool get includesFirstHour =>
+      entryTime != null &&
+      coversFrom != null &&
+      !coversFrom!.isAfter(entryTime!.add(const Duration(seconds: 1)));
 
   /// Cash, GCash, Maya or Card. Null until the bill is settled.
   final String? method;
@@ -95,6 +111,9 @@ class Payment {
       method: json['method'] as String?,
       referenceNumber: json['referenceNumber'] as String?,
       provider: json['provider'] as String?,
+      coversFrom: json['coversFrom'] == null ? null : DateTime.parse(json['coversFrom'] as String),
+      coversTo: json['coversTo'] == null ? null : DateTime.parse(json['coversTo'] as String),
+      graceUntil: json['graceUntil'] == null ? null : DateTime.parse(json['graceUntil'] as String),
     );
   }
 }
