@@ -1,14 +1,12 @@
 {
-  "version": "1.0.20",
-  "build": 21,
-  "apk_url": "https://github.com/e-roz/Capstone/releases/download/v1.0.20/app-release.apk",
-  "apk_sha256": "048cb0f06ef2cbd6dbf9563f505a1a3bf9b8257c448a5ea0427c2b23a179d0f1",
+  "version": "1.0.21",
+  "build": 22,
+  "apk_url": "https://github.com/e-roz/Capstone/releases/download/v1.0.21/app-release.apk",
+  "apk_sha256": "fce353912d4dba8fbfaf78c9ec1f85606eafd7bc2d82b669f8c07fdfc6bf9841",
   "apk_size_bytes": 94792285,
   "mandatory": false,
   "release_notes": [
-    "New parking fee: the first hour is one flat rate, then you pay per minute",
-    "After you pay, the meter pauses for 7 minutes so you can leave, and those minutes are free",
-    "The fee card shows each part of your stay, what you paid, and what is left",
-    "New Visit details screen, and every bill shows the time it covers and how it was worked out"
+    "Payments are grouped by visit: each stay shows its bills together, with the total for that visit",
+    "Tap a visit to see every part of it, what you paid, and when"
   ]
 }
