@@ -112,8 +112,9 @@ public class PayBeforeExitTests
         var g = await GateAsync();
         await Tap(g);
 
-        // Five hours in: ₱30 first hour + 240 min × ₱0.50.
-        g.Db.Set<ParkingLog>().Single().EntryTime = DateTime.UtcNow.AddHours(-5);
+        // Just under five hours in (300 charged minutes): ₱30 first hour + 240 min × ₱0.50.
+        // Half a minute off the boundary, so the milliseconds the tap takes don't start minute 301.
+        g.Db.Set<ParkingLog>().Single().EntryTime = DateTime.UtcNow.AddHours(-5).AddSeconds(30);
         await g.Db.SaveChangesAsync();
         var second = await Tap(g);
 
