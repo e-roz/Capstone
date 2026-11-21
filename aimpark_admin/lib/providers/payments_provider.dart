@@ -102,7 +102,9 @@ class PaymentActions extends _$PaymentActions {
         data: {
           'vehicleType': vehicleType,
           'ratePerHour': ratePerHour,
-          'minimumFee': minimumFee,
+          // Left out unless given: the server keeps the stored value, which no
+          // longer prices anything.
+          'minimumFee': ?minimumFee,
         },
       );
       state = const AsyncData(null);

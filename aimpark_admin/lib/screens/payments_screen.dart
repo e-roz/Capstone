@@ -91,6 +91,7 @@ class PaymentsScreen extends ConsumerWidget {
           columns: const [
             DataColumn(label: Text('Source')),
             DataColumn(label: Text('Paid by')),
+            DataColumn(label: Text('Covers')),
             DataColumn(label: Text('Duration'), numeric: true),
             DataColumn(label: Text('Rate/hr'), numeric: true),
             DataColumn(label: Text('Amount Due'), numeric: true),
@@ -120,27 +121,11 @@ class PaymentsScreen extends ConsumerWidget {
       cells: [
         DataCell(Text(p.source, style: text.titleSmall)),
         DataCell(Text(p.payerName ?? '—')),
+        DataCell(Text(_covers(p))),
         DataCell(AppNumericCell('${p.durationMinutes} min')),
         DataCell(AppNumericCell(_money.format(p.ratePerHourApplied))),
         DataCell(
-          Tooltip(
-            message: p.minimumFeeApplied
-                ? 'Minimum fee. The time parked costs less than this.'
-                : '',
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                if (p.minimumFeeApplied) ...[
-                  Text(
-                    'min.',
-                    style: text.labelSmall?.copyWith(color: t.text.tertiary),
-                  ),
-                  const SizedBox(width: AppSpacing.x2),
-                ],
-                AppNumericCell(_money.format(p.amountDue), emphasis: true),
-              ],
-            ),
-          ),
+          AppNumericCell(_money.format(p.amountDue), emphasis: true),
         ),
         DataCell(_StatusCell(payment: p)),
         // Cash and GCash both read as "Paid" in the status column, and they are
@@ -219,6 +204,8 @@ class PaymentsScreen extends ConsumerWidget {
                 _ReceiptRow(label: 'Paid by', value: p.payerName ?? '—'),
                 _ReceiptRow(label: 'Entry', value: exact(p.entryTime)),
                 _ReceiptRow(label: 'Exit', value: exact(p.exitTime)),
+                if (p.coversFrom != null)
+                  _ReceiptRow(label: 'Covers', value: _covers(p)),
                 _ReceiptRow(
                   label: 'Duration',
                   value: '${p.durationMinutes} min',
@@ -227,11 +214,6 @@ class PaymentsScreen extends ConsumerWidget {
                   label: 'Rate applied',
                   value: '${_money.format(p.ratePerHourApplied)}/hr',
                 ),
-                if (p.minimumFeeApplied)
-                  const _ReceiptRow(
-                    label: 'Minimum fee',
-                    value: 'Applied, the time parked costs less',
-                  ),
                 const Divider(height: AppSpacing.x6),
                 _ReceiptRow(label: 'Created', value: time(p.createdAt)),
                 _ReceiptRow(label: 'Paid', value: time(p.paidAt)),
@@ -313,7 +295,7 @@ class PaymentsScreen extends ConsumerWidget {
                               ),
                             ),
                             Text(
-                              '${_money.format(r.minimumFee)} minimum',
+                              'first hour, then per minute',
                               style: Theme.of(ctx).textTheme.bodySmall
                                   ?.copyWith(color: ctx.tokens.text.secondary),
                             ),
@@ -391,7 +373,6 @@ class PaymentsScreen extends ConsumerWidget {
   Future<void> _showUpsertRate(BuildContext context, WidgetRef ref) async {
     String? vehicleType;
     final rateCtrl = TextEditingController();
-    final minimumCtrl = TextEditingController(text: '20');
     final formKey = GlobalKey<FormState>();
 
     final confirmed = await showDialog<bool>(
@@ -426,22 +407,12 @@ class PaymentsScreen extends ConsumerWidget {
                   controller: rateCtrl,
                   keyboardType: TextInputType.number,
                   decoration: const InputDecoration(
-                    label: AppFieldLabel('Rate per hour', isRequired: true),
-                  ),
-                  validator: (v) => double.tryParse(v ?? '') == null
-                      ? 'Enter a valid number'
-                      : null,
-                ),
-                const SizedBox(height: AppSpacing.x4),
-                TextFormField(
-                  controller: minimumCtrl,
-                  keyboardType: TextInputType.number,
-                  decoration: const InputDecoration(
-                    label: AppFieldLabel('Minimum fee', isRequired: true),
+                    label: AppFieldLabel(
+                      'Hourly rate (first hour charged in full)',
+                      isRequired: true,
+                    ),
                     helperText:
-                        'Charged for any session shorter than this is worth. '
-                        'Card and e-wallet payments under ₱20 are refused by the '
-                        'provider, so keep it at ₱20 or above.',
+                        'Charged in full for the first hour, then per minute.',
                   ),
                   validator: (v) => double.tryParse(v ?? '') == null
                       ? 'Enter a valid number'
@@ -468,16 +439,24 @@ class PaymentsScreen extends ConsumerWidget {
 
     if (confirmed != true || !context.mounted) return;
     final rate = double.parse(rateCtrl.text.trim());
-    final minimum = double.parse(minimumCtrl.text.trim());
     final msg = await ref
         .read(paymentActionsProvider.notifier)
-        .upsertRate(vehicleType!, rate, minimumFee: minimum);
+        .upsertRate(vehicleType!, rate);
     if (!context.mounted) return;
     ScaffoldMessenger.of(
       context,
     ).showSnackBar(SnackBar(content: Text(msg ?? 'Rate saved.')));
     ref.invalidate(parkingRatesProvider);
   }
+}
+
+/// "2:02 PM – 3:32 PM": the stretch of the visit a bill pays for, or a dash
+/// for fines and for bills made before the first-hour rule.
+String _covers(PaymentTransaction p) {
+  final from = p.coversFrom, to = p.coversTo;
+  if (from == null || to == null) return '—';
+  final f = DateFormat('h:mm a');
+  return '${f.format(from.toLocal())} – ${f.format(to.toLocal())}';
 }
 
 /// "47m", or "2h 15m" past the first hour — matches how duration reads
