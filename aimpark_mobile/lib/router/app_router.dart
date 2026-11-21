@@ -26,6 +26,7 @@ import '../features/auth/presentation/screens/registration_submitted_screen.dart
 import '../features/notifications/presentation/screens/notifications_screen.dart';
 import '../features/parking/presentation/screens/parking_history_screen.dart';
 import '../features/parking/presentation/screens/parking_screen.dart';
+import '../features/parking/presentation/screens/visit_details_screen.dart';
 import '../features/support/presentation/screens/support_screen.dart';
 import '../features/violations/presentation/screens/appeal_screen.dart';
 import '../features/violations/presentation/screens/appeal_sent_screen.dart';
@@ -270,6 +271,14 @@ GoRouter appRouter(Ref ref) {
         path: '/home/user/payments/:paymentId',
         builder: (context, state) => PaymentDetailScreen(
           paymentId: state.pathParameters['paymentId']!,
+        ),
+      ),
+      // One visit, stretch by stretch, with its payments. Reached from parking
+      // history and from "See whole visit" on a bill.
+      GoRoute(
+        path: '/home/user/parking/visits/:logId',
+        builder: (context, state) => VisitDetailsScreen(
+          logId: state.pathParameters['logId']!,
         ),
       ),
       // Both of these were tabs until the nav dropped to Home / Parking /

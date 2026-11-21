@@ -24,6 +24,9 @@ namespace AimPark.API.Services
         private readonly TimeSpan _paidExitGrace;
         private readonly ILogger<ParkingHistoryService>? _logger;
 
+        /// <summary>Prices a visit against its bills: the gate, pay-ahead and live fee all use it.</summary>
+        private readonly VisitPricing _pricing;
+
         public ParkingHistoryService(
             IRepository<ParkingLog> logs,
             IRepository<ParkingSlot> slots,
@@ -47,6 +50,7 @@ namespace AimPark.API.Services
             _allocationService = allocationService;
             _notificationService = notificationService;
             _db = db;
+            _pricing = new VisitPricing(db, paymentService, _entryDues, _paidExitGrace);
         }
 
         // GET /api/parking/history?page=1&pageSize=20[&vehicleId=...]
@@ -105,9 +109,8 @@ namespace AimPark.API.Services
 
             // A driver who has tapped out and owes this session's fee is still
             // inside until it is paid: say so, with the amount, so the app can ask
-            // them to pay rather than tell them they are parked. A driver who
-            // already paid from the app is told how long they have to leave. Read
-            // here, where the app's payments are settled.
+            // them to pay rather than tell them they are parked. Read here, where
+            // the app's payments are settled.
             var openBillIds = logs.Where(e => e.ExitTime == null && e.PaymentId != null)
                 .Select(e => e.PaymentId!.Value).ToList();
             if (openBillIds.Count > 0)
@@ -119,16 +122,23 @@ namespace AimPark.API.Services
                 foreach (var entry in logs.Where(e => e.PaymentId is Guid id && bills.ContainsKey(id)))
                 {
                     var bill = bills[entry.PaymentId!.Value];
-                    if (bill.Status is PaymentStatus.Paid or PaymentStatus.Waived)
-                    {
-                        entry.LeaveBy = (bill.PaidAt ?? bill.CreatedAt) + _paidExitGrace;
-                    }
-                    else if (bill.AmountDue > 0m && !bill.PaidAhead)
+                    if (bill.Status is not (PaymentStatus.Paid or PaymentStatus.Waived)
+                        && bill.AmountDue > 0m && !bill.PaidAhead)
                     {
                         entry.WaitingToLeave = true;
                         entry.ExitAmountDue = bill.AmountDue;
                     }
                 }
+            }
+
+            // A driver who has paid something is told until when that covers
+            // them, or when it stopped covering them.
+            foreach (var entry in logs.Where(e => e.ExitTime == null))
+            {
+                var open = await _db.Set<ParkingLog>().AsNoTracking().FirstAsync(l => l.Id == entry.LogId, ct);
+                var price = await _pricing.PriceAsync(open, DateTime.UtcNow, ct);
+                if (price.Settled > 0m)
+                    entry.LeaveBy = price.CoveredUntil ?? price.UnpaidFrom;
             }
 
             return new OkObjectResult(new ParkingHistoryResponse
@@ -979,64 +989,33 @@ namespace AimPark.API.Services
         }
 
         /// <summary>
-        /// Raises this session's bill at the exit gate and holds the barrier until
-        /// it is settled. Null means the driver may go: nothing is owed, or it has
-        /// been paid.
+        /// Holds the barrier while the visit owes anything. Owing nothing covers
+        /// paid inside the first hour, inside a grace, and a free visit. The bill
+        /// is priced again at every tap, so waiting at the gate never freezes it.
         /// </summary>
         /// <remarks>
         /// Only this session's fee holds the exit. An older unpaid bill still stops
-        /// the next entry, as before, but never a car that is already inside.
-        /// A bill that is only Processing does not let the car out; the checkout
-        /// was opened, not paid.
-        ///
-        /// A paid bill opens the barrier for <see cref="GateOptions.PaidExitGraceMinutes"/>
-        /// after it was paid. That is the walk to the car for a driver who paid
-        /// from the app while still parked; later than that, the rest of the stay
-        /// is billed and the barrier waits for it.
+        /// the next entry, but never a car that is already inside. A bill that is
+        /// only Processing does not let the car out; the checkout was opened, not
+        /// paid.
         /// </remarks>
         private async Task<ObjectResult?> HoldForPaymentAsync(ParkingLog log, CancellationToken ct)
         {
             var now = DateTime.UtcNow;
-            var bill = await _paymentService.FindForLogAsync(log.Id, ct);
 
-            if (bill is null)
-            {
-                var quote = await _paymentService.QuoteAsync(log, now, ct);
-                if (quote.AmountDue <= 0m)
-                    return null;
-
-                bill = await _paymentService.RaiseExitBillAsync(log, now, ct);
-            }
             // A guard has let this driver through (the bill stays owed).
-            else if (ExitPayment.IsReleased(bill))
-            {
+            var latest = await _paymentService.FindForLogAsync(log.Id, ct);
+            if (latest is not null && ExitPayment.IsReleased(latest))
                 return null;
-            }
-            else if (bill.AmountDue <= 0m || await _entryDues.IsSettledAsync(bill.Id, ct))
-            {
-                // Settled. The site may know only from the cloud's list, with no
-                // time on it: then it was paid a moment ago, as far as it can tell.
-                var paidAt = bill.Status is PaymentStatus.Paid or PaymentStatus.Waived
-                    ? bill.PaidAt ?? now
-                    : now;
-                if (now <= paidAt + _paidExitGrace)
-                    return null;
 
-                var extra = await _paymentService.RaiseOverstayBillAsync(log, now, paidAhead: false, ct);
-                if (extra is null)
-                    return null;
-                bill = extra;
-            }
-            else if (bill.PaidAhead)
-            {
-                // Asked for from the app but not paid before reaching the gate: from
-                // here it is an ordinary hold. Priced again up to now, unless a
-                // checkout for the old amount is already open.
-                if (bill.Status == PaymentStatus.Pending)
-                    await _paymentService.RepriceOpenBillAsync(bill, log, now, ct);
-                bill.PaidAhead = false;
-                await _db.SaveChangesAsync(ct);
+            var price = await _pricing.PriceAsync(log, now, ct);
+            var billed = await _paymentService.BillOwedAsync(log, price, paidAhead: false, ct);
+            if (billed is null)
+                return null;
 
+            var bill = billed.Bill;
+            if (billed.Created || billed.WasPaidAhead)
+            {
                 await _notificationService.NotifyUserAsync(
                     log.UserId!.Value,
                     NotificationType.Payment,
@@ -1071,96 +1050,84 @@ namespace AimPark.API.Services
                 return new BadRequestObjectResult(new { message = "You have already left. Any fee is in your payments." });
 
             var now = DateTime.UtcNow;
-            var bill = await _paymentService.FindForLogAsync(log.Id, ct);
+            var price = await _pricing.PriceAsync(log, now, ct);
+            var billed = await _paymentService.BillOwedAsync(log, price, paidAhead: true, ct);
 
-            // Paid already. Within the window that bill still covers them; past it,
-            // the rest of the stay is a bill of its own.
-            if (bill is not null
-                && !ExitPayment.IsReleased(bill)
-                && (bill.AmountDue <= 0m || await _entryDues.IsSettledAsync(bill.Id, ct)))
-            {
-                var leaveBy = (bill.PaidAt ?? now) + _paidExitGrace;
-                if (now <= leaveBy)
-                    return new OkObjectResult(new PayAheadResponse { Paid = true, LeaveBy = leaveBy });
-
-                bill = await _paymentService.RaiseOverstayBillAsync(log, now, paidAhead: true, ct);
-                if (bill is null)
-                    return new OkObjectResult(new PayAheadResponse { Paid = true, LeaveBy = now + _paidExitGrace });
-            }
-            else
-            {
-                bill = await _paymentService.RaiseAheadAsync(log, now, ct);
-                if (bill is null)
-                    return new OkObjectResult(new PayAheadResponse());
-            }
+            // Nothing owed: paid up (inside the first hour or a grace), or free.
+            if (billed is null)
+                return new OkObjectResult(new PayAheadResponse
+                {
+                    Paid = price.Settled > 0m,
+                    LeaveBy = price.CoveredUntil
+                });
 
             return new OkObjectResult(new PayAheadResponse
             {
-                PaymentId = bill.Id,
-                AmountDue = bill.AmountDue,
-                DurationMinutes = bill.DurationMinutes
+                PaymentId = billed.Bill.Id,
+                AmountDue = billed.Bill.AmountDue,
+                DurationMinutes = billed.Bill.DurationMinutes
             });
         }
 
         // GET /api/parking/sessions/{logId}/live-fee
         //
         // Read-only on purpose: the app polls this, and a poll must never raise
-        // or reprice a bill. Priced by the same QuoteAsync as pay-ahead and the
+        // or reprice a bill. Priced by the same VisitPricing as pay-ahead and the
         // exit gate, so the number on the phone is the number at the barrier.
+        // A finished visit is answered too, priced at its exit: the app's visit
+        // details screen draws its timeline from this.
         public async Task<ActionResult<LiveFeeResponse>> GetLiveFeeAsync(Guid userId, Guid logId, CancellationToken ct)
         {
             var log = await _db.Set<ParkingLog>().AsNoTracking()
                 .FirstOrDefaultAsync(l => l.Id == logId && l.UserId == userId, ct);
             if (log is null)
                 return new NotFoundObjectResult(new { message = "We could not find that parking session." });
-            if (log.ExitTime is not null)
-                return new BadRequestObjectResult(new { message = "You have already left. Any fee is in your payments." });
 
             var now = DateTime.UtcNow;
-            var quote = await _paymentService.QuoteAsync(log, now, ct);
-            var (ratePerHour, minimumFee) = await _paymentService.RateForAsync(log, ct);
-
-            var bills = await _db.Set<PaymentTransaction>().AsNoTracking()
-                .Where(p => p.ParkingLogId == log.Id)
-                .Select(p => new { p.AmountDue, p.Status, p.PaidAt, p.Provider })
-                .ToListAsync(ct);
-
-            // Waived counts as covered, as it does for the overstay bill: someone
-            // decided that time was not to be charged.
-            var settled = bills.Where(b => b.Status is PaymentStatus.Paid or PaymentStatus.Waived).ToList();
-            var covered = settled.Sum(b => b.AmountDue);
-            var processing = bills.Any(b => b.Status == PaymentStatus.Processing
-                                            && b.Provider != ExitPayment.ReleasedProvider);
-
-            // Paid ahead and still inside the walk-to-the-car window: the barrier
-            // opens on a tap until then.
-            DateTime? leaveBy = null;
-            var lastPaidAt = settled.Max(b => b.PaidAt);
-            if (lastPaidAt is DateTime paidAt && now <= paidAt + _paidExitGrace)
-                leaveBy = paidAt + _paidExitGrace;
-
-            var next = ParkingFeeMath.NextChange(ratePerHour, minimumFee, log.EntryTime, now);
+            var open = log.ExitTime is null;
+            var price = await _pricing.PriceAsync(log, log.ExitTime ?? now, ct);
+            var b = price.Breakdown;
 
             // Marked UTC, so every time in the reply serialises the same way and
             // the phone can subtract them from AsOf without a timezone slip.
             static DateTime? Utc(DateTime? t) => t is DateTime v ? DateTime.SpecifyKind(v, DateTimeKind.Utc) : null;
+            static DateTime U(DateTime t) => DateTime.SpecifyKind(t, DateTimeKind.Utc);
+
+            var settledIds = price.SettledBills.Select(s => s.Id).ToHashSet();
+            var processing = price.Bills.Any(p => p.Status == PaymentStatus.Processing
+                && !settledIds.Contains(p.Id) && p.Provider != ExitPayment.ReleasedProvider);
 
             return new OkObjectResult(new LiveFeeResponse
             {
                 LogId = log.Id,
-                EntryTime = Utc(log.EntryTime)!.Value,
+                EntryTime = U(log.EntryTime),
+                ExitTime = Utc(log.ExitTime),
                 AsOf = now,
-                DurationMinutes = quote.DurationMinutes,
-                RatePerHour = ratePerHour,
-                MinimumFee = minimumFee,
-                TotalSoFar = quote.AmountDue,
-                MeteredSoFar = ParkingFeeMath.Metered(ratePerHour, quote.DurationMinutes),
-                AlreadyPaid = covered,
-                OwedNow = Math.Max(0m, quote.AmountDue - covered),
-                PaymentProcessing = processing,
-                LeaveBy = Utc(leaveBy),
-                NextChangeAt = Utc(next?.At),
-                NextTotal = next?.Amount,
+                DurationMinutes = b.ChargedMinutes,
+                RatePerHour = price.RatePerHour,
+                TotalSoFar = b.Total,
+                AlreadyPaid = price.Settled,
+                OwedNow = price.OwedNow,
+                PaymentProcessing = open && processing,
+                LeaveBy = open ? Utc(price.CoveredUntil) : null,
+                NextChangeAt = Utc(b.NextChangeAt),
+                NextTotal = b.NextTotal,
+                FirstHourEndsAt = U(b.FirstHourEndsAt),
+                GraceUntil = Utc(b.GraceUntil),
+                MeterState = b.State.ToString(),
+                Segments = b.Segments.Select(s => new FeeSegmentResponse
+                {
+                    Kind = s.Kind.ToString(), From = U(s.From), To = U(s.To), Minutes = s.Minutes, Amount = s.Amount
+                }).ToList(),
+                Payments = price.SettledBills.Select(p => new FeePaymentResponse
+                {
+                    PaymentId = p.Id, Amount = p.AmountDue, PaidAt = Utc(p.PaidAt),
+                    Method = p.Method?.ToString(), CoversFrom = Utc(p.CoversFrom), CoversTo = Utc(p.CoversTo)
+                }).ToList(),
+                // An old finished visit was billed under the earlier rules: the app
+                // then shows its bills and not a timeline that would not add up.
+                BreakdownMatchesBills = open || price.Bills.Sum(p => p.AmountDue) == b.Total,
+                BilledTotal = price.Bills.Sum(p => p.AmountDue),
             });
         }
 
@@ -1291,17 +1258,24 @@ namespace AimPark.API.Services
                 });
             }
 
-            var transaction = await _paymentService.CreateForCompletedLogAsync(log, ct);
+            var price = await _pricing.PriceAsync(log, log.ExitTime!.Value, ct);
+            var transaction = await _paymentService.CreateForCompletedLogAsync(log, price, ct);
 
-            // The fee notice went out at the gate. Say the visit is over.
-            if (billRaisedAtGate)
+            // Nothing left to pay (settled at the gate or ahead, or a free visit):
+            // say the visit is over. A bill made here sends its own notice.
+            if (transaction is null)
             {
                 var stayed = log.ExitTime!.Value - log.EntryTime;
+                var stayedText = stayed.TotalHours >= 1
+                    ? $"{(int)stayed.TotalHours}h {stayed.Minutes}m"
+                    : $"{(int)stayed.TotalMinutes}m";
                 await _notificationService.NotifyUserAsync(
                     log.UserId!.Value,
                     NotificationType.Parking,
                     "You've left",
-                    $"You parked for {(stayed.TotalHours >= 1 ? $"{(int)stayed.TotalHours}h {stayed.Minutes}m" : $"{(int)stayed.TotalMinutes}m")}. Thanks for paying.",
+                    billRaisedAtGate || price.Settled > 0m
+                        ? $"You parked for {stayedText}. Thanks for paying."
+                        : $"You parked for {stayedText}. Nothing to pay.",
                     new Dictionary<string, string> { ["screen"] = "parking-history" },
                     ct);
             }
@@ -1310,9 +1284,9 @@ namespace AimPark.API.Services
             {
                 result = AllocationResult.ExitLogged,
                 message = "Exit logged.",
-                paymentId = (Guid?)transaction.Id,
-                amountDue = transaction.AmountDue,
-                durationMinutes = transaction.DurationMinutes,
+                paymentId = transaction?.Id,
+                amountDue = transaction?.AmountDue ?? 0m,
+                durationMinutes = transaction?.DurationMinutes ?? price.Breakdown.ChargedMinutes,
                 collectInCash = false
             });
         }

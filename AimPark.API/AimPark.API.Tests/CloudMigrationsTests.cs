@@ -32,6 +32,7 @@ public class CloudMigrationsTests
     [InlineData("AddBulkArchiveRuns")]
     [InlineData("AddArchiveWhenClear")]
     [InlineData("AddBulkRestore")]
+    [InlineData("AddBillCoverage")]
     public void Migrations_that_only_add_are_safe(string name) =>
         Assert.Empty(CloudMigrations.UnsafeOperations(Get(Id(name))));
 

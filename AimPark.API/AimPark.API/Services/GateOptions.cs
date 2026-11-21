@@ -22,14 +22,15 @@ namespace AimPark.API.Services
         public bool EnforceExpiredDocuments { get; set; }
 
         /// <summary>
-        /// How long a driver has, after paying, to reach the exit and tap out.
+        /// How long the meter pauses after each payment: the grace. These minutes
+        /// are never charged.
         /// </summary>
         /// <remarks>
         /// A driver can pay from the app while still parked. The fee covers the
-        /// time up to the payment; this is the walk back to the car and the drive
-        /// to the gate. Tapping out later than this raises a second bill for the
-        /// time after it, and the barrier waits for that one.
+        /// time up to the payment; the grace is the walk back to the car and the
+        /// drive to the gate. Still inside after it, the meter runs again from the
+        /// end of the grace, and the barrier waits for that extra.
         /// </remarks>
-        public int PaidExitGraceMinutes { get; set; } = 15;
+        public int PaidExitGraceMinutes { get; set; } = 7;
     }
 }

@@ -25,7 +25,7 @@ public class PayAheadTests
     private const string Tag = "04A2B3C4";
     private static readonly Guid Device = Guid.NewGuid();
 
-    private sealed record Lot(AppDbContext Db, ParkingHistoryService Parking, User User, ParkingLog Log, SiteDues Dues, Notices Notices);
+    private sealed record Lot(AppDbContext Db, ParkingHistoryService Parking, User User, ParkingLog Log, SiteDues Dues, Notices Notices, PaymentService Payments);
 
     private static AppDbContext NewDb() => new(new DbContextOptionsBuilder<AppDbContext>()
         .UseInMemoryDatabase(Guid.NewGuid().ToString())
@@ -60,9 +60,9 @@ public class PayAheadTests
         var parking = new ParkingHistoryService(
             new Repository<ParkingLog>(db), new Repository<ParkingSlot>(db),
             payments, allocationService: null!, notices, db, new NoSlotSensors(), entryDues,
-            Options.Create(new GateOptions { PaidExitGraceMinutes = 15 }));
+            Options.Create(new GateOptions { PaidExitGraceMinutes = 7 }));
 
-        return new Lot(db, parking, user, log, dues, notices);
+        return new Lot(db, parking, user, log, dues, notices, payments);
     }
 
     private static async Task<PayAheadResponse> PayAhead(Lot l)
@@ -149,7 +149,7 @@ public class PayAheadTests
         var entry = await History(l);
         var again = await PayAhead(l);
 
-        Assert.Equal(paidAt.AddMinutes(15), entry.LeaveBy);
+        Assert.Equal(Session(l).EntryTime.AddMinutes(127), entry.LeaveBy);
         Assert.True(again.Paid);
         Assert.Null(again.PaymentId);
         Assert.Single(Bills(l));
@@ -177,6 +177,77 @@ public class PayAheadTests
         Assert.IsType<NotFoundObjectResult>(result.Result);
     }
 
+    [Fact]
+    public async Task A_bill_from_before_the_change_still_covers_the_first_hour()
+    {
+        var l = await LotAsync();
+        // Paid ₱30 forty minutes in, before bills had CoversTo.
+        var paidAt = l.Log.EntryTime.AddMinutes(40);
+        l.Db.Add(new PaymentTransaction
+        {
+            Id = Guid.NewGuid(), Source = PaymentSource.ParkingFee, ParkingLogId = l.Log.Id, UserId = l.User.Id,
+            DurationMinutes = 40, RatePerHourApplied = 30m, AmountDue = 30m, Status = PaymentStatus.Paid,
+            PaidAhead = true, PaidAt = paidAt, CreatedAt = paidAt
+        });
+        await l.Db.SaveChangesAsync();
+        var pricing = new VisitPricing(l.Db, l.Payments, new DbEntryDues(l.Db), TimeSpan.FromMinutes(7));
+
+        var price = await pricing.PriceAsync(l.Log, DateTime.UtcNow, default);
+
+        // 120 charged minutes at ₱30/hr: ₱30 + 60 × ₱0.50 = ₱60. ₱30 paid.
+        Assert.Equal(60m, price.Breakdown.Total);
+        Assert.Equal(30m, price.OwedNow);
+        Assert.Equal(l.Log.EntryTime.AddMinutes(60), price.UnpaidFrom);
+    }
+
+    [Fact]
+    public async Task Starting_a_checkout_prices_the_bill_up_to_that_moment()
+    {
+        var l = await LotAsync();
+        await PayAhead(l); // ₱60 at two hours
+        l.Db.Set<ParkingLog>().Single().EntryTime = DateTime.UtcNow.AddMinutes(-179).AddSeconds(-30);
+        await l.Db.SaveChangesAsync();
+        var bill = Bills(l).Single();
+
+        // The test gateway cannot open a checkout; the bill is priced before it is asked.
+        await l.Payments.StartCheckoutAsync(l.User.Id, bill.Id, default);
+
+        Assert.Equal(90m, Bills(l).Single().AmountDue);
+    }
+
+    [Fact]
+    public async Task A_bill_covers_whole_minutes()
+    {
+        var l = await LotAsync();
+
+        await PayAhead(l);
+
+        // 119.5 minutes parked is 120 charged minutes: the bill ends on the minute.
+        var bill = Bills(l).Single();
+        Assert.Equal(Session(l).EntryTime.AddMinutes(120), bill.CoversTo);
+        Assert.Equal(120, bill.DurationMinutes);
+    }
+
+    [Fact]
+    public async Task An_old_visit_shows_what_its_bills_came_to()
+    {
+        var l = await LotAsync();
+        var log = l.Db.Set<ParkingLog>().Single();
+        log.ExitTime = DateTime.UtcNow;
+        l.Db.Add(new PaymentTransaction
+        {
+            Id = Guid.NewGuid(), Source = PaymentSource.ParkingFee, ParkingLogId = l.Log.Id, UserId = l.User.Id,
+            DurationMinutes = 120, RatePerHourApplied = 31m, AmountDue = 62m, Status = PaymentStatus.Paid,
+            PaidAt = DateTime.UtcNow, CreatedAt = DateTime.UtcNow
+        });
+        await l.Db.SaveChangesAsync();
+
+        var fee = (LiveFeeResponse)((OkObjectResult)(await l.Parking.GetLiveFeeAsync(l.User.Id, l.Log.Id, default)).Result!).Value!;
+
+        Assert.False(fee.BreakdownMatchesBills);
+        Assert.Equal(62m, fee.BilledTotal);
+    }
+
     // ── At the gate ────────────────────────────────────────────────────────
 
     [Fact]
@@ -184,7 +255,7 @@ public class PayAheadTests
     {
         var l = await LotAsync();
         await PayAhead(l);
-        await PaidAt(l, DateTime.UtcNow.AddMinutes(-10));
+        await PaidAt(l, DateTime.UtcNow.AddMinutes(-5));
 
         var result = await Tap(l);
 
@@ -210,7 +281,7 @@ public class PayAheadTests
         var bills = Bills(l);
         Assert.Equal(2, bills.Count);
         var extra = bills[1];
-        Assert.Equal(30m, extra.AmountDue);
+        Assert.Equal(26.5m, extra.AmountDue);
         Assert.False(extra.PaidAhead);
         Assert.Equal(PaymentStatus.Pending, extra.Status);
         Assert.Contains(l.Notices.Sent, n => n.Title == "Pay to leave");
@@ -256,7 +327,7 @@ public class PayAheadTests
 
         var again = await PayAhead(l);
 
-        Assert.Equal(30m, again.AmountDue);
+        Assert.Equal(26.5m, again.AmountDue);
         var extra = Bills(l)[1];
         Assert.Equal(again.PaymentId, extra.Id);
         Assert.True(extra.PaidAhead);
@@ -311,7 +382,12 @@ public class PayAheadTests
     public void A_hold_at_the_site_reprices_the_clouds_unpaid_copy()
     {
         var cloud = new PaymentTransaction { Status = PaymentStatus.Pending, AmountDue = 60m, DurationMinutes = 120, PaidAhead = true };
-        var site = new PaymentTransaction { Status = PaymentStatus.Pending, AmountDue = 90m, DurationMinutes = 180, PaidAhead = false };
+        var site = new PaymentTransaction
+        {
+            Status = PaymentStatus.Pending, AmountDue = 90m, DurationMinutes = 180, PaidAhead = false,
+            CoversFrom = new DateTime(2026, 11, 19, 6, 2, 0, DateTimeKind.Utc),
+            CoversTo = new DateTime(2026, 11, 19, 8, 2, 0, DateTimeKind.Utc)
+        };
 
         var settled = EventIngestor.MergePayment(cloud, site);
 
@@ -319,6 +395,21 @@ public class PayAheadTests
         Assert.False(cloud.PaidAhead);
         Assert.Equal(90m, cloud.AmountDue);
         Assert.Equal(180, cloud.DurationMinutes);
+        Assert.Equal(site.CoversFrom, cloud.CoversFrom);
+        Assert.Equal(site.CoversTo, cloud.CoversTo);
+    }
+
+    [Fact]
+    public void A_later_tap_at_the_site_reprices_the_clouds_copy_of_a_gate_bill()
+    {
+        var at = new DateTime(2026, 11, 19, 8, 0, 0, DateTimeKind.Utc);
+        var cloud = new PaymentTransaction { Status = PaymentStatus.Pending, AmountDue = 60m, PaidAhead = false, CoversTo = at };
+        var site = new PaymentTransaction { Status = PaymentStatus.Pending, AmountDue = 75m, PaidAhead = false, CoversTo = at.AddMinutes(30) };
+
+        EventIngestor.MergePayment(cloud, site);
+
+        Assert.Equal(75m, cloud.AmountDue);
+        Assert.Equal(at.AddMinutes(30), cloud.CoversTo);
     }
 
     [Fact]
@@ -330,6 +421,29 @@ public class PayAheadTests
         Assert.False(EventIngestor.MergePayment(cloud, site));
         Assert.Equal(60m, cloud.AmountDue);
         Assert.Equal(PaymentStatus.Paid, cloud.Status);
+    }
+
+    [Fact]
+    public async Task At_the_site_a_snapshot_brings_the_amount_the_cloud_charged()
+    {
+        var l = await LotAsync(site: true);
+        await Tap(l); // the site's own gate bill, Pending
+        var local = Bills(l).Single();
+        var cloud = new PaymentTransaction
+        {
+            Id = local.Id, Source = local.Source, ParkingLogId = local.ParkingLogId, UserId = local.UserId,
+            DurationMinutes = 124, RatePerHourApplied = 30m, AmountDue = 62m, Status = PaymentStatus.Paid,
+            PaidAt = DateTime.UtcNow, CoversFrom = local.CoversFrom, CoversTo = local.CoversTo!.Value.AddMinutes(4),
+            Method = PaymentMethod.GCash, Provider = "Simulated", CreatedAt = local.CreatedAt
+        };
+
+        await new SnapshotApplier(l.Db, new SyncSuppression(), l.Dues).ApplyAsync(Snapshot(l, cloud), default);
+
+        var after = Bills(l).Single();
+        Assert.Equal(PaymentStatus.Paid, after.Status);
+        Assert.Equal(62m, after.AmountDue);
+        Assert.Equal(cloud.CoversTo, after.CoversTo);
+        Assert.NotNull(after.PaidAt);
     }
 
     private static SiteSnapshot Snapshot(Lot l, PaymentTransaction bill) => new()
@@ -351,7 +465,8 @@ public class PayAheadTests
             {
                 Id = bill.Id, Source = bill.Source, ParkingLogId = bill.ParkingLogId, UserId = bill.UserId,
                 DurationMinutes = bill.DurationMinutes, RatePerHourApplied = bill.RatePerHourApplied,
-                AmountDue = bill.AmountDue, Status = bill.Status, PaidAhead = bill.PaidAhead, PaidAt = bill.PaidAt,
+                AmountDue = bill.AmountDue, CoversFrom = bill.CoversFrom, CoversTo = bill.CoversTo,
+                Status = bill.Status, PaidAhead = bill.PaidAhead, PaidAt = bill.PaidAt,
                 Method = bill.Method, Provider = bill.Provider, CreatedAt = bill.CreatedAt
             }
         ]

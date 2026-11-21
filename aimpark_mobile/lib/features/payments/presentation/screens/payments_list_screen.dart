@@ -437,6 +437,14 @@ class _PaymentRow extends StatelessWidget {
     if (payment.isViolation) {
       return 'Issued ${Formatters.dateShort(payment.createdAt.toLocal())}';
     }
+    // A bill that knows what stretch of the visit it pays for says so.
+    final from = payment.coversFrom, to = payment.coversTo;
+    if (from != null && to != null) {
+      return '${Formatters.dateShort(from.toLocal())} · covers '
+          '${Formatters.time(from)}–${Formatters.time(to)} · '
+          '${payment.durationMinutes} min';
+    }
+
     final entry = payment.entryTime?.toLocal();
     if (entry == null) return Formatters.date(payment.createdAt.toLocal());
 
@@ -484,7 +492,13 @@ class _PaymentRow extends StatelessWidget {
       ),
       title: isViolation
           ? 'Violation fine'
-          : 'Parking fee',
+          : payment.coversFrom == null
+              ? 'Parking fee'
+              : payment.includesFirstHour
+                  ? (payment.durationMinutes > 60
+                      ? 'First hour + per minute'
+                      : 'First hour')
+                  : 'Per-minute time',
       subtitle: _when,
       // The status sits under the name beside the deadline, not pinned to the far
       // end of the row: a badge there cannot shrink, and at a large text size it

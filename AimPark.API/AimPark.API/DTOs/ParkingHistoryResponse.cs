@@ -152,17 +152,8 @@ namespace AimPark.API.DTOs
 
         public decimal RatePerHour { get; set; }
 
-        /// <summary>The least a stay costs once anything is charged.</summary>
-        public decimal MinimumFee { get; set; }
-
         /// <summary>What the whole stay would cost if the driver left now.</summary>
         public decimal TotalSoFar { get; set; }
-
-        /// <summary>
-        /// Minutes × rate, before the minimum. Equal to <see cref="TotalSoFar"/>
-        /// unless the minimum raised it. The app shows it as the working.
-        /// </summary>
-        public decimal MeteredSoFar { get; set; }
 
         /// <summary>Paid or waived already for this session.</summary>
         public decimal AlreadyPaid { get; set; }
@@ -173,7 +164,7 @@ namespace AimPark.API.DTOs
         /// <summary>A checkout for this session is open and the provider has not answered yet.</summary>
         public bool PaymentProcessing { get; set; }
 
-        /// <summary>Paid ahead: the barrier opens on a tap until this time. Null when not in that window.</summary>
+        /// <summary>Nothing owed: the barrier opens on a tap until this time. Null while something is owed.</summary>
         public DateTime? LeaveBy { get; set; }
 
         /// <summary>When <see cref="TotalSoFar"/> next goes up. Null when it never will (no rate set).</summary>
@@ -181,5 +172,56 @@ namespace AimPark.API.DTOs
 
         /// <summary>What <see cref="TotalSoFar"/> goes up to at <see cref="NextChangeAt"/>.</summary>
         public decimal? NextTotal { get; set; }
+
+        /// <summary>Set when the visit is over; then everything is priced at this time.</summary>
+        public DateTime? ExitTime { get; set; }
+
+        public DateTime FirstHourEndsAt { get; set; }
+
+        /// <summary>The latest grace's end, if any payment was made.</summary>
+        public DateTime? GraceUntil { get; set; }
+
+        /// <summary>Free, FirstHour, Running or Paused.</summary>
+        public string MeterState { get; set; } = "FirstHour";
+
+        /// <summary>The visit in time order: first hour, per-minute runs, grace pauses.</summary>
+        public List<FeeSegmentResponse> Segments { get; set; } = [];
+
+        /// <summary>Settled bills, oldest first.</summary>
+        public List<FeePaymentResponse> Payments { get; set; } = [];
+
+        /// <summary>
+        /// False for an old finished visit whose bills were worked out under the
+        /// previous rules: the app then shows the bills and hides the timeline.
+        /// </summary>
+        public bool BreakdownMatchesBills { get; set; } = true;
+
+        /// <summary>
+        /// What this visit's bills come to, paid or not. For an old visit priced
+        /// under the earlier rules this, not <see cref="TotalSoFar"/>, is its total.
+        /// </summary>
+        public decimal BilledTotal { get; set; }
+    }
+
+    /// <summary>One stretch of a visit and what it cost.</summary>
+    public class FeeSegmentResponse
+    {
+        /// <summary>FirstHour, PerMinute or Grace.</summary>
+        public string Kind { get; set; } = string.Empty;
+        public DateTime From { get; set; }
+        public DateTime To { get; set; }
+        public int Minutes { get; set; }
+        public decimal Amount { get; set; }
+    }
+
+    /// <summary>A settled bill on a visit, and the stretch it paid for.</summary>
+    public class FeePaymentResponse
+    {
+        public Guid PaymentId { get; set; }
+        public decimal Amount { get; set; }
+        public DateTime? PaidAt { get; set; }
+        public string? Method { get; set; }
+        public DateTime? CoversFrom { get; set; }
+        public DateTime? CoversTo { get; set; }
     }
 }

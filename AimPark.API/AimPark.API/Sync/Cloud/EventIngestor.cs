@@ -197,16 +197,20 @@ namespace AimPark.API.Sync.Cloud
                 return false;
 
             // Paid ahead from the app but not before the driver reached the gate:
-            // the site held them for it and priced it up to the tap.
-            if (existing.PaidAhead && !incoming.PaidAhead)
-            {
+            // the site held them for it and priced it up to the tap. The site also
+            // prices an open bill again at every later tap; the newer pricing (the
+            // later CoversTo) is the one the app must charge.
+            var flipped = existing.PaidAhead && !incoming.PaidAhead;
+            if (flipped)
                 existing.PaidAhead = false;
-                if (existing.Status == PaymentStatus.Pending)
-                {
-                    existing.DurationMinutes = incoming.DurationMinutes;
-                    existing.RatePerHourApplied = incoming.RatePerHourApplied;
-                    existing.AmountDue = incoming.AmountDue;
-                }
+            var newer = (incoming.CoversTo ?? DateTime.MinValue) > (existing.CoversTo ?? DateTime.MinValue);
+            if (existing.Status == PaymentStatus.Pending && (flipped || newer))
+            {
+                existing.DurationMinutes = incoming.DurationMinutes;
+                existing.RatePerHourApplied = incoming.RatePerHourApplied;
+                existing.AmountDue = incoming.AmountDue;
+                existing.CoversFrom = incoming.CoversFrom;
+                existing.CoversTo = incoming.CoversTo;
             }
 
             if (incoming.Status == PaymentStatus.Paid)

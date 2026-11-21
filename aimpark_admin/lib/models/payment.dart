@@ -50,14 +50,14 @@ class PaymentTransaction {
     this.referenceNumber,
     this.provider,
     this.confirmedBy,
+    this.coversFrom,
+    this.coversTo,
   });
 
-  /// True when the bill is the parking minimum rather than time x rate: a
-  /// 1 minute stay at 15/hr still costs the 20 minimum. Violation fines have no
-  /// rate, so they never count.
-  bool get minimumFeeApplied =>
-      ratePerHourApplied > 0 &&
-      amountDue > ratePerHourApplied / 60 * durationMinutes + 0.005;
+  /// The stretch of the visit this bill pays for. Null on fines and on bills
+  /// made before the first-hour rule.
+  final DateTime? coversFrom;
+  final DateTime? coversTo;
 
   factory PaymentTransaction.fromJson(Map<String, dynamic> json) =>
       PaymentTransaction(
@@ -77,6 +77,12 @@ class PaymentTransaction {
         amountDue: (json['amountDue'] as num?)?.toDouble() ?? 0,
         status: json['status']?.toString() ?? '',
         createdAt: DateTime.parse(json['createdAt'].toString()),
+        coversFrom: json['coversFrom'] == null
+            ? null
+            : DateTime.parse(json['coversFrom'].toString()),
+        coversTo: json['coversTo'] == null
+            ? null
+            : DateTime.parse(json['coversTo'].toString()),
         paidAt: json['paidAt'] == null
             ? null
             : DateTime.parse(json['paidAt'].toString()),

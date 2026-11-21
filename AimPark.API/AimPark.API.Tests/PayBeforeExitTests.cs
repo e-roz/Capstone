@@ -107,18 +107,29 @@ public class PayBeforeExitTests
     }
 
     [Fact]
-    public async Task Tapping_again_before_paying_does_not_raise_a_second_bill_or_change_the_amount()
+    public async Task Tapping_again_before_paying_reprices_the_same_bill()
     {
         var g = await GateAsync();
         await Tap(g);
 
-        // Time passes, and the rate would now give a bigger number.
-        g.Db.Set<ParkingLog>().Single().EntryTime = DateTime.UtcNow.AddHours(-5);
+        // Just under five hours in (300 charged minutes): ₱30 first hour + 240 min × ₱0.50.
+        // Half a minute off the boundary, so the milliseconds the tap takes don't start minute 301.
+        g.Db.Set<ParkingLog>().Single().EntryTime = DateTime.UtcNow.AddHours(-5).AddSeconds(30);
         await g.Db.SaveChangesAsync();
         var second = await Tap(g);
 
         Assert.Equal(402, Status(second));
-        Assert.Equal(60m, OnlyBill(g).AmountDue);
+        Assert.Equal(150m, OnlyBill(g).AmountDue);
+    }
+
+    [Fact]
+    public async Task Nothing_owed_at_the_exit_makes_no_zero_peso_bill()
+    {
+        var g = await GateAsync(ratePerHour: 0m);
+
+        await Tap(g);
+
+        Assert.Empty(g.Db.Set<PaymentTransaction>().AsNoTracking());
     }
 
     [Fact]
@@ -131,6 +142,45 @@ public class PayBeforeExitTests
         Assert.Equal(200, Status(result));
         Assert.Equal("EXIT_LOGGED", Result(result));
         Assert.NotNull(Session(g).ExitTime);
+    }
+
+    [Fact]
+    public async Task A_car_that_never_confirmed_a_bay_is_still_charged_the_car_rate()
+    {
+        var g = await GateAsync();
+        // Only a Car rate exists, and the visit has no bay: the bay can't say what it is.
+        g.Db.RemoveRange(g.Db.Set<ParkingRate>());
+        g.Db.Add(new ParkingRate { VehicleType = VehicleType.Car, RatePerHour = 20m });
+        var log = g.Db.Set<ParkingLog>().Single();
+        log.SlotId = null;
+        log.VehicleType = VehicleType.Car;
+        await g.Db.SaveChangesAsync();
+
+        var result = await Tap(g);
+
+        Assert.Equal(402, Status(result));
+        // 119.5 min parked = 120 charged: ₱20 first hour + 60 min × ₱20/60.
+        Assert.Equal(40m, OnlyBill(g).AmountDue);
+    }
+
+    [Fact]
+    public async Task A_checkout_already_open_is_not_repriced_only_the_time_after_it_is_billed()
+    {
+        var g = await GateAsync();
+        await Tap(g); // ₱60 bill, Pending
+        var tracked = g.Db.Set<PaymentTransaction>().Single();
+        tracked.Status = PaymentStatus.Processing; // driver opened GCash
+        g.Db.Set<ParkingLog>().Single().EntryTime = DateTime.UtcNow.AddMinutes(-179).AddSeconds(-30);
+        await g.Db.SaveChangesAsync();
+
+        var second = await Tap(g);
+
+        Assert.Equal(402, Status(second));
+        var bills = g.Db.Set<PaymentTransaction>().AsNoTracking().OrderBy(p => p.CreatedAt).ToList();
+        Assert.Equal(2, bills.Count);
+        Assert.Equal(60m, bills[0].AmountDue);              // untouched
+        Assert.Equal(PaymentStatus.Processing, bills[0].Status);
+        Assert.Equal(30m, bills[1].AmountDue);              // the extra hour
     }
 
     [Fact]
@@ -192,6 +242,30 @@ public class PayBeforeExitTests
 
         Assert.Equal(200, Status(result));
         Assert.NotNull(Session(g).ExitTime);
+    }
+
+    [Fact]
+    public async Task At_the_site_a_gate_bill_paid_in_the_app_opens_the_barrier_minutes_later()
+    {
+        var g = await GateAsync(site: true);
+        await Tap(g);
+        var billId = OnlyBill(g).Id;
+        g.Dues.Set(new SiteSnapshot { GeneratedAt = DateTime.UtcNow, Dues = [], SettledPaymentIds = [billId] });
+
+        // Three minutes pass (walking to the car) before the next tap.
+        var log = g.Db.Set<ParkingLog>().Single();
+        log.EntryTime = log.EntryTime.AddMinutes(-3);
+        var bill = g.Db.Set<PaymentTransaction>().Single();
+        bill.CreatedAt = bill.CreatedAt.AddMinutes(-3);
+        bill.CoversFrom = bill.CoversFrom!.Value.AddMinutes(-3);
+        bill.CoversTo = bill.CoversTo!.Value.AddMinutes(-3);
+        await g.Db.SaveChangesAsync();
+
+        var result = await Tap(g);
+
+        Assert.Equal(200, Status(result));
+        Assert.NotNull(Session(g).ExitTime);
+        Assert.Equal(billId, OnlyBill(g).Id);
     }
 
     [Fact]

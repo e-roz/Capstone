@@ -92,6 +92,21 @@ namespace AimPark.API.Sync.Site
                     bill.ProviderPaymentId = source.ProviderPaymentId;
                     bill.ReferenceNumber = source.ReferenceNumber;
                     bill.ConfirmedByUserId = source.ConfirmedByUserId;
+                    // What the cloud charged, for what time: the gate's own copy
+                    // may have been priced again at a later tap.
+                    CopyPrice(source, bill);
+                }
+                else if (source.Status == PaymentStatus.Processing)
+                {
+                    // Being paid in the app right now: the gate must not price it again.
+                    bill.Status = PaymentStatus.Processing;
+                    bill.CheckoutStartedAt = source.CheckoutStartedAt;
+                    CopyPrice(source, bill);
+                }
+                else if (bill.Status == PaymentStatus.Processing)
+                {
+                    // The checkout was left unpaid in the app; it is an open bill again.
+                    bill.Status = source.Status;
                 }
                 else if (bill.PaidAhead)
                 {
@@ -99,11 +114,22 @@ namespace AimPark.API.Sync.Site
                     bill.DurationMinutes = source.DurationMinutes;
                     bill.RatePerHourApplied = source.RatePerHourApplied;
                     bill.AmountDue = source.AmountDue;
+                    bill.CoversFrom = source.CoversFrom;
+                    bill.CoversTo = source.CoversTo;
                     bill.CheckoutStartedAt = source.CheckoutStartedAt;
                 }
             }
 
             await _db.SaveChangesAsync(ct);
+        }
+
+        private static void CopyPrice(PaymentTransaction source, PaymentTransaction bill)
+        {
+            bill.AmountDue = source.AmountDue;
+            bill.DurationMinutes = source.DurationMinutes;
+            bill.RatePerHourApplied = source.RatePerHourApplied;
+            bill.CoversFrom = source.CoversFrom;
+            bill.CoversTo = source.CoversTo;
         }
 
         private async Task ApplyWrongBayFlagsAsync(List<WrongBayFlag> flags, CancellationToken ct)
