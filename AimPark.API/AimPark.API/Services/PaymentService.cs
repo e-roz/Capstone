@@ -288,6 +288,9 @@ namespace AimPark.API.Services
             if (payment.Status == PaymentStatus.Waived)
                 return new BadRequestObjectResult(new { message = "This bill was waived. There is nothing to pay." });
 
+            // A visit still in progress keeps costing: price its bill up to now.
+            payment = await RepriceIfOpenAsync(payment, ct);
+
             // Processing is allowed through, and on purpose. Someone who opened
             // the checkout and closed it without paying is left holding a bill
             // they cannot retry, and the alternative — waiting for the old
@@ -334,6 +337,26 @@ namespace AimPark.API.Services
             });
         }
 
+        /// <summary>
+        /// A Pending parking bill for a visit still in progress is priced again
+        /// right before it is paid, so it never charges an old amount.
+        /// </summary>
+        private async Task<PaymentTransaction> RepriceIfOpenAsync(PaymentTransaction bill, CancellationToken ct)
+        {
+            if (bill.Source != PaymentSource.ParkingFee || bill.Status != PaymentStatus.Pending
+                || bill.ParkingLogId is not Guid logId)
+                return bill;
+
+            var log = await _db.Set<ParkingLog>().FirstOrDefaultAsync(l => l.Id == logId, ct);
+            if (log is null || log.ExitTime is not null || log.UserId is null)
+                return bill;
+
+            var pricing = new VisitPricing(_db, this, new DbEntryDues(_db), _grace);
+            var price = await pricing.PriceAsync(log, DateTime.UtcNow, ct);
+            var billed = await BillOwedAsync(log, price, bill.PaidAhead, ct);
+            return billed?.Bill ?? bill;
+        }
+
         // POST /api/payments/checkout-all — "Pay all"
         //
         // The server decides which bills those are and what they total; the phone
@@ -352,6 +375,10 @@ namespace AimPark.API.Services
                     ct))
                 .OrderBy(p => p.CreatedAt)
                 .ToList();
+
+            // A visit still in progress keeps costing: price its bill up to now.
+            for (var i = 0; i < bills.Count; i++)
+                bills[i] = await RepriceIfOpenAsync(bills[i], ct);
 
             if (bills.Count == 0)
             {

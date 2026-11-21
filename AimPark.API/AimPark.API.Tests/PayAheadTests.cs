@@ -200,6 +200,21 @@ public class PayAheadTests
         Assert.Equal(l.Log.EntryTime.AddMinutes(60), price.UnpaidFrom);
     }
 
+    [Fact]
+    public async Task Starting_a_checkout_prices_the_bill_up_to_that_moment()
+    {
+        var l = await LotAsync();
+        await PayAhead(l); // ₱60 at two hours
+        l.Db.Set<ParkingLog>().Single().EntryTime = DateTime.UtcNow.AddMinutes(-179).AddSeconds(-30);
+        await l.Db.SaveChangesAsync();
+        var bill = Bills(l).Single();
+
+        // The test gateway cannot open a checkout; the bill is priced before it is asked.
+        await l.Payments.StartCheckoutAsync(l.User.Id, bill.Id, default);
+
+        Assert.Equal(90m, Bills(l).Single().AmountDue);
+    }
+
     // ── At the gate ────────────────────────────────────────────────────────
 
     [Fact]
