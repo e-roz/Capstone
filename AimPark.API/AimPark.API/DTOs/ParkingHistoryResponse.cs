@@ -195,6 +195,12 @@ namespace AimPark.API.DTOs
         /// previous rules: the app then shows the bills and hides the timeline.
         /// </summary>
         public bool BreakdownMatchesBills { get; set; } = true;
+
+        /// <summary>
+        /// What this visit's bills come to, paid or not. For an old visit priced
+        /// under the earlier rules this, not <see cref="TotalSoFar"/>, is its total.
+        /// </summary>
+        public decimal BilledTotal { get; set; }
     }
 
     /// <summary>One stretch of a visit and what it cost.</summary>

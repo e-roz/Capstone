@@ -88,8 +88,15 @@ namespace AimPark.API.Sync.Cloud
                 .ToListAsync(ct);
 
             // Only the bill's own columns: the row is copied into the site's table.
+            // Bills paid ahead, and every bill of a visit still open that the
+            // cloud has settled or is taking payment for: the site gate prices
+            // the visit against what was really paid, and when.
             var paidAhead = await _db.Set<PaymentTransaction>().AsNoTracking()
-                .Where(p => p.PaidAhead && p.ParkingLog != null && p.ParkingLog.ExitTime == null)
+                .Where(p => p.ParkingLog != null && p.ParkingLog.ExitTime == null
+                            && (p.PaidAhead
+                                || p.Status == PaymentStatus.Paid
+                                || p.Status == PaymentStatus.Waived
+                                || p.Status == PaymentStatus.Processing))
                 .Select(p => new PaymentTransaction
                 {
                     Id = p.Id,

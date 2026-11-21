@@ -30,6 +30,12 @@ follow it, and four real bugs:
 4. **7-minute grace after each payment.** The meter pauses for 7 minutes after
    a payment is settled. Grace minutes are never charged. If the driver is still
    inside after the grace, the meter runs again from the end of the grace.
+4b. **The time a payment takes is free too** (owner's decision after review,
+   2026-11-21). The pause runs from the end of the time the bill was priced
+   for until 7 minutes after the money arrives, so a driver is never charged
+   for the seconds GCash or a guard's cash count takes. At most 15 minutes
+   before the payment count this way, so a checkout left open for hours does
+   not make those hours free.
 5. **Paying inside the first hour** covers the driver until whichever is later:
    the end of the first hour, or 7 minutes after paying. This falls out of
    rules 2 and 4; it needs no extra code.

@@ -1127,6 +1127,7 @@ namespace AimPark.API.Services
                 // An old finished visit was billed under the earlier rules: the app
                 // then shows its bills and not a timeline that would not add up.
                 BreakdownMatchesBills = open || price.Bills.Sum(p => p.AmountDue) == b.Total,
+                BilledTotal = price.Bills.Sum(p => p.AmountDue),
             });
         }
 

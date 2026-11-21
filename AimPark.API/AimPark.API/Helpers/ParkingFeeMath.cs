@@ -5,6 +5,12 @@ namespace AimPark.API.Helpers
     /// <summary>What the meter is doing right now.</summary>
     public enum MeterState { Free, FirstHour, Running, Paused }
 
+    /// <summary>
+    /// A settled payment as the meter sees it: the bill was priced up to
+    /// <see cref="PricedTo"/> and the money arrived at <see cref="PaidAt"/>.
+    /// </summary>
+    public sealed record SettledPayment(DateTime PricedTo, DateTime PaidAt);
+
     /// <summary>One stretch of a visit and what it costs. Grace stretches cost nothing.</summary>
     public sealed record FeeSegment(FeeSegmentKind Kind, DateTime From, DateTime To, int Minutes, decimal Amount);
 
@@ -41,12 +47,19 @@ namespace AimPark.API.Helpers
     /// </summary>
     /// <remarks>
     /// First hour: one hour's rate, flat, from the first second. After minute 60
-    /// every started minute costs rate ÷ 60. After each settled payment the meter
-    /// pauses for the grace (7 minutes), and grace minutes are never charged.
+    /// every started minute costs rate ÷ 60. For each settled payment the meter
+    /// pauses from the end of what its bill was priced to until the grace
+    /// (7 minutes) after the money arrived, and paused minutes are never
+    /// charged. The time a payment takes to go through is free that way, but
+    /// never more than <see cref="MaxPaymentDelayMinutes"/> of it: a checkout
+    /// left open for hours does not make those hours free.
     /// </remarks>
     public static class ParkingFeeMath
     {
         public const int FirstHourMinutes = 60;
+
+        /// <summary>At most this much time before a payment counts as it going through.</summary>
+        public const int MaxPaymentDelayMinutes = 15;
 
         /// <summary>
         /// The minute <paramref name="at"/> falls in, counted from entry. A started
@@ -55,14 +68,14 @@ namespace AimPark.API.Helpers
         public static int ChargedMinutes(DateTime entry, DateTime at)
             => Math.Max(0, (int)Math.Ceiling((at - entry).TotalMinutes));
 
-        /// <param name="settledAt">When each settled payment was made. Each starts a grace pause.</param>
+        /// <param name="settled">Each settled payment. Each makes a pause (see remarks).</param>
         /// <param name="open">
         /// True while the car is inside: a grace still running is shown to its end.
         /// False for a finished visit: the last grace stops at the exit.
         /// </param>
         public static FeeBreakdown Breakdown(
             decimal ratePerHour, DateTime entry, DateTime at,
-            IReadOnlyList<DateTime> settledAt, int graceMinutes, bool open = true)
+            IReadOnlyList<SettledPayment> settled, int graceMinutes, bool open = true)
         {
             var firstHourEnd = entry.AddMinutes(FirstHourMinutes);
             var n = Math.Max(1, ChargedMinutes(entry, at));
@@ -73,12 +86,15 @@ namespace AimPark.API.Helpers
             // Minutes the meter is paused for, and the latest minute any grace reaches.
             var paused = new HashSet<int>();
             var graceEnd = 0;
-            foreach (var paidAt in settledAt)
+            foreach (var payment in settled)
             {
-                var k = ChargedMinutes(entry, paidAt);
-                for (var m = k + 1; m <= k + graceMinutes; m++)
+                var paid = ChargedMinutes(entry, payment.PaidAt);
+                var from = Math.Max(
+                    Math.Min(ChargedMinutes(entry, payment.PricedTo), paid),
+                    paid - MaxPaymentDelayMinutes);
+                for (var m = from + 1; m <= paid + graceMinutes; m++)
                     paused.Add(m);
-                graceEnd = Math.Max(graceEnd, k + graceMinutes);
+                graceEnd = Math.Max(graceEnd, paid + graceMinutes);
             }
 
             bool Chargeable(int m) => m > FirstHourMinutes && !paused.Contains(m);

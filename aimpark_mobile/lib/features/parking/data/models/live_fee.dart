@@ -27,6 +27,7 @@ class LiveFee {
     this.segments = const [],
     this.payments = const [],
     this.breakdownMatchesBills = true,
+    this.billedTotal,
   });
 
   /// The server's clock when this was priced.
@@ -73,6 +74,19 @@ class LiveFee {
 
   /// False for an old finished visit priced under the previous rules.
   final bool breakdownMatchesBills;
+
+  /// What this visit's bills come to, paid or not. Null from an older server.
+  final double? billedTotal;
+
+  /// The visit's total as charged: the bills, for an old visit priced under
+  /// the earlier rules; otherwise the server's total.
+  double get chargedTotal =>
+      breakdownMatchesBills ? totalSoFar : (billedTotal ?? totalSoFar);
+
+  /// Still to pay, on the same basis as [chargedTotal].
+  double get chargedOwed => breakdownMatchesBills
+      ? owedNow
+      : (chargedTotal - alreadyPaid).clamp(0, double.infinity).toDouble();
 
   DateTime get entryTime => firstHourEndsAt.subtract(const Duration(hours: 1));
 
@@ -132,6 +146,7 @@ class LiveFee {
         FeePayment.fromJson(p as Map<String, dynamic>),
     ],
     breakdownMatchesBills: json['breakdownMatchesBills'] as bool? ?? true,
+    billedTotal: (json['billedTotal'] as num?)?.toDouble(),
   );
 }
 

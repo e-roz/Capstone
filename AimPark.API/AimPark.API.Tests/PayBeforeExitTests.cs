@@ -244,6 +244,30 @@ public class PayBeforeExitTests
     }
 
     [Fact]
+    public async Task At_the_site_a_gate_bill_paid_in_the_app_opens_the_barrier_minutes_later()
+    {
+        var g = await GateAsync(site: true);
+        await Tap(g);
+        var billId = OnlyBill(g).Id;
+        g.Dues.Set(new SiteSnapshot { GeneratedAt = DateTime.UtcNow, Dues = [], SettledPaymentIds = [billId] });
+
+        // Three minutes pass (walking to the car) before the next tap.
+        var log = g.Db.Set<ParkingLog>().Single();
+        log.EntryTime = log.EntryTime.AddMinutes(-3);
+        var bill = g.Db.Set<PaymentTransaction>().Single();
+        bill.CreatedAt = bill.CreatedAt.AddMinutes(-3);
+        bill.CoversFrom = bill.CoversFrom!.Value.AddMinutes(-3);
+        bill.CoversTo = bill.CoversTo!.Value.AddMinutes(-3);
+        await g.Db.SaveChangesAsync();
+
+        var result = await Tap(g);
+
+        Assert.Equal(200, Status(result));
+        Assert.NotNull(Session(g).ExitTime);
+        Assert.Equal(billId, OnlyBill(g).Id);
+    }
+
+    [Fact]
     public async Task A_driver_let_out_still_owing_leaves_but_stays_blocked_from_entering()
     {
         var g = await GateAsync();

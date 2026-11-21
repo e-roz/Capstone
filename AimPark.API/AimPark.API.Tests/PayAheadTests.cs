@@ -215,6 +215,39 @@ public class PayAheadTests
         Assert.Equal(90m, Bills(l).Single().AmountDue);
     }
 
+    [Fact]
+    public async Task A_bill_covers_whole_minutes()
+    {
+        var l = await LotAsync();
+
+        await PayAhead(l);
+
+        // 119.5 minutes parked is 120 charged minutes: the bill ends on the minute.
+        var bill = Bills(l).Single();
+        Assert.Equal(Session(l).EntryTime.AddMinutes(120), bill.CoversTo);
+        Assert.Equal(120, bill.DurationMinutes);
+    }
+
+    [Fact]
+    public async Task An_old_visit_shows_what_its_bills_came_to()
+    {
+        var l = await LotAsync();
+        var log = l.Db.Set<ParkingLog>().Single();
+        log.ExitTime = DateTime.UtcNow;
+        l.Db.Add(new PaymentTransaction
+        {
+            Id = Guid.NewGuid(), Source = PaymentSource.ParkingFee, ParkingLogId = l.Log.Id, UserId = l.User.Id,
+            DurationMinutes = 120, RatePerHourApplied = 31m, AmountDue = 62m, Status = PaymentStatus.Paid,
+            PaidAt = DateTime.UtcNow, CreatedAt = DateTime.UtcNow
+        });
+        await l.Db.SaveChangesAsync();
+
+        var fee = (LiveFeeResponse)((OkObjectResult)(await l.Parking.GetLiveFeeAsync(l.User.Id, l.Log.Id, default)).Result!).Value!;
+
+        Assert.False(fee.BreakdownMatchesBills);
+        Assert.Equal(62m, fee.BilledTotal);
+    }
+
     // ── At the gate ────────────────────────────────────────────────────────
 
     [Fact]
@@ -388,6 +421,29 @@ public class PayAheadTests
         Assert.False(EventIngestor.MergePayment(cloud, site));
         Assert.Equal(60m, cloud.AmountDue);
         Assert.Equal(PaymentStatus.Paid, cloud.Status);
+    }
+
+    [Fact]
+    public async Task At_the_site_a_snapshot_brings_the_amount_the_cloud_charged()
+    {
+        var l = await LotAsync(site: true);
+        await Tap(l); // the site's own gate bill, Pending
+        var local = Bills(l).Single();
+        var cloud = new PaymentTransaction
+        {
+            Id = local.Id, Source = local.Source, ParkingLogId = local.ParkingLogId, UserId = local.UserId,
+            DurationMinutes = 124, RatePerHourApplied = 30m, AmountDue = 62m, Status = PaymentStatus.Paid,
+            PaidAt = DateTime.UtcNow, CoversFrom = local.CoversFrom, CoversTo = local.CoversTo!.Value.AddMinutes(4),
+            Method = PaymentMethod.GCash, Provider = "Simulated", CreatedAt = local.CreatedAt
+        };
+
+        await new SnapshotApplier(l.Db, new SyncSuppression(), l.Dues).ApplyAsync(Snapshot(l, cloud), default);
+
+        var after = Bills(l).Single();
+        Assert.Equal(PaymentStatus.Paid, after.Status);
+        Assert.Equal(62m, after.AmountDue);
+        Assert.Equal(cloud.CoversTo, after.CoversTo);
+        Assert.NotNull(after.PaidAt);
     }
 
     private static SiteSnapshot Snapshot(Lot l, PaymentTransaction bill) => new()

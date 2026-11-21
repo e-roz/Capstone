@@ -76,7 +76,11 @@ class _VisitBody extends StatelessWidget {
       padding: kScreenListPadding,
       children: [
         AppFactsCard(
-          title: fee.owedNow <= 0 ? 'Paid in full' : 'Still to pay',
+          title: fee.chargedTotal <= 0
+              ? 'Nothing to pay'
+              : fee.chargedOwed <= 0
+              ? 'Paid in full'
+              : 'Still to pay',
           facts: [
             AppFact('Entered', _dateTime(fee.entryTime)),
             if (fee.exitTime != null)
@@ -87,16 +91,16 @@ class _VisitBody extends StatelessWidget {
               'Time parked',
               Formatters.duration(end.difference(fee.entryTime)),
             ),
-            if (fee.owedNow > 0)
+            if (fee.chargedOwed > 0)
               AppFact(
                 'Still to pay',
-                Formatters.peso(fee.owedNow),
+                Formatters.peso(fee.chargedOwed),
                 intent: StatusIntent.warning,
               ),
           ],
           total: AppFact(
             'Total for this visit',
-            Formatters.peso(fee.totalSoFar),
+            Formatters.peso(fee.chargedTotal),
           ),
         ),
         const SizedBox(height: AppSpacing.md),

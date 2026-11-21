@@ -82,8 +82,10 @@ namespace AimPark.API.Sync
         public List<Guid>? SettledPaymentIds { get; set; }
 
         /// <summary>
-        /// Bills a driver opened from the app while still parked, for sessions
-        /// still open. Unlike <see cref="Dues"/> these are copied into the site's
+        /// Bills of sessions still open that the site must price against: those a
+        /// driver opened from the app while parked, and any the cloud has settled
+        /// or is taking payment for (with the amount it charged and when). Unlike
+        /// <see cref="Dues"/> these are copied into the site's
         /// PaymentTransactions: the gate looks a session's bill up there, and
         /// without the copy it would raise a second one for a fee already paid.
         /// Null from an older cloud.

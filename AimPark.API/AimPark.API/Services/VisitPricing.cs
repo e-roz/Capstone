@@ -78,7 +78,9 @@ namespace AimPark.API.Services
 
             var breakdown = ParkingFeeMath.Breakdown(
                 rate, log.EntryTime, at,
-                settled.Select(b => b.PaidAt ?? b.CreatedAt).ToList(),
+                settled.Select(b => new SettledPayment(
+                    b.CoversTo ?? b.PaidAt ?? b.CreatedAt,
+                    b.PaidAt ?? b.CreatedAt)).ToList(),
                 _graceMinutes, open: log.ExitTime is null);
 
             var settledSum = settled.Sum(b => b.AmountDue);

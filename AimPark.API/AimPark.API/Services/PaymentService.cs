@@ -60,24 +60,27 @@ namespace AimPark.API.Services
                         && (p.Status == PaymentStatus.Pending || p.Status == PaymentStatus.Processing))
                     .OrderByDescending(p => p.CreatedAt)
                     .ToListAsync(ct))
-                .Where(p => !settledIds.Contains(p.Id) && !ExitPayment.IsReleased(p))
+                .Where(p => !settledIds.Contains(p.Id))
                 .ToList();
 
-            // A checkout already open carries its own amount; only time past it
-            // goes on a bill of its own.
-            var inFlight = open.Where(p => p.Status == PaymentStatus.Processing).ToList();
-            var toBill = price.OwedNow - inFlight.Sum(p => p.AmountDue);
+            // Bills that keep their amount: a checkout already open, and a bill a
+            // guard let the driver out on (still owed as it stands). Only time
+            // past them goes on a bill of its own.
+            var held = open.Where(p => p.Status == PaymentStatus.Processing || ExitPayment.IsReleased(p)).ToList();
+            var toBill = price.OwedNow - held.Sum(p => p.AmountDue);
             if (toBill <= 0m)
-                return new BillResult(inFlight[0], false, inFlight[0].PaidAhead);
+                return new BillResult(held[0], false, held[0].PaidAhead);
 
-            var coversFrom = inFlight.Count > 0
-                ? inFlight.Max(p => p.CoversTo ?? p.CreatedAt)
+            var coversFrom = held.Count > 0
+                ? held.Max(p => p.CoversTo ?? p.CreatedAt)
                 : price.UnpaidFrom;
-            // A bill paid inside the first hour covers the whole first hour.
-            var coversTo = price.At < price.Breakdown.FirstHourEndsAt ? price.Breakdown.FirstHourEndsAt : price.At;
+            // To the end of the charged minute, so the bill's minutes and its
+            // amount agree. A bill paid inside the first hour covers all of it.
+            var pricedTo = log.EntryTime.AddMinutes(price.Breakdown.ChargedMinutes);
+            var coversTo = pricedTo < price.Breakdown.FirstHourEndsAt ? price.Breakdown.FirstHourEndsAt : pricedTo;
             var minutes = price.Breakdown.ChargeableMinutesBetween(coversFrom, coversTo);
 
-            var pending = open.FirstOrDefault(p => p.Status == PaymentStatus.Pending);
+            var pending = open.FirstOrDefault(p => p.Status == PaymentStatus.Pending && !ExitPayment.IsReleased(p));
             if (pending is not null)
             {
                 var wasAhead = pending.PaidAhead;
@@ -168,6 +171,16 @@ namespace AimPark.API.Services
         {
             if (log.UserId is null)
                 throw new InvalidOperationException("A visitor session has no account to bill.");
+
+            // A guard let this driver out on a bill that stays owed: that bill is
+            // the fee, and nothing more is added to it.
+            var settledIds = price.SettledBills.Select(b => b.Id).ToHashSet();
+            var released = price.Bills
+                .Where(b => ExitPayment.IsReleased(b) && !settledIds.Contains(b.Id))
+                .OrderByDescending(b => b.CreatedAt)
+                .FirstOrDefault();
+            if (released is not null)
+                return released;
 
             var billed = await BillOwedAsync(log, price, paidAhead: false, ct);
             if (billed is null)
@@ -344,7 +357,7 @@ namespace AimPark.API.Services
         private async Task<PaymentTransaction> RepriceIfOpenAsync(PaymentTransaction bill, CancellationToken ct)
         {
             if (bill.Source != PaymentSource.ParkingFee || bill.Status != PaymentStatus.Pending
-                || bill.ParkingLogId is not Guid logId)
+                || ExitPayment.IsReleased(bill) || bill.ParkingLogId is not Guid logId)
                 return bill;
 
             var log = await _db.Set<ParkingLog>().FirstOrDefaultAsync(l => l.Id == logId, ct);

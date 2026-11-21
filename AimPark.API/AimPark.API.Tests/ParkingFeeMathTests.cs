@@ -16,7 +16,8 @@ public class ParkingFeeMathTests
     private static DateTime At(double minutes) => Entry.AddMinutes(minutes);
 
     private static FeeBreakdown Price(double atMinutes, params double[] paidAtMinutes) =>
-        ParkingFeeMath.Breakdown(Car, Entry, At(atMinutes), paidAtMinutes.Select(At).ToList(), Grace);
+        ParkingFeeMath.Breakdown(Car, Entry, At(atMinutes),
+            paidAtMinutes.Select(m => new SettledPayment(At(m), At(m))).ToList(), Grace);
 
     [Theory]
     [InlineData(1, 1)]      // one second in is a started minute
@@ -138,7 +139,9 @@ public class ParkingFeeMathTests
     public void A_closed_visit_ends_its_last_grace_at_the_exit()
     {
         // Paid 3:53, left 3:55: the grace shows as 3:53–3:55, not to 4:00.
-        var b = ParkingFeeMath.Breakdown(Car, Entry, At(173), [At(39), At(150), At(171)], Grace, open: false);
+        var b = ParkingFeeMath.Breakdown(Car, Entry, At(173),
+            [new SettledPayment(At(39), At(39)), new SettledPayment(At(150), At(150)), new SettledPayment(At(171), At(171))],
+            Grace, open: false);
 
         Assert.Equal(new FeeSegment(FeeSegmentKind.Grace, At(171), At(173), 2, 0m), b.Segments[^1]);
         Assert.Null(b.NextChangeAt);
@@ -151,5 +154,31 @@ public class ParkingFeeMathTests
 
         Assert.Equal(14, b.ChargeableMinutesBetween(At(150), At(171)));
         Assert.Equal(60, b.ChargeableMinutesBetween(Entry, At(60)));
+    }
+
+    [Fact]
+    public void Time_between_pricing_a_bill_and_paying_it_is_free()
+    {
+        // Priced to 3:32, the payment went through at 3:34:12: the meter is
+        // paused from 3:32 until 7 minutes after the payment, 3:42.
+        var b = ParkingFeeMath.Breakdown(Car, Entry, At(158),
+            [new SettledPayment(At(60), At(39)), new SettledPayment(At(150), At(152.2))], Grace);
+
+        Assert.Equal(50m, b.Total);
+        Assert.Equal(At(160), b.GraceUntil);
+        Assert.Equal(new FeeSegment(FeeSegmentKind.Grace, At(150), At(160), 10, 0m), b.Segments[^1]);
+    }
+
+    [Fact]
+    public void A_payment_that_took_hours_does_not_make_those_hours_free()
+    {
+        // A checkout opened at 2:02 and only paid at 5:02: at most 15 minutes
+        // before the payment count as the payment going through.
+        var b = ParkingFeeMath.Breakdown(Car, Entry, At(242),
+            [new SettledPayment(At(60), At(60)), new SettledPayment(At(61), At(240))], Grace);
+
+        // Paused 61–67 (first payment) and 226–247 (15 minutes before the
+        // second payment, then its grace). Charged: 68–225, 158 minutes.
+        Assert.Equal(72.67m, b.Total);
     }
 }
