@@ -25,7 +25,7 @@ public class PayAheadTests
     private const string Tag = "04A2B3C4";
     private static readonly Guid Device = Guid.NewGuid();
 
-    private sealed record Lot(AppDbContext Db, ParkingHistoryService Parking, User User, ParkingLog Log, SiteDues Dues, Notices Notices);
+    private sealed record Lot(AppDbContext Db, ParkingHistoryService Parking, User User, ParkingLog Log, SiteDues Dues, Notices Notices, PaymentService Payments);
 
     private static AppDbContext NewDb() => new(new DbContextOptionsBuilder<AppDbContext>()
         .UseInMemoryDatabase(Guid.NewGuid().ToString())
@@ -60,9 +60,9 @@ public class PayAheadTests
         var parking = new ParkingHistoryService(
             new Repository<ParkingLog>(db), new Repository<ParkingSlot>(db),
             payments, allocationService: null!, notices, db, new NoSlotSensors(), entryDues,
-            Options.Create(new GateOptions { PaidExitGraceMinutes = 15 }));
+            Options.Create(new GateOptions { PaidExitGraceMinutes = 7 }));
 
-        return new Lot(db, parking, user, log, dues, notices);
+        return new Lot(db, parking, user, log, dues, notices, payments);
     }
 
     private static async Task<PayAheadResponse> PayAhead(Lot l)
@@ -175,6 +175,29 @@ public class PayAheadTests
         var result = await l.Parking.PayAheadAsync(Guid.NewGuid(), l.Log.Id, default);
 
         Assert.IsType<NotFoundObjectResult>(result.Result);
+    }
+
+    [Fact]
+    public async Task A_bill_from_before_the_change_still_covers_the_first_hour()
+    {
+        var l = await LotAsync();
+        // Paid ₱30 forty minutes in, before bills had CoversTo.
+        var paidAt = l.Log.EntryTime.AddMinutes(40);
+        l.Db.Add(new PaymentTransaction
+        {
+            Id = Guid.NewGuid(), Source = PaymentSource.ParkingFee, ParkingLogId = l.Log.Id, UserId = l.User.Id,
+            DurationMinutes = 40, RatePerHourApplied = 30m, AmountDue = 30m, Status = PaymentStatus.Paid,
+            PaidAhead = true, PaidAt = paidAt, CreatedAt = paidAt
+        });
+        await l.Db.SaveChangesAsync();
+        var pricing = new VisitPricing(l.Db, l.Payments, new DbEntryDues(l.Db), TimeSpan.FromMinutes(7));
+
+        var price = await pricing.PriceAsync(l.Log, DateTime.UtcNow, default);
+
+        // 120 charged minutes at ₱30/hr: ₱30 + 60 × ₱0.50 = ₱60. ₱30 paid.
+        Assert.Equal(60m, price.Breakdown.Total);
+        Assert.Equal(30m, price.OwedNow);
+        Assert.Equal(l.Log.EntryTime.AddMinutes(60), price.UnpaidFrom);
     }
 
     // ── At the gate ────────────────────────────────────────────────────────

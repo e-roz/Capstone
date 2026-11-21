@@ -153,6 +153,26 @@ public class PayBeforeExitTests
     }
 
     [Fact]
+    public async Task A_checkout_already_open_is_not_repriced_only_the_time_after_it_is_billed()
+    {
+        var g = await GateAsync();
+        await Tap(g); // ₱60 bill, Pending
+        var tracked = g.Db.Set<PaymentTransaction>().Single();
+        tracked.Status = PaymentStatus.Processing; // driver opened GCash
+        g.Db.Set<ParkingLog>().Single().EntryTime = DateTime.UtcNow.AddMinutes(-179).AddSeconds(-30);
+        await g.Db.SaveChangesAsync();
+
+        var second = await Tap(g);
+
+        Assert.Equal(402, Status(second));
+        var bills = g.Db.Set<PaymentTransaction>().AsNoTracking().OrderBy(p => p.CreatedAt).ToList();
+        Assert.Equal(2, bills.Count);
+        Assert.Equal(60m, bills[0].AmountDue);              // untouched
+        Assert.Equal(PaymentStatus.Processing, bills[0].Status);
+        Assert.Equal(30m, bills[1].AmountDue);              // the extra hour
+    }
+
+    [Fact]
     public async Task A_guard_logging_the_exit_by_hand_is_not_held()
     {
         var g = await GateAsync();

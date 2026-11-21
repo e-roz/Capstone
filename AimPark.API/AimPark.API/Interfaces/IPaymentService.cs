@@ -1,11 +1,20 @@
 using AimPark.API.DTOs;
 using AimPark.API.Entities;
+using AimPark.API.Services;
 using Microsoft.AspNetCore.Mvc;
 
 namespace AimPark.API.Interfaces
 {
     public interface IPaymentService
     {
+        /// <summary>
+        /// Bills what <paramref name="price"/> says is owed now. Re-prices the open
+        /// Pending bill if there is one, or makes a new one. A checkout already
+        /// Processing is never re-priced; only time beyond it is billed. Null
+        /// when nothing is owed: no ₱0 bills.
+        /// </summary>
+        Task<BillResult?> BillOwedAsync(ParkingLog log, VisitPrice price, bool paidAhead, CancellationToken ct);
+
         // Internal — called by ParkingHistoryService right after a session's ExitTime is recorded.
         Task<PaymentTransaction> CreateForCompletedLogAsync(ParkingLog log, CancellationToken ct);
 
@@ -109,6 +118,9 @@ namespace AimPark.API.Interfaces
         Task<ActionResult<object>> UpsertRateAsync(UpsertParkingRateDto dto, CancellationToken ct);
         Task<ActionResult<object>> DeleteRateAsync(Guid rateId, CancellationToken ct);
     }
+
+    /// <summary>A bill for what a visit owes now. <c>Created</c>: new, not re-priced.</summary>
+    public sealed record BillResult(PaymentTransaction Bill, bool Created, bool WasPaidAhead);
 
     /// <summary>The fee for one finished session.</summary>
     public record ParkingFeeQuote(int DurationMinutes, decimal RatePerHour, decimal AmountDue);

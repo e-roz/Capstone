@@ -1,4 +1,4 @@
-﻿using AimPark.API.Data;
+using AimPark.API.Data;
 using AimPark.API.DTOs;
 using AimPark.API.Entities;
 using AimPark.API.Enums;
@@ -45,6 +45,72 @@ namespace AimPark.API.Services
             _logger = logger;
             _grace = TimeSpan.FromMinutes(gate?.Value.PaidExitGraceMinutes ?? new GateOptions().PaidExitGraceMinutes);
             _graceMinutes = _grace.TotalMinutes;
+        }
+
+        public async Task<BillResult?> BillOwedAsync(ParkingLog log, VisitPrice price, bool paidAhead, CancellationToken ct)
+        {
+            if (log.UserId is null)
+                throw new InvalidOperationException("A visitor session has no account to bill.");
+            if (price.OwedNow <= 0m)
+                return null;
+
+            var settledIds = price.SettledBills.Select(b => b.Id).ToHashSet();
+            var open = (await _db.Set<PaymentTransaction>()
+                    .Where(p => p.ParkingLogId == log.Id
+                        && (p.Status == PaymentStatus.Pending || p.Status == PaymentStatus.Processing))
+                    .OrderByDescending(p => p.CreatedAt)
+                    .ToListAsync(ct))
+                .Where(p => !settledIds.Contains(p.Id) && !ExitPayment.IsReleased(p))
+                .ToList();
+
+            // A checkout already open carries its own amount; only time past it
+            // goes on a bill of its own.
+            var inFlight = open.Where(p => p.Status == PaymentStatus.Processing).ToList();
+            var toBill = price.OwedNow - inFlight.Sum(p => p.AmountDue);
+            if (toBill <= 0m)
+                return new BillResult(inFlight[0], false, inFlight[0].PaidAhead);
+
+            var coversFrom = inFlight.Count > 0
+                ? inFlight.Max(p => p.CoversTo ?? p.CreatedAt)
+                : price.UnpaidFrom;
+            // A bill paid inside the first hour covers the whole first hour.
+            var coversTo = price.At < price.Breakdown.FirstHourEndsAt ? price.Breakdown.FirstHourEndsAt : price.At;
+            var minutes = price.Breakdown.ChargeableMinutesBetween(coversFrom, coversTo);
+
+            var pending = open.FirstOrDefault(p => p.Status == PaymentStatus.Pending);
+            if (pending is not null)
+            {
+                var wasAhead = pending.PaidAhead;
+                pending.AmountDue = toBill;
+                pending.DurationMinutes = minutes;
+                pending.RatePerHourApplied = price.RatePerHour;
+                pending.CoversFrom = coversFrom;
+                pending.CoversTo = coversTo;
+                // Once the gate has held a driver for it, it stays a gate bill.
+                pending.PaidAhead = pending.PaidAhead && paidAhead;
+                await _db.SaveChangesAsync(ct);
+                return new BillResult(pending, false, wasAhead);
+            }
+
+            var bill = new PaymentTransaction
+            {
+                Id = Guid.NewGuid(),
+                Source = PaymentSource.ParkingFee,
+                ParkingLogId = log.Id,
+                UserId = log.UserId.Value,
+                DurationMinutes = minutes,
+                RatePerHourApplied = price.RatePerHour,
+                AmountDue = toBill,
+                CoversFrom = coversFrom,
+                CoversTo = coversTo,
+                Status = PaymentStatus.Pending,
+                PaidAhead = paidAhead,
+                DueAt = null,
+                CreatedAt = DateTime.UtcNow
+            };
+            await _payments.AddAsync(bill, ct);
+            await _payments.SaveAsync(ct);
+            return new BillResult(bill, true, false);
         }
 
         // Called by ParkingHistoryService.LogExitAsync right after ExitTime is recorded.
