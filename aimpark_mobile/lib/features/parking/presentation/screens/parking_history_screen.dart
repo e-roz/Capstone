@@ -82,11 +82,10 @@ class ParkingHistoryScreen extends ConsumerWidget {
                     entry: log,
                     payment: billsById[log.paymentId],
                     plate: ParkingSessionRow.plateFor(log, allVehicles),
-                    onTap: log.paymentId == null
-                        ? null
-                        : () => context.push(
-                              '/home/user/payments/${log.paymentId}',
-                            ),
+                    // The visit, stretch by stretch, with its bills.
+                    onTap: () => context.push(
+                      '/home/user/parking/visits/${log.logId}',
+                    ),
                   ),
               ],
             ),
