@@ -3,74 +3,153 @@ using AimPark.API.Helpers;
 namespace AimPark.API.Tests;
 
 /// <summary>
-/// The arithmetic every bill and the app's live fee share. The live fee card
-/// refetches at <see cref="ParkingFeeMath.NextChange"/>, so if that is wrong
-/// the phone shows a stale amount.
+/// How a visit is priced: first hour flat, then per minute, with a free grace
+/// after each payment. Numbers follow the example on the design canvas: a car
+/// at ₱20/hr that entered at 1:02 PM.
 /// </summary>
 public class ParkingFeeMathTests
 {
-    private static readonly DateTime Entry = new(2026, 11, 17, 1, 0, 0, DateTimeKind.Utc);
+    private static readonly DateTime Entry = new(2026, 11, 19, 5, 2, 0, DateTimeKind.Utc); // 1:02 PM Manila
+    private const decimal Car = 20m;
+    private const int Grace = 7;
+
+    private static DateTime At(double minutes) => Entry.AddMinutes(minutes);
+
+    private static FeeBreakdown Price(double atMinutes, params double[] paidAtMinutes) =>
+        ParkingFeeMath.Breakdown(Car, Entry, At(atMinutes), paidAtMinutes.Select(At).ToList(), Grace);
 
     [Theory]
-    [InlineData(0, 0)]
     [InlineData(1, 1)]      // one second in is a started minute
     [InlineData(60, 1)]
     [InlineData(61, 2)]
-    [InlineData(80, 2)]
     public void A_started_minute_is_a_charged_minute(int seconds, int minutes)
         => Assert.Equal(minutes, ParkingFeeMath.ChargedMinutes(Entry, Entry.AddSeconds(seconds)));
 
+    [Theory]
+    [InlineData(1.0 / 60, 20)]   // one second
+    [InlineData(39, 20)]
+    [InlineData(60, 20)]         // exactly an hour
+    [InlineData(61, 20.33)]
+    [InlineData(150, 50)]        // 2:02–3:32 is 90 minutes: ₱30
+    public void First_hour_is_flat_then_per_minute(double atMinutes, double total)
+        => Assert.Equal((decimal)total, Price(atMinutes).Total);
+
     [Fact]
-    public void Leaving_before_entry_charges_nothing()
-        => Assert.Equal(0, ParkingFeeMath.ChargedMinutes(Entry, Entry.AddMinutes(-5)));
+    public void Inside_the_first_hour_the_next_change_is_when_it_ends()
+    {
+        var b = Price(39);
+
+        Assert.Equal(MeterState.FirstHour, b.State);
+        Assert.Equal(At(60), b.FirstHourEndsAt);
+        Assert.Equal(At(60), b.NextChangeAt);
+        Assert.Equal(20.33m, b.NextTotal);
+        var only = Assert.Single(b.Segments);
+        Assert.Equal(new FeeSegment(FeeSegmentKind.FirstHour, Entry, At(60), 60, 20m), only);
+    }
+
+    [Fact]
+    public void Paying_inside_the_first_hour_covers_to_its_end()
+    {
+        var b = Price(40, 39);
+
+        Assert.Equal(20m, b.Total);
+        Assert.Equal(At(46), b.GraceUntil);   // grace ends inside the first hour
+        Assert.Equal(At(60), b.NextChangeAt); // so the first hour's end is what counts
+    }
+
+    [Fact]
+    public void Past_the_first_hour_the_meter_runs_whether_paid_or_not()
+    {
+        var b = Price(150, 39);
+
+        Assert.Equal(50m, b.Total);
+        Assert.Equal(MeterState.Running, b.State);
+        Assert.Equal(90, b.PerMinuteMinutes);
+        Assert.Equal(
+            new[]
+            {
+                new FeeSegment(FeeSegmentKind.FirstHour, Entry, At(60), 60, 20m),
+                new FeeSegment(FeeSegmentKind.PerMinute, At(60), At(150), 90, 30m),
+            },
+            b.Segments);
+    }
+
+    [Fact]
+    public void After_paying_the_meter_pauses_for_seven_minutes()
+    {
+        var b = Price(152, 39, 150);
+
+        Assert.Equal(50m, b.Total);
+        Assert.Equal(MeterState.Paused, b.State);
+        Assert.Equal(At(157), b.GraceUntil);                   // 3:39 PM
+        Assert.Equal(At(157), b.NextChangeAt);
+        Assert.Equal(50.33m, b.NextTotal);
+        Assert.Equal(new FeeSegment(FeeSegmentKind.Grace, At(150), At(157), 7, 0m), b.Segments[^1]);
+    }
 
     [Theory]
-    [InlineData(0, 0)]       // nothing charged, so no minimum either
-    [InlineData(20, 20)]     // ₱5 metered, raised to the ₱20 floor
-    [InlineData(80, 20)]     // exactly ₱20 metered
-    [InlineData(81, 20.25)]  // past the floor, metered per minute
-    [InlineData(120, 30)]
-    public void Metered_per_minute_with_a_floor(int minutes, double expected)
-        => Assert.Equal((decimal)expected, ParkingFeeMath.Price(15m, 20m, minutes));
-
-    [Fact]
-    public void No_rate_means_no_fee_and_no_minimum()
-        => Assert.Equal(0m, ParkingFeeMath.Price(0m, 20m, 300));
-
-    [Fact]
-    public void Under_the_floor_the_next_change_is_when_metering_passes_it()
+    [InlineData(170, 54.33, 13, 4.33)]   // 3:52 PM, 13 minutes after the grace
+    [InlineData(171, 54.67, 14, 4.67)]   // 3:53 PM
+    public void Grace_minutes_are_never_charged(double at, double total, int lastMinutes, double lastAmount)
     {
-        // ₱15/h with a ₱20 floor: 80 minutes is ₱20 exactly, 81 is the first
-        // minute that costs more. Minute 81 starts 80 minutes after entry.
-        var next = ParkingFeeMath.NextChange(15m, 20m, Entry, Entry.AddMinutes(10));
+        var b = Price(at, 39, 150);
 
-        Assert.NotNull(next);
-        Assert.Equal(Entry.AddMinutes(80), next.Value.At);
-        Assert.Equal(20.25m, next.Value.Amount);
+        Assert.Equal((decimal)total, b.Total);
+        Assert.Equal(new FeeSegment(FeeSegmentKind.PerMinute, At(157), At(at), lastMinutes, (decimal)lastAmount), b.Segments[^1]);
+        Assert.Equal(FeeSegmentKind.Grace, b.Segments[^2].Kind);
     }
 
     [Fact]
-    public void Past_the_floor_the_price_goes_up_when_the_next_minute_starts()
+    public void Paying_at_minute_58_covers_to_minute_65()
     {
-        // 90.5 minutes in: charged 91. Minute 92 starts at 91 minutes.
-        var next = ParkingFeeMath.NextChange(15m, 20m, Entry, Entry.AddMinutes(90.5));
+        var b = Price(66, 58);
 
-        Assert.NotNull(next);
-        Assert.Equal(Entry.AddMinutes(91), next.Value.At);
-        Assert.Equal(ParkingFeeMath.Price(15m, 20m, 92), next.Value.Amount);
+        Assert.Equal(20.33m, b.Total);
+        Assert.Equal(
+            new[]
+            {
+                new FeeSegment(FeeSegmentKind.FirstHour, Entry, At(60), 60, 20m),
+                new FeeSegment(FeeSegmentKind.Grace, At(60), At(65), 5, 0m),
+                new FeeSegment(FeeSegmentKind.PerMinute, At(65), At(66), 1, 0.33m),
+            },
+            b.Segments);
     }
 
     [Fact]
-    public void Right_at_entry_the_first_charge_is_the_minimum_a_moment_later()
-    {
-        var next = ParkingFeeMath.NextChange(15m, 20m, Entry, Entry);
+    public void Two_payments_close_together_extend_the_grace()
+        => Assert.Equal(At(159), Price(153, 150, 152).GraceUntil);
 
-        Assert.NotNull(next);
-        Assert.Equal(Entry, next.Value.At);
-        Assert.Equal(20m, next.Value.Amount);
+    [Fact]
+    public void A_motorcycle_at_30_an_hour()
+        => Assert.Equal(45m, ParkingFeeMath.Breakdown(30m, Entry, At(90), [], Grace).Total);
+
+    [Fact]
+    public void With_no_rate_nothing_is_charged_and_nothing_changes()
+    {
+        var b = ParkingFeeMath.Breakdown(0m, Entry, At(300), [], Grace);
+
+        Assert.Equal(0m, b.Total);
+        Assert.Equal(MeterState.Free, b.State);
+        Assert.Empty(b.Segments);
+        Assert.Null(b.NextChangeAt);
     }
 
     [Fact]
-    public void With_no_rate_the_price_never_changes()
-        => Assert.Null(ParkingFeeMath.NextChange(0m, 20m, Entry, Entry.AddMinutes(30)));
+    public void A_closed_visit_ends_its_last_grace_at_the_exit()
+    {
+        // Paid 3:53, left 3:55: the grace shows as 3:53–3:55, not to 4:00.
+        var b = ParkingFeeMath.Breakdown(Car, Entry, At(173), [At(39), At(150), At(171)], Grace, open: false);
+
+        Assert.Equal(new FeeSegment(FeeSegmentKind.Grace, At(171), At(173), 2, 0m), b.Segments[^1]);
+        Assert.Null(b.NextChangeAt);
+    }
+
+    [Fact]
+    public void Chargeable_minutes_between_skip_the_grace()
+    {
+        var b = Price(171, 39, 150);
+
+        Assert.Equal(14, b.ChargeableMinutesBetween(At(150), At(171)));
+        Assert.Equal(60, b.ChargeableMinutesBetween(Entry, At(60)));
+    }
 }
