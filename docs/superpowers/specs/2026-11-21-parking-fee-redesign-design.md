@@ -91,12 +91,12 @@ A guard's manual release stays as it is.
 A bill is made when the driver asks to pay (app "Pay now") or taps out owing
 money. It is for **owed now**, and it records what it covers.
 
-New nullable columns on `PaymentTransactions` (additive, safe on the shared
-database before merge):
+Two new nullable columns on `PaymentTransactions` (additive, safe on the
+shared database before merge):
 
 - `CoversFrom` — end of what earlier bills covered (entry time for the first).
 - `CoversTo` — the moment the bill was priced.
-- `GraceUntil` — set when the bill is settled: paid time + 7 min.
+- `GraceUntil` is not stored. Responses work it out as paid time + grace.
 
 Behaviour:
 
@@ -138,7 +138,7 @@ with the bay's type only as a fallback, then the default rate (bug 1). The
 | 7 | Tapped out unpaid: bill priced at the tap, "priced again next tap" | bill detail + gate notice |
 | 8 | One bill receipt: covers, calculation, grace, visit, "bill 2 of 3" | payment detail |
 | 9 | Whole visit: timeline of segments, total | parking history detail |
-| 10 | Payments grouped by visit, each row says what it covers | payments list |
+| 10 | Each payment row says what it covers (built inside the existing day sections; full grouping by visit is left for later) | payments list |
 
 Every time shown with a date where the day could be unclear.
 
@@ -157,6 +157,13 @@ Two things to carry over:
 - `GateOptions.PaidExitGraceMinutes` becomes 7 (config + default).
 - The site sync (`SnapshotApplier`, `EventIngestor`) must copy the three new
   bill columns.
+
+## Site sync
+
+The site re-prices an open gate bill at every tap. When the cloud merges a
+site bill that is still Pending, it takes the site's price and coverage if the
+site's `CoversTo` is later than its own, so the app never charges a stale
+amount.
 
 ## Not in scope
 
