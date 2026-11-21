@@ -146,35 +146,5 @@ namespace AimPark.API.Helpers
             return new FeeBreakdown(total, n, perMinute, segments, firstHourEnd,
                 graceEnd > 0 ? entry.AddMinutes(graceEnd) : null, state, nextAt, nextTotal);
         }
-
-        /// <summary>
-        /// Temporary, removed in Task 6: the old per-minute price with a floor,
-        /// kept only so the callers still compile until they move to Breakdown.
-        /// </summary>
-        [Obsolete("Use Breakdown. Removed in Task 6.")]
-        public static decimal Price(decimal ratePerHour, decimal minimumFee, int minutes)
-        {
-            var metered = Math.Round(ratePerHour / 60m * minutes, 2);
-            return metered > 0m && metered < minimumFee ? minimumFee : metered;
-        }
-
-        [Obsolete("Use Breakdown. Removed in Task 6.")]
-        public static decimal Metered(decimal ratePerHour, int minutes) => Math.Round(ratePerHour / 60m * minutes, 2);
-
-        [Obsolete("Use Breakdown. Removed in Task 6.")]
-        public static (DateTime At, decimal Amount)? NextChange(decimal ratePerHour, decimal minimumFee, DateTime entry, DateTime at)
-        {
-            if (ratePerHour <= 0m) return null;
-            var now = ChargedMinutes(entry, at);
-#pragma warning disable CS0618
-            var current = Price(ratePerHour, minimumFee, now);
-            for (var m = now + 1; m <= now + 24 * 60; m++)
-            {
-                var amount = Price(ratePerHour, minimumFee, m);
-                if (amount > current) return (entry.AddMinutes(m - 1), amount);
-            }
-#pragma warning restore CS0618
-            return null;
-        }
     }
 }

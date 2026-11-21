@@ -16,62 +16,14 @@ namespace AimPark.API.Interfaces
         Task<BillResult?> BillOwedAsync(ParkingLog log, VisitPrice price, bool paidAhead, CancellationToken ct);
 
         // Internal — called by ParkingHistoryService right after a session's ExitTime is recorded.
-        Task<PaymentTransaction> CreateForCompletedLogAsync(ParkingLog log, CancellationToken ct);
+        // Bills what the visit still owes; null when nothing is.
+        Task<PaymentTransaction?> CreateForCompletedLogAsync(ParkingLog log, VisitPrice price, CancellationToken ct);
 
-        /// <summary>
-        /// What a finished session costs, without recording anything.
-        /// </summary>
-        /// <remarks>
-        /// For visitors. They have no account to bill, so there is no
-        /// <c>PaymentTransaction</c> to raise and nowhere to send a "you owe
-        /// this" notification — but the guard at the barrier still has to be
-        /// told what to collect in cash.
-        /// </remarks>
-        Task<ParkingFeeQuote> QuoteForCompletedLogAsync(ParkingLog log, CancellationToken ct);
-
-        /// <summary>
-        /// What the session would cost if it ended at <paramref name="at"/>, without
-        /// recording anything. Used at the exit gate, before the session is closed.
-        /// </summary>
-        Task<ParkingFeeQuote> QuoteAsync(ParkingLog log, DateTime at, CancellationToken ct);
-
-        /// <summary>The hourly rate and minimum fee this session is priced at.</summary>
+        /// <summary>The hourly rate (and the stored minimum, which no longer prices anything) for this session.</summary>
         Task<(decimal RatePerHour, decimal MinimumFee)> RateForAsync(ParkingLog log, CancellationToken ct);
 
-        /// <summary>The bill for this session, if one has been raised yet.</summary>
+        /// <summary>The latest bill for this session, if one has been raised yet.</summary>
         Task<PaymentTransaction?> FindForLogAsync(Guid parkingLogId, CancellationToken ct);
-
-        /// <summary>
-        /// Raises the bill for a session whose driver has tapped out but not yet
-        /// paid, or returns the one already raised. The amount is frozen at the
-        /// first tap, so it cannot change under a driver who is already paying.
-        /// </summary>
-        Task<PaymentTransaction> RaiseExitBillAsync(ParkingLog log, DateTime at, CancellationToken ct);
-
-        /// <summary>
-        /// Raises the bill for a session the driver wants to pay while still
-        /// parked, priced up to <paramref name="at"/>. A paid-ahead bill not yet
-        /// paid is priced again; any other bill already on the session is
-        /// returned as it is. Null when there is nothing to pay.
-        /// </summary>
-        Task<PaymentTransaction?> RaiseAheadAsync(ParkingLog log, DateTime at, CancellationToken ct);
-
-        /// <summary>
-        /// Bills a driver who paid but tapped out after the grace window for the
-        /// rest of the stay: what it costs up to <paramref name="at"/>, less what
-        /// the session was billed already. Null when that is nothing.
-        /// <paramref name="paidAhead"/> when the driver asked for it from the app
-        /// while still parked, rather than being held for it at the gate.
-        /// </summary>
-        Task<PaymentTransaction?> RaiseOverstayBillAsync(
-            ParkingLog log, DateTime at, bool paidAhead, CancellationToken ct);
-
-        /// <summary>
-        /// Prices an unpaid bill again up to <paramref name="at"/>: the whole stay
-        /// less what the session's other bills already settled. Sets the fields
-        /// only; the caller saves.
-        /// </summary>
-        Task RepriceOpenBillAsync(PaymentTransaction bill, ParkingLog log, DateTime at, CancellationToken ct);
 
         // Internal — called by ViolationService when a violation carrying a penalty is issued.
         Task<PaymentTransaction> CreateForViolationAsync(Violation violation, CancellationToken ct);
@@ -122,7 +74,5 @@ namespace AimPark.API.Interfaces
     /// <summary>A bill for what a visit owes now. <c>Created</c>: new, not re-priced.</summary>
     public sealed record BillResult(PaymentTransaction Bill, bool Created, bool WasPaidAhead);
 
-    /// <summary>The fee for one finished session.</summary>
-    public record ParkingFeeQuote(int DurationMinutes, decimal RatePerHour, decimal AmountDue);
 }
 

@@ -107,18 +107,28 @@ public class PayBeforeExitTests
     }
 
     [Fact]
-    public async Task Tapping_again_before_paying_does_not_raise_a_second_bill_or_change_the_amount()
+    public async Task Tapping_again_before_paying_reprices_the_same_bill()
     {
         var g = await GateAsync();
         await Tap(g);
 
-        // Time passes, and the rate would now give a bigger number.
+        // Five hours in: ₱30 first hour + 240 min × ₱0.50.
         g.Db.Set<ParkingLog>().Single().EntryTime = DateTime.UtcNow.AddHours(-5);
         await g.Db.SaveChangesAsync();
         var second = await Tap(g);
 
         Assert.Equal(402, Status(second));
-        Assert.Equal(60m, OnlyBill(g).AmountDue);
+        Assert.Equal(150m, OnlyBill(g).AmountDue);
+    }
+
+    [Fact]
+    public async Task Nothing_owed_at_the_exit_makes_no_zero_peso_bill()
+    {
+        var g = await GateAsync(ratePerHour: 0m);
+
+        await Tap(g);
+
+        Assert.Empty(g.Db.Set<PaymentTransaction>().AsNoTracking());
     }
 
     [Fact]

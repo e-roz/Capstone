@@ -113,10 +113,6 @@ namespace AimPark.API.Services
             return new BillResult(bill, true, false);
         }
 
-        // Called by ParkingHistoryService.LogExitAsync right after ExitTime is recorded.
-        public Task<ParkingFeeQuote> QuoteForCompletedLogAsync(ParkingLog log, CancellationToken ct)
-            => QuoteAsync(log, log.ExitTime!.Value, ct);
-
         // The latest one: a session that ran past its paid-ahead window has a
         // second bill, and that is the one the gate is waiting on.
         public Task<PaymentTransaction?> FindForLogAsync(Guid parkingLogId, CancellationToken ct)
@@ -124,14 +120,6 @@ namespace AimPark.API.Services
                 .Where(p => p.ParkingLogId == parkingLogId)
                 .OrderByDescending(p => p.CreatedAt)
                 .FirstOrDefaultAsync(ct);
-
-        public async Task<ParkingFeeQuote> QuoteAsync(ParkingLog log, DateTime at, CancellationToken ct)
-        {
-            var (ratePerHour, minimum) = await RateForAsync(log, ct);
-            var durationMinutes = ParkingFeeMath.ChargedMinutes(log.EntryTime, at);
-            var amountDue = ParkingFeeMath.Price(ratePerHour, minimum, durationMinutes);
-            return new ParkingFeeQuote(durationMinutes, ratePerHour, amountDue);
-        }
 
         public async Task<(decimal RatePerHour, decimal MinimumFee)> RateForAsync(ParkingLog log, CancellationToken ct)
         {
@@ -172,225 +160,34 @@ namespace AimPark.API.Services
             return (rate.RatePerHour, rate.MinimumFee);
         }
 
-        public async Task<PaymentTransaction> CreateForCompletedLogAsync(ParkingLog log, CancellationToken ct)
+        // Called by ParkingHistoryService.LogExitAsync right after ExitTime is recorded.
+        // Bills whatever the visit still owes at its exit: a guard logging the
+        // exit by hand, or anything left after the gate. Null when nothing is
+        // owed, so a settled or free visit never gets a ₱0 bill.
+        public async Task<PaymentTransaction?> CreateForCompletedLogAsync(ParkingLog log, VisitPrice price, CancellationToken ct)
         {
             if (log.UserId is null)
-                throw new InvalidOperationException(
-                    "A visitor session has no account to bill. Use QuoteForCompletedLogAsync.");
+                throw new InvalidOperationException("A visitor session has no account to bill.");
 
-            // Already raised at the exit gate, where the driver was asked to pay
-            // before the barrier would open. Nothing more to create.
-            var raised = await FindForLogAsync(log.Id, ct);
-            if (raised is not null)
-                return raised;
-
-            var (durationMinutes, ratePerHour, amountDue) =
-                await QuoteForCompletedLogAsync(log, ct);
-
-            var transaction = new PaymentTransaction
-            {
-                Id = Guid.NewGuid(),
-                Source = PaymentSource.ParkingFee,
-                ParkingLogId = log.Id,
-                UserId = log.UserId.Value,
-                DurationMinutes = durationMinutes,
-                RatePerHourApplied = ratePerHour,
-                AmountDue = amountDue,
-                Status = PaymentStatus.Pending,
-                DueAt = null,
-                CreatedAt = DateTime.UtcNow
-            };
-
-            await _payments.AddAsync(transaction, ct);
-            await _payments.SaveAsync(ct);
+            var billed = await BillOwedAsync(log, price, paidAhead: false, ct);
+            if (billed is null)
+                return null;
 
             // The driver has just left; telling them what they owe now is the
             // difference between a fee they act on and one they discover later.
-            var hours = durationMinutes / 60;
-            var minutes = durationMinutes % 60;
-            var duration = hours > 0 ? $"{hours}h {minutes}m" : $"{minutes}m";
-
-            // A free session is still worth a receipt, but "Amount due: ₱0.00"
-            // under a "Parking fee" title reads like a bill.
-            if (amountDue > 0m)
+            if (billed.Created)
             {
+                var d = billed.Bill.DurationMinutes;
+                var duration = d >= 60 ? $"{d / 60}h {d % 60}m" : $"{d}m";
                 await _notificationService.NotifyUserAsync(
                     log.UserId.Value,
                     NotificationType.Payment,
                     "Parking fee",
-                    $"You parked for {duration}. Amount due: ₱{amountDue:0.00}.",
-                    new Dictionary<string, string> { ["paymentId"] = transaction.Id.ToString() },
+                    $"You parked for {duration}. Amount due: ₱{billed.Bill.AmountDue:0.00}.",
+                    new Dictionary<string, string> { ["paymentId"] = billed.Bill.Id.ToString() },
                     ct);
             }
-            else
-            {
-                await _notificationService.NotifyUserAsync(
-                    log.UserId.Value,
-                    NotificationType.Parking,
-                    "You've left",
-                    $"You parked for {duration}. Nothing to pay.",
-                    new Dictionary<string, string> { ["screen"] = "parking-history" },
-                    ct);
-            }
-
-            return transaction;
-        }
-
-        public async Task<PaymentTransaction> RaiseExitBillAsync(ParkingLog log, DateTime at, CancellationToken ct)
-        {
-            if (log.UserId is null)
-                throw new InvalidOperationException("A visitor session has no account to bill.");
-
-            var existing = await FindForLogAsync(log.Id, ct);
-            if (existing is not null)
-                return existing;
-
-            var (durationMinutes, ratePerHour, amountDue) = await QuoteAsync(log, at, ct);
-
-            var transaction = new PaymentTransaction
-            {
-                Id = Guid.NewGuid(),
-                Source = PaymentSource.ParkingFee,
-                ParkingLogId = log.Id,
-                UserId = log.UserId.Value,
-                DurationMinutes = durationMinutes,
-                RatePerHourApplied = ratePerHour,
-                AmountDue = amountDue,
-                Status = PaymentStatus.Pending,
-                DueAt = null,
-                CreatedAt = DateTime.UtcNow
-            };
-
-            await _payments.AddAsync(transaction, ct);
-            await _payments.SaveAsync(ct);
-
-            await _notificationService.NotifyUserAsync(
-                log.UserId.Value,
-                NotificationType.Payment,
-                "Pay to leave",
-                $"Your parking fee is ₱{amountDue:0.00}. Pay in the app or at the guard post, then tap your card again.",
-                new Dictionary<string, string> { ["paymentId"] = transaction.Id.ToString() },
-                ct);
-
-            return transaction;
-        }
-
-        public async Task<PaymentTransaction?> RaiseAheadAsync(ParkingLog log, DateTime at, CancellationToken ct)
-        {
-            if (log.UserId is null)
-                throw new InvalidOperationException("A visitor session has no account to bill.");
-
-            var existing = await FindForLogAsync(log.Id, ct);
-
-            // Already paid, already being paid, or already held at the gate: that
-            // bill is the one to pay, as it stands.
-            if (existing is not null
-                && !(existing.PaidAhead && existing.Status == PaymentStatus.Pending))
-                return existing;
-
-            // A paid-ahead bill nobody paid yet is priced again, so a driver who
-            // asked an hour ago and pays now pays for that hour too. Only for the
-            // rest of the stay, though: it may be the second bill on a session
-            // whose first was paid already.
-            if (existing is not null)
-            {
-                await RepriceOpenBillAsync(existing, log, at, ct);
-                _payments.Update(existing);
-                await _payments.SaveAsync(ct);
-                return existing;
-            }
-
-            var (durationMinutes, ratePerHour, amountDue) = await QuoteAsync(log, at, ct);
-            if (amountDue <= 0m)
-                return null;
-
-            var transaction = new PaymentTransaction
-            {
-                Id = Guid.NewGuid(),
-                Source = PaymentSource.ParkingFee,
-                ParkingLogId = log.Id,
-                UserId = log.UserId.Value,
-                DurationMinutes = durationMinutes,
-                RatePerHourApplied = ratePerHour,
-                AmountDue = amountDue,
-                Status = PaymentStatus.Pending,
-                PaidAhead = true,
-                DueAt = null,
-                CreatedAt = DateTime.UtcNow
-            };
-
-            // No notice: the driver asked for this in the app and is looking at it.
-            await _payments.AddAsync(transaction, ct);
-            await _payments.SaveAsync(ct);
-            return transaction;
-        }
-
-        public async Task RepriceOpenBillAsync(PaymentTransaction bill, ParkingLog log, DateTime at, CancellationToken ct)
-        {
-            var (durationMinutes, ratePerHour, amountDue) = await QuoteAsync(log, at, ct);
-
-            // Settled the same way the live fee counts it (Paid or Waived), so the
-            // bill matches the "still to pay" the app showed.
-            var settled = await _db.Set<PaymentTransaction>().AsNoTracking()
-                .Where(p => p.ParkingLogId == log.Id && p.Id != bill.Id
-                    && (p.Status == PaymentStatus.Paid || p.Status == PaymentStatus.Waived))
-                .Select(p => new { p.AmountDue, p.DurationMinutes })
-                .ToListAsync(ct);
-
-            bill.DurationMinutes = Math.Max(0, durationMinutes - settled.Sum(p => p.DurationMinutes));
-            bill.RatePerHourApplied = ratePerHour;
-            bill.AmountDue = Math.Max(0m, amountDue - settled.Sum(p => p.AmountDue));
-        }
-
-        public async Task<PaymentTransaction?> RaiseOverstayBillAsync(
-            ParkingLog log, DateTime at, bool paidAhead, CancellationToken ct)
-        {
-            if (log.UserId is null)
-                throw new InvalidOperationException("A visitor session has no account to bill.");
-
-            var (durationMinutes, ratePerHour, amountDue) = await QuoteAsync(log, at, ct);
-
-            // What the whole stay costs now, less what the session was billed
-            // already. Waived bills count as covered: someone decided that time
-            // was not to be charged.
-            var bills = await _db.Set<PaymentTransaction>().AsNoTracking()
-                .Where(p => p.ParkingLogId == log.Id)
-                .ToListAsync(ct);
-            var extra = amountDue - bills.Sum(b => b.AmountDue);
-            if (extra <= 0m)
-                return null;
-
-            var transaction = new PaymentTransaction
-            {
-                Id = Guid.NewGuid(),
-                Source = PaymentSource.ParkingFee,
-                ParkingLogId = log.Id,
-                UserId = log.UserId.Value,
-                DurationMinutes = Math.Max(0, durationMinutes - bills.Sum(b => b.DurationMinutes)),
-                RatePerHourApplied = ratePerHour,
-                AmountDue = extra,
-                Status = PaymentStatus.Pending,
-                PaidAhead = paidAhead,
-                DueAt = null,
-                CreatedAt = DateTime.UtcNow
-            };
-
-            await _payments.AddAsync(transaction, ct);
-            await _payments.SaveAsync(ct);
-
-            // Asked for in the app, the driver is looking at it already.
-            if (paidAhead)
-                return transaction;
-
-            await _notificationService.NotifyUserAsync(
-                log.UserId.Value,
-                NotificationType.Payment,
-                "Pay to leave",
-                $"You stayed past the time you paid for. The extra is ₱{extra:0.00}. Pay in the app or at the guard post, then tap your card again.",
-                new Dictionary<string, string> { ["paymentId"] = transaction.Id.ToString() },
-                ct);
-
-            return transaction;
+            return billed.Bill;
         }
 
         // Called by ViolationService.IssueAsync right after a violation is created.
@@ -838,7 +635,7 @@ namespace AimPark.API.Services
                 return new NotFoundObjectResult(new { message = "That rate no longer exists." });
 
             // Refuse a removal that would leave a vehicle type with no rate at all.
-            // QuoteForCompletedLogAsync bills a session with no rate as free, and
+            // A visit with no rate is priced as free, and
             // nobody means to give parking away by tidying up the rate list.
             var others = await _rates.GetAllAsync(r => r.Id != rateId, ct);
             var hasDefault = others.Any(r => r.VehicleType is null);
