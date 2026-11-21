@@ -212,19 +212,32 @@ class _PaymentsListScreenState extends ConsumerState<PaymentsListScreen>
               ),
             ],
             // History in day groups, newest first: seven bills on one day read as
-            // one day, not seven "Oct 11"s.
+            // one day, not seven "Oct 11"s. Inside a day, a visit's bills sit
+            // together under one header with the visit's total, which opens the
+            // whole visit. A fine stands on its own.
             for (final day in _byDay(shownPaid)) ...[
               const SizedBox(height: AppSpacing.lg),
               AppSectionHeader(title: day.label),
-              AppRowGroup(
-                children: [
-                  for (final p in day.payments)
-                    _PaymentRow(
-                      payment: p,
-                      onTap: () => _openBill(p.paymentId),
-                    ),
-                ],
-              ),
+              for (final (i, visit) in day.visits.indexed) ...[
+                if (i > 0) const SizedBox(height: AppSpacing.sm),
+                AppRowGroup(
+                  children: [
+                    if (visit.logId != null)
+                      _VisitHeaderRow(
+                        visit: visit,
+                        onTap: () => context.push(
+                          '/home/user/parking/visits/${visit.logId}',
+                        ),
+                      ),
+                    for (final p in visit.payments)
+                      _PaymentRow(
+                        payment: p,
+                        inVisit: visit.logId != null,
+                        onTap: () => _openBill(p.paymentId),
+                      ),
+                  ],
+                ),
+              ],
             ],
             if (!_showAllPaid && paid.length > _paidPageSize) ...[
               const SizedBox(height: AppSpacing.sm),
@@ -424,10 +437,17 @@ class _Summary extends StatelessWidget {
 }
 
 class _PaymentRow extends StatelessWidget {
-  const _PaymentRow({required this.payment, required this.onTap});
+  const _PaymentRow({
+    required this.payment,
+    required this.onTap,
+    this.inVisit = false,
+  });
 
   final Payment payment;
   final VoidCallback onTap;
+
+  /// Under a visit header, which already says the day and the bay.
+  final bool inVisit;
 
   /// "Oct 9 · 8:44 AM–8:45 AM · 1m" — when the visit was and how long it ran,
   /// which is what tells seven ₱20 bills apart. A fine, or a bill with no session
@@ -440,9 +460,11 @@ class _PaymentRow extends StatelessWidget {
     // A bill that knows what stretch of the visit it pays for says so.
     final from = payment.coversFrom, to = payment.coversTo;
     if (from != null && to != null) {
-      return '${Formatters.dateShort(from.toLocal())} · covers '
-          '${Formatters.time(from)}–${Formatters.time(to)} · '
+      final covers = '${Formatters.time(from)}–${Formatters.time(to)} · '
           '${payment.durationMinutes} min';
+      return inVisit
+          ? 'Covers $covers'
+          : '${Formatters.dateShort(from.toLocal())} · covers $covers';
     }
 
     final entry = payment.entryTime?.toLocal();
@@ -549,22 +571,105 @@ class _PaymentRow extends StatelessWidget {
   }
 }
 
-/// One day of settled bills, under a heading like "Today · Oct 11".
-class _Day {
-  _Day(this.label) : payments = [];
+/// The header of one visit's bills: the bay, when, how long, and what the
+/// bills shown came to. Opens the whole visit.
+class _VisitHeaderRow extends StatelessWidget {
+  const _VisitHeaderRow({required this.visit, required this.onTap});
 
-  final String label;
-  final List<Payment> payments;
+  final _Visit visit;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = context.tokens;
+    final any = visit.payments.first;
+    final entry = any.entryTime;
+    final exit = any.exitTime;
+    final bay = any.slotCode == null ? 'Visit' : 'Bay ${any.slotCode}';
+    final count = visit.payments.length;
+    final payments = '$count ${count == 1 ? 'payment' : 'payments'}';
+
+    final String when;
+    if (entry == null) {
+      when = payments;
+    } else if (exit == null) {
+      when = 'Since ${Formatters.time(entry)} · still parked · $payments';
+    } else {
+      when = '${Formatters.time(entry)} – ${Formatters.time(exit)} · '
+          '${Formatters.duration(exit.difference(entry))} · $payments';
+    }
+
+    return AppListRow(
+      leading: Container(
+        width: AppSizes.rowIcon,
+        height: AppSizes.rowIcon,
+        decoration: BoxDecoration(
+          color: t.accent.subtle,
+          borderRadius: BorderRadius.circular(AppRadius.sm),
+        ),
+        child: Icon(
+          Icons.directions_car_rounded,
+          size: AppSizes.iconMd,
+          color: t.accent.subtleText,
+        ),
+      ),
+      title: entry == null
+          ? bay
+          : '$bay · ${Formatters.dateShort(entry.toLocal())}',
+      subtitle: when,
+      trailing: Text(
+        Formatters.peso(visit.total),
+        style: AppTypography.tabular(context.text.titleMedium!),
+      ),
+      onTap: onTap,
+    );
+  }
 }
 
-/// Splits [bills], already newest first, into one group per calendar day they
-/// were paid on (the day they were raised, for a waived one that was never paid).
+/// One visit's settled bills, newest first; or one fine (no [logId]).
+class _Visit {
+  _Visit(this.logId) : payments = [];
+
+  final String? logId;
+  final List<Payment> payments;
+
+  double get total => payments.fold<double>(0, (s, p) => s + p.amountDue);
+
+  DateTime get latest => payments.first.paidAt ?? payments.first.createdAt;
+}
+
+/// One day of settled bills, under a heading like "Today · Oct 11".
+class _Day {
+  _Day(this.label) : visits = [];
+
+  final String label;
+  final List<_Visit> visits;
+}
+
+/// Groups [bills], already newest first, by visit, then puts each visit under
+/// the calendar day of its most recent payment (the day it was raised, for a
+/// waived one that was never paid). A visit paid over two days stays in one
+/// place. A fine, or a bill with no visit behind it, is a group of its own.
 List<_Day> _byDay(List<Payment> bills) {
+  final visits = <_Visit>[];
+  final byLog = <String, _Visit>{};
+  for (final p in bills) {
+    final logId = p.isViolation ? null : p.parkingLogId;
+    if (logId == null) {
+      visits.add(_Visit(null)..payments.add(p));
+      continue;
+    }
+    byLog.putIfAbsent(logId, () {
+      final v = _Visit(logId);
+      visits.add(v);
+      return v;
+    }).payments.add(p);
+  }
+
   final days = <_Day>[];
   DateTime? current;
-
-  for (final p in bills) {
-    final when = (p.paidAt ?? p.createdAt).toLocal();
+  for (final v in visits) {
+    final when = v.latest.toLocal();
     final key = DateTime(when.year, when.month, when.day);
 
     if (current != key) {
@@ -576,7 +681,7 @@ List<_Day> _byDay(List<Payment> bills) {
         _Day(isRelative ? '$rel · ${Formatters.dateShort(when)}' : rel),
       );
     }
-    days.last.payments.add(p);
+    days.last.visits.add(v);
   }
   return days;
 }
