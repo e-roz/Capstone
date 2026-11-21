@@ -637,22 +637,19 @@ namespace AimPark.API.Services
             await _notificationService.AnnounceAsync(
                 NotificationType.PolicyUpdate,
                 $"{vehicleType} parking rate set",
-                $"{vehicleType} parking is now ₱{dto.RatePerHour:0.00} an hour " +
-                $"(minimum ₱{dto.MinimumFee ?? 20.00m:0.00}). Vehicles already parked keep the rate they came in with.",
+                $"{vehicleType} parking is now ₱{dto.RatePerHour:0.00} for the first hour, then " +
+                $"₱{dto.RatePerHour / 60m:0.00} a minute. Vehicles already parked keep the rate they came in with.",
                 ct);
 
             return new OkObjectResult(new { message = "Rate saved. Drivers have been notified." });
         }
 
-        /// <summary>"Car parking is now ₱20.00 an hour (was ₱15.00). ..."</summary>
+        /// <summary>"Car parking is now ₱20.00 for the first hour, then ₱0.33 a minute (was ₱15.00 an hour). ..."</summary>
+        /// <remarks>The minimum fee no longer prices anything, so it is not mentioned.</remarks>
         private static string RateChangeMessage(
             VehicleType type, decimal oldRate, decimal oldMinimum, decimal newRate, decimal newMinimum)
-        {
-            var message = $"{type} parking is now ₱{newRate:0.00} an hour (was ₱{oldRate:0.00}).";
-            if (newMinimum != oldMinimum)
-                message += $" The minimum fee is now ₱{newMinimum:0.00} (was ₱{oldMinimum:0.00}).";
-            return message + " Vehicles already parked keep the rate they came in with.";
-        }
+            => $"{type} parking is now ₱{newRate:0.00} for the first hour, then ₱{newRate / 60m:0.00} a minute " +
+               $"(was ₱{oldRate:0.00} an hour). Vehicles already parked keep the rate they came in with.";
 
         // DELETE /api/admin/payments/rates/{rateId}
         public async Task<ActionResult<object>> DeleteRateAsync(Guid rateId, CancellationToken ct)
