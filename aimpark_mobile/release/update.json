@@ -1,13 +1,14 @@
 {
-  "version": "1.0.19",
-  "build": 20,
-  "apk_url": "https://github.com/e-roz/Capstone/releases/download/v1.0.19/app-release.apk",
-  "apk_sha256": "d2014ab66f1da352b02937391627809d19a6395d690fc14defe9c0aee6b6902b",
-  "apk_size_bytes": 94677597,
+  "version": "1.0.20",
+  "build": 21,
+  "apk_url": "https://github.com/e-roz/Capstone/releases/download/v1.0.20/app-release.apk",
+  "apk_sha256": "048cb0f06ef2cbd6dbf9563f505a1a3bf9b8257c448a5ea0427c2b23a179d0f1",
+  "apk_size_bytes": 94792285,
   "mandatory": false,
   "release_notes": [
-    "See the parking rates on Home, with your vehicle's rate marked",
-    "Get notified when a parking rate changes. If you're parked, you keep the rate you came in with",
-    "Clearer lot map: orange = taken, indigo = confirmed by a driver, solid indigo = your bay"
+    "New parking fee: the first hour is one flat rate, then you pay per minute",
+    "After you pay, the meter pauses for 7 minutes so you can leave, and those minutes are free",
+    "The fee card shows each part of your stay, what you paid, and what is left",
+    "New Visit details screen, and every bill shows the time it covers and how it was worked out"
   ]
 }
