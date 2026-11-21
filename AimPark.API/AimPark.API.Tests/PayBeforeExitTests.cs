@@ -134,6 +134,25 @@ public class PayBeforeExitTests
     }
 
     [Fact]
+    public async Task A_car_that_never_confirmed_a_bay_is_still_charged_the_car_rate()
+    {
+        var g = await GateAsync();
+        // Only a Car rate exists, and the visit has no bay: the bay can't say what it is.
+        g.Db.RemoveRange(g.Db.Set<ParkingRate>());
+        g.Db.Add(new ParkingRate { VehicleType = VehicleType.Car, RatePerHour = 20m });
+        var log = g.Db.Set<ParkingLog>().Single();
+        log.SlotId = null;
+        log.VehicleType = VehicleType.Car;
+        await g.Db.SaveChangesAsync();
+
+        var result = await Tap(g);
+
+        Assert.Equal(402, Status(result));
+        // 119.5 min parked = 120 charged: ₱20 first hour + 60 min × ₱20/60.
+        Assert.Equal(40m, OnlyBill(g).AmountDue);
+    }
+
+    [Fact]
     public async Task A_guard_logging_the_exit_by_hand_is_not_held()
     {
         var g = await GateAsync();

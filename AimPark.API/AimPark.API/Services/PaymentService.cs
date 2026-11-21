@@ -6,6 +6,7 @@ using AimPark.API.Helpers;
 using AimPark.API.Interfaces;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 
 namespace AimPark.API.Services
 {
@@ -23,13 +24,18 @@ namespace AimPark.API.Services
         private readonly IPaymentGateway _gateway;
         private readonly ILogger<PaymentService> _logger;
 
+        /// <summary>How long the meter pauses after a parking bill is paid.</summary>
+        private readonly TimeSpan _grace;
+        private readonly double _graceMinutes;
+
         public PaymentService(
             IRepository<PaymentTransaction> payments,
             IRepository<ParkingRate> rates,
             INotificationService notificationService,
             AppDbContext db,
             IPaymentGateway gateway,
-            ILogger<PaymentService> logger)
+            ILogger<PaymentService> logger,
+            IOptions<GateOptions>? gate = null)
         {
             _payments = payments;
             _rates = rates;
@@ -37,6 +43,8 @@ namespace AimPark.API.Services
             _db = db;
             _gateway = gateway;
             _logger = logger;
+            _grace = TimeSpan.FromMinutes(gate?.Value.PaidExitGraceMinutes ?? new GateOptions().PaidExitGraceMinutes);
+            _graceMinutes = _grace.TotalMinutes;
         }
 
         // Called by ParkingHistoryService.LogExitAsync right after ExitTime is recorded.
@@ -61,8 +69,10 @@ namespace AimPark.API.Services
 
         public async Task<(decimal RatePerHour, decimal MinimumFee)> RateForAsync(ParkingLog log, CancellationToken ct)
         {
-            VehicleType? vehicleType = null;
-            if (log.SlotId is not null)
+            // The visit records what drove in. The bay is only a fallback for old
+            // visits without it; a car that never confirmed a bay has no bay to ask.
+            VehicleType? vehicleType = log.VehicleType;
+            if (vehicleType is null && log.SlotId is not null)
             {
                 vehicleType = await _db.Set<ParkingSlot>().AsNoTracking()
                     .Where(s => s.Id == log.SlotId)
@@ -832,6 +842,11 @@ namespace AimPark.API.Services
             DueAt = p.DueAt,
             CreatedAt = p.CreatedAt,
             PaidAt = p.PaidAt,
+            CoversFrom = p.CoversFrom,
+            CoversTo = p.CoversTo,
+            GraceUntil = p.Source == PaymentSource.ParkingFee && p.PaidAt != null
+                ? p.PaidAt.Value.AddMinutes(_graceMinutes)
+                : (DateTime?)null,
             CheckoutStartedAt = p.CheckoutStartedAt,
             Method = p.Method != null ? p.Method.ToString() : null,
             ReferenceNumber = p.ReferenceNumber,

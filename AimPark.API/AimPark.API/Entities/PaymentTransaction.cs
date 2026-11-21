@@ -30,6 +30,14 @@ namespace AimPark.API.Entities
         public decimal RatePerHourApplied { get; set; }
         public decimal AmountDue { get; set; }
 
+        /// <summary>
+        /// The stretch of the visit this bill pays for. Null on violation fines and
+        /// on parking bills made before 2026-11-21. Grace minutes inside it are
+        /// free; <see cref="DurationMinutes"/> counts only the charged ones.
+        /// </summary>
+        public DateTime? CoversFrom { get; set; }
+        public DateTime? CoversTo { get; set; }
+
         public PaymentStatus Status { get; set; } = PaymentStatus.Pending;
 
         /// <summary>

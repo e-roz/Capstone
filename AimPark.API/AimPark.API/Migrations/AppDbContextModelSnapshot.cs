@@ -1198,6 +1198,12 @@ namespace AimPark.API.Migrations
                     b.Property<Guid?>("ConfirmedByUserId")
                         .HasColumnType("uuid");
 
+                    b.Property<DateTime?>("CoversFrom")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("CoversTo")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<DateTime>("CreatedAt")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("timestamp with time zone")

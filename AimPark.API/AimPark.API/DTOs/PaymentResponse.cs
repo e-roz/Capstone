@@ -28,6 +28,13 @@ namespace AimPark.API.DTOs
         public DateTime CreatedAt { get; set; }
         public DateTime? PaidAt { get; set; }
 
+        /// <summary>What part of the visit this bill pays for. Null for fines and older bills.</summary>
+        public DateTime? CoversFrom { get; set; }
+        public DateTime? CoversTo { get; set; }
+
+        /// <summary>Paid parking bills only: the meter is paused until this time.</summary>
+        public DateTime? GraceUntil { get; set; }
+
         /// <summary>
         /// When the payer was sent to the provider. Null unless the bill is, or
         /// once was, Processing — this is what says how long a checkout has been
