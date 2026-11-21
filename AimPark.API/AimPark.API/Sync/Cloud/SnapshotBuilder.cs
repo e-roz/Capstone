@@ -99,6 +99,8 @@ namespace AimPark.API.Sync.Cloud
                     DurationMinutes = p.DurationMinutes,
                     RatePerHourApplied = p.RatePerHourApplied,
                     AmountDue = p.AmountDue,
+                    CoversFrom = p.CoversFrom,
+                    CoversTo = p.CoversTo,
                     Status = p.Status,
                     PaidAhead = p.PaidAhead,
                     DueAt = p.DueAt,

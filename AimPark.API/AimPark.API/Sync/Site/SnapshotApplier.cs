@@ -99,6 +99,8 @@ namespace AimPark.API.Sync.Site
                     bill.DurationMinutes = source.DurationMinutes;
                     bill.RatePerHourApplied = source.RatePerHourApplied;
                     bill.AmountDue = source.AmountDue;
+                    bill.CoversFrom = source.CoversFrom;
+                    bill.CoversTo = source.CoversTo;
                     bill.CheckoutStartedAt = source.CheckoutStartedAt;
                 }
             }

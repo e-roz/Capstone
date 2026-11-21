@@ -349,7 +349,12 @@ public class PayAheadTests
     public void A_hold_at_the_site_reprices_the_clouds_unpaid_copy()
     {
         var cloud = new PaymentTransaction { Status = PaymentStatus.Pending, AmountDue = 60m, DurationMinutes = 120, PaidAhead = true };
-        var site = new PaymentTransaction { Status = PaymentStatus.Pending, AmountDue = 90m, DurationMinutes = 180, PaidAhead = false };
+        var site = new PaymentTransaction
+        {
+            Status = PaymentStatus.Pending, AmountDue = 90m, DurationMinutes = 180, PaidAhead = false,
+            CoversFrom = new DateTime(2026, 11, 19, 6, 2, 0, DateTimeKind.Utc),
+            CoversTo = new DateTime(2026, 11, 19, 8, 2, 0, DateTimeKind.Utc)
+        };
 
         var settled = EventIngestor.MergePayment(cloud, site);
 
@@ -357,6 +362,21 @@ public class PayAheadTests
         Assert.False(cloud.PaidAhead);
         Assert.Equal(90m, cloud.AmountDue);
         Assert.Equal(180, cloud.DurationMinutes);
+        Assert.Equal(site.CoversFrom, cloud.CoversFrom);
+        Assert.Equal(site.CoversTo, cloud.CoversTo);
+    }
+
+    [Fact]
+    public void A_later_tap_at_the_site_reprices_the_clouds_copy_of_a_gate_bill()
+    {
+        var at = new DateTime(2026, 11, 19, 8, 0, 0, DateTimeKind.Utc);
+        var cloud = new PaymentTransaction { Status = PaymentStatus.Pending, AmountDue = 60m, PaidAhead = false, CoversTo = at };
+        var site = new PaymentTransaction { Status = PaymentStatus.Pending, AmountDue = 75m, PaidAhead = false, CoversTo = at.AddMinutes(30) };
+
+        EventIngestor.MergePayment(cloud, site);
+
+        Assert.Equal(75m, cloud.AmountDue);
+        Assert.Equal(at.AddMinutes(30), cloud.CoversTo);
     }
 
     [Fact]
@@ -389,7 +409,8 @@ public class PayAheadTests
             {
                 Id = bill.Id, Source = bill.Source, ParkingLogId = bill.ParkingLogId, UserId = bill.UserId,
                 DurationMinutes = bill.DurationMinutes, RatePerHourApplied = bill.RatePerHourApplied,
-                AmountDue = bill.AmountDue, Status = bill.Status, PaidAhead = bill.PaidAhead, PaidAt = bill.PaidAt,
+                AmountDue = bill.AmountDue, CoversFrom = bill.CoversFrom, CoversTo = bill.CoversTo,
+                Status = bill.Status, PaidAhead = bill.PaidAhead, PaidAt = bill.PaidAt,
                 Method = bill.Method, Provider = bill.Provider, CreatedAt = bill.CreatedAt
             }
         ]
