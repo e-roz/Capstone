@@ -51,12 +51,17 @@ namespace AimPark.API.Sync.Site
 
         private readonly AppDbContext _db;
         private readonly SiteDues _dues;
+        private readonly ICloudVisitBills? _cloud;
 
-        public SiteEntryDues(AppDbContext db, SiteDues dues)
+        public SiteEntryDues(AppDbContext db, SiteDues dues, ICloudVisitBills? cloud = null)
         {
             _db = db;
             _dues = dues;
+            _cloud = cloud;
         }
+
+        public Task RefreshVisitAsync(Guid parkingLogId, CancellationToken ct)
+            => _cloud?.RefreshAsync(parkingLogId, ct) ?? Task.CompletedTask;
 
         public async Task<IReadOnlyList<PaymentTransaction>> GetOwedAsync(Guid userId, CancellationToken ct)
         {

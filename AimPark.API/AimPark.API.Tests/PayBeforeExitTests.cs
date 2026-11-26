@@ -30,7 +30,34 @@ public class PayBeforeExitTests
     private static readonly Guid Device = Guid.NewGuid();
 
     private sealed record Gate(
-        AppDbContext Db, ParkingHistoryService Parking, User User, ParkingLog Log, SiteDues Dues, Notices Notices);
+        AppDbContext Db, ParkingHistoryService Parking, User User, ParkingLog Log, SiteDues Dues, Notices Notices,
+        IEntryDues EntryDues, FakeCloud Cloud);
+
+    /// <summary>
+    /// The cloud as the site server sees it: bills it holds that the site has
+    /// not had in a snapshot yet. Copied in through the real applier.
+    /// </summary>
+    private sealed class FakeCloud(AppDbContext db) : ICloudVisitBills
+    {
+        public List<PaymentTransaction> Bills { get; } = [];
+        public int Asked { get; private set; }
+
+        public Task RefreshAsync(Guid parkingLogId, CancellationToken ct)
+        {
+            Asked++;
+            var copies = Bills.Where(b => b.ParkingLogId == parkingLogId)
+                .Select(b => new PaymentTransaction
+                {
+                    Id = b.Id, Source = b.Source, ParkingLogId = b.ParkingLogId, UserId = b.UserId,
+                    DurationMinutes = b.DurationMinutes, RatePerHourApplied = b.RatePerHourApplied,
+                    AmountDue = b.AmountDue, CoversFrom = b.CoversFrom, CoversTo = b.CoversTo,
+                    Status = b.Status, PaidAhead = b.PaidAhead, CreatedAt = b.CreatedAt, PaidAt = b.PaidAt,
+                    Method = b.Method, Provider = b.Provider, ReferenceNumber = b.ReferenceNumber
+                })
+                .ToList();
+            return new SnapshotApplier(db, new SyncSuppression(), new SiteDues()).ApplyVisitBillsAsync(copies, ct);
+        }
+    }
 
     private static AppDbContext NewDb() => new(new DbContextOptionsBuilder<AppDbContext>()
         .UseInMemoryDatabase(Guid.NewGuid().ToString())
@@ -63,13 +90,14 @@ public class PayBeforeExitTests
             notices, db, new NoGateway(), NullLogger<PaymentService>.Instance);
 
         var dues = new SiteDues();
-        IEntryDues entryDues = site ? new SiteEntryDues(db, dues) : new DbEntryDues(db);
+        var cloud = new FakeCloud(db);
+        IEntryDues entryDues = site ? new SiteEntryDues(db, dues, cloud) : new DbEntryDues(db);
 
         var parking = new ParkingHistoryService(
             new Repository<ParkingLog>(db), new Repository<ParkingSlot>(db),
             payments, allocationService: null!, notices, db, new NoSlotSensors(), entryDues);
 
-        return new Gate(db, parking, user, log, dues, notices);
+        return new Gate(db, parking, user, log, dues, notices, entryDues, cloud);
     }
 
     private static Task<ActionResult<object>> Tap(Gate g) =>
@@ -268,6 +296,77 @@ public class PayBeforeExitTests
         Assert.Equal(billId, OnlyBill(g).Id);
     }
 
+    /// <summary>
+    /// What happened on 2026-11-25: paid in the app, tapped out 18 seconds
+    /// later, before the site had the payment. The gate billed the whole visit
+    /// again and the guard took it in cash.
+    /// </summary>
+    [Fact]
+    public async Task At_the_site_a_payment_made_in_the_app_seconds_ago_is_not_billed_again()
+    {
+        var g = await GateAsync(site: true);
+        var now = DateTime.UtcNow;
+        var paidInApp = new PaymentTransaction
+        {
+            Id = Guid.NewGuid(), Source = PaymentSource.ParkingFee, ParkingLogId = g.Log.Id, UserId = g.User.Id,
+            AmountDue = 60m, DurationMinutes = 120, RatePerHourApplied = 30m,
+            CoversFrom = g.Log.EntryTime, CoversTo = g.Log.EntryTime.AddMinutes(120),
+            Status = PaymentStatus.Paid, PaidAhead = true, CreatedAt = now.AddSeconds(-25), PaidAt = now.AddSeconds(-18),
+            Method = PaymentMethod.GCash, Provider = "Simulated"
+        };
+        g.Cloud.Bills.Add(paidInApp);
+
+        var result = await Tap(g);
+
+        Assert.Equal(200, Status(result));
+        Assert.NotNull(Session(g).ExitTime);
+        Assert.Equal(paidInApp.Id, OnlyBill(g).Id);
+    }
+
+    [Fact]
+    public async Task At_the_site_the_cloud_is_not_asked_when_nothing_is_owed()
+    {
+        var g = await GateAsync(ratePerHour: 0m, site: true);
+
+        await Tap(g);
+
+        Assert.Equal(0, g.Cloud.Asked);
+    }
+
+    [Fact]
+    public async Task At_the_site_cash_is_refused_for_a_bill_just_paid_in_the_app()
+    {
+        var g = await GateAsync(site: true);
+        await Tap(g);
+        var held = OnlyBill(g);
+        held.Status = PaymentStatus.Paid;
+        held.PaidAt = DateTime.UtcNow;
+        held.Method = PaymentMethod.GCash;
+        g.Cloud.Bills.Add(held);
+
+        var result = await Controller(g, Guid.NewGuid()).ReceiveCash(held.Id, default);
+
+        Assert.IsType<ConflictObjectResult>(result.Result);
+        var bill = OnlyBill(g);
+        Assert.Equal(PaymentStatus.Paid, bill.Status);
+        Assert.Equal(PaymentMethod.GCash, bill.Method);
+        Assert.Null(bill.ConfirmedByUserId);
+    }
+
+    [Fact]
+    public async Task At_the_site_cash_is_refused_when_the_snapshot_already_says_paid()
+    {
+        var g = await GateAsync(site: true);
+        await Tap(g);
+        var id = OnlyBill(g).Id;
+        g.Dues.Set(new SiteSnapshot { GeneratedAt = DateTime.UtcNow, Dues = [], SettledPaymentIds = [id] });
+
+        var result = await Controller(g, Guid.NewGuid()).ReceiveCash(id, default);
+
+        Assert.IsType<ConflictObjectResult>(result.Result);
+        Assert.Equal(0, await g.Db.Set<PaymentTransaction>().CountAsync(p => p.Method == PaymentMethod.Cash));
+    }
+
     [Fact]
     public async Task A_driver_let_out_still_owing_leaves_but_stays_blocked_from_entering()
     {
@@ -303,7 +402,7 @@ public class PayBeforeExitTests
 
     private static SitePaymentsController Controller(Gate g, Guid guard)
     {
-        var controller = new SitePaymentsController(g.Db, g.Notices)
+        var controller = new SitePaymentsController(g.Db, g.Notices, g.EntryDues)
         {
             ControllerContext = new ControllerContext
             {

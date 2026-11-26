@@ -76,6 +76,7 @@ namespace AimPark.API.Sync
             services.AddSingleton<SiteSyncStatus>();
             services.AddScoped<ISaveChangesInterceptor, SiteOutboxInterceptor>();
             services.AddSingleton<SiteDues>();
+            services.AddSingleton<ICloudVisitBills, CloudVisitBills>();
             services.AddScoped<AimPark.API.Interfaces.IEntryDues, SiteEntryDues>();
             services.AddScoped<SnapshotApplier>();
             services.AddHostedService<SiteOutboxPusher>();

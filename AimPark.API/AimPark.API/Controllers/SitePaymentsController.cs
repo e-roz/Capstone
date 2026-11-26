@@ -32,11 +32,13 @@ namespace AimPark.API.Controllers
     {
         private readonly AppDbContext _db;
         private readonly INotificationService _notifications;
+        private readonly IEntryDues? _dues;
 
-        public SitePaymentsController(AppDbContext db, INotificationService notifications)
+        public SitePaymentsController(AppDbContext db, INotificationService notifications, IEntryDues? dues = null)
         {
             _db = db;
             _notifications = notifications;
+            _dues = dues;
         }
 
         public class ReleaseDto
@@ -65,6 +67,24 @@ namespace AimPark.API.Controllers
 
             if (bill.AmountDue <= 0m)
                 return Conflict(new { message = "There is nothing to collect on that bill." });
+
+            // The driver may have just paid this in the app. The site hears of
+            // that late, so ask before taking the money a second time.
+            if (_dues is not null)
+            {
+                if (bill.ParkingLogId is Guid logId)
+                {
+                    await _dues.RefreshVisitAsync(logId, ct);
+                    await _db.Entry(bill).ReloadAsync(ct);
+                }
+
+                if (bill.Status is PaymentStatus.Paid or PaymentStatus.Waived
+                    || await _dues.IsSettledAsync(bill.Id, ct))
+                    return Conflict(new
+                    {
+                        message = "This was already paid in the app. Do not take cash; the driver can tap their card to leave."
+                    });
+            }
 
             var now = DateTime.UtcNow;
             var (from, to) = ExitPayment.DayRange(ExitPayment.ManilaDay(now));

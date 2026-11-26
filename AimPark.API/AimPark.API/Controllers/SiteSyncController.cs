@@ -41,6 +41,14 @@ namespace AimPark.API.Controllers
         public async Task<ActionResult<SiteSnapshot>> Snapshot(CancellationToken ct)
             => Ok(await _snapshots.BuildAsync(ct));
 
+        /// <summary>
+        /// One visit's paid, paid-ahead and in-progress bills, for the gate to
+        /// check right before it holds a driver or a guard takes cash.
+        /// </summary>
+        [HttpGet("visits/{parkingLogId:guid}/bills")]
+        public async Task<ActionResult<List<Entities.PaymentTransaction>>> VisitBills(Guid parkingLogId, CancellationToken ct)
+            => Ok(await _snapshots.VisitBillsAsync(parkingLogId, ct));
+
         /// <summary>What happened at the gates since the site last sent.</summary>
         [HttpPost("events")]
         public async Task<ActionResult<object>> Events([FromBody] SiteEventBatch batch, CancellationToken ct)

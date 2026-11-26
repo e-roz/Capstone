@@ -1,3 +1,4 @@
+using System.Linq.Expressions;
 using AimPark.API.Data;
 using AimPark.API.Entities;
 using AimPark.API.Enums;
@@ -14,6 +15,50 @@ namespace AimPark.API.Sync.Cloud
         {
             _db = db;
         }
+
+        /// <summary>
+        /// One visit's bills, as the snapshot would send them. Asked by the site
+        /// right before it holds a driver at the exit or a guard takes cash, so
+        /// a payment made in the app a few seconds ago still counts.
+        /// </summary>
+        public Task<List<PaymentTransaction>> VisitBillsAsync(Guid parkingLogId, CancellationToken ct)
+            => _db.Set<PaymentTransaction>().AsNoTracking()
+                .Where(p => p.ParkingLogId == parkingLogId)
+                .Where(GateBill)
+                .Select(GateCopy)
+                .ToListAsync(ct);
+
+        /// <summary>A bill the site's gate prices a visit against.</summary>
+        private static readonly Expression<Func<PaymentTransaction, bool>> GateBill = p =>
+            p.PaidAhead
+            || p.Status == PaymentStatus.Paid
+            || p.Status == PaymentStatus.Waived
+            || p.Status == PaymentStatus.Processing;
+
+        /// <summary>Only the bill's own columns: the row is copied into the site's table.</summary>
+        private static readonly Expression<Func<PaymentTransaction, PaymentTransaction>> GateCopy = p => new PaymentTransaction
+        {
+            Id = p.Id,
+            Source = p.Source,
+            ParkingLogId = p.ParkingLogId,
+            UserId = p.UserId,
+            DurationMinutes = p.DurationMinutes,
+            RatePerHourApplied = p.RatePerHourApplied,
+            AmountDue = p.AmountDue,
+            CoversFrom = p.CoversFrom,
+            CoversTo = p.CoversTo,
+            Status = p.Status,
+            PaidAhead = p.PaidAhead,
+            DueAt = p.DueAt,
+            CreatedAt = p.CreatedAt,
+            PaidAt = p.PaidAt,
+            Method = p.Method,
+            Provider = p.Provider,
+            ProviderPaymentId = p.ProviderPaymentId,
+            ReferenceNumber = p.ReferenceNumber,
+            CheckoutStartedAt = p.CheckoutStartedAt,
+            ConfirmedByUserId = p.ConfirmedByUserId
+        };
 
         public async Task<SiteSnapshot> BuildAsync(CancellationToken ct)
         {
@@ -87,39 +132,13 @@ namespace AimPark.API.Sync.Cloud
                 .Select(p => p.Id)
                 .ToListAsync(ct);
 
-            // Only the bill's own columns: the row is copied into the site's table.
             // Bills paid ahead, and every bill of a visit still open that the
             // cloud has settled or is taking payment for: the site gate prices
             // the visit against what was really paid, and when.
             var paidAhead = await _db.Set<PaymentTransaction>().AsNoTracking()
-                .Where(p => p.ParkingLog != null && p.ParkingLog.ExitTime == null
-                            && (p.PaidAhead
-                                || p.Status == PaymentStatus.Paid
-                                || p.Status == PaymentStatus.Waived
-                                || p.Status == PaymentStatus.Processing))
-                .Select(p => new PaymentTransaction
-                {
-                    Id = p.Id,
-                    Source = p.Source,
-                    ParkingLogId = p.ParkingLogId,
-                    UserId = p.UserId,
-                    DurationMinutes = p.DurationMinutes,
-                    RatePerHourApplied = p.RatePerHourApplied,
-                    AmountDue = p.AmountDue,
-                    CoversFrom = p.CoversFrom,
-                    CoversTo = p.CoversTo,
-                    Status = p.Status,
-                    PaidAhead = p.PaidAhead,
-                    DueAt = p.DueAt,
-                    CreatedAt = p.CreatedAt,
-                    PaidAt = p.PaidAt,
-                    Method = p.Method,
-                    Provider = p.Provider,
-                    ProviderPaymentId = p.ProviderPaymentId,
-                    ReferenceNumber = p.ReferenceNumber,
-                    CheckoutStartedAt = p.CheckoutStartedAt,
-                    ConfirmedByUserId = p.ConfirmedByUserId
-                })
+                .Where(p => p.ParkingLog != null && p.ParkingLog.ExitTime == null)
+                .Where(GateBill)
+                .Select(GateCopy)
                 .ToListAsync(ct);
 
             return new SiteSnapshot
