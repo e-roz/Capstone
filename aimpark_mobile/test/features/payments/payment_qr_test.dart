@@ -96,7 +96,8 @@ void main() {
     expect(find.byType(QrImageView), findsOneWidget);
     expect(repo.checkoutsOpened, 1);
     // The bill says so, so nobody backs out and pays it twice.
-    expect(find.text('Processing'), findsOneWidget);
+    // The status card's eyebrow, drawn in capitals.
+    expect(find.text('PAYMENT IN PROGRESS'), findsOneWidget);
 
     // Leave no timer running behind the test.
     await tester.pumpWidget(const SizedBox());
