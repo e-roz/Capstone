@@ -272,10 +272,10 @@ class _ParkingScreenState extends ConsumerState<ParkingScreen> {
                           'know it was you. Only bays where the sensor sees a '
                           "vehicle can be picked. If yours isn't lit up, ask "
                           'the parking office. Leaving without confirming '
-                          'counts against you.'
-                    : 'You left earlier today. Tap the bay you used and confirm '
-                          'it — this is open until midnight, after which it '
-                          'counts as unconfirmed.',
+                          'is a violation.'
+                    : "You left without confirming your bay. Leaving "
+                          'without confirming is a violation, so confirm '
+                          'before you drive out next time.',
               ),
               const SizedBox(height: AppSpacing.md),
             ],

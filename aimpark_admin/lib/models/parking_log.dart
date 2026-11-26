@@ -91,7 +91,7 @@ enum BayConfirmState {
   /// Confirmed after leaving, the same day.
   confirmedLate,
 
-  /// Left without confirming. Counts toward a warning and a strike.
+  /// Left without confirming. Brings a violation.
   unconfirmed,
 
   /// A visitor or a very short stay, never asked to confirm.

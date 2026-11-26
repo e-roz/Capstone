@@ -24,26 +24,29 @@ namespace AimPark.API.Services
     }
 
     /// <summary>
-    /// Warns a driver who leaves without confirming their bay, and issues a
-    /// violation for each time after the warning.
+    /// Issues a violation to a driver for every visit they leave without
+    /// confirming their bay.
     /// </summary>
     /// <remarks>
     /// Cloud only, like the confirms it counts. A bay can only be confirmed while
     /// the car is inside, so a session without a confirm is final the moment it
-    /// ends. Within <see cref="SlotConfirmPolicy.Window"/> the first
-    /// <see cref="SlotConfirmPolicy.Warnings"/> such sessions bring a warning and
-    /// every later one a violation under the rule titled
-    /// <see cref="SlotConfirmPolicy.RuleTitle"/>. The violation goes through the
-    /// normal flow: the driver can appeal, and the fine is only raised if it
-    /// stands. An admin can switch it off by deactivating that rule.
+    /// ends. Each one is a violation under the rule titled
+    /// <see cref="SlotConfirmPolicy.RuleTitle"/>, from the first time: there used
+    /// to be one free warning every 30 days, dropped on 2026-11-26. The violation
+    /// goes through the normal flow: the driver can appeal, and the fine is only
+    /// raised if it stands. An admin can switch it off by deactivating that rule.
     ///
-    /// Each session is handled once, recognised by the notification or violation
+    /// A visit that already brought one of the old warnings is left alone: the
+    /// driver was told that one was only a warning.
+    ///
+    /// Each session is handled once, recognised by the violation (or old warning)
     /// it produced, so it needs no column of its own.
     /// </remarks>
     public class UnconfirmedParkingService : BackgroundService
     {
         private static readonly TimeSpan Interval = TimeSpan.FromMinutes(10);
 
+        /// <summary>How the old one-time warnings were tagged; a visit that has one is not fined.</summary>
         public const string WarningMarker = "\"kind\":\"UnconfirmedWarning\"";
 
         private readonly IServiceScopeFactory _scopes;
@@ -73,9 +76,8 @@ namespace AimPark.API.Services
                 {
                     using var scope = _scopes.CreateScope();
                     var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-                    var notifications = scope.ServiceProvider.GetRequiredService<INotificationService>();
                     var violations = scope.ServiceProvider.GetRequiredService<IViolationService>();
-                    await RunAsync(db, notifications, violations, _options.Value, DateTime.UtcNow, stoppingToken);
+                    await RunAsync(db, violations, _options.Value, DateTime.UtcNow, stoppingToken);
                 }
                 catch (Exception ex) when (ex is not OperationCanceledException)
                 {
@@ -141,7 +143,7 @@ namespace AimPark.API.Services
                 rule = new PolicyRule
                 {
                     Title = SlotConfirmPolicy.RuleTitle,
-                    Description = "Leaving the lot without confirming in the app which bay you parked in. The first time in 30 days is a warning.",
+                    Description = "Leaving the lot without confirming in the app which bay you parked in.",
                     Category = PolicyCategory.Parking,
                     DefaultPenaltyAmount = SlotConfirmPolicy.PenaltyAmount,
                     DefaultSuspensionType = SuspensionType.None,
@@ -155,87 +157,54 @@ namespace AimPark.API.Services
             return rule.IsActive ? rule : null;
         }
 
-        /// <summary>One pass. Returns how many warnings and violations it sent.</summary>
-        public static async Task<(int Warned, int Violated)> RunAsync(
-            AppDbContext db, INotificationService notifications, IViolationService violations,
+        /// <summary>One pass. Returns how many violations it issued.</summary>
+        public static async Task<int> RunAsync(
+            AppDbContext db, IViolationService violations,
             SlotConfirmPolicyOptions options, DateTime now, CancellationToken ct)
         {
             var sessions = await UnconfirmedAsync(db, options, now, ct);
-            if (sessions.Count == 0) return (0, 0);
+            if (sessions.Count == 0) return 0;
 
-            var warned = 0;
+            var rule = await RuleAsync(db, ct);
+            if (rule is null) return 0;
+
+            // A violation needs someone to issue it. The earliest admin account stands in.
+            var issuer = await db.Set<User>().AsNoTracking()
+                .Where(u => u.Role == UserRole.Admin && !u.IsDeleted)
+                .OrderBy(u => u.CreatedAt)
+                .Select(u => (Guid?)u.Id)
+                .FirstOrDefaultAsync(ct);
+            if (issuer is null) return 0;
+
             var violated = 0;
-            PolicyRule? rule = null;
-            var ruleLoaded = false;
-            Guid? issuer = null;
-
-            foreach (var driver in sessions.GroupBy(s => s.UserId))
+            foreach (var s in sessions)
             {
-                var nth = 0;
-                foreach (var s in driver)
+                var alreadyIssued = await db.Set<Violation>().AsNoTracking()
+                    .AnyAsync(v => v.ParkingLogId == s.LogId && v.PolicyRuleId == rule.Id, ct);
+                if (alreadyIssued) continue;
+
+                var logMarker = $"\"logId\":\"{s.LogId}\"";
+                var warnedUnderOldRule = await db.Set<Notification>().AsNoTracking().AnyAsync(n =>
+                    n.TargetUserId == s.UserId
+                    && n.Data != null
+                    && n.Data.Contains(WarningMarker)
+                    && n.Data.Contains(logMarker), ct);
+                if (warnedUnderOldRule) continue;
+
+                var result = await violations.IssueAsync(new DTOs.IssueViolationDto
                 {
-                    nth++;
+                    UserId = s.UserId,
+                    PolicyRuleId = rule.Id,
+                    ParkingLogId = s.LogId,
+                    Description = $"Left the lot on {s.ExitTime.AddHours(8):MMM d, yyyy h:mm tt} without confirming the bay. " +
+                                  "Issued automatically.",
+                }, issuer.Value, ct);
 
-                    if (nth <= SlotConfirmPolicy.Warnings)
-                    {
-                        var logMarker = $"\"logId\":\"{s.LogId}\"";
-                        var alreadyWarned = await db.Set<Notification>().AsNoTracking().AnyAsync(n =>
-                            n.TargetUserId == s.UserId
-                            && n.Data != null
-                            && n.Data.Contains(WarningMarker)
-                            && n.Data.Contains(logMarker), ct);
-                        if (alreadyWarned) continue;
-
-                        await notifications.NotifyUserAsync(
-                            s.UserId,
-                            NotificationType.Reminder,
-                            "Confirm your bay each time you park",
-                            "You left without confirming your bay. This is a warning. " +
-                            $"Next time you leave without confirming, it is a violation with a ₱{SlotConfirmPolicy.PenaltyAmount:0} penalty. " +
-                            "Confirm in the app before you drive out.",
-                            new Dictionary<string, string>
-                            {
-                                ["screen"] = "parking-slots",
-                                ["kind"] = "UnconfirmedWarning",
-                                ["logId"] = s.LogId.ToString(),
-                            },
-                            ct);
-                        warned++;
-                        continue;
-                    }
-
-                    if (!ruleLoaded)
-                    {
-                        rule = await RuleAsync(db, ct);
-                        ruleLoaded = true;
-                        // A violation needs someone to issue it. The earliest admin account stands in.
-                        issuer = await db.Set<User>().AsNoTracking()
-                            .Where(u => u.Role == UserRole.Admin && !u.IsDeleted)
-                            .OrderBy(u => u.CreatedAt)
-                            .Select(u => (Guid?)u.Id)
-                            .FirstOrDefaultAsync(ct);
-                    }
-                    if (rule is null || issuer is null) continue;
-
-                    var alreadyIssued = await db.Set<Violation>().AsNoTracking()
-                        .AnyAsync(v => v.ParkingLogId == s.LogId && v.PolicyRuleId == rule.Id, ct);
-                    if (alreadyIssued) continue;
-
-                    var result = await violations.IssueAsync(new DTOs.IssueViolationDto
-                    {
-                        UserId = s.UserId,
-                        PolicyRuleId = rule.Id,
-                        ParkingLogId = s.LogId,
-                        Description = $"Left the lot on {s.ExitTime.AddHours(8):MMM d, yyyy h:mm tt} without confirming the bay. " +
-                                      "Issued automatically after the warning.",
-                    }, issuer.Value, ct);
-
-                    if (result.Result is Microsoft.AspNetCore.Mvc.OkObjectResult)
-                        violated++;
-                }
+                if (result.Result is Microsoft.AspNetCore.Mvc.OkObjectResult)
+                    violated++;
             }
 
-            return (warned, violated);
+            return violated;
         }
     }
 }

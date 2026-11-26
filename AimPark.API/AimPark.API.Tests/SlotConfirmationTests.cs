@@ -539,43 +539,20 @@ public class SlotConfirmationTests
     }
 
     [Fact]
-    public async Task The_first_unconfirmed_visit_is_only_a_warning()
-    {
-        var db = NewDb();
-        var user = NewDriver(db);
-        NewAdmin(db);
-        var visits = UnconfirmedVisits(db, user, 1);
-        await db.SaveChangesAsync();
-        var notices = new Recorder(db);
-        var violations = new ViolationRecorder(db);
-
-        var first = await UnconfirmedParkingService.RunAsync(db, notices, violations, Policy, Now, CancellationToken.None);
-        var second = await UnconfirmedParkingService.RunAsync(db, notices, violations, Policy, Now.AddHours(1), CancellationToken.None);
-
-        Assert.Equal((1, 0), first);
-        Assert.Equal((0, 0), second);
-        var sent = Assert.Single(notices.Sent);
-        Assert.Equal("UnconfirmedWarning", sent.Data!["kind"]);
-        Assert.Equal(visits[0].Id.ToString(), sent.Data["logId"]);
-        Assert.Empty(violations.Issued);
-    }
-
-    [Fact]
-    public async Task The_second_unconfirmed_visit_is_a_violation_issued_once()
+    public async Task The_first_unconfirmed_visit_is_a_violation_issued_once()
     {
         var db = NewDb();
         var user = NewDriver(db);
         var admin = NewAdmin(db);
-        var visits = UnconfirmedVisits(db, user, 2); // visits[0] is the newer one
+        var visits = UnconfirmedVisits(db, user, 1);
         await db.SaveChangesAsync();
-        var notices = new Recorder(db);
         var violations = new ViolationRecorder(db);
 
-        var first = await UnconfirmedParkingService.RunAsync(db, notices, violations, Policy, Now, CancellationToken.None);
-        var second = await UnconfirmedParkingService.RunAsync(db, notices, violations, Policy, Now.AddHours(1), CancellationToken.None);
+        var first = await UnconfirmedParkingService.RunAsync(db, violations, Policy, Now, CancellationToken.None);
+        var second = await UnconfirmedParkingService.RunAsync(db, violations, Policy, Now.AddHours(1), CancellationToken.None);
 
-        Assert.Equal((1, 1), first);
-        Assert.Equal((0, 0), second);
+        Assert.Equal(1, first);
+        Assert.Equal(0, second);
         var issued = Assert.Single(violations.Issued);
         Assert.Equal(user.Id, issued.Dto.UserId);
         Assert.Equal(visits[0].Id, issued.Dto.ParkingLogId);
@@ -589,6 +566,50 @@ public class SlotConfirmationTests
     }
 
     [Fact]
+    public async Task Every_unconfirmed_visit_is_its_own_violation()
+    {
+        var db = NewDb();
+        var user = NewDriver(db);
+        NewAdmin(db);
+        var visits = UnconfirmedVisits(db, user, 3);
+        await db.SaveChangesAsync();
+        var violations = new ViolationRecorder(db);
+
+        var issued = await UnconfirmedParkingService.RunAsync(db, violations, Policy, Now, CancellationToken.None);
+
+        Assert.Equal(3, issued);
+        Assert.Equal(
+            visits.Select(v => v.Id).OrderBy(id => id),
+            violations.Issued.Select(i => i.Dto.ParkingLogId!.Value).OrderBy(id => id));
+    }
+
+    [Fact]
+    public async Task A_visit_warned_under_the_old_rule_is_not_fined()
+    {
+        var db = NewDb();
+        var user = NewDriver(db);
+        NewAdmin(db);
+        var visits = UnconfirmedVisits(db, user, 2);
+        db.Add(new Notification
+        {
+            TargetUserId = user.Id,
+            Title = "Confirm your bay each time you park",
+            Data = System.Text.Json.JsonSerializer.Serialize(new Dictionary<string, string>
+            {
+                ["kind"] = "UnconfirmedWarning",
+                ["logId"] = visits[1].Id.ToString(),
+            }),
+        });
+        await db.SaveChangesAsync();
+        var violations = new ViolationRecorder(db);
+
+        var issued = await UnconfirmedParkingService.RunAsync(db, violations, Policy, Now, CancellationToken.None);
+
+        Assert.Equal(1, issued);
+        Assert.Equal(visits[0].Id, Assert.Single(violations.Issued).Dto.ParkingLogId);
+    }
+
+    [Fact]
     public async Task A_deactivated_rule_switches_the_violations_off()
     {
         var db = NewDb();
@@ -599,9 +620,9 @@ public class SlotConfirmationTests
         await db.SaveChangesAsync();
         var violations = new ViolationRecorder(db);
 
-        var result = await UnconfirmedParkingService.RunAsync(db, new Recorder(db), violations, Policy, Now, CancellationToken.None);
+        var result = await UnconfirmedParkingService.RunAsync(db, violations, Policy, Now, CancellationToken.None);
 
-        Assert.Equal((1, 0), result);
+        Assert.Equal(0, result);
         Assert.Empty(violations.Issued);
     }
 
@@ -613,15 +634,13 @@ public class SlotConfirmationTests
         NewAdmin(db);
         UnconfirmedVisits(db, user, 3);
         await db.SaveChangesAsync();
-        var notices = new Recorder(db);
         var violations = new ViolationRecorder(db);
 
-        var off = await UnconfirmedParkingService.RunAsync(db, notices, violations, new SlotConfirmPolicyOptions(), Now, CancellationToken.None);
-        var notYet = await UnconfirmedParkingService.RunAsync(db, notices, violations, new SlotConfirmPolicyOptions { CountFrom = Now }, Now, CancellationToken.None);
+        var off = await UnconfirmedParkingService.RunAsync(db, violations, new SlotConfirmPolicyOptions(), Now, CancellationToken.None);
+        var notYet = await UnconfirmedParkingService.RunAsync(db, violations, new SlotConfirmPolicyOptions { CountFrom = Now }, Now, CancellationToken.None);
 
-        Assert.Equal((0, 0), off);
-        Assert.Equal((0, 0), notYet);
-        Assert.Empty(notices.Sent);
+        Assert.Equal(0, off);
+        Assert.Equal(0, notYet);
         Assert.Empty(violations.Issued);
     }
 
