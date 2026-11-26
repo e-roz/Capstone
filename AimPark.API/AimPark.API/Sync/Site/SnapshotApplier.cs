@@ -50,6 +50,17 @@ namespace AimPark.API.Sync.Site
         }
 
         /// <summary>
+        /// One visit's bills, fetched from the cloud on the spot (see
+        /// <see cref="CloudVisitBills"/>). Applied by the same rules as the snapshot.
+        /// </summary>
+        public Task ApplyVisitBillsAsync(List<PaymentTransaction> bills, CancellationToken ct)
+        {
+            // The cloud's data arriving; it must not go back into the outbox.
+            _suppression.Active = true;
+            return ApplyPaidAheadBillsAsync(bills, ct);
+        }
+
+        /// <summary>
         /// Bills paid, or about to be paid, from the app by drivers still inside.
         /// </summary>
         /// <remarks>

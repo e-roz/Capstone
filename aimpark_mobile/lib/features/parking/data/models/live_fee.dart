@@ -6,8 +6,9 @@
 /// finished visit (then [exitTime] is set and everything is priced at it).
 ///
 /// The rule: the first hour costs one hour's rate, flat. After that every
-/// started minute costs the rate ÷ 60. After each payment the meter pauses for
-/// a short grace (7 minutes) that is never charged.
+/// started minute costs the rate ÷ 60. After each payment there is a 7-minute
+/// grace period: leave inside it and nothing more is owed; stay past it and
+/// it is charged too, from the end of what was paid.
 class LiveFee {
   const LiveFee({
     required this.asOf,
@@ -151,7 +152,7 @@ class LiveFee {
 }
 
 /// One stretch of a visit: the flat first hour, a per-minute run, or a grace
-/// pause after a payment (always free).
+/// period after a payment (the driver left inside it, or it is still running).
 class FeeSegment {
   const FeeSegment({
     required this.kind,

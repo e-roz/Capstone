@@ -378,7 +378,7 @@ class _PaymentDetailScreenState extends ConsumerState<PaymentDetailScreen>
                     AppFact('Calculation', _calculation(payment)),
                   if (payment.graceUntil != null && payment.paidAt != null)
                     AppFact(
-                      'Grace (meter paused)',
+                      'Grace period',
                       '${Formatters.time(payment.paidAt!)} – '
                           '${Formatters.time(payment.graceUntil!)}',
                     ),

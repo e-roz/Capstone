@@ -1008,7 +1008,7 @@ namespace AimPark.API.Services
             if (latest is not null && ExitPayment.IsReleased(latest))
                 return null;
 
-            var price = await _pricing.PriceAsync(log, now, ct);
+            var price = await _pricing.PriceForExitAsync(log, now, ct);
             var billed = await _paymentService.BillOwedAsync(log, price, paidAhead: false, ct);
             if (billed is null)
                 return null;

@@ -61,7 +61,7 @@ class _VisitBody extends StatelessWidget {
 
   static String _segmentLabel(FeeSegment s) => switch (s.kind) {
     'FirstHour' => 'First hour · flat',
-    'Grace' => 'Grace · meter paused',
+    'Grace' => 'Grace period',
     _ => 'Per minute · ${s.minutes} min',
   };
 
@@ -111,11 +111,11 @@ class _VisitBody extends StatelessWidget {
               for (final s in fee.segments)
                 AppFact(
                   _segmentLabel(s),
-                  '${Formatters.time(s.from)} – ${Formatters.time(s.to)} · '
-                  '${s.isGrace ? 'free' : Formatters.peso(s.amount)}',
+                  '${Formatters.timeRange(s.from, s.to)} · '
+                  '${s.isGrace ? 'meter paused' : Formatters.peso(s.amount)}',
                 ),
               if (graceMinutes > 0)
-                AppFact('Free grace time', '$graceMinutes min'),
+                AppFact('Grace period (left in time)', '$graceMinutes min'),
             ],
             total: AppFact('Total', Formatters.peso(fee.totalSoFar)),
           )

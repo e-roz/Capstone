@@ -52,6 +52,22 @@ namespace AimPark.API.Services
             _graceMinutes = (int)Math.Round(grace.TotalMinutes);
         }
 
+        /// <summary>
+        /// Priced for a decision that takes money: holding a driver at the exit.
+        /// If the visit seems to owe anything, the latest payments are fetched
+        /// first and it is priced again, so a payment made in the app moments
+        /// ago is never billed a second time.
+        /// </summary>
+        public async Task<VisitPrice> PriceForExitAsync(ParkingLog log, DateTime at, CancellationToken ct)
+        {
+            var price = await PriceAsync(log, at, ct);
+            if (price.OwedNow <= 0m || log.ExitTime is not null)
+                return price;
+
+            await _dues.RefreshVisitAsync(log.Id, ct);
+            return await PriceAsync(log, at, ct);
+        }
+
         public async Task<VisitPrice> PriceAsync(ParkingLog log, DateTime at, CancellationToken ct)
         {
             var (rate, _) = await _payments.RateForAsync(log, ct);

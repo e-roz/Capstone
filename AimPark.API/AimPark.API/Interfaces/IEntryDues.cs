@@ -21,6 +21,18 @@ namespace AimPark.API.Interfaces
         /// opened, but nothing has confirmed the money.
         /// </summary>
         Task<bool> IsSettledAsync(Guid paymentId, CancellationToken ct);
+
+        /// <summary>
+        /// Make sure what is known about this visit's bills is current before
+        /// the gate holds a driver or a guard takes cash for it.
+        /// </summary>
+        /// <remarks>
+        /// Nothing to do where the payments live (the cloud). On the site server
+        /// a payment made in the app arrives with the next snapshot, which can be
+        /// seconds or minutes behind; asking the cloud for this one visit closes
+        /// that gap, so a driver who has just paid is not billed a second time.
+        /// </remarks>
+        Task RefreshVisitAsync(Guid parkingLogId, CancellationToken ct);
     }
 
     /// <summary>The cloud's answer, and the default: payments are settled here.</summary>
@@ -39,5 +51,7 @@ namespace AimPark.API.Interfaces
             _db.Set<PaymentTransaction>().AsNoTracking()
                 .AnyAsync(p => p.Id == paymentId
                                && (p.Status == PaymentStatus.Paid || p.Status == PaymentStatus.Waived), ct);
+
+        public Task RefreshVisitAsync(Guid parkingLogId, CancellationToken ct) => Task.CompletedTask;
     }
 }

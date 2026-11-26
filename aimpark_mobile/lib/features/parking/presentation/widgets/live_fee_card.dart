@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/theme/theme.dart';
 import '../../../../core/utils/formatters.dart';
+import '../../../../core/widgets/app_notice.dart';
 import '../../data/models/live_fee.dart';
 import '../../data/models/parking_history_entry.dart';
 import '../providers/parking_history_provider.dart';
@@ -16,13 +17,13 @@ import '../providers/parking_history_provider.dart';
 /// stay the same way as pay-ahead and the exit gate. The app does no fee maths
 /// of its own, so it can never show a number the barrier disagrees with.
 ///
-/// It shows one of three things:
-/// - inside the first hour, nothing paid: the flat first-hour fee and how much
-///   of the hour is left;
-/// - paid up: a countdown to when the meter starts again (the end of the first
-///   hour, or the end of the 7-minute grace after a payment);
-/// - owing: the visit stretch by stretch (first hour, per-minute runs, grace),
-///   what is paid, and what is still to pay.
+/// The big clock always shows the time being charged for:
+/// - before paying: counting up from entry, with the fee under it;
+/// - paid, in the 7-minute grace period: stopped at the moment of payment,
+///   with a countdown to the end of the grace period;
+/// - still inside after the grace period: counting up again from the moment
+///   of payment, with why, and what the extra comes to. The grace period is
+///   charged then too.
 ///
 /// How it stays live without hammering the server: the reply says when the
 /// price next goes up, so the card asks again right then. It also asks at least
@@ -30,10 +31,13 @@ import '../providers/parking_history_provider.dart';
 /// back to the front. Timing is measured on the server's clock, so a phone with
 /// the wrong time still refreshes at the right moment.
 class LiveFeeCard extends ConsumerStatefulWidget {
-  const LiveFeeCard({super.key, required this.session});
+  const LiveFeeCard({super.key, required this.session, this.afterClock});
 
   /// The open session.
   final ParkingHistoryEntry session;
+
+  /// Shown under the clock, above the fee: the driver's bay.
+  final Widget? afterClock;
 
   @override
   ConsumerState<LiveFeeCard> createState() => _LiveFeeCardState();
@@ -136,42 +140,74 @@ class _LiveFeeCardState extends ConsumerState<LiveFeeCard>
   Widget build(BuildContext context) {
     final t = context.tokens;
     final fee = _fee;
+    final entry = widget.session.entryTime;
+
+    // Which clock to show. Before the fee loads, the plain parked clock.
+    final mode = fee == null || fee.isFree
+        ? _Mode.counting
+        : fee.isCovered
+        ? _Mode.paid
+        : fee.alreadyPaid > 0 && fee.owedNow > 0
+        ? _Mode.extra
+        : _Mode.counting;
+    final paidAt = fee == null ? null : _lastPaidAt(fee);
+
+    final (label, labelColor) = switch (mode) {
+      _Mode.counting => ('YOU ARE PARKED', t.tertiary.subtleText),
+      _Mode.paid => ('PAID · GRACE PERIOD', t.status.success.fg),
+      _Mode.extra => ('EXTRA TIME', t.status.warning.fg),
+    };
+    final firstHourPaid =
+        mode == _Mode.paid && !fee!.leaveBy!.isAfter(fee.firstHourEndsAt);
 
     final header = Row(
       children: [
+        Container(
+          width: 8,
+          height: 8,
+          decoration: BoxDecoration(color: labelColor, shape: BoxShape.circle),
+        ),
+        const SizedBox(width: AppSpacing.xs + 2),
         Text(
-          'FEE SO FAR',
-          style: context.text.labelMedium?.copyWith(
-            color: t.tertiary.subtleText,
-          ),
+          firstHourPaid ? 'PAID · FIRST HOUR' : label,
+          style: context.text.labelMedium?.copyWith(color: labelColor),
         ),
         const Spacer(),
         if (fee != null) _LiveTag(stale: _failed),
       ],
     );
 
-    if (fee == null) {
-      return Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          header,
-          const SizedBox(height: AppSpacing.xs),
-          Text(
-            _failed
-                ? "Couldn't load the fee right now. You'll see the exact "
-                      'amount when you pay.'
-                : 'Checking the fee…',
-            style: context.text.bodySmall,
-          ),
-        ],
-      );
-    }
+    final clock = switch (mode) {
+      _Mode.counting => MeterClock(
+        from: entry,
+        caption: 'Counting since ${Formatters.dayTime(entry)}',
+      ),
+      _Mode.paid => MeterClock(
+        from: entry,
+        stoppedAt: paidAt,
+        caption: 'Stopped at ${Formatters.time(paidAt!)}, when you paid',
+      ),
+      _Mode.extra => MeterClock(
+        from: paidAt!,
+        caption: 'Counting since ${Formatters.time(paidAt)}, when you paid',
+      ),
+    };
 
     final Widget body;
-    if (fee.isFree) {
+    if (fee == null) {
+      body = Text(
+        _failed
+            ? "Couldn't load the fee right now. You'll see the exact "
+                  'amount when you pay.'
+            : 'Checking the fee…',
+        style: context.text.bodySmall,
+      );
+    } else if (fee.isFree) {
       body = Text('Parking is free right now.', style: context.text.bodySmall);
-    } else if (fee.isCovered) {
-      body = _covered(context, fee);
+    } else if (mode == _Mode.paid) {
+      body = _covered(context, fee, paidAt!);
+    } else if (mode == _Mode.extra) {
+      body = _extra(context, fee, paidAt!);
     } else if (fee.alreadyPaid == 0 && fee.meterState == 'FirstHour') {
       body = _firstHour(context, fee);
     } else {
@@ -184,9 +220,15 @@ class _LiveFeeCardState extends ConsumerState<LiveFeeCard>
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           header,
-          const SizedBox(height: AppSpacing.xs),
+          const SizedBox(height: AppSpacing.sm),
+          clock,
+          if (widget.afterClock != null) ...[
+            const SizedBox(height: AppSpacing.sm),
+            widget.afterClock!,
+          ],
+          const SizedBox(height: AppSpacing.md),
           body,
-          if (fee.paymentProcessing) ...[
+          if (fee?.paymentProcessing ?? false) ...[
             const SizedBox(height: AppSpacing.xs),
             Text(
               'Payment in progress. This updates once it goes through.',
@@ -202,7 +244,6 @@ class _LiveFeeCardState extends ConsumerState<LiveFeeCard>
   Widget _firstHour(BuildContext context, LiveFee fee) {
     final t = context.tokens;
     final used = fee.durationMinutes.clamp(0, 60);
-    final perMinute = Formatters.peso(fee.ratePerHour / 60);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -235,8 +276,8 @@ class _LiveFeeCardState extends ConsumerState<LiveFeeCard>
         const SizedBox(height: AppSpacing.sm),
         Text(
           'Leave any time before ${Formatters.time(fee.firstHourEndsAt)} and '
-          'you pay ${Formatters.peso(fee.ratePerHour)}, no more. After that the '
-          'meter counts per minute ($perMinute a minute).',
+          'you pay ${Formatters.peso(fee.ratePerHour)}, no more. After that '
+          "it's ${_rate(fee)}, counted per minute.",
           style: context.text.bodySmall,
         ),
         const SizedBox(height: AppSpacing.sm),
@@ -245,53 +286,136 @@ class _LiveFeeCardState extends ConsumerState<LiveFeeCard>
     );
   }
 
-  /// Paid up: a countdown to when the meter starts again.
-  Widget _covered(BuildContext context, LiveFee fee) {
+  /// When the latest payment landed. The site's copy of a bill paid in the
+  /// app can lack the time; then the grace period's start stands in for it.
+  static DateTime _lastPaidAt(LiveFee fee) {
+    DateTime? latest;
+    for (final p in fee.payments) {
+      final at = p.paidAt;
+      if (at != null && (latest == null || at.isAfter(latest))) latest = at;
+    }
+    return latest ??
+        fee.graceUntil?.subtract(const Duration(minutes: _graceMinutes)) ??
+        fee.asOf;
+  }
+
+  /// The grace period after each payment, as the server applies it.
+  static const _graceMinutes = 7;
+
+  String _rate(LiveFee fee) => '${Formatters.pesoRate(fee.ratePerHour)} an hour';
+
+  /// Paid up: the clock is stopped, and a countdown to the end of the grace
+  /// period (or of a first hour paid for in full).
+  Widget _covered(BuildContext context, LiveFee fee, DateTime paidAt) {
+    final t = context.tokens;
     final leaveBy = fee.leaveBy!;
     var left = leaveBy.difference(_serverNow);
     if (left.isNegative) left = Duration.zero;
     final mm = left.inMinutes;
     final ss = (left.inSeconds % 60).toString().padLeft(2, '0');
     final inFirstHour = !leaveBy.isAfter(fee.firstHourEndsAt);
-    final perMinute = Formatters.peso(fee.ratePerHour / 60);
+    final ok = t.status.success;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          'LEAVE BY ${Formatters.time(leaveBy).toUpperCase()}',
-          style: context.text.labelSmall,
-        ),
-        const SizedBox(height: AppSpacing.xs),
-        Text(
-          '$mm:$ss left',
-          style: AppTypography.tabular(context.text.headlineMedium!),
-        ),
-        Text(
-          inFirstHour
-              ? 'Meter is not running. Your first hour is paid until '
-                    '${Formatters.time(fee.firstHourEndsAt)}.'
-              : 'Paid. The meter is paused so you can leave. Tap your card '
-                    'at the gate and it opens.',
-          style: context.text.bodySmall,
+        for (final p in fee.payments) _paidRow(context, p),
+        const SizedBox(height: AppSpacing.sm),
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(AppSpacing.md),
+          decoration: BoxDecoration(
+            color: ok.bg,
+            borderRadius: AppRadius.smAll,
+            border: Border.all(color: ok.border),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                inFirstHour ? 'First hour' : 'Grace period',
+                style: context.text.labelMedium?.copyWith(color: ok.fg),
+              ),
+              Text(
+                '$mm:$ss left',
+                style: AppTypography.tabular(
+                  context.text.headlineSmall!,
+                ).copyWith(color: ok.fg),
+              ),
+              Text(
+                'Tap your card at the gate before '
+                '${Formatters.time(leaveBy)} and you pay nothing more.',
+                style: context.text.bodySmall?.copyWith(color: ok.fg),
+              ),
+            ],
+          ),
         ),
         const SizedBox(height: AppSpacing.sm),
-        Text(
-          inFirstHour
-              ? 'Still inside at ${Formatters.time(leaveBy)}? The meter starts '
-                    'at $perMinute a minute.'
-              : 'Still inside at ${Formatters.time(leaveBy)}? The meter starts '
-                    'again at $perMinute a minute. These 7 minutes stay free.',
-          style: context.text.bodySmall,
+        AppNotice(
+          intent: StatusIntent.warning,
+          message: inFirstHour
+              ? 'Still inside after ${Formatters.time(leaveBy)}? The meter '
+                    'starts at ${_rate(fee)}, counted per minute.'
+              : 'Still inside after ${Formatters.time(leaveBy)}? The grace '
+                    'period is charged too, from ${Formatters.time(paidAt)}, '
+                    'at ${_rate(fee)}.',
+        ),
+      ],
+    );
+  }
+
+  /// Paid once, then stayed past the grace period: the extra, and why.
+  Widget _extra(BuildContext context, LiveFee fee, DateTime paidAt) {
+    final graceEnded = fee.graceUntil;
+    // Minutes since the bills end, by the server's own minute count.
+    DateTime? coveredTo;
+    for (final p in fee.payments) {
+      final to = p.coversTo;
+      if (to != null && (coveredTo == null || to.isAfter(coveredTo))) {
+        coveredTo = to;
+      }
+    }
+    final minutes = coveredTo == null
+        ? (fee.owedNow / (fee.ratePerHour / 60)).round()
+        : fee.durationMinutes -
+              coveredTo.difference(fee.entryTime).inMinutes;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        AppNotice(
+          intent: StatusIntent.warning,
+          message: graceEnded == null
+              ? "You're still inside after paying, so the meter is running "
+                    'again.'
+              : 'Your grace period ended at ${Formatters.time(graceEnded)} '
+                    "and you're still inside, so the meter is running again. "
+                    'The $_graceMinutes grace period minutes are charged too.',
         ),
         const SizedBox(height: AppSpacing.sm),
+        _totalRow(context, '$minutes min × ${_rate(fee)}', fee.owedNow),
+        _totalRow(context, 'Extra so far', fee.owedNow, bold: true),
         for (final p in fee.payments)
           _totalRow(
             context,
-            p.paidAt == null ? 'Paid' : 'Paid ${Formatters.time(p.paidAt!)}',
+            p.paidAt == null
+                ? 'Already paid'
+                : 'Already paid at ${Formatters.time(p.paidAt!)}',
             p.amount,
+            muted: true,
           ),
+        const SizedBox(height: AppSpacing.xs),
+        Text(
+          'Inside since ${Formatters.dayTime(fee.entryTime)}',
+          style: context.text.bodySmall,
+        ),
       ],
     );
+  }
+
+  /// "Paid at 12:33 PM · GCash   ₱517.00".
+  Widget _paidRow(BuildContext context, FeePayment p) {
+    final when = p.paidAt == null ? 'Paid' : 'Paid at ${Formatters.time(p.paidAt!)}';
+    final how = p.method == null ? '' : ' · ${p.method}';
+    return _totalRow(context, '$when$how', p.amount);
   }
 
   /// Owing: the visit stretch by stretch, and what is still to pay.
@@ -323,16 +447,15 @@ class _LiveFeeCardState extends ConsumerState<LiveFeeCard>
 
   Widget _segmentRow(BuildContext context, LiveFee fee, FeeSegment s) {
     final t = context.tokens;
-    final range = '${Formatters.time(s.from)} – ${Formatters.time(s.to)}';
-    final perMinute = Formatters.peso(fee.ratePerHour / 60);
+    final range = Formatters.timeRange(s.from, s.to);
     final (title, detail) = switch (s.kind) {
       'FirstHour' => ('First hour · flat', range),
-      'Grace' => ('Grace · meter paused', '$range · ${s.minutes} min'),
-      _ => ('Per minute', '$range · ${s.minutes} min × $perMinute'),
+      'Grace' => ('Grace period', '$range · ${s.minutes} min'),
+      _ => ('Per minute', '$range · ${s.minutes} min × ${_rate(fee)}'),
     };
     final paid = fee.paymentFor(s);
     final note = s.isGrace
-        ? 'Free'
+        ? 'Meter paused'
         : paid?.paidAt != null
         ? 'Paid ${Formatters.time(paid!.paidAt!)}'
         : 'Not paid';
@@ -375,8 +498,10 @@ class _LiveFeeCardState extends ConsumerState<LiveFeeCard>
     String label,
     double amount, {
     bool bold = false,
+    bool muted = false,
   }) {
-    final style = bold ? context.text.titleSmall! : context.text.bodyMedium!;
+    var style = bold ? context.text.titleSmall! : context.text.bodyMedium!;
+    if (muted) style = style.copyWith(color: context.tokens.text.secondary);
     final value = amount < 0
         ? '− ${Formatters.peso(-amount)}'
         : Formatters.peso(amount);
@@ -392,11 +517,106 @@ class _LiveFeeCardState extends ConsumerState<LiveFeeCard>
   /// One sentence on what happens to the amount next, in the server's numbers.
   String _howItGrows(LiveFee fee) {
     final next = fee.nextChangeAt;
-    final rate = '${Formatters.peso(fee.ratePerHour)} an hour';
+    final rate = _rate(fee);
     if (next == null) return '$rate, counted per minute after the first hour.';
     return '$rate, counted per minute after the first hour. Goes up to '
         '${Formatters.peso(fee.nextTotal ?? fee.totalSoFar)} at '
         '${Formatters.time(next)}.';
+  }
+}
+
+enum _Mode { counting, paid, extra }
+
+/// The big clock on the parked card: counting up from [from], or stopped at
+/// [stoppedAt] (then measured from the session's entry, which is [from]).
+class MeterClock extends StatefulWidget {
+  const MeterClock({
+    super.key,
+    required this.from,
+    required this.caption,
+    this.stoppedAt,
+  });
+
+  final DateTime from;
+  final DateTime? stoppedAt;
+  final String caption;
+
+  @override
+  State<MeterClock> createState() => _MeterClockState();
+}
+
+class _MeterClockState extends State<MeterClock> {
+  Timer? _tick;
+
+  @override
+  void initState() {
+    super.initState();
+    _start();
+  }
+
+  @override
+  void didUpdateWidget(MeterClock old) {
+    super.didUpdateWidget(old);
+    if ((old.stoppedAt == null) != (widget.stoppedAt == null)) _start();
+  }
+
+  void _start() {
+    _tick?.cancel();
+    _tick = widget.stoppedAt != null
+        ? null
+        : Timer.periodic(const Duration(seconds: 1), (_) {
+            if (mounted) setState(() {});
+          });
+  }
+
+  @override
+  void dispose() {
+    _tick?.cancel();
+    super.dispose();
+  }
+
+  /// `0:10:55`, `25:45:15`. Hours unpadded: `00:10:55` reads like a time of
+  /// day. A clock running slightly behind the server never shows negative.
+  static String _hms(Duration d) {
+    if (d.isNegative) d = Duration.zero;
+    String two(int n) => n.toString().padLeft(2, '0');
+    return '${d.inHours}:${two(d.inMinutes.remainder(60))}:'
+        '${two(d.inSeconds.remainder(60))}';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final stopped = widget.stoppedAt;
+    final elapsed = (stopped ?? DateTime.now()).difference(widget.from);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Semantics(
+          label:
+              '${stopped == null ? 'Counting' : 'Stopped at'} '
+              '${Formatters.duration(elapsed)}',
+          excludeSemantics: true,
+          child: Row(
+            children: [
+              Text(
+                _hms(elapsed),
+                style: AppTypography.tabular(context.text.headlineMedium!),
+              ),
+              if (stopped != null) ...[
+                const SizedBox(width: AppSpacing.xs),
+                Icon(
+                  Icons.pause_rounded,
+                  size: AppSizes.iconMd,
+                  color: context.tokens.text.secondary,
+                ),
+              ],
+            ],
+          ),
+        ),
+        Text(widget.caption, style: context.text.bodySmall),
+      ],
+    );
   }
 }
 
