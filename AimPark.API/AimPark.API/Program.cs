@@ -47,7 +47,10 @@ builder.Services.AddWindowsService(o => o.ServiceName = "AimParkSite");
 
 builder.Services.AddDbContext<AppDbContext>((sp, options) => options
     .UseNpgsql(
-        builder.Configuration.GetConnectionString("DefaultConnection"),
+        // A few connections per copy, so Render + local + a deploy's overlap
+        // stay inside Supabase's 15. See ConnectionLimits.
+        AimPark.API.Data.ConnectionLimits.Apply(
+            builder.Configuration.GetConnectionString("DefaultConnection"), builder.Configuration),
         npgsqlOptions => npgsqlOptions.EnableRetryOnFailure(
             maxRetryCount: 3,
             maxRetryDelay: TimeSpan.FromSeconds(5),
