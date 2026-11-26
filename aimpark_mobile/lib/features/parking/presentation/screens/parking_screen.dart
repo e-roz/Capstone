@@ -14,7 +14,6 @@ import '../widgets/availability_freshness.dart';
 import '../widgets/availability_hero.dart';
 import '../widgets/parking_map.dart';
 import '../widgets/live_fee_card.dart';
-import '../widgets/parked_clock.dart';
 import '../widgets/pay_ahead_action.dart';
 
 /// The Parking tab: how full the lot is, where you are in it, and the lot itself.
@@ -336,35 +335,19 @@ class _CurrentSessionCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              Container(
-                width: 8,
-                height: 8,
-                decoration: BoxDecoration(
-                  color: t.tertiary.primary,
-                  shape: BoxShape.circle,
-                ),
-              ),
-              const SizedBox(width: AppSpacing.xs + 2),
-              Text(
-                'YOU ARE PARKED',
-                style: context.text.labelMedium?.copyWith(
-                  color: t.tertiary.subtleText,
-                ),
-              ),
-            ],
+          // The status, the clock and the fee, together: the clock stops when
+          // the driver pays, so it needs the fee's payment state. The fee is
+          // the server's, never worked out here: it prices the stay the same
+          // way as pay-ahead and the exit gate.
+          LiveFeeCard(
+            session: entry,
+            afterClock: entry.slotConfirmed && entry.slotCode != null
+                ? Text(
+                    'Your bay: ${entry.slotCode}',
+                    style: context.text.titleSmall,
+                  )
+                : null,
           ),
-          const SizedBox(height: AppSpacing.sm),
-          ParkedClock(entryTime: entry.entryTime),
-          if (entry.slotConfirmed && entry.slotCode != null) ...[
-            const SizedBox(height: AppSpacing.sm),
-            Text('Your bay: ${entry.slotCode}', style: context.text.titleSmall),
-          ],
-          const SizedBox(height: AppSpacing.md),
-          // The fee is the server's, never worked out here: it prices the stay
-          // the same way as pay-ahead and the exit gate.
-          LiveFeeCard(session: entry),
           const SizedBox(height: AppSpacing.md),
           PayAheadAction(session: entry),
         ],

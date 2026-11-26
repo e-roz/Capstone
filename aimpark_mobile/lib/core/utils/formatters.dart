@@ -31,6 +31,15 @@ abstract class Formatters {
   /// `₱1,234.56`.
   static String peso(num value) => _peso.format(value);
 
+  /// A rate as people say it: `₱20`, and `₱20.50` only when there are
+  /// centavos. Amounts owed keep [peso]'s two decimals.
+  static String pesoRate(num value) =>
+      value == value.roundToDouble() ? _pesoWhole.format(value) : peso(value);
+  static final _pesoWhole = NumberFormat.currency(
+    symbol: '₱',
+    decimalDigits: 0,
+  );
+
   /// `45m`, `2h 5m`, `1d 3h`. Days appear because a vehicle left overnight is
   /// otherwise reported as `27h 0m`.
   static String duration(Duration value) {
@@ -69,6 +78,26 @@ abstract class Formatters {
     return date(value);
   }
 
+  /// `10:43 AM` today, `yesterday, 10:43 AM`, else `Nov 24, 10:43 AM`. For a
+  /// time that may be on an earlier day: a 25-hour stay "since 10:43 AM" reads
+  /// as a clock gone wrong.
+  static String dayTime(DateTime value) {
+    final day = relativeDay(value);
+    if (day == 'Today') return time(value);
+    if (day == 'Yesterday') return 'yesterday, ${time(value)}';
+    return '${dateShort(value)}, ${time(value)}';
+  }
+
+  /// `yesterday, 10:43 AM – 11:43 AM`: the day is said once when both ends
+  /// share it, and at each end when they do not, so a stretch across
+  /// midnight does not look backwards. Today needs no day at all.
+  static String timeRange(DateTime from, DateTime to) {
+    final a = from.toLocal(), b = to.toLocal();
+    final sameDay = a.year == b.year && a.month == b.month && a.day == b.day;
+    if (!sameDay) return '${dayTime(from)} – ${dayTime(to)}';
+    return '${dayTime(from)} – ${time(to)}';
+  }
+
   /// `Just now`, `5m ago`, `3h ago`, `2d ago`, then an absolute date once
   /// "N days ago" stops being easier to picture than the date itself.
   static String relativeTime(DateTime value) {
@@ -84,7 +113,7 @@ abstract class Formatters {
   /// vehicle is still inside.
   static String sessionRange(DateTime entry, DateTime? exit, Duration length) {
     if (exit == null) {
-      return 'Since ${time(entry)} · ${duration(length)}';
+      return 'Since ${dayTime(entry)} · ${duration(length)}';
     }
     return '${time(entry)} – ${time(exit)} · ${duration(length)}';
   }

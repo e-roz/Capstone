@@ -149,7 +149,7 @@ public class PayAheadTests
         var entry = await History(l);
         var again = await PayAhead(l);
 
-        Assert.Equal(Session(l).EntryTime.AddMinutes(127), entry.LeaveBy);
+        Assert.Equal(paidAt.AddMinutes(7), entry.LeaveBy);
         Assert.True(again.Paid);
         Assert.Null(again.PaymentId);
         Assert.Single(Bills(l));
@@ -281,7 +281,7 @@ public class PayAheadTests
         var bills = Bills(l);
         Assert.Equal(2, bills.Count);
         var extra = bills[1];
-        Assert.Equal(26.5m, extra.AmountDue);
+        Assert.Equal(30m, extra.AmountDue); // the whole hour after the bill: the grace period was lost
         Assert.False(extra.PaidAhead);
         Assert.Equal(PaymentStatus.Pending, extra.Status);
         Assert.Contains(l.Notices.Sent, n => n.Title == "Pay to leave");
@@ -327,7 +327,7 @@ public class PayAheadTests
 
         var again = await PayAhead(l);
 
-        Assert.Equal(26.5m, again.AmountDue);
+        Assert.Equal(30m, again.AmountDue); // the grace period was lost, so it is charged too
         var extra = Bills(l)[1];
         Assert.Equal(again.PaymentId, extra.Id);
         Assert.True(extra.PaidAhead);

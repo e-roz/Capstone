@@ -70,17 +70,10 @@ class _PayAheadActionState extends ConsumerState<PayAheadAction> {
   Widget build(BuildContext context) {
     final session = widget.session;
 
-    if (session.isPaidToLeave()) {
-      return AppNotice(
-        intent: StatusIntent.success,
-        title: 'Paid',
-        message:
-            'Tap your card at the gate by ${Formatters.time(session.leaveBy!)} '
-            'and the barrier opens. After that the meter starts again.',
-      );
-    }
+    // Paid, inside the grace period: the fee card above shows the countdown.
+    if (session.isPaidToLeave()) return const SizedBox.shrink();
 
-    // Paid once, but the time to leave ran out while still parked.
+    // Paid once, but the grace period ran out while still parked.
     final ranOut = session.leaveBy != null;
 
     return Column(
@@ -88,8 +81,8 @@ class _PayAheadActionState extends ConsumerState<PayAheadAction> {
       children: [
         Text(
           ranOut
-              ? 'Your paid time ended at ${Formatters.time(session.leaveBy!)}. '
-                    'Pay the extra time before you go to the gate.'
+              ? 'Pay the extra time before you go to the gate, or pay the '
+                    'guard there.'
               : 'Leaving soon? Pay now and the gate opens when you tap your '
                     'card. You can also pay at the gate.',
           style: context.text.bodySmall,
@@ -103,7 +96,8 @@ class _PayAheadActionState extends ConsumerState<PayAheadAction> {
         ),
         const SizedBox(height: AppSpacing.xs),
         Text(
-          'After you pay, the meter pauses for 7 minutes so you can leave.',
+          'After you pay, you get a 7-minute grace period to leave. Stay '
+          'longer and the grace period is charged too.',
           textAlign: TextAlign.center,
           style: context.text.bodySmall,
         ),

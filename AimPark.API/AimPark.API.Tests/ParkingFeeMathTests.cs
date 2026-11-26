@@ -3,8 +3,8 @@ using AimPark.API.Helpers;
 namespace AimPark.API.Tests;
 
 /// <summary>
-/// How a visit is priced: first hour flat, then per minute, with a free grace
-/// after each payment. Numbers follow the example on the design canvas: a car
+/// How a visit is priced: first hour flat, then per minute, with a 7-minute
+/// grace period after each payment that is charged if the driver stays past it. Numbers follow the example on the design canvas: a car
 /// at ₱20/hr that entered at 1:02 PM.
 /// </summary>
 public class ParkingFeeMathTests
@@ -76,7 +76,7 @@ public class ParkingFeeMathTests
     }
 
     [Fact]
-    public void After_paying_the_meter_pauses_for_seven_minutes()
+    public void After_paying_the_meter_pauses_for_the_seven_minute_grace_period()
     {
         var b = Price(152, 39, 150);
 
@@ -84,34 +84,59 @@ public class ParkingFeeMathTests
         Assert.Equal(MeterState.Paused, b.State);
         Assert.Equal(At(157), b.GraceUntil);                   // 3:39 PM
         Assert.Equal(At(157), b.NextChangeAt);
-        Assert.Equal(50.33m, b.NextTotal);
         Assert.Equal(new FeeSegment(FeeSegmentKind.Grace, At(150), At(157), 7, 0m), b.Segments[^1]);
     }
 
+    [Fact]
+    public void When_the_grace_period_ends_all_of_its_minutes_are_charged_at_once()
+        // 3:39:01 PM is minute 158: minutes 61–158 are 98, ₱32.67.
+        => Assert.Equal(52.67m, Price(152, 39, 150).NextTotal);
+
+    [Fact]
+    public void Leaving_inside_the_grace_period_costs_nothing_more()
+    {
+        // Paid 3:32, left 3:37.
+        var b = ParkingFeeMath.Breakdown(Car, Entry, At(155),
+            [new SettledPayment(At(150), At(150))], Grace, open: false);
+
+        Assert.Equal(50m, b.Total);
+        Assert.Equal(new FeeSegment(FeeSegmentKind.Grace, At(150), At(155), 5, 0m), b.Segments[^1]);
+    }
+
+    [Fact]
+    public void Leaving_on_the_last_second_of_the_grace_period_still_costs_nothing_more()
+        => Assert.Equal(50m, ParkingFeeMath.Breakdown(Car, Entry, At(157),
+            [new SettledPayment(At(150), At(150))], Grace, open: false).Total);
+
     [Theory]
-    [InlineData(170, 54.33, 13, 4.33)]   // 3:52 PM, 13 minutes after the grace
-    [InlineData(171, 54.67, 14, 4.67)]   // 3:53 PM
-    public void Grace_minutes_are_never_charged(double at, double total, int lastMinutes, double lastAmount)
+    [InlineData(170, 56.67, 110, 36.67)]   // 3:52 PM: every minute from 2:02 is charged
+    [InlineData(171, 57.00, 111, 37.00)]   // 3:53 PM
+    public void Staying_past_the_grace_period_charges_its_minutes_too(double at, double total, int minutes, double amount)
     {
         var b = Price(at, 39, 150);
 
         Assert.Equal((decimal)total, b.Total);
-        Assert.Equal(new FeeSegment(FeeSegmentKind.PerMinute, At(157), At(at), lastMinutes, (decimal)lastAmount), b.Segments[^1]);
-        Assert.Equal(FeeSegmentKind.Grace, b.Segments[^2].Kind);
-    }
-
-    [Fact]
-    public void Paying_at_minute_58_covers_to_minute_65()
-    {
-        var b = Price(66, 58);
-
-        Assert.Equal(20.33m, b.Total);
+        Assert.Equal(MeterState.Running, b.State);
         Assert.Equal(
             new[]
             {
                 new FeeSegment(FeeSegmentKind.FirstHour, Entry, At(60), 60, 20m),
-                new FeeSegment(FeeSegmentKind.Grace, At(60), At(65), 5, 0m),
-                new FeeSegment(FeeSegmentKind.PerMinute, At(65), At(66), 1, 0.33m),
+                new FeeSegment(FeeSegmentKind.PerMinute, At(60), At(at), minutes, (decimal)amount),
+            },
+            b.Segments);
+    }
+
+    [Fact]
+    public void Paying_at_minute_58_and_staying_to_66_charges_from_the_first_hour_end()
+    {
+        var b = Price(66, 58);
+
+        Assert.Equal(22m, b.Total);   // minutes 61–66: ₱2
+        Assert.Equal(
+            new[]
+            {
+                new FeeSegment(FeeSegmentKind.FirstHour, Entry, At(60), 60, 20m),
+                new FeeSegment(FeeSegmentKind.PerMinute, At(60), At(66), 6, 2m),
             },
             b.Segments);
     }
@@ -148,37 +173,56 @@ public class ParkingFeeMathTests
     }
 
     [Fact]
-    public void Chargeable_minutes_between_skip_the_grace()
+    public void Chargeable_minutes_between_skip_a_grace_period_still_running()
     {
-        var b = Price(171, 39, 150);
+        var b = Price(155, 39, 150);
 
-        Assert.Equal(14, b.ChargeableMinutesBetween(At(150), At(171)));
+        Assert.Equal(0, b.ChargeableMinutesBetween(At(150), At(155)));
         Assert.Equal(60, b.ChargeableMinutesBetween(Entry, At(60)));
     }
 
     [Fact]
-    public void Time_between_pricing_a_bill_and_paying_it_is_free()
+    public void Chargeable_minutes_between_count_a_grace_period_that_was_lost()
+        => Assert.Equal(21, Price(171, 39, 150).ChargeableMinutesBetween(At(150), At(171)));
+
+    [Fact]
+    public void The_grace_period_counts_from_the_exact_moment_of_payment()
     {
-        // Priced to 3:32, the payment went through at 3:34:12: the meter is
-        // paused from 3:32 until 7 minutes after the payment, 3:42.
+        // Paid at 3:34:12: the grace period ends at 3:41:12, not on a whole minute.
         var b = ParkingFeeMath.Breakdown(Car, Entry, At(158),
-            [new SettledPayment(At(60), At(39)), new SettledPayment(At(150), At(152.2))], Grace);
+            [new SettledPayment(At(150), At(152.2))], Grace);
+
+        Assert.Equal(At(159.2), b.GraceUntil);
+        Assert.Equal(At(159.2), b.NextChangeAt);
+    }
+
+    [Fact]
+    public void Time_between_pricing_a_bill_and_paying_it_is_paused_while_the_grace_period_holds()
+    {
+        // Priced to 3:32, paid at 3:34:12, still inside at 3:40.
+        var b = ParkingFeeMath.Breakdown(Car, Entry, At(158),
+            [new SettledPayment(At(150), At(152.2))], Grace);
 
         Assert.Equal(50m, b.Total);
-        Assert.Equal(At(160), b.GraceUntil);
         Assert.Equal(new FeeSegment(FeeSegmentKind.Grace, At(150), At(160), 10, 0m), b.Segments[^1]);
     }
 
     [Fact]
+    public void Time_between_pricing_a_bill_and_paying_it_is_charged_once_the_grace_period_is_lost()
+        // Still inside at 3:42: minutes 61–160 are all charged, ₱33.33.
+        => Assert.Equal(53.33m, ParkingFeeMath.Breakdown(Car, Entry, At(160),
+            [new SettledPayment(At(150), At(152.2))], Grace).Total);
+
+    [Fact]
     public void A_payment_that_took_hours_does_not_make_those_hours_free()
     {
-        // A checkout opened at 2:02 and only paid at 5:02: at most 15 minutes
-        // before the payment count as the payment going through.
+        // A checkout opened at 2:02 and only paid at 5:02, still in its grace
+        // period at 5:04: at most 15 minutes before the payment are paused.
         var b = ParkingFeeMath.Breakdown(Car, Entry, At(242),
             [new SettledPayment(At(60), At(60)), new SettledPayment(At(61), At(240))], Grace);
 
-        // Paused 61–67 (first payment) and 226–247 (15 minutes before the
-        // second payment, then its grace). Charged: 68–225, 158 minutes.
-        Assert.Equal(72.67m, b.Total);
+        // The first payment's grace period was lost long ago. Paused 226–247.
+        // Charged: 61–225, 165 minutes.
+        Assert.Equal(75m, b.Total);
     }
 }

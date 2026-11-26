@@ -47,12 +47,18 @@ namespace AimPark.API.Helpers
     /// </summary>
     /// <remarks>
     /// First hour: one hour's rate, flat, from the first second. After minute 60
-    /// every started minute costs rate ÷ 60. For each settled payment the meter
-    /// pauses from the end of what its bill was priced to until the grace
-    /// (7 minutes) after the money arrived, and paused minutes are never
-    /// charged. The time a payment takes to go through is free that way, but
-    /// never more than <see cref="MaxPaymentDelayMinutes"/> of it: a checkout
-    /// left open for hours does not make those hours free.
+    /// every started minute costs rate ÷ 60.
+    ///
+    /// Each settled payment starts a grace period of 7 minutes, counted from the
+    /// moment the money arrived. A driver who leaves inside it pays nothing more:
+    /// the meter is paused from the end of what the bill was priced to. A driver
+    /// still inside when it ends loses it: the grace minutes, and the minutes the
+    /// payment took to go through, are charged like any other. Every payment
+    /// gets its own grace period by the same rule.
+    ///
+    /// The time a payment takes is only ever paused for up to
+    /// <see cref="MaxPaymentDelayMinutes"/>: a checkout left open for hours does
+    /// not make those hours free even for a driver who leaves in time.
     /// </remarks>
     public static class ParkingFeeMath
     {
@@ -68,10 +74,10 @@ namespace AimPark.API.Helpers
         public static int ChargedMinutes(DateTime entry, DateTime at)
             => Math.Max(0, (int)Math.Ceiling((at - entry).TotalMinutes));
 
-        /// <param name="settled">Each settled payment. Each makes a pause (see remarks).</param>
+        /// <param name="settled">Each settled payment. Each starts a grace period (see remarks).</param>
         /// <param name="open">
-        /// True while the car is inside: a grace still running is shown to its end.
-        /// False for a finished visit: the last grace stops at the exit.
+        /// True while the car is inside: a grace period still running is shown to its end.
+        /// False for a finished visit: the grace period stops at the exit.
         /// </param>
         public static FeeBreakdown Breakdown(
             decimal ratePerHour, DateTime entry, DateTime at,
@@ -83,18 +89,34 @@ namespace AimPark.API.Helpers
             if (ratePerHour <= 0m)
                 return new FeeBreakdown(0m, n, 0, [], firstHourEnd, null, MeterState.Free, null, null);
 
-            // Minutes the meter is paused for, and the latest minute any grace reaches.
+            var grace = TimeSpan.FromMinutes(graceMinutes);
+
+            // Minutes paused by a grace period that is still holding at `at`.
+            // A grace period that has already ended pauses nothing: the driver
+            // stayed past it, so its minutes are charged.
             var paused = new HashSet<int>();
-            var graceEnd = 0;
+            var pausedTo = 0;
+            DateTime? graceUntil = null;
+            DateTime? holdingUntil = null;
             foreach (var payment in settled)
             {
+                var ends = payment.PaidAt + grace;
+                if (graceUntil is null || ends > graceUntil)
+                    graceUntil = ends;
+                if (at > ends)
+                    continue;
+
+                if (holdingUntil is null || ends > holdingUntil)
+                    holdingUntil = ends;
+
                 var paid = ChargedMinutes(entry, payment.PaidAt);
                 var from = Math.Max(
                     Math.Min(ChargedMinutes(entry, payment.PricedTo), paid),
                     paid - MaxPaymentDelayMinutes);
-                for (var m = from + 1; m <= paid + graceMinutes; m++)
+                var to = open ? Math.Max(n, ChargedMinutes(entry, ends)) : n;
+                for (var m = from + 1; m <= to; m++)
                     paused.Add(m);
-                graceEnd = Math.Max(graceEnd, paid + graceMinutes);
+                pausedTo = Math.Max(pausedTo, to);
             }
 
             bool Chargeable(int m) => m > FirstHourMinutes && !paused.Contains(m);
@@ -106,7 +128,7 @@ namespace AimPark.API.Helpers
             };
 
             // Walk minutes 61.. in runs of the same kind. Past now, only a grace
-            // still running is shown (an open visit), never future charges.
+            // period still running is shown (an open visit), never future charges.
             var perMinute = 0;
             FeeSegmentKind? runKind = null;
             var runStart = 0;
@@ -120,7 +142,7 @@ namespace AimPark.API.Helpers
                     entry.AddMinutes(runStart - 1), entry.AddMinutes(endMinute), minutes, amount));
             }
 
-            var lastMinute = open ? Math.Max(n, graceEnd) : n;
+            var lastMinute = Math.Max(n, pausedTo);
             for (var m = FirstHourMinutes + 1; m <= lastMinute; m++)
             {
                 var kind = Chargeable(m) ? FeeSegmentKind.PerMinute : FeeSegmentKind.Grace;
@@ -143,24 +165,34 @@ namespace AimPark.API.Helpers
             var total = ratePerHour + PerMinute(perMinute);
 
             var state = n <= FirstHourMinutes ? MeterState.FirstHour
-                : paused.Contains(n) || paused.Contains(n + 1) ? MeterState.Paused
+                : holdingUntil is not null ? MeterState.Paused
                 : MeterState.Running;
 
             DateTime? nextAt = null;
             decimal? nextTotal = null;
             if (open)
             {
-                for (var m = n + 1; m <= n + 24 * 60; m++)
+                if (holdingUntil is DateTime until && ChargedMinutes(entry, until) > FirstHourMinutes)
                 {
-                    if (!Chargeable(m)) continue;
-                    nextAt = entry.AddMinutes(m - 1);
-                    nextTotal = ratePerHour + PerMinute(perMinute + 1);
-                    break;
+                    // The grace period ending is the next change, and a big one:
+                    // every minute it paused is charged at once.
+                    nextAt = until;
+                    nextTotal = Breakdown(ratePerHour, entry, until.AddSeconds(1), settled, graceMinutes, open: false).Total;
+                }
+                else
+                {
+                    for (var m = n + 1; m <= n + 24 * 60; m++)
+                    {
+                        if (!Chargeable(m)) continue;
+                        nextAt = entry.AddMinutes(m - 1);
+                        nextTotal = ratePerHour + PerMinute(perMinute + 1);
+                        break;
+                    }
                 }
             }
 
             return new FeeBreakdown(total, n, perMinute, segments, firstHourEnd,
-                graceEnd > 0 ? entry.AddMinutes(graceEnd) : null, state, nextAt, nextTotal);
+                graceUntil, state, nextAt, nextTotal);
         }
     }
 }
