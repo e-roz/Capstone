@@ -1,12 +1,13 @@
 {
-  "version": "1.0.21",
-  "build": 22,
-  "apk_url": "https://github.com/e-roz/Capstone/releases/download/v1.0.21/app-release.apk",
-  "apk_sha256": "fce353912d4dba8fbfaf78c9ec1f85606eafd7bc2d82b669f8c07fdfc6bf9841",
-  "apk_size_bytes": 94792285,
+  "version": "1.0.22",
+  "build": 23,
+  "apk_url": "https://github.com/e-roz/Capstone/releases/download/v1.0.22/app-release.apk",
+  "apk_sha256": "2c4c677c586d80ab344f54973859dff65a804d9a5b5b0faec0d28eefbe5075bf",
+  "apk_size_bytes": 94808709,
   "mandatory": false,
   "release_notes": [
-    "Payments are grouped by visit: each stay shows its bills together, with the total for that visit",
-    "Tap a visit to see every part of it, what you paid, and when"
+    "After you pay, the clock stops and a 7-minute grace period counts down so you can leave",
+    "Still inside after the grace period? The clock counts the extra time from when you paid, and the card tells you why",
+    "Times from an earlier day now say \"yesterday\", and rates show as ₱20 an hour"
   ]
 }
