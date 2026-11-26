@@ -292,8 +292,9 @@ class UserActions extends _$UserActions {
     } on DioException catch (e) {
       state = const AsyncData(null);
       final data = e.response?.data;
-      if (data is Map)
+      if (data is Map) {
         return data['message']?.toString() ?? e.message ?? 'Error';
+      }
       return e.message ?? 'Unknown error';
     }
   }
