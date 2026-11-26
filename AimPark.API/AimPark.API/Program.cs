@@ -126,7 +126,7 @@ builder.Services.AddCors(options =>
               // Without this the browser hides Content-Disposition from the
               // admin app, and a downloaded backup arrives with a guessed file
               // name instead of the one the server actually stored it under.
-              .WithExposedHeaders("Content-Disposition")
+              .WithExposedHeaders("Content-Disposition", "X-Report-Number")
               .AllowCredentials();
     });
 });
@@ -260,6 +260,16 @@ builder.Services.AddScoped<IViolationService, ViolationService>();
 builder.Services.AddScoped<IVisitorPassService, VisitorPassService>();
 builder.Services.AddScoped<IVisitorCardService, VisitorCardService>();
 builder.Services.AddScoped<IReportService, ReportService>();
+// Printable reports. Each IPdfReport is one report; ReportPdfService numbers,
+// records and draws them. Fonts and the QuestPDF licence are set once here.
+AimPark.API.Reports.PdfLayout.Configure();
+builder.Services.AddScoped<AimPark.API.Reports.IPdfReport, AimPark.API.Reports.SummaryReport>();
+builder.Services.AddScoped<AimPark.API.Reports.IPdfReport, AimPark.API.Reports.CollectionsReport>();
+builder.Services.AddScoped<AimPark.API.Reports.IPdfReport, AimPark.API.Reports.ViolationsReport>();
+builder.Services.AddScoped<AimPark.API.Reports.IPdfReport, AimPark.API.Reports.EntryExitReport>();
+builder.Services.AddScoped<AimPark.API.Reports.IPdfReport, AimPark.API.Reports.IncidentsReport>();
+builder.Services.AddScoped<AimPark.API.Reports.IPdfReport, AimPark.API.Reports.VehiclesReport>();
+builder.Services.AddScoped<AimPark.API.Reports.ReportPdfService>();
 builder.Services.AddScoped<IInvestigationService, InvestigationService>();
 builder.Services.AddScoped<IBackupService, BackupService>();
 builder.Services.AddScoped<IDeviceTokenService, DeviceTokenService>();

@@ -259,4 +259,5 @@ class ApiEndpoints {
   static const reportsRevenueTrend = '/api/admin/reports/revenue-trend';
   static const reportsGateOutcomes = '/api/admin/reports/gate-outcomes';
   static const reportsPeakOccupancy = '/api/admin/reports/peak-occupancy';
+  static String reportPdf(String kind) => '/api/admin/reports/pdf/$kind';
 }

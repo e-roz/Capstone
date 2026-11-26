@@ -3,7 +3,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
-import '../core/utils/csv_export.dart';
 import '../core/utils/ph_time.dart';
 import '../models/report.dart';
 import '../models/violation.dart';
@@ -11,6 +10,7 @@ import '../providers/overview_provider.dart';
 import '../providers/report_page_provider.dart';
 import '../theme/theme.dart';
 import '../widgets/period_picker.dart';
+import '../widgets/report_pdf_menu.dart';
 import '../widgets/ui/ui.dart';
 
 final _money = NumberFormat.currency(symbol: '₱', decimalDigits: 0);
@@ -40,14 +40,6 @@ class ReportsScreen extends ConsumerWidget {
     final peak = ref.watch(reportPeakOccupancyProvider);
     final violations = ref.watch(reportViolationsProvider);
 
-    final ready = summary.hasValue &&
-        entryExit.hasValue &&
-        hours.hasValue &&
-        revenue.hasValue &&
-        gate.hasValue &&
-        peak.hasValue &&
-        violations.hasValue;
-
     void refresh() {
       ref.invalidate(reportSummaryProvider);
       ref.invalidate(reportEntryExitProvider);
@@ -64,25 +56,9 @@ class ReportsScreen extends ConsumerWidget {
       subtitle: 'Usage, revenue and enforcement for the period you pick.',
       scrollable: true,
       actions: [
-        // Offered only once every series has landed: a CSV built from four
-        // loaded sections and one still spinning would be quietly incomplete.
-        OutlinedButton.icon(
-          icon: const Icon(Icons.download_outlined, size: AppSizes.iconSm),
-          label: const Text('Export CSV'),
-          onPressed: !ready
-              ? null
-              : () => _export(
-                    context,
-                    period: period,
-                    summary: summary.requireValue,
-                    entryExit: entryExit.requireValue,
-                    hours: hours.requireValue,
-                    revenue: revenue.requireValue,
-                    gate: gate.requireValue,
-                    peak: peak.requireValue,
-                    violations: violations.requireValue,
-                  ),
-        ),
+        // Printable, numbered PDFs made on the server. The CSV that was here
+        // went: the panel asked for reports that cannot be quietly edited.
+        ReportPdfMenu(period: reportPeriodProvider),
         IconButton(
           icon: const Icon(Icons.refresh),
           tooltip: 'Refresh',
@@ -118,104 +94,6 @@ class ReportsScreen extends ConsumerWidget {
       ),
     );
   }
-
-  /// Exports what the page shows for the chosen period, as labelled blocks
-  /// rather than one wide table: the series have different shapes (a day, an
-  /// hour, a rule) and forcing them into shared columns gives a sheet nobody
-  /// can read.
-  void _export(
-    BuildContext context, {
-    required OverviewPeriod period,
-    required ReportsSummary summary,
-    required EntryExitReport entryExit,
-    required List<PeakHourPoint> hours,
-    required ReportSeries<RevenuePoint> revenue,
-    required GateOutcomes gate,
-    required PeakOccupancy peak,
-    required ViolationBreakdown violations,
-  }) {
-    final now = DateTime.now();
-    final isoDay = DateFormat('yyyy-MM-dd');
-    final days = period.days;
-    final prev = summary.previous;
-
-    final rows = <List<Object?>>[
-      ['Generated', DateFormat('yyyy-MM-dd HH:mm').format(now)],
-      ['Period', period.label],
-      [
-        'From',
-        days == null ? 'First record' : isoDay.format(days.from),
-        'To',
-        days == null ? 'Today' : isoDay.format(days.to),
-      ],
-      [],
-      ['Summary'],
-      ['Parking sessions', summary.sessionsInPeriod],
-      if (prev != null) ['Parking sessions, previous period', prev.sessionsInPeriod],
-      ['Fees collected', summary.feesCollected.toStringAsFixed(2)],
-      ['Fines collected', summary.finesCollected.toStringAsFixed(2)],
-      ['Total collected', summary.revenueCollected.toStringAsFixed(2)],
-      if (prev != null)
-        ['Total collected, previous period', prev.revenueCollected.toStringAsFixed(2)],
-      ['Peak occupancy', '${peak.peak} of ${peak.capacity} bays'],
-      ['Peak occupancy reached', peak.at == null ? '' : _peakAt.format(manila(peak.at!))],
-      ['Violations issued', summary.violationsIssued],
-      [],
-      ['Right now (not affected by the period)'],
-      ['Cars inside', '${summary.occupiedSlots} of ${summary.usableSlots} bays'],
-      ['Unpaid fees', summary.feesPending.toStringAsFixed(2)],
-      ['Unpaid fines', summary.finesPending.toStringAsFixed(2)],
-      [],
-      ['Gate outcomes'],
-      ['Entered', gate.entered],
-      ['Exited', gate.exited],
-      ['Plate mismatch', gate.plateMismatch],
-      ['Unknown card', gate.unknownCard],
-      ['Routine refusals', gate.routineRefusals],
-      [],
-      ['Entries and exits (${entryExit.granularity})'],
-      ['Date', 'In', 'Out'],
-      for (final p in entryExit.points)
-        [isoDay.format(p.date), p.entries, p.exits],
-      [],
-      ['Peak hours (Philippine time)'],
-      ['Hour', 'Entries'],
-      for (final p in hours) [_hour(p.hour), p.count],
-      [],
-      ['Revenue (${revenue.granularity})'],
-      ['Date', 'Fees', 'Fines'],
-      for (final p in revenue.points)
-        [
-          isoDay.format(p.date),
-          p.fees.toStringAsFixed(2),
-          p.fines.toStringAsFixed(2),
-        ],
-      [],
-      ['Violations issued in the period, by current status'],
-      ['Status', 'Count'],
-      for (final s in violations.byStatus)
-        [ViolationStatuses.label(s.status), s.count],
-      [],
-      ['Most violated rules'],
-      ['Rule', 'Count'],
-      for (final r in violations.byRule) [r.ruleTitle, r.count],
-    ];
-
-    CsvExport.save(
-      fileName: 'aimpark-report-${DateFormat('yyyyMMdd-HHmm').format(now)}.csv',
-      headers: const ['AimPark — Reports'],
-      rows: rows,
-    );
-
-    ScaffoldMessenger.of(context)
-        .showSnackBar(const SnackBar(content: Text('Report exported.')));
-  }
-}
-
-String _hour(int h) {
-  final suffix = h < 12 ? 'AM' : 'PM';
-  final display = h % 12 == 0 ? 12 : h % 12;
-  return '$display $suffix';
 }
 
 String _hourShort(int h) => h == 0

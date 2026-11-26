@@ -14,5 +14,8 @@ namespace AimPark.API.Interfaces
         Task<ActionResult<RevenueTrendResponse>> GetRevenueTrendAsync(ReportQuery query, CancellationToken ct);
         Task<ActionResult<GateOutcomesResponse>> GetGateOutcomesAsync(ReportQuery query, CancellationToken ct);
         Task<ActionResult<PeakOccupancyResponse>> GetPeakOccupancyAsync(ReportQuery query, CancellationToken ct);
+
+        /// <summary>The Philippine days a query covers, read the same way every report reads it.</summary>
+        Task<ReportPeriod> ResolvePeriodAsync(ReportQuery query, CancellationToken ct);
     }
 }
