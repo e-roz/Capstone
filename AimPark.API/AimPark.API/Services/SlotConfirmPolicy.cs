@@ -11,7 +11,7 @@ namespace AimPark.API.Services
         /// <summary>Confirmed, but only after the vehicle had left.</summary>
         public const string ConfirmedLate = "ConfirmedLate";
 
-        /// <summary>Left without confirming. Counts toward a warning and a strike.</summary>
+        /// <summary>Left without confirming. Brings a violation.</summary>
         public const string Unconfirmed = "Unconfirmed";
 
         /// <summary>A visitor or a very short stay, who is never asked to confirm.</summary>
@@ -34,17 +34,12 @@ namespace AimPark.API.Services
         /// </summary>
         public static readonly TimeSpan ShortStay = TimeSpan.FromMinutes(10);
 
-        /// <summary>
-        /// Unconfirmed sessions in <see cref="Window"/> that only bring a warning.
-        /// Every one after the last warning is a violation.
-        /// </summary>
-        public const int Warnings = 1;
-
         /// <summary>Title of the policy rule behind the automatic violation. Created on first use.</summary>
         public const string RuleTitle = "Left without confirming bay";
 
         public const decimal PenaltyAmount = 20m;
 
+        /// <summary>How far back each pass looks. Older visits were handled by earlier passes.</summary>
         public static readonly TimeSpan Window = TimeSpan.FromDays(30);
 
         /// <summary>
