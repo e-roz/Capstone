@@ -20,6 +20,8 @@ namespace AimPark.API.Services
 
         // Resolves a request to Philippine days. "All time" starts from the
         // first thing the lot ever recorded.
+        public Task<ReportPeriod> ResolvePeriodAsync(ReportQuery query, CancellationToken ct) => ResolveAsync(query, ct);
+
         private async Task<ReportPeriod> ResolveAsync(ReportQuery query, CancellationToken ct)
         {
             DateOnly? earliest = null;

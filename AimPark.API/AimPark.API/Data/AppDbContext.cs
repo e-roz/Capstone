@@ -44,9 +44,22 @@ namespace AimPark.API.Data
         public DbSet<SlotConfirmCorrection> SlotConfirmCorrections { get; set; }
         public DbSet<BulkArchiveRun> BulkArchiveRuns { get; set; }
         public DbSet<BulkArchivePending> BulkArchivePending { get; set; }
+        public DbSet<GeneratedReport> GeneratedReports { get; set; }
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
+            modelBuilder.Entity<GeneratedReport>(entity =>
+            {
+                entity.HasKey(r => r.Id);
+                entity.HasIndex(r => r.Number).IsUnique();
+                entity.HasIndex(r => r.VerifyToken).IsUnique();
+                entity.Property(r => r.Number).HasMaxLength(32);
+                entity.Property(r => r.Kind).HasMaxLength(32);
+                entity.Property(r => r.Title).HasMaxLength(128);
+                entity.Property(r => r.GeneratedByName).HasMaxLength(256);
+                entity.Property(r => r.VerifyToken).HasMaxLength(64);
+            });
+
             modelBuilder.Entity<User>(entity =>
             {
                 entity.HasKey(u => u.Id);
