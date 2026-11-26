@@ -189,7 +189,7 @@ class _RfidCardHistoryProviderElement
 }
 
 String _$usersQueryNotifierHash() =>
-    r'0fc7084c2107ca9480b5e28cef65e31b623a96e0';
+    r'5deb01bab001f5d4aaf558ea983233ffbf64a353';
 
 /// See also [UsersQueryNotifier].
 @ProviderFor(UsersQueryNotifier)
@@ -205,7 +205,7 @@ final usersQueryNotifierProvider =
     );
 
 typedef _$UsersQueryNotifier = AutoDisposeNotifier<UsersQuery>;
-String _$userActionsHash() => r'99ba6d17c099ebb3e9662677352f930711972d00';
+String _$userActionsHash() => r'869508deef621483c79d06de82a8dc4aad3999d3';
 
 /// See also [UserActions].
 @ProviderFor(UserActions)
