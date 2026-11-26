@@ -227,6 +227,12 @@ namespace AimPark.API.Sync.Site.GateReaders
         /// Ready, asked for STATUS, and silent since: the hub has hung, or the
         /// board on this port isn't a hub at all.
         /// </summary>
+        /// <summary>The last line the hub sent, read under the conversation's lock.</summary>
+        public DateTime? LastHeard()
+        {
+            lock (_lock) return LastLineAt;
+        }
+
         public bool IsQuiet()
         {
             lock (_lock)

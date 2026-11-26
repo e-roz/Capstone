@@ -81,6 +81,12 @@ namespace AimPark.API.Sync.Site.GateReaders
         private readonly Dictionary<string, HubSession> _sessions = new(StringComparer.OrdinalIgnoreCase);
         private CancellationToken _stopping;
 
+        /// <summary>When this PC started watching the hubs: a fresh start waits a full <see cref="HubSilence.After"/>.</summary>
+        private DateTime _watchingSince = DateTime.UtcNow;
+
+        /// <summary>Hubs whose bays were already marked No signal for this silence.</summary>
+        private readonly HashSet<string> _silentPorts = new(StringComparer.OrdinalIgnoreCase);
+
         public EspNowHubs(IServiceScopeFactory scopes, UsbGateReaders readers, ILogger<EspNowHubs> logger)
         {
             _scopes = scopes;
@@ -91,6 +97,7 @@ namespace AimPark.API.Sync.Site.GateReaders
         protected override async Task ExecuteAsync(CancellationToken stoppingToken)
         {
             _stopping = stoppingToken;
+            _watchingSince = DateTime.UtcNow;
 
             foreach (var binding in LoadBindings())
             {
@@ -125,6 +132,8 @@ namespace AimPark.API.Sync.Site.GateReaders
                         else Move(linked[0], found.Port);
                         lostSince = null;
                     }
+
+                    await MarkSilentHubsAsync(stoppingToken);
                     await Task.Delay(LookForHubEvery, stoppingToken);
                 }
             }
@@ -767,6 +776,72 @@ namespace AimPark.API.Sync.Site.GateReaders
                 await wrongBay.OnBayFilledAsync(slot.Id, ct);
             else if (status == ParkingSlotStatus.Available)
                 await wrongBay.OnBayEmptiedAsync(slot.Id, ct);
+        }
+
+        /// <summary>
+        /// A linked hub silent past <see cref="HubSilence.After"/>: every bay its
+        /// sensors watch becomes No signal, once per silence. They come back by
+        /// themselves: the reconnect asks the hub for STATUS, and each sensor's
+        /// reading sets its bay again (<see cref="SlotSensorRule.Next"/>).
+        /// </summary>
+        private async Task MarkSilentHubsAsync(CancellationToken ct)
+        {
+            var now = DateTime.UtcNow;
+            List<(string Port, List<Guid> Slots, HubSession? Session)> hubs;
+            lock (_lock)
+            {
+                _silentPorts.RemoveWhere(p => !_bindings.ContainsKey(p));
+                hubs = _bindings.Values
+                    .Select(b => (b.Port, b.Slots.Values.ToList(), _sessions.GetValueOrDefault(b.Port)))
+                    .ToList();
+            }
+
+            // Asked outside this class's lock: the conversation takes its own.
+            var silence = hubs.Select(h => (h.Port, h.Slots, Silent: HubSilence.IsSilent(
+                h.Session?.Simulated ?? false, h.Session?.Conversation.LastHeard(), _watchingSince, now))).ToList();
+
+            List<(string Port, List<Guid> Slots)> lost = [];
+            lock (_lock)
+                foreach (var (port, slots, silent) in silence)
+                {
+                    if (!silent)
+                        _silentPorts.Remove(port);
+                    else if (slots.Count > 0 && _silentPorts.Add(port))
+                        lost.Add((port, slots));
+                }
+
+            foreach (var (port, slotIds) in lost)
+            {
+                try
+                {
+                    using var scope = _scopes.CreateScope();
+                    var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+                    var slots = await db.Set<ParkingSlot>().Where(s => slotIds.Contains(s.Id)).ToListAsync(ct);
+
+                    var changed = 0;
+                    foreach (var slot in slots)
+                    {
+                        if (SlotSensorRule.Lost(slot.Status) is not { } status) continue;
+                        slot.Status = status;
+                        slot.UpdatedAt = now;
+                        changed++;
+                    }
+
+                    if (changed > 0)
+                    {
+                        await db.SaveChangesAsync(ct);
+                        _logger.LogWarning(
+                            "ESP-NOW hub on {Port} silent for over {Seconds} s: {Count} bays set to No signal",
+                            port, (int)HubSilence.After.TotalSeconds, changed);
+                    }
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    // Try again on the next round.
+                    lock (_lock) _silentPorts.Remove(port);
+                    _logger.LogWarning(ex, "Could not mark the bays of the silent hub on {Port}", port);
+                }
+            }
         }
 
         /// <summary>

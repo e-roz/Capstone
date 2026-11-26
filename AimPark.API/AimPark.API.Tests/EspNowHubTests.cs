@@ -511,3 +511,53 @@ public class SlotSensorRuleTests
         Assert.Equal(expected, SlotSensorRule.Next(ParkingSlotStatus.NoSignal, occupied));
     }
 }
+
+/// <summary>
+/// When the hub itself goes quiet (unplugged, or switched off with the
+/// model), its bays stop being trusted: nobody is left to report them.
+/// </summary>
+public class HubSilenceTests
+{
+    private static readonly DateTime Start = new(2026, 11, 26, 6, 0, 0, DateTimeKind.Utc);
+
+    [Fact]
+    public void A_hub_heard_recently_is_not_silent()
+        => Assert.False(HubSilence.IsSilent(false, Start.AddMinutes(10), Start, Start.AddMinutes(10).AddSeconds(30)));
+
+    [Fact]
+    public void A_hub_quiet_past_the_window_is_silent()
+        => Assert.True(HubSilence.IsSilent(false, Start.AddMinutes(10), Start, Start.AddMinutes(10).AddSeconds(46)));
+
+    [Fact]
+    public void A_hub_never_heard_gets_a_full_window_after_start_up()
+    {
+        Assert.False(HubSilence.IsSilent(false, null, Start, Start.AddSeconds(44)));
+        Assert.True(HubSilence.IsSilent(false, null, Start, Start.AddSeconds(46)));
+    }
+
+    [Fact]
+    public void A_line_from_before_start_up_counts_from_start_up()
+        => Assert.False(HubSilence.IsSilent(false, Start.AddHours(-3), Start, Start.AddSeconds(30)));
+
+    [Fact]
+    public void A_simulated_hub_is_never_silent()
+        => Assert.False(HubSilence.IsSilent(true, null, Start, Start.AddHours(1)));
+
+    [Fact]
+    public void The_window_outlasts_a_hung_hub_being_restarted()
+        => Assert.True(HubSilence.After > HubConversation.QuietAfter);
+
+    [Theory]
+    [InlineData(ParkingSlotStatus.Available)]
+    [InlineData(ParkingSlotStatus.Occupied)]
+    public void A_silent_hubs_bays_become_no_signal(ParkingSlotStatus current)
+        => Assert.Equal(ParkingSlotStatus.NoSignal, SlotSensorRule.Lost(current));
+
+    [Fact]
+    public void Out_of_service_stays_out_of_service()
+        => Assert.Null(SlotSensorRule.Lost(ParkingSlotStatus.OutOfService));
+
+    [Fact]
+    public void A_bay_comes_back_when_its_sensor_reads_again()
+        => Assert.Equal(ParkingSlotStatus.Available, SlotSensorRule.Next(ParkingSlotStatus.NoSignal, occupied: false));
+}
