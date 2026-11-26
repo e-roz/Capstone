@@ -37,7 +37,8 @@ namespace AimPark.API.Services
             _emailService = emailService;
         }
 
-        // GET /api/admin/users?page=1&pageSize=20&status=Revoked&search=cruz&role=User&card=none (includes archived users)
+        // GET /api/admin/users?page=1&pageSize=20&status=Revoked&search=cruz&role=User&card=none
+        // Archived users are listed only with status=Archived, and never alongside live ones.
         public async Task<ActionResult<UserListResponse>> ListAsync(int page, int pageSize, string? status, string? search, string? role, string? card, string? expiry, CancellationToken ct)
         {
             // Clamp to sane defaults
@@ -62,11 +63,14 @@ namespace AimPark.API.Services
 
             // "Archived" isn't a real AccountStatus — it's the separate IsDeleted flag —
             // so it's handled as a virtual filter value here rather than a real enum member.
-            if (string.Equals(status, "Archived", StringComparison.OrdinalIgnoreCase))
-            {
-                query = query.Where(u => u.IsDeleted);
-            }
-            else if (!string.IsNullOrWhiteSpace(status) && Enum.TryParse<AccountStatus>(status, true, out var parsedStatus))
+            // Archived accounts are their own list: every other status (and no
+            // status at all) leaves them out, so an archived Active user no longer
+            // turns up under "Active" or "All" next to the live accounts.
+            var archivedOnly = string.Equals(status, "Archived", StringComparison.OrdinalIgnoreCase);
+            query = query.Where(u => u.IsDeleted == archivedOnly);
+
+            if (!archivedOnly && !string.IsNullOrWhiteSpace(status)
+                && Enum.TryParse<AccountStatus>(status, true, out var parsedStatus))
             {
                 query = query.Where(u => u.AccountStatus == parsedStatus);
             }
@@ -139,8 +143,12 @@ namespace AimPark.API.Services
 
             var totalCount = await query.CountAsync(ct);
 
-            var users = await query
-                .OrderByDescending(u => u.CreatedAt)
+            // The archive reads newest-archived first; the live list newest-joined.
+            var ordered = archivedOnly
+                ? query.OrderByDescending(u => u.DeletedAt).ThenByDescending(u => u.CreatedAt)
+                : query.OrderByDescending(u => u.CreatedAt);
+
+            var users = await ordered
                 .Skip((page - 1) * pageSize)
                 .Take(pageSize)
                 .Select(u => new UserSummaryResponse
@@ -153,6 +161,7 @@ namespace AimPark.API.Services
                     RfidStatus   = u.RfidStatus.ToString(),
                     RfidTagId    = u.RfidTagId,
                     IsDeleted    = u.IsDeleted,
+                    DeletedAt    = u.DeletedAt,
                     CreatedAt    = u.CreatedAt
                 })
                 .ToListAsync(ct);

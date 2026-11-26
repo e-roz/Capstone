@@ -20,6 +20,9 @@ namespace AimPark.API.DTOs
         // Added for the Users list's Card column. Additive: older clients ignore it.
         public string? RfidTagId { get; set; }
         public bool IsDeleted { get; set; }
+
+        // When the account was archived, for the Archived table. Null for live accounts.
+        public DateTime? DeletedAt { get; set; }
         public DateTime CreatedAt { get; set; }
 
         /// <summary>

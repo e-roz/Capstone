@@ -222,4 +222,26 @@ public class UserExpiryListTests
         Assert.DoesNotContain(everyone.Users, u => u.FullName == "NotApprovedExpired");
         Assert.Contains(everyone.Users, u => u.FullName == "AllFine");
     }
+
+    [Fact]
+    public async Task ArchivedAccountsOnlyShowInTheArchivedList()
+    {
+        var db = NewDb();
+        Person(db, "Live", Real(100));
+        var gone = Person(db, "Gone", Real(100), archived: true);
+        gone.DeletedAt = DateTime.UtcNow;
+        await db.SaveChangesAsync();
+
+        async Task<List<string>> Names(string? status)
+        {
+            var result = await Service(db).ListAsync(1, 50, status, null, null, null, null, default);
+            var body = (UserListResponse)((OkObjectResult)result.Result!).Value!;
+            return body.Users.Select(u => u.FullName).ToList();
+        }
+
+        // Still Active on paper, but archived: not in "All" or "Active".
+        Assert.Equal(["Live"], await Names(null));
+        Assert.Equal(["Live"], await Names("Active"));
+        Assert.Equal(["Gone"], await Names("Archived"));
+    }
 }
