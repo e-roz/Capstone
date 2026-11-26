@@ -30,35 +30,41 @@ class UsersQuery {
     this.search,
   });
 
+  /// The Archived tab. Archived accounts are a list of their own: the API
+  /// leaves them out of every other status.
+  bool get archived => status == UserStatuses.archived;
+
+  /// Whether anything narrows the current tab. Being on the Archived tab is
+  /// not a filter.
   bool get hasFilters =>
-      status != null ||
+      (status != null && !archived) ||
       role != null ||
       card != null ||
       expiry != null ||
       (search?.isNotEmpty ?? false);
 
-  UsersQuery copyWith(
-          {int? page,
-          int? pageSize,
-          String? status,
-          bool clearStatus = false,
-          String? role,
-          bool clearRole = false,
-          String? card,
-          bool clearCard = false,
-          String? expiry,
-          bool clearExpiry = false,
-          String? search,
-          bool clearSearch = false}) =>
-      UsersQuery(
-        page: page ?? this.page,
-        pageSize: pageSize ?? this.pageSize,
-        status: clearStatus ? null : (status ?? this.status),
-        role: clearRole ? null : (role ?? this.role),
-        card: clearCard ? null : (card ?? this.card),
-        expiry: clearExpiry ? null : (expiry ?? this.expiry),
-        search: clearSearch ? null : (search ?? this.search),
-      );
+  UsersQuery copyWith({
+    int? page,
+    int? pageSize,
+    String? status,
+    bool clearStatus = false,
+    String? role,
+    bool clearRole = false,
+    String? card,
+    bool clearCard = false,
+    String? expiry,
+    bool clearExpiry = false,
+    String? search,
+    bool clearSearch = false,
+  }) => UsersQuery(
+    page: page ?? this.page,
+    pageSize: pageSize ?? this.pageSize,
+    status: clearStatus ? null : (status ?? this.status),
+    role: clearRole ? null : (role ?? this.role),
+    card: clearCard ? null : (card ?? this.card),
+    expiry: clearExpiry ? null : (expiry ?? this.expiry),
+    search: clearSearch ? null : (search ?? this.search),
+  );
 }
 
 @riverpod
@@ -67,19 +73,46 @@ class UsersQueryNotifier extends _$UsersQueryNotifier {
   UsersQuery build() => const UsersQuery();
 
   void setPage(int page) => state = state.copyWith(page: page);
-  void setStatus(String? status) =>
-      state = state.copyWith(status: status, clearStatus: status == null, page: 1);
+  void setStatus(String? status) => state = state.copyWith(
+    status: status,
+    clearStatus: status == null,
+    page: 1,
+  );
   void setRole(String? role) =>
       state = state.copyWith(role: role, clearRole: role == null, page: 1);
   void setCard(String? card) =>
       state = state.copyWith(card: card, clearCard: card == null, page: 1);
-  void setExpiry(String? expiry) =>
-      state = state.copyWith(expiry: expiry, clearExpiry: expiry == null, page: 1);
+  void setExpiry(String? expiry) => state = state.copyWith(
+    expiry: expiry,
+    clearExpiry: expiry == null,
+    page: 1,
+  );
   void setSearch(String? search) => state = state.copyWith(
-      search: search,
-      clearSearch: search == null || search.isEmpty,
-      page: 1);
-  void clearFilters() => state = UsersQuery(pageSize: state.pageSize);
+    search: search,
+    clearSearch: search == null || search.isEmpty,
+    page: 1,
+  );
+
+  /// Clears the filters but stays on the tab the admin is on.
+  void clearFilters() => state = UsersQuery(
+    pageSize: state.pageSize,
+    status: state.archived ? UserStatuses.archived : null,
+  );
+
+  /// Switches between the live accounts and the archive. Card and licence
+  /// filters only mean something for live accounts, so they are dropped on
+  /// the way into the archive; search and role carry over.
+  void setArchived(bool archived) {
+    if (archived == state.archived) return;
+    state = archived
+        ? UsersQuery(
+            pageSize: state.pageSize,
+            status: UserStatuses.archived,
+            role: state.role,
+            search: state.search,
+          )
+        : state.copyWith(clearStatus: true, page: 1);
+  }
 }
 
 // ── Users list ───────────────────────────────────────────────────────────────
@@ -96,7 +129,8 @@ Future<UserListPage> userList(Ref ref) async {
     if (query.role != null) 'role': query.role,
     if (query.card != null) 'card': query.card,
     if (query.expiry != null) 'expiry': query.expiry,
-    if (query.search != null && query.search!.isNotEmpty) 'search': query.search,
+    if (query.search != null && query.search!.isNotEmpty)
+      'search': query.search,
   };
 
   final response = await dio.get(ApiEndpoints.users, queryParameters: params);
@@ -108,8 +142,11 @@ class BulkRevokeResult {
   final int skippedCount;
   final String? error;
 
-  const BulkRevokeResult(
-      {required this.revoked, required this.skippedCount, this.error});
+  const BulkRevokeResult({
+    required this.revoked,
+    required this.skippedCount,
+    this.error,
+  });
 }
 
 // ── RFID cards (Assigned / Free / Blocked) ─────────────────────────────────
@@ -119,8 +156,10 @@ class BulkRevokeResult {
 @riverpod
 Future<List<RfidCard>> rfidCards(Ref ref) async {
   final dio = ref.watch(dioProvider);
-  final res = await dio.get(ApiEndpoints.rfidCards,
-      queryParameters: {'includeAssigned': true});
+  final res = await dio.get(
+    ApiEndpoints.rfidCards,
+    queryParameters: {'includeAssigned': true},
+  );
   return (res.data as List<dynamic>)
       .map((c) => RfidCard.fromJson(c as Map<String, dynamic>))
       .toList();
@@ -128,7 +167,9 @@ Future<List<RfidCard>> rfidCards(Ref ref) async {
 
 @riverpod
 Future<List<RfidCardHistoryEntry>> rfidCardHistory(
-    Ref ref, String rfidTagId) async {
+  Ref ref,
+  String rfidTagId,
+) async {
   final dio = ref.watch(dioProvider);
   final res = await dio.get(ApiEndpoints.rfidCardHistory(rfidTagId));
   return (res.data as List<dynamic>)
@@ -146,8 +187,10 @@ class UserActions extends _$UserActions {
   Future<String?> archive(String userId, String adminPassword) async {
     return _run(() async {
       final dio = ref.read(dioProvider);
-      final res = await dio.delete(ApiEndpoints.archiveUser(userId),
-          data: {'password': adminPassword});
+      final res = await dio.delete(
+        ApiEndpoints.archiveUser(userId),
+        data: {'password': adminPassword},
+      );
       return (res.data as Map<String, dynamic>)['message']?.toString();
     });
   }
@@ -172,8 +215,10 @@ class UserActions extends _$UserActions {
   Future<String?> resetPassword(String userId, String adminPassword) async {
     return _run(() async {
       final dio = ref.read(dioProvider);
-      final res = await dio.post(ApiEndpoints.resetUserPassword(userId),
-          data: {'password': adminPassword});
+      final res = await dio.post(
+        ApiEndpoints.resetUserPassword(userId),
+        data: {'password': adminPassword},
+      );
       return (res.data as Map<String, dynamic>)['message']?.toString();
     });
   }
@@ -189,8 +234,10 @@ class UserActions extends _$UserActions {
   Future<String?> assignRfid(String userId, String rfidTagId) async {
     return _run(() async {
       final dio = ref.read(dioProvider);
-      final res = await dio.post(ApiEndpoints.assignRfid(userId),
-          data: {'rfidTagId': rfidTagId});
+      final res = await dio.post(
+        ApiEndpoints.assignRfid(userId),
+        data: {'rfidTagId': rfidTagId},
+      );
       return (res.data as Map<String, dynamic>)['message']?.toString();
     });
   }
@@ -198,8 +245,10 @@ class UserActions extends _$UserActions {
   Future<String?> revokeRfid(String userId, String reason, String? note) async {
     return _run(() async {
       final dio = ref.read(dioProvider);
-      final res = await dio.post(ApiEndpoints.revokeRfid(userId),
-          data: {'reason': reason, 'note': note});
+      final res = await dio.post(
+        ApiEndpoints.revokeRfid(userId),
+        data: {'reason': reason, 'note': note},
+      );
       return (res.data as Map<String, dynamic>)['message']?.toString();
     });
   }
@@ -207,15 +256,17 @@ class UserActions extends _$UserActions {
   /// Returns how many were revoked and the reasons any were skipped (e.g.
   /// already had no card) — a partial success, not something to throw on.
   Future<BulkRevokeResult> bulkRevokeRfid(
-      List<String> userIds, String reason, String? note) async {
+    List<String> userIds,
+    String reason,
+    String? note,
+  ) async {
     state = const AsyncLoading();
     try {
       final dio = ref.read(dioProvider);
-      final res = await dio.post(ApiEndpoints.bulkRevokeRfid, data: {
-        'userIds': userIds,
-        'reason': reason,
-        'note': note,
-      });
+      final res = await dio.post(
+        ApiEndpoints.bulkRevokeRfid,
+        data: {'userIds': userIds, 'reason': reason, 'note': note},
+      );
       state = const AsyncData(null);
       final data = res.data as Map<String, dynamic>;
       return BulkRevokeResult(
@@ -241,7 +292,8 @@ class UserActions extends _$UserActions {
     } on DioException catch (e) {
       state = const AsyncData(null);
       final data = e.response?.data;
-      if (data is Map) return data['message']?.toString() ?? e.message ?? 'Error';
+      if (data is Map)
+        return data['message']?.toString() ?? e.message ?? 'Error';
       return e.message ?? 'Unknown error';
     }
   }

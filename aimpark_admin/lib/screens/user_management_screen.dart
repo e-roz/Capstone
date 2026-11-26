@@ -19,11 +19,8 @@ import '../widgets/user_actions.dart';
 
 /// The statuses that get a chip. Applicants (pending review, rejected) are not
 /// users yet, so they live on the Registrations screen and have no chip here.
-const _chipStatuses = [
-  UserStatuses.active,
-  UserStatuses.revoked,
-  UserStatuses.archived,
-];
+/// Archived accounts have their own tab and table rather than a chip.
+const _chipStatuses = [UserStatuses.active, UserStatuses.revoked];
 
 const _roles = [
   AppFilterOption(UserRoles.user, 'User'),
@@ -55,15 +52,36 @@ class UserManagementScreen extends ConsumerStatefulWidget {
       _UserManagementScreenState();
 }
 
-class _UserManagementScreenState extends ConsumerState<UserManagementScreen> {
+class _UserManagementScreenState extends ConsumerState<UserManagementScreen>
+    with SingleTickerProviderStateMixin {
   /// Bumped by "Clear filters". The search box keeps its own text, so it has
   /// to be rebuilt to empty it; keying it on the search value itself would
   /// rebuild it (and drop focus) on every debounced keystroke.
   int _searchGeneration = 0;
 
+  /// Accounts (0) or Archived (1). The query is the source of truth; this only
+  /// draws the tab bar and reports taps back to it.
+  late final TabController _tabs = TabController(
+    length: 2,
+    vsync: this,
+    initialIndex: ref.read(usersQueryNotifierProvider).archived ? 1 : 0,
+  );
+
+  @override
+  void dispose() {
+    _tabs.dispose();
+    super.dispose();
+  }
+
   @override
   void initState() {
     super.initState();
+    _tabs.addListener(() {
+      if (_tabs.indexIsChanging) return;
+      ref
+          .read(usersQueryNotifierProvider.notifier)
+          .setArchived(_tabs.index == 1);
+    });
 
     // Set after the first frame: a provider cannot be changed while the widget
     // tree is still being built.
@@ -88,10 +106,14 @@ class _UserManagementScreenState extends ConsumerState<UserManagementScreen> {
     final notifier = ref.read(usersQueryNotifierProvider.notifier);
     final token = ref.watch(authNotifierProvider).valueOrNull;
     final myId = token == null ? null : JwtUtils.getUserId(token);
+    final archived = query.archived;
 
     return AppPage(
       title: 'Users',
-      subtitle: 'Every account, its status and its card.',
+      subtitle: archived
+          ? 'Archived accounts, kept apart from the live ones. Restore one to '
+                'bring it back.'
+          : 'Every account, its status and its card.',
       actions: [
         _MoreMenu(
           onBulkRevoke: () => _bulkRevokeRfid(context, ref),
@@ -105,89 +127,200 @@ class _UserManagementScreenState extends ConsumerState<UserManagementScreen> {
           onPressed: () => ref.invalidate(userListProvider),
         ),
       ],
-      toolbar: AppToolbar(
-        // Search is server-side here, so it spans the whole result set rather
-        // than the visible page.
-        search: AppSearchField(
-          key: ValueKey(_searchGeneration),
-          hint: 'Search name, email, or plate',
-          initialValue: query.search,
-          onChanged: notifier.setSearch,
-        ),
-        filters: [
-          _StatusChips(value: query.status, onChanged: notifier.setStatus),
-          AppFilterDropdown<String>(
-            label: 'Role',
-            value: query.role,
-            options: _roles,
-            allLabel: 'All roles',
-            onChanged: notifier.setRole,
+      toolbar: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Align(
+            alignment: Alignment.centerLeft,
+            child: TabBar(
+              controller: _tabs,
+              isScrollable: true,
+              tabAlignment: TabAlignment.start,
+              tabs: const [
+                Tab(text: 'Accounts'),
+                Tab(text: 'Archived'),
+              ],
+            ),
           ),
-          AppFilterDropdown<String>(
-            label: 'Card',
-            value: query.card,
-            options: _cardOptions,
-            allLabel: 'All',
-            onChanged: notifier.setCard,
-          ),
-          AppFilterDropdown<String>(
-            label: 'Licence / OR',
-            value: query.expiry,
-            options: _expiryOptions,
-            allLabel: 'All',
-            onChanged: notifier.setExpiry,
+          const SizedBox(height: AppSpacing.x3),
+          AppToolbar(
+            // Search is server-side here, so it spans the whole result set
+            // rather than the visible page.
+            search: AppSearchField(
+              key: ValueKey(_searchGeneration),
+              hint: 'Search name, email, or plate',
+              initialValue: query.search,
+              onChanged: notifier.setSearch,
+            ),
+            filters: [
+              if (!archived)
+                _StatusChips(
+                  value: query.status,
+                  onChanged: notifier.setStatus,
+                ),
+              AppFilterDropdown<String>(
+                label: 'Role',
+                value: query.role,
+                options: _roles,
+                allLabel: 'All roles',
+                onChanged: notifier.setRole,
+              ),
+              if (!archived) ...[
+                AppFilterDropdown<String>(
+                  label: 'Card',
+                  value: query.card,
+                  options: _cardOptions,
+                  allLabel: 'All',
+                  onChanged: notifier.setCard,
+                ),
+                AppFilterDropdown<String>(
+                  label: 'Licence / OR',
+                  value: query.expiry,
+                  options: _expiryOptions,
+                  allLabel: 'All',
+                  onChanged: notifier.setExpiry,
+                ),
+              ],
+            ],
           ),
         ],
       ),
-      body: AsyncView(
-        value: ref.watch(userListProvider),
-        onRetry: () => ref.invalidate(userListProvider),
-        loading: const SkeletonTable(
-          columns: 6,
-          columnWidths: [260, 110, 130, 220, 110, 40],
+      body: archived
+          ? _archivedBody(context, query)
+          : _accountsBody(context, query, myId),
+    );
+  }
+
+  Widget _archivedBody(BuildContext context, UsersQuery query) {
+    final notifier = ref.read(usersQueryNotifierProvider.notifier);
+    return AsyncView(
+      value: ref.watch(userListProvider),
+      onRetry: () => ref.invalidate(userListProvider),
+      loading: const SkeletonTable(
+        columns: 6,
+        columnWidths: [260, 120, 130, 130, 110, 40],
+      ),
+      isEmpty: (page) => page.users.isEmpty,
+      empty: AppEmptyState(
+        icon: Icons.inventory_2_outlined,
+        title: query.hasFilters
+            ? 'No archived users match.'
+            : 'Nothing archived.',
+        message: query.hasFilters
+            ? 'Try another search or filter.'
+            : 'Accounts you archive are kept here, apart from the live ones.',
+        action: query.hasFilters
+            ? TextButton(
+                onPressed: _clearFilters,
+                child: const Text('Clear filters'),
+              )
+            : null,
+      ),
+      data: (page) => AppDataTable(
+        minWidth: 900,
+        columns: const [
+          DataColumn(label: Text('Name')),
+          DataColumn(label: Text('Status when archived')),
+          DataColumn(label: Text('Card')),
+          DataColumn(label: Text('Archived')),
+          DataColumn(label: Text('Joined')),
+          DataColumn(label: SizedBox.shrink()),
+        ],
+        rows: [for (final user in page.users) _archivedRow(context, user)],
+        footer: AppPagination(
+          page: page.page,
+          pageSize: page.pageSize,
+          total: page.totalCount,
+          itemLabel: 'archived users',
+          onPage: notifier.setPage,
         ),
-        isEmpty: (page) => page.users.isEmpty,
-        empty: AppEmptyState(
-          icon: Icons.person_search_outlined,
-          title: 'No users match.',
-          message: query.hasFilters
-              ? 'Try another search or filter.'
-              : 'Accounts show up here once registration is complete.',
-          action: query.hasFilters
-              ? TextButton(
-                  onPressed: _clearFilters,
-                  child: const Text('Clear filters'),
-                )
-              : null,
-        ),
-        data: (page) => AppDataTable(
-          minWidth: 980,
-          columns: const [
-            DataColumn(label: Text('Name')),
-            DataColumn(label: Text('Status')),
-            DataColumn(label: Text('Card')),
-            DataColumn(label: Text('Licence / OR')),
-            DataColumn(label: Text('Joined')),
-            // The row menu. No header text: the "⋯" button names itself.
-            DataColumn(label: SizedBox.shrink()),
-          ],
-          rows: [
-            for (final user in page.users)
-              _row(
-                context,
-                user,
-                isSelf:
-                    myId != null &&
-                    myId.toLowerCase() == user.userId.toLowerCase(),
-              ),
-          ],
-          footer: AppPagination(
-            page: page.page,
-            pageSize: page.pageSize,
-            total: page.totalCount,
-            itemLabel: 'users',
-            onPage: notifier.setPage,
+      ),
+    );
+  }
+
+  DataRow _archivedRow(BuildContext context, AdminUser user) {
+    final t = context.tokens;
+    final text = Theme.of(context).textTheme;
+    final dateStyle = text.bodySmall?.copyWith(color: t.text.secondary);
+    final deletedAt = user.deletedAt;
+
+    return DataRow(
+      onSelectChanged: (_) => context.go('/users/${user.userId}'),
+      cells: [
+        DataCell(_NameCell(user: user, isSelf: false)),
+        DataCell(
+          StatusPill(
+            label: UserStatuses.label(user.accountStatus),
+            intent: StatusIntent.neutral,
+            dense: true,
           ),
+        ),
+        DataCell(_CardCell(user: user)),
+        DataCell(
+          Text(
+            deletedAt == null ? '—' : _joined.format(deletedAt.toLocal()),
+            style: dateStyle,
+          ),
+        ),
+        DataCell(
+          Text(_joined.format(user.createdAt.toLocal()), style: dateStyle),
+        ),
+        DataCell(_RowMenu(user: user)),
+      ],
+    );
+  }
+
+  Widget _accountsBody(BuildContext context, UsersQuery query, String? myId) {
+    final notifier = ref.read(usersQueryNotifierProvider.notifier);
+    return AsyncView(
+      value: ref.watch(userListProvider),
+      onRetry: () => ref.invalidate(userListProvider),
+      loading: const SkeletonTable(
+        columns: 6,
+        columnWidths: [260, 110, 130, 220, 110, 40],
+      ),
+      isEmpty: (page) => page.users.isEmpty,
+      empty: AppEmptyState(
+        icon: Icons.person_search_outlined,
+        title: 'No users match.',
+        message: query.hasFilters
+            ? 'Try another search or filter.'
+            : 'Accounts show up here once registration is complete.',
+        action: query.hasFilters
+            ? TextButton(
+                onPressed: _clearFilters,
+                child: const Text('Clear filters'),
+              )
+            : null,
+      ),
+      data: (page) => AppDataTable(
+        minWidth: 980,
+        columns: const [
+          DataColumn(label: Text('Name')),
+          DataColumn(label: Text('Status')),
+          DataColumn(label: Text('Card')),
+          DataColumn(label: Text('Licence / OR')),
+          DataColumn(label: Text('Joined')),
+          // The row menu. No header text: the "⋯" button names itself.
+          DataColumn(label: SizedBox.shrink()),
+        ],
+        rows: [
+          for (final user in page.users)
+            _row(
+              context,
+              user,
+              isSelf:
+                  myId != null &&
+                  myId.toLowerCase() == user.userId.toLowerCase(),
+            ),
+        ],
+        footer: AppPagination(
+          page: page.page,
+          pageSize: page.pageSize,
+          total: page.totalCount,
+          itemLabel: 'users',
+          onPage: notifier.setPage,
         ),
       ),
     );
@@ -196,7 +329,7 @@ class _UserManagementScreenState extends ConsumerState<UserManagementScreen> {
   DataRow _row(BuildContext context, AdminUser user, {required bool isSelf}) {
     final t = context.tokens;
     final text = Theme.of(context).textTheme;
-    final status = user.displayStatus;
+    final status = user.accountStatus;
 
     return DataRow(
       onSelectChanged: (_) => context.go('/users/${user.userId}'),
@@ -205,9 +338,7 @@ class _UserManagementScreenState extends ConsumerState<UserManagementScreen> {
         DataCell(
           StatusPill(
             label: UserStatuses.label(status),
-            intent: user.isDeleted
-                ? StatusIntent.neutral
-                : StatusIntents.user(status),
+            intent: StatusIntents.user(status),
             dense: true,
           ),
         ),
@@ -309,12 +440,18 @@ class _MoreMenu extends StatelessWidget {
           child: const Text('Bulk revoke RFID…'),
         ),
         MenuItemButton(
-          leadingIcon: const Icon(Icons.archive_outlined, size: AppSizes.iconSm),
+          leadingIcon: const Icon(
+            Icons.archive_outlined,
+            size: AppSizes.iconSm,
+          ),
           onPressed: onBulkArchive,
           child: const Text('Bulk archive…'),
         ),
         MenuItemButton(
-          leadingIcon: const Icon(Icons.unarchive_outlined, size: AppSizes.iconSm),
+          leadingIcon: const Icon(
+            Icons.unarchive_outlined,
+            size: AppSizes.iconSm,
+          ),
           onPressed: onBulkRestore,
           child: const Text('Bulk restore…'),
         ),
@@ -360,16 +497,8 @@ class _NameCell extends StatelessWidget {
     final t = context.tokens;
     final text = Theme.of(context).textTheme;
 
-    // Archived accounts used to carry a separate "Archived" column that was
-    // an empty cell on every other row. Struck-through text plus the pill
-    // says the same thing in the space the name already occupies.
-    final nameStyle = user.isDeleted
-        ? text.titleSmall?.copyWith(
-            color: t.text.tertiary,
-            decoration: TextDecoration.lineThrough,
-          )
-        : text.titleSmall;
-
+    // Archived accounts sit in their own table now, so the name needs no
+    // strike-through or icon to set them apart from live ones.
     return Column(
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -378,18 +507,10 @@ class _NameCell extends StatelessWidget {
         Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            if (user.isDeleted) ...[
-              Icon(
-                Icons.archive_outlined,
-                size: AppSizes.iconSm,
-                color: t.text.tertiary,
-              ),
-              const SizedBox(width: AppSpacing.x1),
-            ],
             Flexible(
               child: Text(
                 user.fullName,
-                style: nameStyle,
+                style: text.titleSmall,
                 overflow: TextOverflow.ellipsis,
               ),
             ),
@@ -556,8 +677,11 @@ class _RowMenu extends ConsumerWidget {
           const PopupMenuDivider(),
         ],
         if (user.role != 'Admin')
-          item(_RowAction.resetPassword, 'Reset password…',
-              Icons.lock_reset_outlined),
+          item(
+            _RowAction.resetPassword,
+            'Reset password…',
+            Icons.lock_reset_outlined,
+          ),
         item(
           _RowAction.archive,
           'Archive…',
@@ -734,8 +858,8 @@ Future<void> _bulkArchive(BuildContext context, WidgetRef ref) async {
   final message = n == 0
       ? 'Nobody was archived.'
       : 'Archived $n user${n == 1 ? '' : 's'}'
-          '${cards == 0 ? '' : ', handed back $cards card${cards == 1 ? '' : 's'}'}'
-          '${result.skipped.isEmpty ? '' : ', skipped ${result.skipped.length}'}.';
+            '${cards == 0 ? '' : ', handed back $cards card${cards == 1 ? '' : 's'}'}'
+            '${result.skipped.isEmpty ? '' : ', skipped ${result.skipped.length}'}.';
 
   ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
   ref.invalidate(userListProvider);
@@ -752,8 +876,8 @@ Future<void> _bulkRestore(BuildContext context, WidgetRef ref) async {
   final message = n == 0
       ? 'Nobody was restored.'
       : 'Restored $n user${n == 1 ? '' : 's'}'
-          '${result.skipped.isEmpty ? '' : ', skipped ${result.skipped.length}'}.'
-          ' Assign cards again where needed.';
+            '${result.skipped.isEmpty ? '' : ', skipped ${result.skipped.length}'}.'
+            ' Assign cards again where needed.';
 
   ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
   ref.invalidate(userListProvider);

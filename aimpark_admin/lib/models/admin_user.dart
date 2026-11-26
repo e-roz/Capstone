@@ -9,6 +9,9 @@ class AdminUser {
   /// Null when no card is held. Older API builds never send it.
   final String? rfidTagId;
   final bool isDeleted;
+
+  /// When the account was archived. Null for live accounts and older API builds.
+  final DateTime? deletedAt;
   final DateTime createdAt;
 
   /// `Expired`, `Expiring` or `Valid`, or null when it does not apply (staff,
@@ -29,6 +32,7 @@ class AdminUser {
     required this.rfidStatus,
     this.rfidTagId,
     required this.isDeleted,
+    this.deletedAt,
     required this.createdAt,
     this.expiryState,
     this.expiryWhat,
@@ -44,6 +48,9 @@ class AdminUser {
     rfidStatus: json['rfidStatus']?.toString() ?? '',
     rfidTagId: json['rfidTagId']?.toString(),
     isDeleted: (json['isDeleted'] as bool?) ?? false,
+    deletedAt: json['deletedAt'] == null
+        ? null
+        : DateTime.tryParse(json['deletedAt'].toString()),
     createdAt: DateTime.parse(json['createdAt'].toString()),
     expiryState: json['expiryState']?.toString(),
     expiryWhat: json['expiryWhat']?.toString(),
