@@ -38,7 +38,10 @@ const _reports = [
       ignoresPeriod: true),
 ];
 
-/// Download the printable PDF reports for the period the page has picked.
+/// Open the printable PDF reports for the period the page has picked.
+///
+/// Each report opens in a new tab with Print and Save buttons, rather than
+/// downloading straight away, so the admin sees it before keeping it.
 ///
 /// The PDF is made on the server, not here, so its figures come straight from
 /// the database and it carries a report number and a QR code that checks the
@@ -91,7 +94,7 @@ class _ReportPdfMenuState extends ConsumerState<ReportPdfMenu> {
                 dimension: AppSizes.iconSm,
                 child: CircularProgressIndicator(strokeWidth: 2),
               ),
-        label: Text(_busy == null ? 'Download PDF' : 'Preparing…'),
+        label: Text(_busy == null ? 'View PDF' : 'Preparing…'),
         onPressed: () => controller.isOpen ? controller.close() : controller.open(),
       ),
     );
@@ -111,6 +114,16 @@ class _ReportPdfMenuState extends ConsumerState<ReportPdfMenu> {
       return;
     }
 
+    // Opened now, while the click is still being handled; after the `await`
+    // below the browser would block it as a pop-up.
+    final tab = BrowserFiles.openBlankTab('Preparing ${report.title.toLowerCase()}…');
+    if (tab == null) {
+      messenger.showSnackBar(const SnackBar(
+        content: Text('Your browser blocked the new tab. Allow pop-ups for this site and try again.'),
+      ));
+      return;
+    }
+
     setState(() => _busy = report.kind);
     try {
       final response = await ref.read(dioProvider).get<List<int>>(
@@ -119,19 +132,19 @@ class _ReportPdfMenuState extends ConsumerState<ReportPdfMenu> {
             options: Options(responseType: ResponseType.bytes),
           );
 
-      final name = _fileName(response.headers) ?? 'aimpark-${report.kind}.pdf';
-      BrowserFiles.download(
-        name,
-        Uint8List.fromList(response.data ?? const []),
-        mimeType: 'application/pdf',
-      );
-
       final number = response.headers.value('x-report-number');
-      messenger.showSnackBar(SnackBar(
-        content: Text(number == null ? '${report.title} downloaded.' : '${report.title} $number downloaded.'),
-      ));
+      BrowserFiles.showPdfInTab(
+        tab,
+        Uint8List.fromList(response.data ?? const []),
+        fileName: _fileName(response.headers) ?? 'aimpark-${report.kind}.pdf',
+        title: number == null ? report.title : '${report.title} $number',
+      );
     } on DioException catch (e) {
+      tab.close();
       messenger.showSnackBar(SnackBar(content: Text(_message(e, report))));
+    } catch (_) {
+      tab.close(); // never leave a tab stuck on "Preparing…"
+      rethrow;
     } finally {
       if (mounted) setState(() => _busy = null);
     }
